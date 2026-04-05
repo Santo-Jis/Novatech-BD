@@ -1,0 +1,198 @@
+const PDFDocument = require('pdfkit');
+const { generateOTP } = require('../config/encryption');
+const { sendOTP, sendInvoice: sendInvoiceSMS, getWhatsAppInvoiceLink } = require('./sms.service');
+
+// ============================================================
+// Invoice Number জেনারেশন
+// ============================================================
+
+const generateInvoiceNumber = async () => {
+    const { query } = require('../config/db');
+    const result    = await query('SELECT generate_invoice_number() AS invoice_number');
+    return result.rows[0].invoice_number;
+};
+
+// ============================================================
+// OTP পাঠানো
+// ============================================================
+
+const sendInvoiceOTP = async (customer, saleId, otp) => {
+    const phone = customer.whatsapp || customer.sms_phone;
+    if (!phone) return null;
+
+    await sendOTP(phone, otp, customer.shop_name);
+    return otp;
+};
+
+// ============================================================
+// Invoice PDF তৈরি
+// ============================================================
+
+const generateInvoicePDF = async (sale, customer, worker, items) => {
+    return new Promise((resolve, reject) => {
+        try {
+            const doc    = new PDFDocument({ margin: 40, size: [283, 600] }); // Receipt size
+            const chunks = [];
+
+            doc.on('data', chunk => chunks.push(chunk));
+            doc.on('end',  ()    => resolve(Buffer.concat(chunks)));
+            doc.on('error', err  => reject(err));
+
+            // ── Header ──
+            doc.fontSize(14).font('Helvetica-Bold')
+               .text('NovaTech BD (Ltd.)', { align: 'center' });
+            doc.fontSize(8).font('Helvetica')
+               .text('জানকি সিংহ রোড, বরিশাল সদর – ১২০০', { align: 'center' })
+               .text('inf.novatechbd@gmail.com', { align: 'center' });
+
+            doc.moveDown(0.3);
+            doc.moveTo(40, doc.y).lineTo(243, doc.y).dash(3).stroke();
+            doc.undash();
+            doc.moveDown(0.3);
+
+            // ── Invoice Info ──
+            doc.fontSize(9).font('Helvetica-Bold')
+               .text(`Invoice: ${sale.invoice_number}`);
+            doc.fontSize(8).font('Helvetica')
+               .text(`তারিখ: ${new Date(sale.created_at).toLocaleDateString('bn-BD')}`)
+               .text(`দোকান: ${customer.shop_name}`)
+               .text(`মালিক: ${customer.owner_name}`)
+               .text(`SR: ${worker.name_bn} (${worker.employee_code})`);
+
+            doc.moveDown(0.3);
+            doc.moveTo(40, doc.y).lineTo(243, doc.y).dash(3).stroke();
+            doc.undash();
+            doc.moveDown(0.3);
+
+            // ── Items ──
+            doc.fontSize(8).font('Helvetica-Bold')
+               .text('পণ্য', 40, doc.y, { width: 100, continued: false })
+
+            let yPos = doc.y;
+            doc.text('পরিমাণ', 140, yPos, { width: 40 });
+            doc.text('মোট',    185, yPos, { width: 58, align: 'right' });
+
+            doc.moveDown(0.2);
+            doc.moveTo(40, doc.y).lineTo(243, doc.y).stroke();
+            doc.moveDown(0.2);
+
+            items.forEach(item => {
+                const subtotal = item.qty * item.price;
+                yPos = doc.y;
+                doc.fontSize(8).font('Helvetica')
+                   .text(item.product_name, 40, yPos, { width: 100 });
+                doc.text(`${item.qty} × ৳${item.price}`, 140, yPos, { width: 40 });
+                doc.text(`৳${subtotal.toLocaleString('bn-BD')}`, 185, yPos, { width: 58, align: 'right' });
+                doc.moveDown(0.3);
+            });
+
+            // Replacement items
+            if (sale.replacement_items?.length > 0) {
+                doc.moveDown(0.2);
+                doc.fontSize(8).font('Helvetica-Bold').text('রিপ্লেসমেন্ট (ফেরত):');
+                sale.replacement_items.forEach(item => {
+                    yPos = doc.y;
+                    doc.fontSize(8).font('Helvetica')
+                       .text(`(-) ${item.product_name}`, 40, yPos, { width: 140 });
+                    doc.text(`-৳${item.total}`, 185, yPos, { width: 58, align: 'right' });
+                    doc.moveDown(0.3);
+                });
+            }
+
+            doc.moveDown(0.2);
+            doc.moveTo(40, doc.y).lineTo(243, doc.y).stroke();
+            doc.moveDown(0.3);
+
+            // ── Summary ──
+            const addSummaryRow = (label, value, bold = false) => {
+                yPos = doc.y;
+                doc.fontSize(9)
+                   .font(bold ? 'Helvetica-Bold' : 'Helvetica')
+                   .text(label, 40, yPos, { width: 140 });
+                doc.font(bold ? 'Helvetica-Bold' : 'Helvetica')
+                   .text(value, 185, yPos, { width: 58, align: 'right' });
+                doc.moveDown(0.3);
+            };
+
+            addSummaryRow('মোট',                    `৳${sale.total_amount.toLocaleString('bn-BD')}`);
+            if (sale.discount_amount > 0) {
+                addSummaryRow('ছাড় (ব্যালেন্স)',   `-৳${sale.discount_amount}`);
+            }
+            addSummaryRow('পরিশোধযোগ্য',            `৳${sale.net_amount.toLocaleString('bn-BD')}`, true);
+
+            doc.moveDown(0.2);
+
+            // পেমেন্ট মেথড
+            const paymentLabels = {
+                cash:        'নগদ',
+                credit:      'বাকি',
+                replacement: 'রিপ্লেসমেন্ট'
+            };
+            addSummaryRow('পেমেন্ট পদ্ধতি', paymentLabels[sale.payment_method]);
+
+            if (sale.cash_received > 0) {
+                addSummaryRow('নগদ প্রাপ্ত', `৳${sale.cash_received}`);
+            }
+            if (sale.credit_used > 0) {
+                addSummaryRow('বাকি দেওয়া হয়েছে', `৳${sale.credit_used}`);
+            }
+            if (sale.credit_balance_added > 0) {
+                addSummaryRow('ক্রেডিট ব্যালেন্স যোগ', `৳${sale.credit_balance_added}`);
+            }
+
+            // OTP যাচাই
+            doc.moveDown(0.3);
+            doc.fontSize(8).font('Helvetica')
+               .text(`OTP যাচাই: ${sale.otp_verified ? '✅ যাচাইকৃত' : '❌ অযাচাইকৃত'}`,
+                     { align: 'center' });
+
+            // Footer
+            doc.moveDown(0.5);
+            doc.moveTo(40, doc.y).lineTo(243, doc.y).dash(3).stroke();
+            doc.undash();
+            doc.moveDown(0.3);
+            doc.fontSize(8).font('Helvetica')
+               .text('আমাদের সাথে কেনাকাটার জন্য ধন্যবাদ', { align: 'center' })
+               .text('NovaTech BD (Ltd.)', { align: 'center' });
+
+            doc.end();
+
+        } catch (error) {
+            reject(error);
+        }
+    });
+};
+
+// ============================================================
+// WhatsApp Invoice Message
+// ============================================================
+
+const getInvoiceWhatsAppMessage = (sale, customer, worker, items) => {
+    const itemsList = items
+        .map(i => `• ${i.product_name}: ${i.qty} × ৳${i.price} = ৳${i.qty * i.price}`)
+        .join('\n');
+
+    const paymentLabels = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
+
+    return `🧾 *NovaTech BD Invoice*
+━━━━━━━━━━━━━━━━━━
+📋 Invoice: *${sale.invoice_number}*
+📅 তারিখ: ${new Date().toLocaleDateString('bn-BD')}
+🏪 দোকান: *${customer.shop_name}*
+👤 SR: ${worker.name_bn}
+━━━━━━━━━━━━━━━━━━
+${itemsList}
+━━━━━━━━━━━━━━━━━━
+💰 মোট: ৳${sale.total_amount}
+💳 পেমেন্ট: ${paymentLabels[sale.payment_method]}
+✅ পরিশোধযোগ্য: *৳${sale.net_amount}*
+━━━━━━━━━━━━━━━━━━
+_NovaTech BD (Ltd.) | বরিশাল_`;
+};
+
+module.exports = {
+    generateInvoiceNumber,
+    sendInvoiceOTP,
+    generateInvoicePDF,
+    getInvoiceWhatsAppMessage
+};

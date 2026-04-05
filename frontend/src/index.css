@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&display=swap');
+
+:root {
+  --primary:   #1e3a8a;
+  --secondary: #065f46;
+  --accent:    #d97706;
+  --danger:    #991b1b;
+  --bg:        #f8fafc;
+}
+
+.dark {
+  --bg: #0f172a;
+}
+
+* {
+  margin:      0;
+  padding:     0;
+  box-sizing:  border-box;
+}
+
+body {
+  font-family: 'Hind Siliguri', 'Arial', sans-serif;
+  background:  var(--bg);
+  color:       #1a202c;
+  min-height:  100vh;
+  transition:  background 0.2s, color 0.2s;
+}
+
+.dark body {
+  color: #e2e8f0;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 6px; }
+::-webkit-scrollbar-track { background: #f1f5f9; }
+::-webkit-scrollbar-thumb { background: #1e3a8a; border-radius: 3px; }
+
+/* Animated typing cursor */
+.typing-cursor::after {
+  content:   '|';
+  animation: blink 1s infinite;
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+/* Fingerprint animation */
+@keyframes pulse-ring {
+  0%   { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+.fingerprint-pulse::before {
+  content:    '';
+  position:   absolute;
+  inset:      -8px;
+  border:     3px solid #1e3a8a;
+  border-radius: 50%;
+  animation:  pulse-ring 1.5s infinite;
+}
+
+/* Mobile-first */
+@media (max-width: 768px) {
+  .desktop-only { display: none !important; }
+}
+@media (min-width: 769px) {
+  .mobile-only  { display: none !important; }
+}
