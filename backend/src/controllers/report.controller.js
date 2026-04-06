@@ -1033,3 +1033,17 @@ const getTopShops = async (req, res) => {
 };
 
 
+
+module.exports = {
+    getDashboardKPI,
+    getSalesReport,
+    getAttendanceReport,
+    getCommissionReport,
+    getCreditReport,
+    getEmployeePDFReport,
+    getPLStatement,
+    getLedger,
+    getMonthlyArchive,
+    getTopProducts,
+    getTopShops
+};
