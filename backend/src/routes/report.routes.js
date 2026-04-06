@@ -21,11 +21,6 @@ const {
     getTopShops
 } = require('../controllers/report.controller');
 
-// ============================================================
-// REPORT ROUTES
-// Base: /api/reports
-// ============================================================
-
 // KPI Dashboard
 router.get('/kpi',
     auth,
@@ -53,7 +48,7 @@ router.get('/attendance',
 // কমিশন রিপোর্ট
 router.get('/commission',
     auth,
-    canViewFinance,
+    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
     getCommissionReport
 );
 
@@ -75,7 +70,7 @@ router.get('/employee/:id/pdf',
 // P&L Statement
 router.get('/pl',
     auth,
-    canViewFinance,
+    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
     checkTeamAccess,
     getPLStatement
 );
@@ -83,7 +78,7 @@ router.get('/pl',
 // লেজার
 router.get('/ledger',
     auth,
-    canViewFinance,
+    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
     checkTeamAccess,
     getLedger
 );
@@ -91,7 +86,7 @@ router.get('/ledger',
 // মাসিক Archive
 router.get('/archive',
     auth,
-    canViewFinance,
+    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
     checkTeamAccess,
     getMonthlyArchive
 );
