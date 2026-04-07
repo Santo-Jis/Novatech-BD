@@ -1,110 +1,17 @@
-const express  = require('express');
-const router   = express.Router();
+const express = require('express');
+const router = express.Router();
 const { auth } = require('../middlewares/auth');
-const {
-    allowRoles,
-    checkTeamAccess,
-    canViewFinance
-} = require('../middlewares/roleCheck');
-
-const {
-    getSalesReport,
-    getAttendanceReport,
-    getCommissionReport,
-    getCreditReport,
-    getEmployeePDFReport,
-    getDashboardKPI,
-    getPLStatement,
-    getLedger,
-    getMonthlyArchive,
-    getTopProducts,
-    getTopShops
-} = require('../controllers/report.controller');
-
-// KPI Dashboard
-router.get('/kpi',
-    auth,
-    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm'),
-    checkTeamAccess,
-    getDashboardKPI
-);
-
-// বিক্রয় রিপোর্ট
-router.get('/sales',
-    auth,
-    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
-    checkTeamAccess,
-    getSalesReport
-);
-
-// হাজিরা রিপোর্ট
-router.get('/attendance',
-    auth,
-    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
-    checkTeamAccess,
-    getAttendanceReport
-);
-
-// কমিশন রিপোর্ট
-router.get('/commission',
-    auth,
-    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
-    getCommissionReport
-);
-
-// ক্রেডিট রিকভারি রিপোর্ট
-router.get('/credit',
-    auth,
-    allowRoles('admin', 'manager', 'supervisor', 'accountant'),
-    checkTeamAccess,
-    getCreditReport
-);
-
-// কর্মচারী PDF
-router.get('/employee/:id/pdf',
-    auth,
-    allowRoles('admin', 'manager'),
-    getEmployeePDFReport
-);
-
-// P&L Statement
-router.get('/pl',
-    auth,
-    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
-    checkTeamAccess,
-    getPLStatement
-);
-
-// লেজার
-router.get('/ledger',
-    auth,
-    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
-    checkTeamAccess,
-    getLedger
-);
-
-// মাসিক Archive
-router.get('/archive',
-    auth,
-    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
-    checkTeamAccess,
-    getMonthlyArchive
-);
-
-// শীর্ষ পণ্য
-router.get('/top-products',
-    auth,
-    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
-    checkTeamAccess,
-    getTopProducts
-);
-
-// শীর্ষ দোকান
-router.get('/top-shops',
-    auth,
-    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
-    checkTeamAccess,
-    getTopShops
-);
-
+const { allowRoles, checkTeamAccess } = require('../middlewares/roleCheck');
+const { getSalesReport, getAttendanceReport, getCommissionReport, getCreditReport, getEmployeePDFReport, getDashboardKPI, getPLStatement, getLedger, getMonthlyArchive, getTopProducts, getTopShops } = require('../controllers/report.controller');
+router.get('/kpi', auth, allowRoles('admin','manager','supervisor','asm','rsm'), checkTeamAccess, getDashboardKPI);
+router.get('/sales', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getSalesReport);
+router.get('/attendance', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getAttendanceReport);
+router.get('/commission', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), getCommissionReport);
+router.get('/credit', auth, allowRoles('admin','manager','supervisor','accountant'), checkTeamAccess, getCreditReport);
+router.get('/employee/:id/pdf', auth, allowRoles('admin','manager'), getEmployeePDFReport);
+router.get('/pl', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getPLStatement);
+router.get('/ledger', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getLedger);
+router.get('/archive', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getMonthlyArchive);
+router.get('/top-products', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getTopProducts);
+router.get('/top-shops', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getTopShops);
 module.exports = router;
