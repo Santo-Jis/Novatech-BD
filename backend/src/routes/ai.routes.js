@@ -1,33 +1,12 @@
-const express  = require('express');
-const router   = express.Router();
+const express = require('express');
+const router = express.Router();
 const { auth } = require('../middlewares/auth');
 const { allowRoles, isAdmin } = require('../middlewares/roleCheck');
-
-const {
-    getInsights,
-    markInsightRead,
-    getAIConfig,
-    updateAIConfig,
-    triggerAIJob,
-    aiChat
-} = require('../controllers/ai.controller');
-
-// বর্তমান ইউজারের Insights
-router.get('/insights',          auth, getInsights);
-
-// Insight পড়া হয়েছে মার্ক করো
+const { getInsights, markInsightRead, getAIConfig, updateAIConfig, triggerAIJob, aiChat } = require('../controllers/ai.controller');
+router.get('/insights', auth, getInsights);
 router.put('/insights/:id/read', auth, markInsightRead);
-
-// AI Config দেখা (Admin)
-router.get('/config',            auth, isAdmin, getAIConfig);
-
-// AI Config আপডেট (Admin)
-router.put('/config',            auth, isAdmin, updateAIConfig);
-
-// Manual AI Job trigger (Admin)
-router.post('/trigger',          auth, isAdmin, triggerAIJob);
-
-// AI Chat (Manager/Admin)
-router.post('/chat',             auth, allowRoles('admin','manager','supervisor','asm','rsm'), aiChat);
-
+router.get('/config', auth, isAdmin, getAIConfig);
+router.put('/config', auth, isAdmin, updateAIConfig);
+router.post('/trigger', auth, isAdmin, triggerAIJob);
+router.post('/chat', auth, allowRoles('admin','manager','supervisor','asm','rsm'), aiChat);
 module.exports = router;
