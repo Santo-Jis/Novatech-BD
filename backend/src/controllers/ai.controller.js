@@ -279,5 +279,11 @@ const aiChat = async (req, res) => {
         return res.status(500).json({ success: false, message: msg });
     }
 };
-
-
+module.exports = {
+    getInsights,
+    markInsightRead,
+    getAIConfig,
+    updateAIConfig,
+    triggerAIJob,
+    aiChat
+};
