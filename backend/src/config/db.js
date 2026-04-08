@@ -17,7 +17,7 @@ const pool = new Pool({
     // Connection pool settings
     max:             20,    // সর্বোচ্চ ২০টি connection
     idleTimeoutMillis: 30000,  // ৩০ সেকেন্ড idle থাকলে বন্ধ
-    connectionTimeoutMillis: 30000, // ৫ সেকেন্ডের মধ্যে connect না হলে error
+    connectionTimeoutMillis: 30000, // ৩০ সেকেন্ডের মধ্যে connect না হলে error
 });
 
 // ============================================================
