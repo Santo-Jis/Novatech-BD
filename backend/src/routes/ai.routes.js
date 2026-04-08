@@ -10,11 +10,3 @@ router.put('/config', auth, isAdmin, updateAIConfig);
 router.post('/trigger', auth, isAdmin, triggerAIJob);
 router.post('/chat', auth, allowRoles('admin','manager','supervisor','asm','rsm'), aiChat);
 module.exports = router;
-module.exports = {
-    getInsights,
-    markInsightRead,
-    getAIConfig,
-    updateAIConfig,
-    triggerAIJob,
-    aiChat
-};
