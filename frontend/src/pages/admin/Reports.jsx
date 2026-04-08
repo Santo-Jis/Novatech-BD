@@ -106,8 +106,8 @@ export default function AdminReports() {
       <div className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
-            ['মোট বিক্রয়', `৳${parseInt(revenue.gross_sales).toLocaleString('bn-BD')}', 'text-primary'],
-            ['নেট বিক্রয়', `৳${parseInt(revenue.net_sales).toLocaleString('bn-BD')}`, 'text-secondary'],
+            ['মোট বিক্রয়', `৳${parseInt(revenue.gross_sales).toLocaleString('bn-BD')}`', 'text-primary'],
+            ['নেট বিক্রয়', `৳${parseInt(revenue.`৳${parseInt(revenue.gross_sales).toLocaleString('bn-BD')}`_sales).toLocaleString('bn-BD')}`, 'text-secondary'],
             ['ভ্যাট', `৳${parseInt(revenue.vat || 0).toLocaleString('bn-BD')}`, 'text-amber-600'],
             ['ডিসকাউন্ট', `৳${parseInt(revenue.discount || 0).toLocaleString('bn-BD')}`, 'text-orange-500'],
             ['মোট খরচ', `৳${parseInt(expenses.total_expenses).toLocaleString('bn-BD')}`, 'text-red-600'],
