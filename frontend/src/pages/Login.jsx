@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
-import { FiEye, FiEyeOff, FiUser, FiLock } from 'react-icons/fi'
+import { FiEye, FiEyeOff, FiUser, FiLock, FiMail, FiPhone, FiHash } from 'react-icons/fi'
 
 // ============================================================
 // Typing Animation Hook
@@ -36,24 +36,34 @@ const useTypingEffect = (text, speed = 80, delay = 0) => {
 // Login Page
 // ============================================================
 
+const LOGIN_TYPES = [
+  { id: 'email',  label: 'ইমেইল',     icon: FiMail,  placeholder: 'আপনার ইমেইল লিখুন',      type: 'email' },
+  { id: 'phone',  label: 'ফোন',       icon: FiPhone, placeholder: 'আপনার ফোন নম্বর লিখুন', type: 'tel'   },
+  { id: 'code',   label: 'কর্মী কোড', icon: FiHash,  placeholder: 'আপনার কর্মী কোড লিখুন', type: 'text'  },
+]
+
 export default function Login() {
   const navigate              = useNavigate()
   const { login, user, loading } = useAuthStore()
 
+  const [activeTab,  setActiveTab]  = useState('email')
   const [identifier, setIdentifier] = useState('')
   const [password,   setPassword]   = useState('')
   const [showPass,   setShowPass]   = useState(false)
 
   // অ্যানিমেটেড টাইপিং
-  const bismillah  = useTypingEffect('بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيم', 60, 300)
-  const salam      = useTypingEffect('আসসালামু আলাইকুম', 80, bismillah.done ? 0 : 3000)
+  const bismillah = useTypingEffect('بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيم', 60, 300)
+  const salam     = useTypingEffect('আসসালামু আলাইকুম', 80, bismillah.done ? 0 : 3000)
 
   // আগে লগইন থাকলে redirect
   useEffect(() => {
-    if (user) {
-      redirectByRole(user.role)
-    }
+    if (user) redirectByRole(user.role)
   }, [user])
+
+  // Tab পরিবর্তন হলে input clear করো
+  useEffect(() => {
+    setIdentifier('')
+  }, [activeTab])
 
   const redirectByRole = (role) => {
     switch (role) {
@@ -75,12 +85,11 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!identifier || !password) return
-
     const result = await login(identifier.trim(), password)
-    if (result.success) {
-      redirectByRole(result.user.role)
-    }
+    if (result.success) redirectByRole(result.user.role)
   }
+
+  const activeType = LOGIN_TYPES.find(t => t.id === activeTab)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-dark via-primary to-primary-light dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center p-4 transition-colors">
@@ -117,7 +126,7 @@ export default function Login() {
               </p>
             </div>
 
-            {/* Logo / Brand */}
+            {/* Logo */}
             <div className="flex flex-col items-center gap-2">
               <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/30">
                 <span className="text-white font-bold text-2xl">N</span>
@@ -131,23 +140,106 @@ export default function Login() {
 
           {/* Form */}
           <div className="px-8 py-8">
-            <h2 className="text-gray-700 font-semibold text-lg mb-6 text-center">
+            <h2 className="text-gray-700 font-semibold text-lg mb-5 text-center">
               লগইন করুন
             </h2>
 
+            {/* Tab Buttons */}
+            <div className="flex bg-gray-100 rounded-xl p-1 mb-5 gap-1">
+              {LOGIN_TYPES.map(tab => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                    activeTab === tab.id
+                      ? 'bg-white text-primary shadow-sm'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <tab.icon className="text-sm" />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
 
-              {/* Identifier */}
+              {/* Identifier Input */}
               <div>
                 <label className="block text-sm text-gray-600 mb-1.5 font-medium">
-                  ইমেইল / ফোন / কর্মী কোড
+                  {activeType.label}
                 </label>
                 <div className="relative">
-                  <FiUser className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
+                  <activeType.icon className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
                   <input
-                    type="text"
+                    type={activeType.type}
                     value={identifier}
                     onChange={e => setIdentifier(e.target.value)}
+                    placeholder={activeType.placeholder}
+                    className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all bg-gray-50"
+                    required
+                    autoComplete="username"
+                  />
+                </div>
+              </div>
+
+              {/* Password */}
+              <div>
+                <label className="block text-sm text-gray-600 mb-1.5 font-medium">
+                  পাসওয়ার্ড
+                </label>
+                <div className="relative">
+                  <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
+                  <input
+                    type={showPass ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder="পাসওয়ার্ড লিখুন"
+                    className="w-full pl-10 pr-12 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all bg-gray-50"
+                    required
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPass(!showPass)}
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPass ? <FiEyeOff /> : <FiEye />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit */}
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-gradient-to-r from-primary to-primary-light text-white py-3.5 rounded-xl font-semibold text-sm mt-2 hover:shadow-lg hover:shadow-primary/30 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    লগইন হচ্ছে...
+                  </span>
+                ) : 'লগইন করুন'}
+              </button>
+            </form>
+          </div>
+
+          {/* Footer */}
+          <div className="px-8 pb-6 text-center">
+            <p className="text-xs text-gray-400">
+              NovaTech BD (Ltd.) © {new Date().getFullYear()}
+            </p>
+            <p className="text-xs text-gray-300 mt-0.5">
+              জানকি সিংহ রোড, বরিশাল সদর
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+      }                    onChange={e => setIdentifier(e.target.value)}
                     placeholder="আপনার ID লিখুন"
                     className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all bg-gray-50"
                     required
