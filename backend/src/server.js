@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { initializeFirebase } = require('./config/firebase');
 initializeFirebase();
+const express = require('express');
 const express       = require('express');
 const cors          = require('cors');
 const helmet        = require('helmet');
