@@ -8,7 +8,7 @@ const rateLimit     = require('express-rate-limit');
 const path          = require('path');
 
 const app = express();
-
+app.set('trust proxy', 1);
 // ============================================================
 // MIDDLEWARE
 // ============================================================
@@ -16,8 +16,8 @@ const app = express();
 app.use(helmet());
 
 app.use(cors({
-    origin:         process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials:    true,
+    origin: '*',
+credentials: false,
     methods:        ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
