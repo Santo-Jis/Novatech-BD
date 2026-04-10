@@ -461,6 +461,34 @@ const collectCredit = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET MY CUSTOMER COUNT
+// GET /api/customers/my-count
+// Worker এর মোট assigned কাস্টমার সংখ্যা
+// ============================================================
+
+const getMyCustomerCount = async (req, res) => {
+    try {
+        const result = await query(
+            `SELECT COUNT(*) AS total
+             FROM customer_assignments
+             WHERE worker_id = $1
+               AND is_active = true
+               AND customer_id IS NOT NULL`,
+            [req.user.id]
+        );
+
+        return res.status(200).json({
+            success: true,
+            data: parseInt(result.rows[0]?.total || 0)
+        });
+
+    } catch (error) {
+        console.error('❌ My Customer Count Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getCustomers,
     getCustomer,
@@ -468,5 +496,6 @@ module.exports = {
     updateCustomer,
     getCustomerHistory,
     setCreditLimit,
-    collectCredit
+    collectCredit,
+    getMyCustomerCount
 };
