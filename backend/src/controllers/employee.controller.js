@@ -658,6 +658,80 @@ const getEmployeePDF = async (req, res) => {
     }
 };
 
+
+// ============================================================
+// UPDATE OWN PROFILE
+// PUT /api/employees/profile
+// Worker নিজের তথ্য আপডেট করবে
+// ============================================================
+
+const updateOwnProfile = async (req, res) => {
+    try {
+        const { name_bn, name_en, phone, current_address, emergency_contact } = req.body;
+        const userId = req.user.id;
+
+        await query(
+            `UPDATE users SET
+                name_bn           = COALESCE($1, name_bn),
+                name_en           = COALESCE($2, name_en),
+                phone             = COALESCE($3, phone),
+                current_address   = COALESCE($4, current_address),
+                emergency_contact = COALESCE($5, emergency_contact),
+                updated_at        = NOW()
+             WHERE id = $6`,
+            [name_bn, name_en, phone, current_address, emergency_contact, userId]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'প্রোফাইল আপডেট হয়েছে।'
+        });
+
+    } catch (error) {
+        console.error('❌ Update Profile Error:', error.message);
+        return res.status(500).json({ success: false, message: 'প্রোফাইল আপডেটে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// UPLOAD PROFILE PHOTO
+// POST /api/employees/profile-photo
+// Worker নিজের ছবি আপলোড করবে
+// ============================================================
+
+const uploadProfilePhoto = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ success: false, message: 'ছবি দিন।' });
+        }
+
+        const photoUrl = await uploadToCloudinary(
+            req.file.buffer,
+            'profiles',
+            `profile_${req.user.id}`
+        );
+
+        if (!photoUrl) {
+            return res.status(500).json({ success: false, message: 'ছবি আপলোড হয়নি। Cloudinary config চেক করুন।' });
+        }
+
+        await query(
+            'UPDATE users SET profile_photo = $1, updated_at = NOW() WHERE id = $2',
+            [photoUrl, req.user.id]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'ছবি আপলোড হয়েছে।',
+            data: { profile_photo: photoUrl }
+        });
+
+    } catch (error) {
+        console.error('❌ Profile Photo Error:', error.message);
+        return res.status(500).json({ success: false, message: 'ছবি আপলোডে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getEmployees,
     getEmployee,
@@ -670,5 +744,7 @@ module.exports = {
     getPendingEdits,
     approveEdit,
     rejectEdit,
-    getEmployeePDF
+    getEmployeePDF,
+    updateOwnProfile,
+    uploadProfilePhoto
 };
