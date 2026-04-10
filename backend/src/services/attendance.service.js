@@ -9,15 +9,28 @@ const { query } = require('../config/db');
 // সিস্টেম সেটিংস পড়া
 // ============================================================
 
+// ডিফল্ট সেটিংস — system_settings টেবিল না থাকলে বা খালি থাকলে
+const DEFAULT_SETTINGS = {
+    attendance_checkin_start: '09:00',
+    attendance_checkin_end:   '10:00',
+    attendance_popup_cutoff:  '14:30',
+    late_deduction_interval:  '10',
+    weekly_off_day:           '5',
+    holidays:                 '[]'
+};
+
 const getSettings = async () => {
-    const result = await query(
-        'SELECT key, value FROM system_settings'
-    );
-    const settings = {};
-    result.rows.forEach(row => {
-        settings[row.key] = row.value;
-    });
-    return settings;
+    try {
+        const result = await query('SELECT key, value FROM system_settings');
+        const settings = { ...DEFAULT_SETTINGS };
+        result.rows.forEach(row => {
+            settings[row.key] = row.value;
+        });
+        return settings;
+    } catch (error) {
+        console.warn('⚠️ system_settings পড়া যায়নি, ডিফল্ট ব্যবহার হচ্ছে:', error.message);
+        return { ...DEFAULT_SETTINGS };
+    }
 };
 
 // ============================================================
