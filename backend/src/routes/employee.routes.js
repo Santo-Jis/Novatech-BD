@@ -24,7 +24,9 @@ const {
     getPendingEdits,
     approveEdit,
     rejectEdit,
-    getEmployeePDF
+    getEmployeePDF,
+    updateOwnProfile,
+    uploadProfilePhoto
 } = require('../controllers/employee.controller');
 
 // ============================================================
@@ -55,6 +57,13 @@ const employeeUpload = upload.fields([
 // EMPLOYEE ROUTES
 // Base: /api/employees
 // ============================================================
+
+// নিজের প্রোফাইল আপডেট
+router.put('/profile',       auth, updateOwnProfile);
+
+// নিজের ছবি আপলোড
+const photoUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } }).single('photo');
+router.post('/profile-photo', auth, photoUpload, uploadProfilePhoto);
 
 // তালিকা ও তৈরি
 router.get('/',         auth, checkTeamAccess, getEmployees);
