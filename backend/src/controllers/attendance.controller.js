@@ -281,8 +281,13 @@ const getMyAttendance = async (req, res) => {
             totalDeduction: result.rows.reduce((sum, r) => sum + parseFloat(r.salary_deduction || 0), 0)
         };
 
-        // এই মাসে বোনাসের অগ্রগতি
-        const workingDays = await getWorkingDays(currentYear, currentMonth);
+        // এই মাসে বোনাসের অগ্রগতি — crash হলেও response দাও
+        let workingDays = 26; // ডিফল্ট
+        try {
+            workingDays = await getWorkingDays(currentYear, currentMonth);
+        } catch (wdErr) {
+            console.warn('⚠️ getWorkingDays error, using default 26:', wdErr.message);
+        }
         const presentDays = summary.present + summary.late;
 
         return res.status(200).json({
