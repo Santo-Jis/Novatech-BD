@@ -5,23 +5,34 @@ import toast from 'react-hot-toast'
 import {
   FiUser, FiMail, FiPhone, FiMapPin, FiCalendar,
   FiLock, FiCamera, FiEdit2, FiSave, FiX,
-  FiDollarSign, FiTrendingUp, FiCheckCircle, FiClock
+  FiDollarSign, FiTrendingUp, FiCheckCircle, FiClock,
+  FiAward, FiUsers, FiBarChart2, FiRefreshCw
 } from 'react-icons/fi'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip,
+  ResponsiveContainer, Cell
+} from 'recharts'
 
 // ============================================================
-// Worker Profile Page
+// Worker Profile Page — Enhanced
 // ============================================================
 
 export default function Profile() {
   const { user, updateUser, fetchMe } = useAuthStore()
 
-  const [profile,   setProfile]   = useState(null)
-  const [stats,     setStats]     = useState(null)
-  const [loading,   setLoading]   = useState(true)
-  const [editing,   setEditing]   = useState(false)
-  const [saving,    setSaving]    = useState(false)
-  const [passModal, setPassModal] = useState(false)
-  const [photoUploading, setPhotoUploading] = useState(false)
+  const [profile,        setProfile]        = useState(null)
+  const [stats,          setStats]          = useState(null)
+  const [attendance,     setAttendance]      = useState(null)
+  const [commission,     setCommission]      = useState(null)
+  const [bonusStatus,    setBonusStatus]     = useState(null)
+  const [weeklySales,    setWeeklySales]     = useState([])
+  const [customerCount,  setCustomerCount]   = useState(null)
+  const [loading,        setLoading]         = useState(true)
+  const [error,          setError]           = useState(null)
+  const [editing,        setEditing]         = useState(false)
+  const [saving,         setSaving]          = useState(false)
+  const [passModal,      setPassModal]       = useState(false)
+  const [photoUploading, setPhotoUploading]  = useState(false)
 
   const fileRef = useRef()
 
@@ -36,22 +47,74 @@ export default function Profile() {
 
   // ── Data Fetch ──
   const fetchData = async () => {
+    setLoading(true)
+    setError(null)
     try {
-      const [meRes, statsRes] = await Promise.all([
-        api.get('/auth/me'),
-        api.get('/sales/today-summary').catch(() => ({ data: { data: null } }))
-      ])
-      setProfile(meRes.data.data)
-      setStats(statsRes.data.data)
+      // প্রোফাইল — fail হলে store থেকে নাও
+      let meData = null
+      try {
+        const meRes = await api.get('/auth/me')
+        meData = meRes.data.data
+      } catch {
+        meData = user
+        if (!meData) {
+          setError('প্রোফাইল লোড করা যায়নি। ইন্টারনেট চেক করুন।')
+          setLoading(false)
+          return
+        }
+      }
+      setProfile(meData)
       setForm({
-        name_bn:           meRes.data.data.name_bn           || '',
-        name_en:           meRes.data.data.name_en           || '',
-        phone:             meRes.data.data.phone             || '',
-        current_address:   meRes.data.data.current_address   || '',
-        emergency_contact: meRes.data.data.emergency_contact || ''
+        name_bn:           meData.name_bn           || '',
+        name_en:           meData.name_en           || '',
+        phone:             meData.phone             || '',
+        current_address:   meData.current_address   || '',
+        emergency_contact: meData.emergency_contact || ''
       })
-    } catch (err) {
-      toast.error('তথ্য লোড হয়নি')
+
+      // বাকি সব parallel — যেকোনো একটা fail হলেও বাকিগুলো চলবে
+      const [statsRes, attRes, commRes, bonusRes, custRes] = await Promise.allSettled([
+        api.get('/sales/today-summary'),
+        api.get('/attendance/my'),
+        api.get('/commission/my'),
+        api.get('/commission/bonus-status'),
+        api.get('/customers/my-count'),
+      ])
+
+      if (statsRes.status === 'fulfilled') setStats(statsRes.value.data.data)
+      if (attRes.status   === 'fulfilled') setAttendance(attRes.value.data.data)
+      if (commRes.status  === 'fulfilled') setCommission(commRes.value.data.data)
+      if (bonusRes.status === 'fulfilled') setBonusStatus(bonusRes.value.data.data)
+      if (custRes.status  === 'fulfilled') setCustomerCount(custRes.value.data.data)
+
+      // গত ৭ দিনের বিক্রয়
+      try {
+        const to   = new Date().toISOString().split('T')[0]
+        const from = new Date(Date.now() - 6 * 86400000).toISOString().split('T')[0]
+        const sRes = await api.get(`/sales/my?from=${from}&to=${to}`)
+        const rows = sRes.data.data || []
+
+        const grouped = {}
+        for (let i = 0; i < 7; i++) {
+          const d = new Date(Date.now() - (6 - i) * 86400000).toISOString().split('T')[0]
+          grouped[d] = 0
+        }
+        rows.forEach(r => {
+          const d = (r.date || '').split('T')[0]
+          if (grouped[d] !== undefined) grouped[d] += parseFloat(r.total_amount || 0)
+        })
+
+        const days = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহঃ', 'শুক্র', 'শনি']
+        setWeeklySales(
+          Object.entries(grouped).map(([date, total]) => ({
+            name:  days[new Date(date).getDay()],
+            total: Math.round(total),
+          }))
+        )
+      } catch { setWeeklySales([]) }
+
+    } catch {
+      setError('তথ্য লোড হয়নি। আবার চেষ্টা করুন।')
     } finally {
       setLoading(false)
     }
@@ -78,12 +141,10 @@ export default function Profile() {
   // ── Change Password ──
   const handlePasswordChange = async () => {
     if (passForm.newPassword !== passForm.confirmPassword) {
-      toast.error('নতুন পাসওয়ার্ড মিলছে না')
-      return
+      return toast.error('নতুন পাসওয়ার্ড মিলছে না')
     }
     if (passForm.newPassword.length < 6) {
-      toast.error('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে')
-      return
+      return toast.error('পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে')
     }
     try {
       await api.put('/auth/change-password', {
@@ -119,9 +180,14 @@ export default function Profile() {
     }
   }
 
+  // ── Loading ──
   if (loading) {
     return (
       <div className="p-4 space-y-4">
+        <div className="flex items-center justify-center py-10 gap-3">
+          <span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <span className="text-gray-500 text-sm">প্রোফাইল লোড হচ্ছে...</span>
+        </div>
         {[...Array(4)].map((_, i) => (
           <div key={i} className="h-24 bg-white rounded-2xl animate-pulse" />
         ))}
@@ -129,20 +195,44 @@ export default function Profile() {
     )
   }
 
-  const p = profile || user
+  // ── Error ──
+  if (error) {
+    return (
+      <div className="p-4 flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center">
+          <FiUser className="text-3xl text-red-400" />
+        </div>
+        <p className="text-gray-600 text-center">{error}</p>
+        <button
+          onClick={fetchData}
+          className="bg-primary text-white px-6 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2"
+        >
+          <FiRefreshCw /> আবার চেষ্টা করুন
+        </button>
+      </div>
+    )
+  }
+
+  const p   = profile || user
+  const att = attendance?.summary
+  const comm = commission?.summary
+  const thisMonthAtt = att ? (att.present + att.late) : 0
+  const workingDays  = attendance?.bonus_progress?.working_days || 26
+  const attPct       = workingDays > 0 ? Math.round((thisMonthAtt / workingDays) * 100) : 0
+  const bonusThisMonth = bonusStatus?.months?.[0]
+  const pendingBonus   = parseFloat(bonusStatus?.pending_bonus || 0)
 
   return (
     <div className="p-4 space-y-4 pb-24">
 
-      {/* ── Photo & Name ── */}
+      {/* ══ ছবি ও নাম ══ */}
       <div className="bg-white rounded-2xl p-5 flex items-center gap-4 shadow-sm">
         <div className="relative">
           <div className="w-20 h-20 rounded-2xl overflow-hidden bg-primary/10 flex items-center justify-center">
-            {p?.profile_photo ? (
-              <img src={p.profile_photo} alt="profile" className="w-full h-full object-cover" />
-            ) : (
-              <FiUser className="text-3xl text-primary" />
-            )}
+            {p?.profile_photo
+              ? <img src={p.profile_photo} alt="profile" className="w-full h-full object-cover" />
+              : <FiUser className="text-3xl text-primary" />
+            }
           </div>
           <button
             onClick={() => fileRef.current?.click()}
@@ -161,31 +251,28 @@ export default function Profile() {
           <h2 className="font-bold text-lg text-gray-800">{p?.name_bn || p?.name_en || 'নাম নেই'}</h2>
           <p className="text-sm text-gray-500">{p?.employee_code || '—'}</p>
           <span className={`text-xs px-2 py-0.5 rounded-full mt-1 inline-block ${
-            p?.role === 'worker' ? 'bg-blue-100 text-blue-600' :
+            p?.role === 'worker'  ? 'bg-blue-100 text-blue-600' :
             p?.role === 'manager' ? 'bg-green-100 text-green-600' :
             'bg-purple-100 text-purple-600'
           }`}>
-            {p?.role === 'worker' ? 'কর্মী' :
+            {p?.role === 'worker' ? 'কর্মী (SR)' :
              p?.role === 'manager' ? 'ম্যানেজার' :
              p?.role === 'admin' ? 'অ্যাডমিন' : p?.role}
           </span>
         </div>
 
-        <button
-          onClick={() => editing ? setEditing(false) : setEditing(true)}
-          className="p-2 rounded-xl bg-gray-100 text-gray-600"
-        >
+        <button onClick={() => setEditing(e => !e)} className="p-2 rounded-xl bg-gray-100 text-gray-600">
           {editing ? <FiX /> : <FiEdit2 />}
         </button>
       </div>
 
-      {/* ── Stats ── */}
+      {/* ══ আজকের Quick Stats ══ */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { label: 'আজকের বিক্রয়', value: `৳${parseInt(stats?.total_sales || 0).toLocaleString('bn-BD')}`, icon: FiDollarSign, color: 'text-green-600', bg: 'bg-green-50' },
-          { label: 'মোট Invoice', value: (stats?.total_invoices || 0).toLocaleString('bn-BD'), icon: FiTrendingUp, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'উপস্থিতি', value: p?.attendance_rate ? `${p.attendance_rate}%` : '—', icon: FiCheckCircle, color: 'text-purple-600', bg: 'bg-purple-50' },
-          { label: 'যোগদান', value: p?.join_date ? new Date(p.join_date).toLocaleDateString('bn-BD') : '—', icon: FiCalendar, color: 'text-orange-600', bg: 'bg-orange-50' },
+          { label: 'আজকের বিক্রয়', value: `৳${parseInt(stats?.total_amount || stats?.total_sales || 0).toLocaleString('bn-BD')}`, icon: FiDollarSign, color: 'text-green-600', bg: 'bg-green-50' },
+          { label: 'মোট Invoice',   value: parseInt(stats?.invoice_count || stats?.total_sales || 0).toString(), icon: FiTrendingUp, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'মোট কাস্টমার', value: (customerCount ?? p?.total_customers ?? '—').toString(), icon: FiUsers, color: 'text-purple-600', bg: 'bg-purple-50' },
+          { label: 'যোগদান',        value: p?.join_date ? new Date(p.join_date).toLocaleDateString('bn-BD') : '—', icon: FiCalendar, color: 'text-orange-600', bg: 'bg-orange-50' },
         ].map((s, i) => (
           <div key={i} className="bg-white rounded-2xl p-4 shadow-sm">
             <div className={`w-9 h-9 ${s.bg} rounded-xl flex items-center justify-center mb-2`}>
@@ -197,62 +284,181 @@ export default function Profile() {
         ))}
       </div>
 
-      {/* ── Personal Info ── */}
+      {/* ══ এই মাসের হাজিরা ══ */}
+      <div className="bg-white rounded-2xl p-5 shadow-sm">
+        <h3 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+          <FiCheckCircle className="text-primary" /> এই মাসের হাজিরা
+        </h3>
+
+        <div className="mb-4">
+          <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+            <span>{thisMonthAtt} / {workingDays} কর্মদিবস</span>
+            <span className={attPct >= 100 ? 'text-green-600 font-bold' : ''}>
+              {attPct}%
+            </span>
+          </div>
+          <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                attPct >= 100 ? 'bg-green-500' : attPct >= 80 ? 'bg-blue-500' : 'bg-orange-400'
+              }`}
+              style={{ width: `${Math.min(attPct, 100)}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { label: 'উপস্থিত',   value: att?.present || 0, color: 'text-green-600',  bg: 'bg-green-50' },
+            { label: 'দেরি',       value: att?.late    || 0, color: 'text-yellow-600', bg: 'bg-yellow-50' },
+            { label: 'অনুপস্থিত', value: att?.absent  || 0, color: 'text-red-500',    bg: 'bg-red-50' },
+            { label: 'ছুটি',       value: att?.leave   || 0, color: 'text-blue-500',   bg: 'bg-blue-50' },
+          ].map((s, i) => (
+            <div key={i} className={`${s.bg} rounded-xl p-3 text-center`}>
+              <p className={`text-xl font-bold ${s.color}`}>{s.value}</p>
+              <p className="text-xs text-gray-500 mt-0.5">{s.label}</p>
+            </div>
+          ))}
+        </div>
+
+        {att?.totalDeduction > 0 && (
+          <div className="mt-3 bg-red-50 rounded-xl px-4 py-2 flex justify-between items-center">
+            <span className="text-xs text-red-500">মোট বেতন কর্তন</span>
+            <span className="text-sm font-bold text-red-600">৳{parseInt(att.totalDeduction).toLocaleString('bn-BD')}</span>
+          </div>
+        )}
+      </div>
+
+      {/* ══ মাসিক কমিশন ══ */}
+      <div className="bg-white rounded-2xl p-5 shadow-sm">
+        <h3 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+          <FiDollarSign className="text-primary" /> এই মাসের কমিশন
+        </h3>
+
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          {[
+            { label: 'মোট বিক্রয়',   value: `৳${parseInt(comm?.total_sales || 0).toLocaleString('bn-BD')}` },
+            { label: 'দৈনিক কমিশন',  value: `৳${parseInt(comm?.daily_commission || 0).toLocaleString('bn-BD')}` },
+            { label: 'বোনাস',         value: `৳${parseInt(comm?.bonus || 0).toLocaleString('bn-BD')}` },
+            { label: 'মোট কমিশন',     value: `৳${parseInt(comm?.total_commission || 0).toLocaleString('bn-BD')}` },
+          ].map((s, i) => (
+            <div key={i} className="bg-gray-50 rounded-xl p-3">
+              <p className="text-xs text-gray-500">{s.label}</p>
+              <p className="font-bold text-gray-800 text-sm mt-0.5">{s.value}</p>
+            </div>
+          ))}
+        </div>
+
+        {commission?.salary_preview && (
+          <div className="border border-primary/20 rounded-xl p-3 bg-primary/5">
+            <p className="text-xs text-primary font-semibold mb-2">এই মাসের সম্ভাব্য বেতন</p>
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">মূল বেতন</span>
+                <span>৳{parseInt(commission.salary_preview.basic_salary).toLocaleString('bn-BD')}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">+ কমিশন</span>
+                <span className="text-green-600">৳{parseInt(commission.salary_preview.total_commission).toLocaleString('bn-BD')}</span>
+              </div>
+              {commission.salary_preview.outstanding_dues > 0 && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">- বকেয়া</span>
+                  <span className="text-red-500">৳{parseInt(commission.salary_preview.outstanding_dues).toLocaleString('bn-BD')}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-sm font-bold pt-1.5 border-t border-primary/20">
+                <span className="text-primary">নেট পাবেন</span>
+                <span className="text-primary">৳{parseInt(commission.salary_preview.net_payable).toLocaleString('bn-BD')}</span>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ══ পারফেক্ট বোনাস স্ট্যাটাস ══ */}
+      <div className="bg-white rounded-2xl p-5 shadow-sm">
+        <h3 className="font-semibold text-gray-700 mb-1 flex items-center gap-2">
+          <FiAward className="text-primary" /> পারফেক্ট হাজিরা বোনাস
+        </h3>
+        <p className="text-xs text-gray-400 mb-4">১০০% উপস্থিতিতে মূল বেতনের ১০% বোনাস</p>
+
+        {bonusThisMonth && (
+          <div className="mb-4">
+            <div className="flex justify-between text-xs text-gray-500 mb-1.5">
+              <span>এই মাস: {bonusThisMonth.present_days}/{bonusThisMonth.working_days} দিন</span>
+              {bonusThisMonth.is_perfect
+                ? <span className="text-green-600 font-bold">✅ বোনাস অর্জিত!</span>
+                : <span className="text-orange-500">{bonusThisMonth.working_days - bonusThisMonth.present_days} দিন বাকি</span>
+              }
+            </div>
+            <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full ${bonusThisMonth.is_perfect ? 'bg-green-500' : 'bg-orange-400'}`}
+                style={{ width: `${Math.min(Math.round((bonusThisMonth.present_days / bonusThisMonth.working_days) * 100), 100)}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-3 gap-2">
+          <div className="bg-green-50 rounded-xl p-3 text-center">
+            <p className="text-xl font-bold text-green-600">{bonusStatus?.perfect_months || 0}</p>
+            <p className="text-xs text-gray-500">পারফেক্ট মাস</p>
+          </div>
+          <div className="bg-blue-50 rounded-xl p-3 text-center">
+            <p className="text-xl font-bold text-blue-600">{bonusStatus?.total_8_months || 8}</p>
+            <p className="text-xs text-gray-500">মোট মাস</p>
+          </div>
+          <div className="bg-orange-50 rounded-xl p-3 text-center">
+            <p className="text-xl font-bold text-orange-500">৳{parseInt(pendingBonus).toLocaleString('bn-BD')}</p>
+            <p className="text-xs text-gray-500">পেন্ডিং বোনাস</p>
+          </div>
+        </div>
+      </div>
+
+      {/* ══ গত ৭ দিনের বিক্রয় Chart ══ */}
+      {weeklySales.length > 0 && (
+        <div className="bg-white rounded-2xl p-5 shadow-sm">
+          <h3 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+            <FiBarChart2 className="text-primary" /> গত ৭ দিনের বিক্রয়
+          </h3>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={weeklySales} barSize={28}>
+              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
+              <YAxis hide />
+              <Tooltip
+                formatter={v => [`৳${parseInt(v).toLocaleString('bn-BD')}`, 'বিক্রয়']}
+                contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: 12 }}
+              />
+              <Bar dataKey="total" radius={[6, 6, 0, 0]}>
+                {weeklySales.map((_, i) => (
+                  <Cell key={i} fill={weeklySales[i].total > 0 ? '#6366f1' : '#e5e7eb'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="flex justify-between mt-2 px-1">
+            <span className="text-xs text-gray-400">৭ দিনের মোট</span>
+            <span className="text-xs font-semibold text-gray-700">
+              ৳{weeklySales.reduce((s, r) => s + r.total, 0).toLocaleString('bn-BD')}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ══ ব্যক্তিগত তথ্য ══ */}
       <div className="bg-white rounded-2xl p-5 shadow-sm">
         <h3 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
           <FiUser className="text-primary" /> ব্যক্তিগত তথ্য
         </h3>
-
         <div className="space-y-3">
-          {/* নাম বাংলা */}
-          <InfoRow
-            icon={FiUser}
-            label="নাম (বাংলা)"
-            value={form.name_bn}
-            editing={editing}
-            onChange={v => setForm(f => ({ ...f, name_bn: v }))}
-          />
-          {/* নাম ইংরেজি */}
-          <InfoRow
-            icon={FiUser}
-            label="নাম (ইংরেজি)"
-            value={form.name_en}
-            editing={editing}
-            onChange={v => setForm(f => ({ ...f, name_en: v }))}
-          />
-          {/* ইমেইল */}
-          <InfoRow
-            icon={FiMail}
-            label="ইমেইল"
-            value={p?.email || '—'}
-            editing={false}
-          />
-          {/* ফোন */}
-          <InfoRow
-            icon={FiPhone}
-            label="ফোন"
-            value={form.phone}
-            editing={editing}
-            type="tel"
-            onChange={v => setForm(f => ({ ...f, phone: v }))}
-          />
-          {/* ঠিকানা */}
-          <InfoRow
-            icon={FiMapPin}
-            label="বর্তমান ঠিকানা"
-            value={form.current_address}
-            editing={editing}
-            onChange={v => setForm(f => ({ ...f, current_address: v }))}
-          />
-          {/* জরুরি যোগাযোগ */}
-          <InfoRow
-            icon={FiPhone}
-            label="জরুরি যোগাযোগ"
-            value={form.emergency_contact}
-            editing={editing}
-            type="tel"
-            onChange={v => setForm(f => ({ ...f, emergency_contact: v }))}
-          />
+          <InfoRow icon={FiUser}   label="নাম (বাংলা)"    value={form.name_bn}           editing={editing} onChange={v => setForm(f => ({ ...f, name_bn: v }))} />
+          <InfoRow icon={FiUser}   label="নাম (ইংরেজি)"   value={form.name_en}           editing={editing} onChange={v => setForm(f => ({ ...f, name_en: v }))} />
+          <InfoRow icon={FiMail}   label="ইমেইল"          value={p?.email || '—'}        editing={false} />
+          <InfoRow icon={FiPhone}  label="ফোন"            value={form.phone}             editing={editing} type="tel" onChange={v => setForm(f => ({ ...f, phone: v }))} />
+          <InfoRow icon={FiMapPin} label="বর্তমান ঠিকানা" value={form.current_address}   editing={editing} onChange={v => setForm(f => ({ ...f, current_address: v }))} />
+          <InfoRow icon={FiPhone}  label="জরুরি যোগাযোগ" value={form.emergency_contact} editing={editing} type="tel" onChange={v => setForm(f => ({ ...f, emergency_contact: v }))} />
         </div>
 
         {editing && (
@@ -270,23 +476,20 @@ export default function Profile() {
         )}
       </div>
 
-      {/* ── Work Info ── */}
+      {/* ══ কর্মসংক্রান্ত তথ্য ══ */}
       <div className="bg-white rounded-2xl p-5 shadow-sm">
         <h3 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
           <FiClock className="text-primary" /> কর্মসংক্রান্ত তথ্য
         </h3>
         <div className="space-y-3">
-          <StatRow label="পদবী" value={
-            p?.role === 'worker' ? 'কর্মী (SR)' :
-            p?.role === 'manager' ? 'ম্যানেজার' : p?.role
-          } />
+          <StatRow label="পদবী"      value={p?.role === 'worker' ? 'কর্মী (SR)' : p?.role === 'manager' ? 'ম্যানেজার' : p?.role} />
           <StatRow label="মূল বেতন" value={p?.basic_salary ? `৳${parseInt(p.basic_salary).toLocaleString('bn-BD')}` : '—'} />
-          <StatRow label="বকেয়া" value={p?.outstanding_dues ? `৳${parseInt(p.outstanding_dues).toLocaleString('bn-BD')}` : '৳০'} />
+          <StatRow label="বকেয়া"    value={parseFloat(p?.outstanding_dues || 0) > 0 ? `৳${parseInt(p.outstanding_dues).toLocaleString('bn-BD')}` : '৳০'} />
           <StatRow label="স্ট্যাটাস" value={p?.status === 'active' ? '✅ সক্রিয়' : '❌ নিষ্ক্রিয়'} />
         </div>
       </div>
 
-      {/* ── Password Change ── */}
+      {/* ══ পাসওয়ার্ড পরিবর্তন ══ */}
       <button
         onClick={() => setPassModal(true)}
         className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 text-left"
@@ -300,7 +503,7 @@ export default function Profile() {
         </div>
       </button>
 
-      {/* ── Password Modal ── */}
+      {/* ══ Password Modal ══ */}
       {passModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
           <div className="bg-white w-full rounded-t-3xl p-6 space-y-4">
@@ -308,7 +511,6 @@ export default function Profile() {
               <h3 className="font-bold text-lg">পাসওয়ার্ড পরিবর্তন</h3>
               <button onClick={() => setPassModal(false)}><FiX /></button>
             </div>
-
             {[
               { label: 'বর্তমান পাসওয়ার্ড', key: 'currentPassword' },
               { label: 'নতুন পাসওয়ার্ড',   key: 'newPassword' },
@@ -325,11 +527,7 @@ export default function Profile() {
                 />
               </div>
             ))}
-
-            <button
-              onClick={handlePasswordChange}
-              className="w-full bg-primary text-white py-3 rounded-xl font-semibold"
-            >
+            <button onClick={handlePasswordChange} className="w-full bg-primary text-white py-3 rounded-xl font-semibold">
               পরিবর্তন করুন
             </button>
           </div>
