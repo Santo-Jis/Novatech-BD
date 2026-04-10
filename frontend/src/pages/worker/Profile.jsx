@@ -6,7 +6,7 @@ import {
   FiUser, FiMail, FiPhone, FiMapPin, FiCalendar,
   FiLock, FiCamera, FiEdit2, FiSave, FiX,
   FiDollarSign, FiTrendingUp, FiCheckCircle, FiClock,
-  FiAward, FiUsers, FiBarChart2, FiRefreshCw
+  FiAward, FiUsers, FiBarChart2, FiRefreshCw, FiLogOut
 } from 'react-icons/fi'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
@@ -18,7 +18,7 @@ import {
 // ============================================================
 
 export default function Profile() {
-  const { user, updateUser, fetchMe } = useAuthStore()
+  const { user, updateUser, fetchMe, logout } = useAuthStore()
 
   const [profile,        setProfile]        = useState(null)
   const [stats,          setStats]          = useState(null)
@@ -513,6 +513,22 @@ export default function Profile() {
         <div>
           <p className="font-semibold text-gray-700">পাসওয়ার্ড পরিবর্তন</p>
           <p className="text-xs text-gray-400">নিরাপত্তার জন্য নিয়মিত পরিবর্তন করুন</p>
+        </div>
+      </button>
+
+      {/* ══ Logout ══ */}
+      <button
+        onClick={() => {
+          if (window.confirm('লগআউট করতে চান?')) logout()
+        }}
+        className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 text-left border border-red-100"
+      >
+        <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center">
+          <FiLogOut className="text-red-500" />
+        </div>
+        <div>
+          <p className="font-semibold text-red-600">লগআউট</p>
+          <p className="text-xs text-gray-400">অ্যাকাউন্ট থেকে বের হয়ে যান</p>
         </div>
       </button>
 
