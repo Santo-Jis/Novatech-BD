@@ -15,7 +15,8 @@ const {
     updateCustomer,
     getCustomerHistory,
     setCreditLimit,
-    collectCredit
+    collectCredit,
+    getMyCustomerCount
 } = require('../controllers/customer.controller');
 
 // ============================================================
@@ -39,7 +40,10 @@ const upload = multer({
 // ============================================================
 
 // কাস্টমার তালিকা (দূরত্ব সহ)
-router.get('/',     auth, checkTeamAccess, getCustomers);
+router.get('/',          auth, checkTeamAccess, getCustomers);
+
+// Worker এর মোট কাস্টমার সংখ্যা
+router.get('/my-count',  auth, getMyCustomerCount);
 
 // নতুন কাস্টমার তৈরি
 router.post('/',    auth, canCreateCustomer, upload.single('shop_photo'), createCustomer);
