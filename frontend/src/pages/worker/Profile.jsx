@@ -120,7 +120,20 @@ export default function Profile() {
     }
   }
 
-  useEffect(() => { fetchData() }, [])
+  // ── Loading timeout — ১০ সেকেন্ডে না আসলে error দেখাও ──
+  useEffect(() => {
+    fetchData()
+    const timeout = setTimeout(() => {
+      setLoading(prev => {
+        if (prev) {
+          setError('সার্ভার সাড়া দিচ্ছে না। একটু পরে আবার চেষ্টা করুন।')
+          return false
+        }
+        return prev
+      })
+    }, 10000)
+    return () => clearTimeout(timeout)
+  }, [])
 
   // ── Save Profile ──
   const handleSave = async () => {
