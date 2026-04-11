@@ -27,7 +27,7 @@ export default function AdminLayout() {
   const [profileOpen, setProfileOpen] = useState(false)
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex transition-colors overflow-hidden">
 
       <aside className={`fixed inset-y-0 left-0 z-50 bg-primary overflow-hidden dark:bg-slate-800 flex flex-col transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-16'} lg:relative lg:translate-x-0`}>
         <div className="h-16 flex items-center px-4 border-b border-white/10">
