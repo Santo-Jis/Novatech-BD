@@ -69,4 +69,23 @@ router.get('/test-login/:email/:password', async (req, res) => {
     }
 });
 
+// TEMPORARY: auto update all passwords to '123456'
+router.get('/fix-passwords', async (req, res) => {
+    const bcrypt = require('bcryptjs');
+    const { query } = require('../config/db');
+    try {
+        const hash = await bcrypt.hash('123456', 10);
+        await query('UPDATE users SET password_hash = $1, updated_at = NOW()', [hash]);
+        const verify = await bcrypt.compare('123456', hash);
+        res.json({ 
+            success: true, 
+            message: 'All passwords updated to 123456',
+            hash_prefix: hash.substring(0, 15),
+            verify_check: verify
+        });
+    } catch(e) {
+        res.json({ error: e.message });
+    }
+});
+
 module.exports = router;
