@@ -29,15 +29,20 @@ const generateRefreshToken = (user) => {
 
 // Refresh Token DB তে সেভ
 const saveRefreshToken = async (userId, refreshToken) => {
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // ৭ দিন পরে
+    try {
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7); // ৭ দিন পরে
 
-    await query(
-        `INSERT INTO user_sessions (user_id, refresh_token, expires_at)
-         VALUES ($1, $2, $3)
-         ON CONFLICT DO NOTHING`,
-        [userId, refreshToken, expiresAt]
-    );
+        await query(
+            `INSERT INTO user_sessions (user_id, refresh_token, expires_at)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (refresh_token) DO UPDATE SET expires_at = $3`,
+            [userId, refreshToken, expiresAt]
+        );
+    } catch (error) {
+        // Session save fail হলেও login চলবে
+        console.warn('⚠️ Session save failed (non-critical):', error.message);
+    }
 };
 
 // Refresh Token যাচাই ও নতুন Access Token দেওয়া
