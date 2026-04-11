@@ -305,5 +305,5 @@ export function useTeamPresence(workerIds = []) {
 export function FirebaseProvider({ children }) {
   useFirebaseNotifications()
   useOnlinePresence()
-  return children
+  return React.createElement(React.Fragment, null, children)
 }
