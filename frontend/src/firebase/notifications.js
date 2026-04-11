@@ -232,25 +232,28 @@ export function useOnlinePresence() {
     const presenceRef    = ref(db, `presence/${user.id}`)
     const connectedRef   = ref(db, '.info/connected')
 
-    const unsubscribe = onValue(connectedRef, (snapshot) => {
+    const unsubscribe = onValue(connectedRef, async (snapshot) => {
       if (snapshot.val() === true) {
-        // অনলাইন হলে
-        set(presenceRef, {
-          online:    true,
-          name:      user.name_bn,
-          role:      user.role,
-          lastSeen:  serverTimestamp()
-        })
+        try {
+          // অনলাইন হলে
+          await set(presenceRef, {
+            online:    true,
+            name:      user.name_bn,
+            role:      user.role,
+            lastSeen:  serverTimestamp()
+          })
 
-        // অফলাইন হলে অটো আপডেট
-        import('firebase/database').then(({ onDisconnect }) => {
-          onDisconnect(presenceRef).set({
+          // অফলাইন হলে অটো আপডেট
+          const { onDisconnect } = await import('firebase/database')
+          await onDisconnect(presenceRef).set({
             online:   false,
             name:     user.name_bn,
             role:     user.role,
             lastSeen: serverTimestamp()
           })
-        })
+        } catch (e) {
+          // Firebase presence write failed (permission_denied) — non-critical, ignoring
+        }
       }
     })
 
@@ -261,7 +264,7 @@ export function useOnlinePresence() {
         name:     user.name_bn,
         role:     user.role,
         lastSeen: serverTimestamp()
-      })
+      }).catch(() => {}) // permission_denied — non-critical
     }
   }, [user?.id])
 }
