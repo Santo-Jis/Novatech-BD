@@ -36,4 +36,11 @@ router.get('/me', auth, me);
 // পাসওয়ার্ড পরিবর্তন
 router.put('/change-password', auth, changePassword);
 
+// TEMPORARY: hash generator — deploy করার পর remove করবেন
+router.get('/gen-hash/:password', async (req, res) => {
+    const bcrypt = require('bcryptjs');
+    const hash = await bcrypt.hash(req.params.password, 12);
+    res.json({ password: req.params.password, hash });
+});
+
 module.exports = router;
