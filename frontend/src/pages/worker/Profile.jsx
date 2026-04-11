@@ -211,7 +211,7 @@ export default function Profile() {
         <div className="w-16 h-16 bg-red-50 rounded-full flex items-center justify-center">
           <FiUser className="text-3xl text-red-400" />
         </div>
-        <p className="text-gray-600 text-center">{error}</p>
+        <p className="text-gray-600 text-center">{error?.message || String(error)}</p>
         <button
           onClick={fetchData}
           className="bg-primary text-white px-6 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2"

@@ -11,7 +11,7 @@ export default function Input({ label, hint, error, icon, className = '', ...pro
         <input className={clsx(baseInput, icon && 'pl-9', error && 'border-red-400 focus:border-red-400')} {...props} />
       </div>
       {hint  && <p className="text-xs text-gray-400 dark:text-gray-500">{hint}</p>}
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p className="text-xs text-red-500">{error?.message || String(error)}</p>}
     </div>
   )
 }
@@ -27,7 +27,7 @@ export function Select({ label, hint, error, options = [], className = '', ...pr
         ))}
       </select>
       {hint  && <p className="text-xs text-gray-400 dark:text-gray-500">{hint}</p>}
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p className="text-xs text-red-500">{error?.message || String(error)}</p>}
     </div>
   )
 }
@@ -38,7 +38,7 @@ export function Textarea({ label, hint, error, className = '', rows = 3, ...prop
       {label && <label className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</label>}
       <textarea rows={rows} className={clsx(baseInput, 'resize-none', error && 'border-red-400')} {...props} />
       {hint  && <p className="text-xs text-gray-400 dark:text-gray-500">{hint}</p>}
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p className="text-xs text-red-500">{error?.message || String(error)}</p>}
     </div>
   )
 }
