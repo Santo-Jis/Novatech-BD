@@ -8,10 +8,7 @@ import {
   FiDollarSign, FiTrendingUp, FiCheckCircle, FiClock,
   FiAward, FiUsers, FiBarChart2, FiRefreshCw, FiLogOut
 } from 'react-icons/fi'
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip,
-  ResponsiveContainer, Cell
-} from 'recharts'
+
 
 // ============================================================
 // Worker Profile Page — Enhanced
@@ -120,7 +117,6 @@ export default function Profile() {
     }
   }
 
-  // ── Loading timeout — ১০ সেকেন্ডে না আসলে error দেখাও ──
   useEffect(() => {
     fetchData()
     const timeout = setTimeout(() => {
@@ -131,7 +127,7 @@ export default function Profile() {
         }
         return prev
       })
-    }, 10000)
+    }, 8000)
     return () => clearTimeout(timeout)
   }, [])
 
@@ -433,25 +429,27 @@ export default function Profile() {
       {/* ══ গত ৭ দিনের বিক্রয় Chart ══ */}
       {weeklySales.length > 0 && (
         <div className="bg-white rounded-2xl p-5 shadow-sm">
-          <h3 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
+          <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
             <FiBarChart2 className="text-primary" /> গত ৭ দিনের বিক্রয়
           </h3>
-          <ResponsiveContainer width="100%" height={160}>
-            <BarChart data={weeklySales} barSize={28}>
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} />
-              <YAxis hide />
-              <Tooltip
-                formatter={v => [`৳${parseInt(v).toLocaleString('bn-BD')}`, 'বিক্রয়']}
-                contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: 12 }}
-              />
-              <Bar dataKey="total" radius={[6, 6, 0, 0]}>
-                {weeklySales.map((_, i) => (
-                  <Cell key={i} fill={weeklySales[i].total > 0 ? '#6366f1' : '#e5e7eb'} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          <div className="flex justify-between mt-2 px-1">
+          <div className="flex items-end gap-1.5 h-28">
+            {weeklySales.map((d, i) => {
+              const max = Math.max(...weeklySales.map(s => s.total), 1)
+              const pct = Math.round((d.total / max) * 100)
+              return (
+                <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                  <div className="w-full flex flex-col justify-end" style={{ height: '88px' }}>
+                    <div
+                      className={`w-full rounded-t-lg transition-all ${d.total > 0 ? 'bg-indigo-500' : 'bg-gray-200'}`}
+                      style={{ height: `${Math.max(pct, 4)}%` }}
+                    />
+                  </div>
+                  <span className="text-xs text-gray-400">{d.name}</span>
+                </div>
+              )
+            })}
+          </div>
+          <div className="flex justify-between mt-2">
             <span className="text-xs text-gray-400">৭ দিনের মোট</span>
             <span className="text-xs font-semibold text-gray-700">
               ৳{weeklySales.reduce((s, r) => s + r.total, 0).toLocaleString('bn-BD')}
