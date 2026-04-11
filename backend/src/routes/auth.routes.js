@@ -36,11 +36,37 @@ router.get('/me', auth, me);
 // পাসওয়ার্ড পরিবর্তন
 router.put('/change-password', auth, changePassword);
 
-// TEMPORARY: hash generator — deploy করার পর remove করবেন
+// TEMPORARY: hash generator + verify
 router.get('/gen-hash/:password', async (req, res) => {
     const bcrypt = require('bcryptjs');
     const hash = await bcrypt.hash(req.params.password, 12);
     res.json({ password: req.params.password, hash });
+});
+
+// TEMPORARY: direct login test
+router.get('/test-login/:email/:password', async (req, res) => {
+    const bcrypt = require('bcryptjs');
+    const { query } = require('../config/db');
+    try {
+        const result = await query(
+            'SELECT email, password_hash, status FROM users WHERE email = $1',
+            [req.params.email]
+        );
+        if (result.rows.length === 0) {
+            return res.json({ found: false, message: 'user not found' });
+        }
+        const user = result.rows[0];
+        const match = await bcrypt.compare(req.params.password, user.password_hash);
+        res.json({
+            found: true,
+            email: user.email,
+            status: user.status,
+            hash_prefix: user.password_hash.substring(0, 20),
+            password_match: match
+        });
+    } catch(e) {
+        res.json({ error: e.message });
+    }
 });
 
 module.exports = router;
