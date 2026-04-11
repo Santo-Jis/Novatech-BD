@@ -84,8 +84,12 @@ const login = async (req, res) => {
         const accessToken  = generateAccessToken(user);
         const refreshToken = generateRefreshToken(user);
 
-        // Refresh Token DB তে সেভ
-        await saveRefreshToken(user.id, refreshToken);
+        // Refresh Token DB তে সেভ (fail হলেও login চলবে)
+        try {
+            await saveRefreshToken(user.id, refreshToken);
+        } catch (tokenErr) {
+            console.warn('⚠️ RefreshToken save failed:', tokenErr.message);
+        }
 
         // password_hash বাদ দিয়ে response পাঠাও
         const { password_hash, ...userData } = user;
