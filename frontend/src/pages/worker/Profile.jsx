@@ -127,7 +127,7 @@ export default function Profile() {
         }
         return prev
       })
-    }, 8000)
+    }, 15000)
     return () => clearTimeout(timeout)
   }, [])
 
