@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ref, onValue, off, push, set, serverTimestamp } from 'firebase/database'
 import { db } from './config'
 import { useAuthStore } from '../store/auth.store'
@@ -272,7 +272,7 @@ export function useOnlinePresence() {
 // ============================================================
 
 export function useTeamPresence(workerIds = []) {
-  const [presence, setPresence] = import('react').then(r => r.useState({}))
+  const [presence, setPresence] = useState({})
 
   useEffect(() => {
     if (!workerIds.length) return
