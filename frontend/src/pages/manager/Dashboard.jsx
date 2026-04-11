@@ -93,7 +93,7 @@ export default function ManagerDashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           title="আজকের বিক্রয়"
-          value={`৳${parseInt(kpi?.sales?.total_sales || 0).toLocaleString('bn-BD')}`}
+          value={`৳${parseInt(kpi?.sales?.total_sales || 0).toLocaleString()}`}
           subtitle={`${kpi?.sales?.total_invoices || 0}টি Invoice`}
           icon={<FiShoppingBag />}
           color="primary"
@@ -107,7 +107,7 @@ export default function ManagerDashboard() {
         />
         <KPICard
           title="মোট বকেয়া"
-          value={`৳${parseInt(kpi?.credit?.total_outstanding || 0).toLocaleString('bn-BD')}`}
+          value={`৳${parseInt(kpi?.credit?.total_outstanding || 0).toLocaleString()}`}
           subtitle={`${kpi?.credit?.customers_with_dues || 0}টি দোকান`}
           icon={<FiDollarSign />}
           color="accent"

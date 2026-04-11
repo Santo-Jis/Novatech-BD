@@ -192,10 +192,10 @@ export function WorkerSettlement() {
         <p className="font-semibold text-sm text-gray-700 mb-3">আজকের হিসাব</p>
         <div className="grid grid-cols-2 gap-2 text-sm">
           {[
-            ['মোট বিক্রয়', `৳${parseInt(sales.total_amount || 0).toLocaleString('bn-BD')}`, 'text-secondary'],
-            ['নগদ সংগ্রহ', `৳${parseInt(sales.cash_received || 0).toLocaleString('bn-BD')}`, 'text-primary'],
-            ['বাকি দেওয়া', `৳${parseInt(sales.credit_given || 0).toLocaleString('bn-BD')}`, 'text-amber-600'],
-            ['রিপ্লেসমেন্ট', `৳${parseInt(sales.replacement_value || 0).toLocaleString('bn-BD')}`, 'text-purple-600'],
+            ['মোট বিক্রয়', `৳${parseInt(sales.total_amount || 0).toLocaleString()}`, 'text-secondary'],
+            ['নগদ সংগ্রহ', `৳${parseInt(sales.cash_received || 0).toLocaleString()}`, 'text-primary'],
+            ['বাকি দেওয়া', `৳${parseInt(sales.credit_given || 0).toLocaleString()}`, 'text-amber-600'],
+            ['রিপ্লেসমেন্ট', `৳${parseInt(sales.replacement_value || 0).toLocaleString()}`, 'text-purple-600'],
           ].map(([label, val, cls]) => (
             <div key={label} className="bg-gray-50 rounded-xl p-2">
               <p className="text-xs text-gray-400">{label}</p>
@@ -274,10 +274,10 @@ export function Commission() {
       {/* Monthly Summary */}
       <div className="bg-gradient-to-r from-accent to-amber-500 rounded-2xl p-4 text-white">
         <p className="text-white/70 text-xs">এই মাসে</p>
-        <p className="text-3xl font-bold mt-1">৳{parseInt(summary.daily_commission || 0).toLocaleString('bn-BD')}</p>
+        <p className="text-3xl font-bold mt-1">৳{parseInt(summary.daily_commission || 0).toLocaleString()}</p>
         <p className="text-white/80 text-sm mt-0.5">কমিশন</p>
         <div className="flex gap-4 mt-3 text-xs text-white/70">
-          <span>বিক্রয়: ৳{parseInt(summary.total_sales || 0).toLocaleString('bn-BD')}</span>
+          <span>বিক্রয়: ৳{parseInt(summary.total_sales || 0).toLocaleString()}</span>
           <span>বোনাস: ৳{parseInt(summary.bonus || 0)}</span>
         </div>
       </div>
@@ -286,14 +286,14 @@ export function Commission() {
       <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
         <p className="font-semibold text-sm text-gray-700 mb-3">বেতন প্রিভিউ</p>
         <div className="space-y-2 text-sm">
-          <div className="flex justify-between"><span className="text-gray-500">মূল বেতন</span><span className="font-semibold">৳{parseInt(salary.basic_salary || 0).toLocaleString('bn-BD')}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">মূল বেতন</span><span className="font-semibold">৳{parseInt(salary.basic_salary || 0).toLocaleString()}</span></div>
           <div className="flex justify-between text-amber-600"><span>কমিশন</span><span className="font-semibold">+ ৳{parseInt(salary.total_commission || 0)}</span></div>
           {salary.outstanding_dues > 0 && (
             <div className="flex justify-between text-red-500"><span>বকেয়া কর্তন</span><span className="font-semibold">- ৳{parseInt(salary.outstanding_dues)}</span></div>
           )}
           <div className="flex justify-between font-bold text-base pt-2 border-t border-gray-100 text-secondary">
             <span>নেট বেতন</span>
-            <span>৳{parseInt(salary.net_payable || 0).toLocaleString('bn-BD')}</span>
+            <span>৳{parseInt(salary.net_payable || 0).toLocaleString()}</span>
           </div>
         </div>
       </div>
@@ -310,7 +310,7 @@ export function Commission() {
           />
           {bonus.pending_bonus > 0 && (
             <p className="text-xs text-emerald-600 mt-2 font-semibold">
-              প্রাপ্য বোনাস: ৳{parseInt(bonus.pending_bonus).toLocaleString('bn-BD')}
+              প্রাপ্য বোনাস: ৳{parseInt(bonus.pending_bonus).toLocaleString()}
             </p>
           )}
           {bonus.next_bonus_in > 0 && (

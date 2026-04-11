@@ -111,12 +111,12 @@ export function CustomerList() {
                   )}
                   {parseFloat(customer.current_credit) > 0 && (
                     <span className="text-xs text-red-500 font-medium">
-                      বকেয়া: ৳{parseFloat(customer.current_credit).toLocaleString('bn-BD')}
+                      বকেয়া: ৳{parseFloat(customer.current_credit).toLocaleString()}
                     </span>
                   )}
                   {parseFloat(customer.credit_balance) > 0 && (
                     <span className="text-xs text-emerald-600 font-medium">
-                      ব্যালেন্স: ৳{parseFloat(customer.credit_balance).toLocaleString('bn-BD')}
+                      ব্যালেন্স: ৳{parseFloat(customer.credit_balance).toLocaleString()}
                     </span>
                   )}
                 </div>
@@ -217,13 +217,13 @@ export function VisitPage() {
             {parseFloat(customer.current_credit) > 0 && (
               <div className="bg-red-50 rounded-xl p-2 text-center">
                 <p className="text-xs text-gray-500">বকেয়া</p>
-                <p className="font-bold text-red-600 text-sm">৳{parseFloat(customer.current_credit).toLocaleString('bn-BD')}</p>
+                <p className="font-bold text-red-600 text-sm">৳{parseFloat(customer.current_credit).toLocaleString()}</p>
               </div>
             )}
             {parseFloat(customer.credit_balance) > 0 && (
               <div className="bg-emerald-50 rounded-xl p-2 text-center">
                 <p className="text-xs text-gray-500">ব্যালেন্স</p>
-                <p className="font-bold text-emerald-600 text-sm">৳{parseFloat(customer.credit_balance).toLocaleString('bn-BD')}</p>
+                <p className="font-bold text-emerald-600 text-sm">৳{parseFloat(customer.credit_balance).toLocaleString()}</p>
               </div>
             )}
           </div>

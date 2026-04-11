@@ -128,7 +128,7 @@ export function OrderForm() {
           <p className="font-semibold text-gray-800">
             {todayOrder.status === 'approved' ? '✅ অনুমোদিত' : '⏳ অপেক্ষায়'}
           </p>
-          <p className="text-sm text-gray-600 mt-1">মোট: ৳{parseInt(todayOrder.total_amount || 0).toLocaleString('bn-BD')}</p>
+          <p className="text-sm text-gray-600 mt-1">মোট: ৳{parseInt(todayOrder.total_amount || 0).toLocaleString()}</p>
           <div className="mt-3 space-y-1">
             {todayOrder.items?.map((item, i) => (
               <div key={i} className="flex justify-between text-sm">
@@ -196,7 +196,7 @@ export function OrderForm() {
               {qty > 0 && (
                 <div className="mt-2 pt-2 border-t border-gray-100 flex justify-between text-xs">
                   <span className="text-gray-500">{qty} × ৳{product.price}</span>
-                  <span className="font-bold text-secondary">= ৳{(qty * product.price).toLocaleString('bn-BD')}</span>
+                  <span className="font-bold text-secondary">= ৳{(qty * product.price).toLocaleString()}</span>
                 </div>
               )}
             </div>
@@ -210,7 +210,7 @@ export function OrderForm() {
           <div className="bg-white rounded-2xl shadow-xl border border-gray-200 p-4">
             <div className="flex justify-between text-sm mb-3">
               <span className="text-gray-600">{totalItems} ধরনের পণ্য</span>
-              <span className="font-bold text-secondary">মোট: ৳{totalAmount.toLocaleString('bn-BD')}</span>
+              <span className="font-bold text-secondary">মোট: ৳{totalAmount.toLocaleString()}</span>
             </div>
             <button
               onClick={submit}

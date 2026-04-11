@@ -78,7 +78,7 @@ export default function ManagerOrders() {
                       <span className="text-xs text-gray-400 font-mono">{order.employee_code}</span>
                     </div>
                     <p className="text-xs text-gray-500 mt-0.5">
-                      {new Date(order.requested_at).toLocaleString('bn-BD')}
+                      {new Date(order.requested_at).toLocaleString()}
                     </p>
 
                     {/* Items preview */}
@@ -88,7 +88,7 @@ export default function ManagerOrders() {
                           <span className="text-gray-600">{item.product_name}</span>
                           <span className="text-gray-400">×</span>
                           <span className="font-semibold text-primary">{item.requested_qty}</span>
-                          <span className="text-gray-400">= ৳{(item.price * item.requested_qty).toLocaleString('bn-BD')}</span>
+                          <span className="text-gray-400">= ৳{(item.price * item.requested_qty).toLocaleString()}</span>
                         </div>
                       ))}
                       {order.items?.length > 3 && (
@@ -97,7 +97,7 @@ export default function ManagerOrders() {
                     </div>
 
                     <p className="mt-2 font-bold text-secondary">
-                      মোট: ৳{parseInt(order.total_amount).toLocaleString('bn-BD')}
+                      মোট: ৳{parseInt(order.total_amount).toLocaleString()}
                     </p>
                   </div>
                 </div>
@@ -135,7 +135,7 @@ export default function ManagerOrders() {
           <div className="space-y-4">
             <div className="bg-gray-50 rounded-xl p-3 text-sm">
               <p className="font-semibold">{modal.worker_name}</p>
-              <p className="text-gray-500 text-xs">{new Date(modal.requested_at).toLocaleString('bn-BD')}</p>
+              <p className="text-gray-500 text-xs">{new Date(modal.requested_at).toLocaleString()}</p>
             </div>
 
             <p className="text-sm text-gray-600">পরিমাণ পরিবর্তন করতে পারবেন:</p>
@@ -170,7 +170,7 @@ export default function ManagerOrders() {
 
             <div className="flex justify-between font-bold text-lg pt-2 border-t border-gray-200">
               <span>অনুমোদিত মোট:</span>
-              <span className="text-secondary">৳{totalApproved.toLocaleString('bn-BD')}</span>
+              <span className="text-secondary">৳{totalApproved.toLocaleString()}</span>
             </div>
           </div>
         )}

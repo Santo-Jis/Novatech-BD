@@ -121,14 +121,14 @@ export default function AdminDashboard() {
         />
         <KPICard
           title="আজকের বিক্রয়"
-          value={`৳${parseInt(kpi?.today_sales?.total_sales || 0).toLocaleString('bn-BD')}`}
+          value={`৳${parseInt(kpi?.today_sales?.total_sales || 0).toLocaleString()}`}
           subtitle={`${kpi?.today_sales?.invoice_count || 0}টি Invoice`}
           icon={<FiShoppingBag />}
           color="secondary"
         />
         <KPICard
           title="মোট বকেয়া"
-          value={`৳${parseInt(kpi?.customers?.total_outstanding || 0).toLocaleString('bn-BD')}`}
+          value={`৳${parseInt(kpi?.customers?.total_outstanding || 0).toLocaleString()}`}
           subtitle={`${kpi?.customers?.customers_with_dues || 0}টি দোকান`}
           icon={<FiDollarSign />}
           color="accent"
@@ -251,7 +251,7 @@ export default function AdminDashboard() {
                       <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{p.product_name}</p>
                       <p className="text-xs text-gray-400">{parseInt(p.total_qty || 0)} পিস</p>
                     </div>
-                    <span className="text-sm font-bold text-secondary">৳{parseInt(p.total_revenue || 0).toLocaleString('bn-BD')}</span>
+                    <span className="text-sm font-bold text-secondary">৳{parseInt(p.total_revenue || 0).toLocaleString()}</span>
                   </div>
                 ))}
               </div>
@@ -268,7 +268,7 @@ export default function AdminDashboard() {
                       <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{s.shop_name}</p>
                       <p className="text-xs text-gray-400">{s.route_name} · {s.order_count} অর্ডার</p>
                     </div>
-                    <span className="text-sm font-bold text-secondary">৳{parseInt(s.total_purchase || 0).toLocaleString('bn-BD')}</span>
+                    <span className="text-sm font-bold text-secondary">৳{parseInt(s.total_purchase || 0).toLocaleString()}</span>
                   </div>
                 ))}
               </div>

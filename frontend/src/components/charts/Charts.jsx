@@ -15,7 +15,7 @@ const CustomTooltip = ({ active, payload, label, prefix = '৳' }) => {
       <p className="text-xs text-gray-500 mb-1">{label}</p>
       {payload.map((entry, i) => (
         <p key={i} className="text-sm font-semibold" style={{ color: entry.color }}>
-          {entry.name}: {prefix}{Number(entry.value).toLocaleString('bn-BD')}
+          {entry.name}: {prefix}{Number(entry.value).toLocaleString()}
         </p>
       ))}
     </div>

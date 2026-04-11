@@ -26,7 +26,7 @@ export default function WorkerLayout() {
         <div className="flex items-center gap-3">
           {parseFloat(user?.outstanding_dues || 0) > 0 && (
             <div className="bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-              বকেয়া ৳{parseFloat(user.outstanding_dues).toLocaleString('bn-BD')}
+              বকেয়া ৳{parseFloat(user.outstanding_dues).toLocaleString()}
             </div>
           )}
           <button onClick={toggleDarkMode} className="p-1 text-white/70 hover:text-white transition-colors">

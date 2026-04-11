@@ -161,7 +161,7 @@ export function ManagerCustomers() {
                   <p className="text-xs text-gray-500">{c.owner_name}</p>
                   <p className="text-xs text-gray-400 font-mono mt-0.5">{c.customer_code}</p>
                   {parseFloat(c.current_credit) > 0 && (
-                    <p className="text-xs text-red-600 mt-1">বকেয়া: ৳{parseFloat(c.current_credit).toLocaleString('bn-BD')}</p>
+                    <p className="text-xs text-red-600 mt-1">বকেয়া: ৳{parseFloat(c.current_credit).toLocaleString()}</p>
                   )}
                 </div>
               </div>

@@ -96,12 +96,12 @@ export default function ManagerTeam() {
                 </div>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <FiDollarSign className="text-gray-400" />
-                  <span>বেতন: ৳{parseInt(worker.basic_salary || 0).toLocaleString('bn-BD')}</span>
+                  <span>বেতন: ৳{parseInt(worker.basic_salary || 0).toLocaleString()}</span>
                 </div>
                 {parseFloat(worker.outstanding_dues || 0) > 0 && (
                   <div className="flex items-center gap-2 text-sm text-red-600">
                     <span className="w-2 h-2 bg-red-500 rounded-full" />
-                    <span>বকেয়া: ৳{parseFloat(worker.outstanding_dues).toLocaleString('bn-BD')}</span>
+                    <span>বকেয়া: ৳{parseFloat(worker.outstanding_dues).toLocaleString()}</span>
                   </div>
                 )}
               </div>

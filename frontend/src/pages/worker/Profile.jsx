@@ -278,7 +278,7 @@ export default function Profile() {
       {/* ══ আজকের Quick Stats ══ */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { label: 'আজকের বিক্রয়', value: `৳${parseInt(stats?.total_amount || 0).toLocaleString('bn-BD')}`, icon: FiDollarSign, color: 'text-green-600', bg: 'bg-green-50' },
+          { label: 'আজকের বিক্রয়', value: `৳${parseInt(stats?.total_amount || 0).toLocaleString()}`, icon: FiDollarSign, color: 'text-green-600', bg: 'bg-green-50' },
           { label: 'মোট Invoice',   value: String(parseInt(stats?.invoice_count || 0)), icon: FiTrendingUp, color: 'text-blue-600', bg: 'bg-blue-50' },
           { label: 'মোট কাস্টমার', value: customerCount != null ? String(customerCount) : '—', icon: FiUsers, color: 'text-purple-600', bg: 'bg-purple-50' },
           { label: 'যোগদান',        value: p?.join_date ? new Date(p.join_date).toLocaleDateString('bn-BD') : '—', icon: FiCalendar, color: 'text-orange-600', bg: 'bg-orange-50' },
@@ -333,7 +333,7 @@ export default function Profile() {
         {att?.totalDeduction > 0 && (
           <div className="mt-3 bg-red-50 rounded-xl px-4 py-2 flex justify-between items-center">
             <span className="text-xs text-red-500">মোট বেতন কর্তন</span>
-            <span className="text-sm font-bold text-red-600">৳{parseInt(att.totalDeduction).toLocaleString('bn-BD')}</span>
+            <span className="text-sm font-bold text-red-600">৳{parseInt(att.totalDeduction).toLocaleString()}</span>
           </div>
         )}
       </div>
@@ -346,10 +346,10 @@ export default function Profile() {
 
         <div className="grid grid-cols-2 gap-3 mb-3">
           {[
-            { label: 'মোট বিক্রয়',   value: `৳${parseInt(comm?.total_sales || 0).toLocaleString('bn-BD')}` },
-            { label: 'দৈনিক কমিশন',  value: `৳${parseInt(comm?.daily_commission || 0).toLocaleString('bn-BD')}` },
-            { label: 'বোনাস',         value: `৳${parseInt(comm?.bonus || 0).toLocaleString('bn-BD')}` },
-            { label: 'মোট কমিশন',     value: `৳${parseInt(comm?.total_commission || 0).toLocaleString('bn-BD')}` },
+            { label: 'মোট বিক্রয়',   value: `৳${parseInt(comm?.total_sales || 0).toLocaleString()}` },
+            { label: 'দৈনিক কমিশন',  value: `৳${parseInt(comm?.daily_commission || 0).toLocaleString()}` },
+            { label: 'বোনাস',         value: `৳${parseInt(comm?.bonus || 0).toLocaleString()}` },
+            { label: 'মোট কমিশন',     value: `৳${parseInt(comm?.total_commission || 0).toLocaleString()}` },
           ].map((s, i) => (
             <div key={i} className="bg-gray-50 rounded-xl p-3">
               <p className="text-xs text-gray-500">{s.label}</p>
@@ -364,21 +364,21 @@ export default function Profile() {
             <div className="space-y-1.5">
               <div className="flex justify-between text-xs">
                 <span className="text-gray-500">মূল বেতন</span>
-                <span>৳{parseInt(commission.salary_preview.basic_salary).toLocaleString('bn-BD')}</span>
+                <span>৳{parseInt(commission.salary_preview.basic_salary).toLocaleString()}</span>
               </div>
               <div className="flex justify-between text-xs">
                 <span className="text-gray-500">+ কমিশন</span>
-                <span className="text-green-600">৳{parseInt(commission.salary_preview.total_commission).toLocaleString('bn-BD')}</span>
+                <span className="text-green-600">৳{parseInt(commission.salary_preview.total_commission).toLocaleString()}</span>
               </div>
               {commission.salary_preview.outstanding_dues > 0 && (
                 <div className="flex justify-between text-xs">
                   <span className="text-gray-500">- বকেয়া</span>
-                  <span className="text-red-500">৳{parseInt(commission.salary_preview.outstanding_dues).toLocaleString('bn-BD')}</span>
+                  <span className="text-red-500">৳{parseInt(commission.salary_preview.outstanding_dues).toLocaleString()}</span>
                 </div>
               )}
               <div className="flex justify-between text-sm font-bold pt-1.5 border-t border-primary/20">
                 <span className="text-primary">নেট পাবেন</span>
-                <span className="text-primary">৳{parseInt(commission.salary_preview.net_payable).toLocaleString('bn-BD')}</span>
+                <span className="text-primary">৳{parseInt(commission.salary_preview.net_payable).toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -420,7 +420,7 @@ export default function Profile() {
             <p className="text-xs text-gray-500">মোট মাস</p>
           </div>
           <div className="bg-orange-50 rounded-xl p-3 text-center">
-            <p className="text-xl font-bold text-orange-500">৳{parseInt(pendingBonus).toLocaleString('bn-BD')}</p>
+            <p className="text-xl font-bold text-orange-500">৳{parseInt(pendingBonus).toLocaleString()}</p>
             <p className="text-xs text-gray-500">পেন্ডিং বোনাস</p>
           </div>
         </div>
@@ -452,7 +452,7 @@ export default function Profile() {
           <div className="flex justify-between mt-2">
             <span className="text-xs text-gray-400">৭ দিনের মোট</span>
             <span className="text-xs font-semibold text-gray-700">
-              ৳{weeklySales.reduce((s, r) => s + r.total, 0).toLocaleString('bn-BD')}
+              ৳{weeklySales.reduce((s, r) => s + r.total, 0).toLocaleString()}
             </span>
           </div>
         </div>
@@ -494,8 +494,8 @@ export default function Profile() {
         </h3>
         <div className="space-y-3">
           <StatRow label="পদবী"      value={p?.role === 'worker' ? 'কর্মী (SR)' : p?.role === 'manager' ? 'ম্যানেজার' : p?.role} />
-          <StatRow label="মূল বেতন" value={p?.basic_salary ? `৳${parseInt(p.basic_salary).toLocaleString('bn-BD')}` : '—'} />
-          <StatRow label="বকেয়া"    value={parseFloat(p?.outstanding_dues || 0) > 0 ? `৳${parseInt(p.outstanding_dues).toLocaleString('bn-BD')}` : '৳০'} />
+          <StatRow label="মূল বেতন" value={p?.basic_salary ? `৳${parseInt(p.basic_salary).toLocaleString()}` : '—'} />
+          <StatRow label="বকেয়া"    value={parseFloat(p?.outstanding_dues || 0) > 0 ? `৳${parseInt(p.outstanding_dues).toLocaleString()}` : '৳০'} />
           <StatRow label="স্ট্যাটাস" value={p?.status === 'active' ? '✅ সক্রিয়' : '❌ নিষ্ক্রিয়'} />
         </div>
       </div>

@@ -88,7 +88,7 @@ export default function ManagerSettlements() {
                     <span className="text-xs text-gray-400 font-mono">{s.employee_code}</span>
                     {parseFloat(s.shortage_qty_value) > 0 && (
                       <span className="flex items-center gap-1 text-xs text-red-600 bg-red-50 px-2 py-0.5 rounded-full">
-                        <FiAlertTriangle /> ঘাটতি: ৳{parseFloat(s.shortage_qty_value).toLocaleString('bn-BD')}
+                        <FiAlertTriangle /> ঘাটতি: ৳{parseFloat(s.shortage_qty_value).toLocaleString()}
                       </span>
                     )}
                   </div>
@@ -97,10 +97,10 @@ export default function ManagerSettlements() {
                   {/* Summary */}
                   <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2">
                     {[
-                      ['মোট বিক্রয়', `৳${parseInt(s.total_sales_amount || 0).toLocaleString('bn-BD')}`, 'text-secondary'],
-                      ['নগদ সংগ্রহ', `৳${parseInt(s.cash_collected || 0).toLocaleString('bn-BD')}`, 'text-primary'],
-                      ['বাকি দেওয়া', `৳${parseInt(s.credit_given || 0).toLocaleString('bn-BD')}`, 'text-amber-600'],
-                      ['রিপ্লেসমেন্ট', `৳${parseInt(s.replacement_value || 0).toLocaleString('bn-BD')}`, 'text-purple-600'],
+                      ['মোট বিক্রয়', `৳${parseInt(s.total_sales_amount || 0).toLocaleString()}`, 'text-secondary'],
+                      ['নগদ সংগ্রহ', `৳${parseInt(s.cash_collected || 0).toLocaleString()}`, 'text-primary'],
+                      ['বাকি দেওয়া', `৳${parseInt(s.credit_given || 0).toLocaleString()}`, 'text-amber-600'],
+                      ['রিপ্লেসমেন্ট', `৳${parseInt(s.replacement_value || 0).toLocaleString()}`, 'text-purple-600'],
                     ].map(([label, val, cls]) => (
                       <div key={label} className="bg-gray-50 rounded-xl p-2 text-center">
                         <p className="text-xs text-gray-500">{label}</p>
@@ -185,7 +185,7 @@ export default function ManagerSettlements() {
           </p>
           <div className="bg-amber-50 rounded-xl p-3 text-sm">
             <p className="text-amber-700 font-semibold">
-              সিস্টেম হিসাব: ৳{parseFloat(detail?.shortage_qty_value || 0).toLocaleString('bn-BD')}
+              সিস্টেম হিসাব: ৳{parseFloat(detail?.shortage_qty_value || 0).toLocaleString()}
             </p>
           </div>
           <Input

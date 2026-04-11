@@ -159,7 +159,7 @@ export default function SalesForm() {
                 </div>
                 {qty > 0 && (
                   <p className="text-xs text-right text-secondary font-semibold mt-1">
-                    = ৳{(qty * p.price).toLocaleString('bn-BD')}
+                    = ৳{(qty * p.price).toLocaleString()}
                   </p>
                 )}
               </div>
@@ -202,7 +202,7 @@ export default function SalesForm() {
           })}
           {replacementValue > 0 && (
             <div className="bg-orange-50 rounded-xl p-3 text-sm text-orange-700 font-semibold">
-              রিপ্লেসমেন্ট মূল্য: ৳{replacementValue.toLocaleString('bn-BD')}
+              রিপ্লেসমেন্ট মূল্য: ৳{replacementValue.toLocaleString()}
               {creditBalanceAdded > 0 && (
                 <p className="text-xs text-emerald-600 mt-1">৳{creditBalanceAdded} কাস্টমারের ব্যালেন্সে যাবে</p>
               )}
@@ -220,13 +220,13 @@ export default function SalesForm() {
         <div className="space-y-4">
           {/* Summary */}
           <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-gray-100 dark:border-slate-700 shadow-sm space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">পণ্যের মোট</span><span className="font-semibold">৳{totalAmount.toLocaleString('bn-BD')}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">পণ্যের মোট</span><span className="font-semibold">৳{totalAmount.toLocaleString()}</span></div>
             {discountAmount > 0 && <div className="flex justify-between text-emerald-600"><span>ব্যালেন্স ছাড়</span><span>-৳{discountAmount}</span></div>}
             {replacementValue > 0 && <div className="flex justify-between text-orange-600"><span>রিপ্লেসমেন্ট</span><span>-৳{replacementValue}</span></div>}
             {vatAmount > 0 && <div className="flex justify-between text-amber-600"><span>ভ্যাট ({vatRate}%)</span><span>+৳{vatAmount}</span></div>}
             <div className="flex justify-between font-bold text-base pt-2 border-t border-gray-100 dark:border-slate-700">
               <span>পরিশোধযোগ্য</span>
-              <span className="text-secondary">৳{netAmount.toLocaleString('bn-BD')}</span>
+              <span className="text-secondary">৳{netAmount.toLocaleString()}</span>
             </div>
           </div>
 

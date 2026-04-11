@@ -105,12 +105,12 @@ export default function AdminReports() {
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {[['নেট বিক্রয়', `৳${parseInt(revenue.net_sales).toLocaleString('bn-BD')}`, 'text-secondary'],
-  ['মোট বিক্রয়', `৳${parseInt(revenue.gross_sales).toLocaleString('bn-BD')}`, 'text-secondary'],
-            ['ভ্যাট', `৳${parseInt(revenue.vat || 0).toLocaleString('bn-BD')}`, 'text-amber-600'],
-            ['ডিসকাউন্ট', `৳${parseInt(revenue.discount || 0).toLocaleString('bn-BD')}`, 'text-orange-500'],
-            ['মোট খরচ', `৳${parseInt(expenses.total_expenses).toLocaleString('bn-BD')}`, 'text-red-600'],
-            ['বেতন+কমিশন', `৳${parseInt((payroll.total_salary || 0) + (payroll.total_commission || 0)).toLocaleString('bn-BD')}`, 'text-purple-600'],
+          {[['নেট বিক্রয়', `৳${parseInt(revenue.net_sales).toLocaleString()}`, 'text-secondary'],
+  ['মোট বিক্রয়', `৳${parseInt(revenue.gross_sales).toLocaleString()}`, 'text-secondary'],
+            ['ভ্যাট', `৳${parseInt(revenue.vat || 0).toLocaleString()}`, 'text-amber-600'],
+            ['ডিসকাউন্ট', `৳${parseInt(revenue.discount || 0).toLocaleString()}`, 'text-orange-500'],
+            ['মোট খরচ', `৳${parseInt(expenses.total_expenses).toLocaleString()}`, 'text-red-600'],
+            ['বেতন+কমিশন', `৳${parseInt((payroll.total_salary || 0) + (payroll.total_commission || 0)).toLocaleString()}`, 'text-purple-600'],
           ].map(([label, val, cls]) => (
             <Card key={label} className="text-center">
               <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
@@ -131,14 +131,14 @@ export default function AdminReports() {
               <div key={label} className={`flex justify-between py-1.5 border-b border-gray-100 dark:border-slate-700 text-sm ${bold ? 'font-bold' : ''}`}>
                 <span className="text-gray-600 dark:text-gray-300">{label}</span>
                 <span className={neg ? 'text-red-500' : 'text-gray-800 dark:text-gray-100'}>
-                  {neg ? '-' : ''}৳{parseInt(val || 0).toLocaleString('bn-BD')}
+                  {neg ? '-' : ''}৳{parseInt(val || 0).toLocaleString()}
                 </span>
               </div>
             ))}
             <div className="flex justify-between pt-2 text-base font-bold">
               <span className="text-gray-800 dark:text-gray-100">নেট মুনাফা</span>
               <span className={parseFloat(summary.net_profit) >= 0 ? 'text-secondary' : 'text-red-600'}>
-                ৳{parseInt(summary.net_profit || 0).toLocaleString('bn-BD')}
+                ৳{parseInt(summary.net_profit || 0).toLocaleString()}
                 <span className="text-xs ml-1 font-normal">({summary.profit_margin}%)</span>
               </span>
             </div>
@@ -159,7 +159,7 @@ export default function AdminReports() {
       { title: 'রেফারেন্স', dataIndex: 'ref', render: v => <span className="font-mono text-xs">{v}</span> },
       { title: 'পরিমাণ', dataIndex: 'amount', render: (v, row) => (
         <span className={`font-bold text-sm ${row.entry_type === 'expense' ? 'text-red-600' : 'text-secondary'}`}>
-          {row.entry_type === 'expense' ? '-' : '+'}৳{parseInt(v || 0).toLocaleString('bn-BD')}
+          {row.entry_type === 'expense' ? '-' : '+'}৳{parseInt(v || 0).toLocaleString()}
         </span>
       )},
     ]
@@ -173,7 +173,7 @@ export default function AdminReports() {
           ].map(([l, v, c]) => (
             <Card key={l} className="text-center">
               <p className="text-xs text-gray-500 dark:text-gray-400">{l}</p>
-              <p className={`text-lg font-bold mt-1 ${c}`}>৳{parseInt(v || 0).toLocaleString('bn-BD')}</p>
+              <p className={`text-lg font-bold mt-1 ${c}`}>৳{parseInt(v || 0).toLocaleString()}</p>
             </Card>
           ))}
         </div>
@@ -190,9 +190,9 @@ export default function AdminReports() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
             ['Invoice', sales.invoice_count, 'text-primary'],
-            ['মোট বিক্রয়', `৳${parseInt(sales.gross_sales || 0).toLocaleString('bn-BD')}`, 'text-secondary'],
+            ['মোট বিক্রয়', `৳${parseInt(sales.gross_sales || 0).toLocaleString()}`, 'text-secondary'],
             ['উপস্থিত', attendance.present, 'text-emerald-600'],
-            ['মোট বেতন', `৳${parseInt(payroll.total_payable || 0).toLocaleString('bn-BD')}`, 'text-purple-600'],
+            ['মোট বেতন', `৳${parseInt(payroll.total_payable || 0).toLocaleString()}`, 'text-purple-600'],
           ].map(([l, v, c]) => (
             <Card key={l} className="text-center">
               <p className="text-xs text-gray-500 dark:text-gray-400">{l}</p>
@@ -204,7 +204,7 @@ export default function AdminReports() {
           <Table columns={[
             { title: 'নাম', dataIndex: 'name_bn' },
             { title: 'কোড', dataIndex: 'employee_code' },
-            { title: 'বিক্রয়', dataIndex: 'total_sales', render: v => `৳${parseInt(v || 0).toLocaleString('bn-BD')}` },
+            { title: 'বিক্রয়', dataIndex: 'total_sales', render: v => `৳${parseInt(v || 0).toLocaleString()}` },
             { title: 'Invoice', dataIndex: 'invoice_count' },
           ]} data={top_workers || []} compact />
         </Card>
@@ -221,7 +221,7 @@ export default function AdminReports() {
             { title: 'পণ্য', dataIndex: 'product_name' },
             { title: 'SKU', dataIndex: 'sku', render: v => <span className="font-mono text-xs">{v}</span> },
             { title: 'পরিমাণ', dataIndex: 'total_qty', render: v => <span className="font-bold text-primary">{parseInt(v || 0)}</span> },
-            { title: 'আয়', dataIndex: 'total_revenue', render: v => `৳${parseInt(v || 0).toLocaleString('bn-BD')}` },
+            { title: 'আয়', dataIndex: 'total_revenue', render: v => `৳${parseInt(v || 0).toLocaleString()}` },
           ]} data={data.products || []} compact />
         </Card>
         <Card title="🏪 শীর্ষ দোকান">
@@ -229,7 +229,7 @@ export default function AdminReports() {
             { title: 'দোকান', dataIndex: 'shop_name' },
             { title: 'রুট', dataIndex: 'route_name' },
             { title: 'অর্ডার', dataIndex: 'order_count', render: v => <span className="font-bold text-secondary">{v}</span> },
-            { title: 'মোট কেনা', dataIndex: 'total_purchase', render: v => `৳${parseInt(v || 0).toLocaleString('bn-BD')}` },
+            { title: 'মোট কেনা', dataIndex: 'total_purchase', render: v => `৳${parseInt(v || 0).toLocaleString()}` },
           ]} data={data.shops || []} compact />
         </Card>
       </div>
@@ -242,15 +242,15 @@ export default function AdminReports() {
       const cols = groupBy === 'worker' ? [
         { title: 'SR নাম', dataIndex: 'worker_name' },
         { title: 'Invoice', dataIndex: 'total_invoices' },
-        { title: 'মোট বিক্রয়', dataIndex: 'total_sales', render: v => `৳${parseInt(v).toLocaleString('bn-BD')}` },
-        { title: 'নগদ', dataIndex: 'cash', render: v => `৳${parseInt(v).toLocaleString('bn-BD')}` },
-        { title: 'বাকি', dataIndex: 'credit', render: v => `৳${parseInt(v).toLocaleString('bn-BD')}` },
+        { title: 'মোট বিক্রয়', dataIndex: 'total_sales', render: v => `৳${parseInt(v).toLocaleString()}` },
+        { title: 'নগদ', dataIndex: 'cash', render: v => `৳${parseInt(v).toLocaleString()}` },
+        { title: 'বাকি', dataIndex: 'credit', render: v => `৳${parseInt(v).toLocaleString()}` },
       ] : [
         { title: 'তারিখ', dataIndex: 'date', render: v => new Date(v).toLocaleDateString('bn-BD') },
         { title: 'Invoice', dataIndex: 'invoice_number' },
         { title: 'SR', dataIndex: 'worker_name' },
         { title: 'দোকান', dataIndex: 'shop_name' },
-        { title: 'মোট', dataIndex: 'total_amount', render: v => `৳${parseInt(v).toLocaleString('bn-BD')}` },
+        { title: 'মোট', dataIndex: 'total_amount', render: v => `৳${parseInt(v).toLocaleString()}` },
         { title: 'পেমেন্ট', dataIndex: 'payment_method', render: v => <Badge variant={v} /> },
         { title: 'OTP', dataIndex: 'otp_verified', render: v => v ? '✅' : '❌' },
       ]
@@ -259,9 +259,9 @@ export default function AdminReports() {
           {data.summary && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                ['মোট বিক্রয়', `৳${parseInt(data.summary.total_sales || 0).toLocaleString('bn-BD')}`, 'text-primary'],
-                ['নগদ', `৳${parseInt(data.summary.total_cash || 0).toLocaleString('bn-BD')}`, 'text-secondary'],
-                ['বাকি', `৳${parseInt(data.summary.total_credit || 0).toLocaleString('bn-BD')}`, 'text-amber-600'],
+                ['মোট বিক্রয়', `৳${parseInt(data.summary.total_sales || 0).toLocaleString()}`, 'text-primary'],
+                ['নগদ', `৳${parseInt(data.summary.total_cash || 0).toLocaleString()}`, 'text-secondary'],
+                ['বাকি', `৳${parseInt(data.summary.total_credit || 0).toLocaleString()}`, 'text-amber-600'],
                 ['Invoice', data.summary.total_invoices || 0, 'text-gray-700 dark:text-gray-200'],
               ].map(([l, v, c]) => (
                 <Card key={l} className="text-center">
@@ -295,18 +295,18 @@ export default function AdminReports() {
     if (tab === 'commission' && data.workers) {
       return <Card title="কমিশন রিপোর্ট"><Table columns={[
         { title: 'নাম', dataIndex: 'name_bn' },
-        { title: 'বিক্রয়', dataIndex: 'total_sales', render: v => `৳${parseInt(v || 0).toLocaleString('bn-BD')}` },
+        { title: 'বিক্রয়', dataIndex: 'total_sales', render: v => `৳${parseInt(v || 0).toLocaleString()}` },
         { title: 'কমিশন', dataIndex: 'commission', render: v => <span className="text-amber-600 font-bold">৳{parseInt(v || 0)}</span> },
         { title: 'বোনাস', dataIndex: 'bonus', render: v => `৳${parseInt(v || 0)}` },
-        { title: 'নেট বেতন', dataIndex: 'net_payable', render: v => <span className="font-bold text-secondary">৳{parseInt(v || 0).toLocaleString('bn-BD')}</span> },
+        { title: 'নেট বেতন', dataIndex: 'net_payable', render: v => <span className="font-bold text-secondary">৳{parseInt(v || 0).toLocaleString()}</span> },
       ]} data={data.workers} compact /></Card>
     }
     if (tab === 'credit' && data.customers) {
       return <Card title="ক্রেডিট রিপোর্ট"><Table columns={[
         { title: 'দোকান', dataIndex: 'shop_name' },
         { title: 'রুট', dataIndex: 'route_name' },
-        { title: 'লিমিট', dataIndex: 'credit_limit', render: v => `৳${parseInt(v || 0).toLocaleString('bn-BD')}` },
-        { title: 'বকেয়া', dataIndex: 'current_credit', render: v => <span className="font-bold text-red-600">৳{parseInt(v || 0).toLocaleString('bn-BD')}</span> },
+        { title: 'লিমিট', dataIndex: 'credit_limit', render: v => `৳${parseInt(v || 0).toLocaleString()}` },
+        { title: 'বকেয়া', dataIndex: 'current_credit', render: v => <span className="font-bold text-red-600">৳{parseInt(v || 0).toLocaleString()}</span> },
         { title: 'ব্যবহার', dataIndex: 'usage_pct', render: v => <span className={parseFloat(v) >= 80 ? 'text-red-600 font-bold' : 'text-gray-600'}>{v}%</span> },
       ]} data={data.customers} compact /></Card>
     }

@@ -73,7 +73,7 @@ export default function WorkerDashboard() {
           <FiAlertTriangle className="text-red-500 text-xl flex-shrink-0" />
           <div>
             <p className="text-red-700 font-semibold text-sm">বকেয়া আছে</p>
-            <p className="text-red-600 text-xs">৳{dues.toLocaleString('bn-BD')} পরিশোধ করুন</p>
+            <p className="text-red-600 text-xs">৳{dues.toLocaleString()} পরিশোধ করুন</p>
           </div>
         </div>
       )}
@@ -89,7 +89,7 @@ export default function WorkerDashboard() {
             <div>
               <p className="font-semibold text-sm text-gray-800">আজকের অর্ডার</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                মোট: ৳{parseInt(order.total_amount || 0).toLocaleString('bn-BD')}
+                মোট: ৳{parseInt(order.total_amount || 0).toLocaleString()}
               </p>
             </div>
             <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
@@ -158,10 +158,10 @@ export default function WorkerDashboard() {
       {/* Sales Summary */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { label: 'মোট বিক্রয়',      value: `৳${parseInt(sales.total_amount || 0).toLocaleString('bn-BD')}`, icon: '💰', color: 'bg-primary/10 text-primary' },
-          { label: 'নগদ সংগ্রহ',       value: `৳${parseInt(sales.cash_received || 0).toLocaleString('bn-BD')}`, icon: '💵', color: 'bg-secondary/10 text-secondary' },
-          { label: 'বাকি দেওয়া',       value: `৳${parseInt(sales.credit_given || 0).toLocaleString('bn-BD')}`, icon: '📋', color: 'bg-amber-50 text-amber-600' },
-          { label: 'রিপ্লেসমেন্ট',    value: `৳${parseInt(sales.replacement_value || 0).toLocaleString('bn-BD')}`, icon: '🔄', color: 'bg-purple-50 text-purple-600' },
+          { label: 'মোট বিক্রয়',      value: `৳${parseInt(sales.total_amount || 0).toLocaleString()}`, icon: '💰', color: 'bg-primary/10 text-primary' },
+          { label: 'নগদ সংগ্রহ',       value: `৳${parseInt(sales.cash_received || 0).toLocaleString()}`, icon: '💵', color: 'bg-secondary/10 text-secondary' },
+          { label: 'বাকি দেওয়া',       value: `৳${parseInt(sales.credit_given || 0).toLocaleString()}`, icon: '📋', color: 'bg-amber-50 text-amber-600' },
+          { label: 'রিপ্লেসমেন্ট',    value: `৳${parseInt(sales.replacement_value || 0).toLocaleString()}`, icon: '🔄', color: 'bg-purple-50 text-purple-600' },
         ].map(item => (
           <div key={item.label} className={`rounded-2xl p-3 ${item.color}`}>
             <div className="flex items-center gap-2">

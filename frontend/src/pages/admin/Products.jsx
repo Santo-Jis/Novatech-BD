@@ -87,7 +87,7 @@ export default function AdminProducts() {
         </div>
       )
     },
-    { title: 'মূল্য', dataIndex: 'price', render: v => <span className="font-semibold text-secondary">৳{parseFloat(v).toLocaleString('bn-BD')}</span> },
+    { title: 'মূল্য', dataIndex: 'price', render: v => <span className="font-semibold text-secondary">৳{parseFloat(v).toLocaleString()}</span> },
     {
       title: 'স্টক',
       render: (_, row) => (

@@ -100,7 +100,7 @@ export function AIInsights() {
                   </div>
                   <p className="text-sm text-gray-600 mt-1">{insight.description}</p>
                   <p className="text-xs text-gray-400 mt-2">
-                    {new Date(insight.created_at).toLocaleString('bn-BD')}
+                    {new Date(insight.created_at).toLocaleString()}
                   </p>
                 </div>
               </div>
