@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { ref, onValue, off, push, set, serverTimestamp } from 'firebase/database'
 import { db } from './config'
 import { useAuthStore } from '../store/auth.store'
@@ -302,5 +302,5 @@ export function useTeamPresence(workerIds = []) {
 export function FirebaseProvider({ children }) {
   useFirebaseNotifications()
   useOnlinePresence()
-  return <>{children}</>
+  return React.createElement(React.Fragment, null, children)
 }
