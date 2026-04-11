@@ -278,9 +278,9 @@ export default function Profile() {
       {/* ══ আজকের Quick Stats ══ */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { label: 'আজকের বিক্রয়', value: `৳${parseInt(stats?.total_amount || stats?.total_sales || 0).toLocaleString('bn-BD')}`, icon: FiDollarSign, color: 'text-green-600', bg: 'bg-green-50' },
-          { label: 'মোট Invoice',   value: parseInt(stats?.invoice_count || stats?.total_sales || 0).toString(), icon: FiTrendingUp, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'মোট কাস্টমার', value: (customerCount ?? p?.total_customers ?? '—').toString(), icon: FiUsers, color: 'text-purple-600', bg: 'bg-purple-50' },
+          { label: 'আজকের বিক্রয়', value: `৳${parseInt(stats?.total_amount || 0).toLocaleString('bn-BD')}`, icon: FiDollarSign, color: 'text-green-600', bg: 'bg-green-50' },
+          { label: 'মোট Invoice',   value: String(parseInt(stats?.invoice_count || 0)), icon: FiTrendingUp, color: 'text-blue-600', bg: 'bg-blue-50' },
+          { label: 'মোট কাস্টমার', value: customerCount != null ? String(customerCount) : '—', icon: FiUsers, color: 'text-purple-600', bg: 'bg-purple-50' },
           { label: 'যোগদান',        value: p?.join_date ? new Date(p.join_date).toLocaleDateString('bn-BD') : '—', icon: FiCalendar, color: 'text-orange-600', bg: 'bg-orange-50' },
         ].map((s, i) => (
           <div key={i} className="bg-white rounded-2xl p-4 shadow-sm">
