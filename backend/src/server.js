@@ -177,6 +177,26 @@ const { startCommissionJob } = require('./jobs/commission.job');
 const { startBonusJob }      = require('./jobs/bonus.job');
 const { startAIJob }         = require('./jobs/ai.job');
 
+
+// ============================================================
+// KEEP-ALIVE — Render free tier ঘুমানো বন্ধ করতে
+// প্রতি ১৪ মিনিটে নিজেকে ping করবে
+// ============================================================
+
+const keepAlive = () => {
+    const axios = require('axios');
+    const url = process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 5000}`;
+    
+    setInterval(async () => {
+        try {
+            await axios.get(`${url}/api/health`, { timeout: 5000 });
+            console.log('✅ Keep-alive ping সফল');
+        } catch (err) {
+            console.log('⚠️ Keep-alive ping ব্যর্থ:', err.message);
+        }
+    }, 14 * 60 * 1000); // ১৪ মিনিট
+};
+
 // ============================================================
 // START SERVER
 // ============================================================
