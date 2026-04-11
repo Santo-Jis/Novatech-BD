@@ -35,7 +35,7 @@ export default function Profile() {
         name_en: meData.name_en || '',
         phone: meData.phone || '',
         current_address: meData.current_address || '',
-        emergency_contact: meData.emergency_contact || ''
+        emergency_contact: String(meData.emergency_contact || '')
       })
     } catch {
       setError('তথ্য লোড হয়নি।')
