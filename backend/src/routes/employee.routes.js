@@ -1,7 +1,6 @@
 const express   = require('express');
 const router    = express.Router();
 const multer    = require('multer');
-const { broadcastEmail }  = require('../middlewares/auth');
 const {
     canCreateEmployee,
     canApproveEmployee,
@@ -26,8 +25,10 @@ const {
     rejectEdit,
     getEmployeePDF,
     updateOwnProfile,
-    uploadProfilePhoto,
-    broadcastEmail} = require('../controllers/employee.controller');
+    uploadProfilePhoto
+,
+    broadcastEmail
+} = require('../controllers/employee.controller');
 
 // ============================================================
 // FILE UPLOAD (Multer — Memory Storage)
