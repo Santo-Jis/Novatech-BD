@@ -8,7 +8,8 @@ const {
     isWeeklyOff,
     getWorkingDays,
     updateFirebaseAttendance,
-    notifyManagerOnCheckIn
+    notifyManagerOnCheckIn,
+    getSettings
 } = require('../services/attendance.service');
 
 // ============================================================
@@ -514,6 +515,29 @@ const getMonthlyReport = async (req, res) => {
     }
 };
 
+
+// ============================================================
+// GET ATTENDANCE SETTINGS (Worker-accessible)
+// GET /api/attendance/settings
+// ============================================================
+
+const getAttendanceSettings = async (req, res) => {
+    try {
+        const settings = await getSettings();
+        return res.json({
+            success: true,
+            data: {
+                attendance_checkin_start: settings.attendance_checkin_start || '09:00',
+                attendance_popup_cutoff:  settings.attendance_popup_cutoff  || '14:30',
+                attendance_checkin_end:   settings.attendance_checkin_end   || '10:00',
+                checkout_time:            settings.checkout_time            || '20:30',
+            }
+        });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: 'সেটিংস আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     checkIn,
     checkOut,
@@ -521,5 +545,7 @@ module.exports = {
     getTodayLive,
     getTeamAttendance,
     getAllAttendance,
-    getMonthlyReport
+    getMonthlyReport,
+    getAttendanceSettings
 };
+
