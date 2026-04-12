@@ -8,13 +8,14 @@ const { query } = require('../config/db');
 const getRoutes = async (req, res) => {
     try {
         let conditions = ['r.is_active = true'];
+        let paramCount = 0;
+
         if (req.user.role === 'worker') {
             paramCount++;
             conditions.push(`r.requested_by = $${paramCount}`);
             params.push(req.user.id);
         }
         let params     = [];
-        let paramCount = 0;
 
         // Manager শুধু নিজের রুট
         if (req.teamFilter) {
