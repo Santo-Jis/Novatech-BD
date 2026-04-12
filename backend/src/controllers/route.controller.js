@@ -7,11 +7,11 @@ const { query } = require('../config/db');
 
 const getRoutes = async (req, res) => {
     try {
+        let params     = [];
         let conditions = ['r.is_active = true'];
         let paramCount = 0;
 
         // Worker সব active routes দেখবে
-        let params     = [];
 
         // Manager শুধু নিজের রুট
         if (req.teamFilter) {
