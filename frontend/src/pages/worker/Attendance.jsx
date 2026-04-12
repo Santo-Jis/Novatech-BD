@@ -1,274 +1,352 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
-import FingerPrint from '../../components/FingerPrint'
 import Camera from '../../components/Camera'
 import toast from 'react-hot-toast'
 
-const STEPS = ['finger', 'selfie', 'location', 'done']
+// ─────────────────────────────────────────────
+// Hold Button — ৩ সেকেন্ড চেপে ধরো
+// ─────────────────────────────────────────────
+function HoldButton({ label, color = 'blue', onDone }) {
+  const [pct, setPct]         = useState(0)
+  const [active, setActive]   = useState(false)
+  const [done, setDone]       = useState(false)
+  const intervalRef           = useRef(null)
+  const startRef              = useRef(null)
+  const DURATION              = 3000
 
+  const accent = color === 'green'
+    ? { bg: '#065f46', light: '#d1fae5', text: '#065f46', border: '#6ee7b7' }
+    : { bg: '#1e3a8a', light: '#dbeafe', text: '#1e3a8a', border: '#93c5fd' }
+
+  function begin() {
+    if (done) return
+    setActive(true)
+    startRef.current = Date.now()
+    intervalRef.current = setInterval(() => {
+      const p = Math.min(100, ((Date.now() - startRef.current) / DURATION) * 100)
+      setPct(p)
+      if (p >= 100) {
+        clearInterval(intervalRef.current)
+        setDone(true)
+        setActive(false)
+        onDone?.()
+      }
+    }, 30)
+  }
+
+  function stop() {
+    if (done) return
+    clearInterval(intervalRef.current)
+    setActive(false)
+    setPct(0)
+  }
+
+  useEffect(() => () => clearInterval(intervalRef.current), [])
+
+  const radius = 54
+  const circ   = 2 * Math.PI * radius
+  const dash   = circ - (pct / 100) * circ
+
+  return (
+    <div
+      style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16, userSelect:'none', WebkitUserSelect:'none' }}
+    >
+      <div style={{ position:'relative', width:160, height:160, display:'flex', alignItems:'center', justifyContent:'center' }}>
+
+        {/* SVG ring */}
+        <svg width="160" height="160" style={{ position:'absolute', inset:0, transform:'rotate(-90deg)' }}>
+          <circle cx="80" cy="80" r={radius} fill="none" stroke="#e5e7eb" strokeWidth="8"/>
+          <circle
+            cx="80" cy="80" r={radius}
+            fill="none"
+            stroke={done ? '#10b981' : accent.bg}
+            strokeWidth="8"
+            strokeLinecap="round"
+            strokeDasharray={circ}
+            strokeDashoffset={dash}
+            style={{ transition:'stroke-dashoffset 0.03s linear' }}
+          />
+        </svg>
+
+        {/* Pulse ring */}
+        {active && (
+          <div style={{
+            position:'absolute', inset:0, borderRadius:'50%',
+            border:`3px solid ${accent.bg}`,
+            animation:'ping 1s cubic-bezier(0,0,0.2,1) infinite',
+            opacity:0.3, pointerEvents:'none'
+          }}/>
+        )}
+
+        {/* Circle button */}
+        <div
+          onMouseDown={begin}
+          onMouseUp={stop}
+          onMouseLeave={stop}
+          onTouchStart={(e) => { e.preventDefault(); begin() }}
+          onTouchEnd={(e)   => { e.preventDefault(); stop()  }}
+          onTouchCancel={(e)=> { e.preventDefault(); stop()  }}
+          onContextMenu={(e)=> e.preventDefault()}
+          style={{
+            width:120, height:120,
+            borderRadius:'50%',
+            background: done ? '#d1fae5' : active ? accent.bg : accent.light,
+            border: `4px solid ${done ? '#10b981' : accent.border}`,
+            display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4,
+            cursor:'pointer',
+            transform: active ? 'scale(0.93)' : 'scale(1)',
+            transition:'transform 0.15s, background 0.2s',
+            touchAction:'none',
+            WebkitTapHighlightColor:'transparent',
+          }}
+        >
+          <span style={{ fontSize:'2.4rem', lineHeight:1 }}>
+            {done ? '✅' : active ? '👆' : '☝️'}
+          </span>
+          <span style={{
+            fontSize:'0.72rem', fontWeight:700,
+            color: done ? '#059669' : active ? '#fff' : accent.text,
+          }}>
+            {done ? 'সম্পন্ন!' : active ? `${Math.round(pct)}%` : label}
+          </span>
+        </div>
+      </div>
+
+      {!done && (
+        <div style={{ textAlign:'center' }}>
+          <p style={{ fontWeight:700, color:'#1f2937', fontSize:'0.95rem' }}>{label}</p>
+          <p style={{ color:'#9ca3af', fontSize:'0.8rem', marginTop:2 }}>৩ সেকেন্ড চেপে ধরুন</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// Main Attendance Page
+// ─────────────────────────────────────────────
 export default function WorkerAttendance() {
-  const navigate          = useNavigate()
-  const [mode,      setMode]      = useState(null)    // 'checkin' | 'checkout'
-  const [step,      setStep]      = useState('finger')
-  const [selfieBlob, setSelfieBlob] = useState(null)
-  const [location,  setLocation]  = useState(null)
+  const navigate = useNavigate()
+
+  const [mode,      setMode]      = useState(null)   // 'checkin' | 'checkout'
+  const [step,      setStep]      = useState('hold') // 'hold' | 'selfie' | 'loading' | 'done'
   const [todayAtt,  setTodayAtt]  = useState(null)
   const [loading,   setLoading]   = useState(true)
-  const [submitting, setSubmitting] = useState(false)
   const [lateInfo,  setLateInfo]  = useState(null)
-  const [settings,  setSettings]  = useState({
-    attendance_checkin_start: '09:00',
-    attendance_popup_cutoff:  '14:30',
-  })
+  const [settings,  setSettings]  = useState({ attendance_checkin_start:'09:00', attendance_popup_cutoff:'14:30' })
 
-  // আজকের হাজিরা ও সেটিংস লোড
   useEffect(() => {
-    // Settings লোড করুন
-    api.get('/attendance/settings')
-      .then(res => {
-        if (res.data?.data) setSettings(res.data.data)
-      })
-      .catch(() => {})
-
-    api.get('/attendance/my?month=' + (new Date().getMonth() + 1) + '&year=' + new Date().getFullYear())
-      .then(res => {
+    api.get('/attendance/settings').then(r => { if (r.data?.data) setSettings(r.data.data) }).catch(()=>{})
+    const m = new Date().getMonth() + 1
+    const y = new Date().getFullYear()
+    api.get(`/attendance/my?month=${m}&year=${y}`)
+      .then(r => {
         const today = new Date().toISOString().split('T')[0]
-        const att   = res.data.data.attendance.find(a => a.date === today)
-        setTodayAtt(att || null)
+        setTodayAtt(r.data.data.attendance.find(a => a.date === today) || null)
       })
       .finally(() => setLoading(false))
   }, [])
 
-  // Location নেওয়া
-  const getLocation = () => {
-    return new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new Error('GPS সাপোর্ট নেই।'))
-        return
-      }
-      navigator.geolocation.getCurrentPosition(
-        pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-        () => reject(new Error('লোকেশন নেওয়া সম্ভব হয়নি।'))
-      )
-    })
-  }
+  // সময় হিসাব
+  const now  = new Date()
+  const time = now.getHours() * 60 + now.getMinutes()
+  const [sH, sM] = (settings.attendance_checkin_start || '09:00').split(':').map(Number)
+  const [cH, cM] = (settings.attendance_popup_cutoff  || '14:30').split(':').map(Number)
+  const canCheckIn  = !todayAtt?.check_in_time  && time >= sH*60+sM && time <= cH*60+cM
+  const canCheckOut = !!todayAtt?.check_in_time && !todayAtt?.check_out_time
 
-  // FingerPrint সম্পন্ন হলে
-  const onFingerDone = () => {
-    setStep('selfie')
-  }
-
-  // Selfie নেওয়া হলে
-  const onSelfieCaptured = (blob) => {
-    setSelfieBlob(blob)
-    setStep('location')
-    // লোকেশন অটো নিন
-    getLocation()
-      .then(loc => {
-        setLocation(loc)
-        setStep('submit')
-        handleSubmit(blob, loc)
-      })
-      .catch(() => {
-        toast.error('লোকেশন নেওয়া সম্ভব হয়নি। GPS চালু করুন।')
-        setStep('selfie')
-      })
-  }
-
-  // Submit
-  const handleSubmit = async (blob, loc) => {
-    setSubmitting(true)
+  // Selfie → Submit
+  async function onSelfie(blob) {
+    setStep('loading')
     try {
-      const formData = new FormData()
-      formData.append('selfie',    blob, 'selfie.jpg')
-      formData.append('latitude',  loc.latitude)
-      formData.append('longitude', loc.longitude)
+      const loc = await new Promise((res, rej) =>
+        navigator.geolocation.getCurrentPosition(
+          p => res({ latitude: p.coords.latitude, longitude: p.coords.longitude }),
+          () => rej(new Error('GPS পাওয়া যায়নি'))
+        )
+      )
+      const fd = new FormData()
+      fd.append('selfie',    blob, 'selfie.jpg')
+      fd.append('latitude',  loc.latitude)
+      fd.append('longitude', loc.longitude)
 
-      let res
-      if (mode === 'checkin') {
-        res = await api.post('/attendance/checkin', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        })
-        if (res.data.data.isLate) {
-          setLateInfo(res.data.data)
-        }
-      } else {
-        res = await api.post('/attendance/checkout', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' }
-        })
-      }
+      const url = mode === 'checkin' ? '/attendance/checkin' : '/attendance/checkout'
+      const res = await api.post(url, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
 
+      if (mode === 'checkin' && res.data.data?.isLate) setLateInfo(res.data.data)
       toast.success(res.data.message)
       setStep('done')
-
     } catch (err) {
-      toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।')
-      setStep('finger')
-    } finally {
-      setSubmitting(false)
+      toast.error(err.response?.data?.message || err.message || 'সমস্যা হয়েছে')
+      setStep('hold')
     }
   }
 
-  if (loading) {
-    return <div className="p-4"><div className="h-64 bg-white rounded-2xl animate-pulse" /></div>
+  function startMode(m) {
+    setMode(m)
+    setStep('hold')
+    setLateInfo(null)
   }
 
-  // চেক-ইন/আউট অপশন
-  if (!mode) {
-    const now    = new Date()
-    const hour   = now.getHours()
-    const minute = now.getMinutes()
-    const time   = hour * 60 + minute
-
-    // Settings থেকে সময় নেওয়া (hardcoded নয়)
-    const [startH, startM] = (settings.attendance_checkin_start || '09:00').split(':').map(Number)
-    const [cutH,   cutM]   = (settings.attendance_popup_cutoff  || '14:30').split(':').map(Number)
-    const startTime = startH * 60 + startM
-    const cutTime   = cutH   * 60 + cutM
-
-    const canCheckIn  = !todayAtt?.check_in_time  && time >= startTime && time <= cutTime
-    const canCheckOut = !!todayAtt?.check_in_time && !todayAtt?.check_out_time
-
-    return (
-      <div className="p-4 space-y-4 animate-fade-in">
-        <h2 className="text-xl font-bold text-gray-800 text-center">হাজিরা</h2>
-
-        {/* Today Status */}
-        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-          <p className="text-sm font-semibold text-gray-700 mb-3">আজকের অবস্থা</p>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-gray-50 rounded-xl p-3 text-center">
-              <p className="text-xs text-gray-500">চেক-ইন</p>
-              <p className="font-bold text-sm text-gray-800 mt-1">
-                {todayAtt?.check_in_time
-                  ? new Date(todayAtt.check_in_time).toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })
-                  : '—'
-                }
-              </p>
-            </div>
-            <div className="bg-gray-50 rounded-xl p-3 text-center">
-              <p className="text-xs text-gray-500">চেক-আউট</p>
-              <p className="font-bold text-sm text-gray-800 mt-1">
-                {todayAtt?.check_out_time
-                  ? new Date(todayAtt.check_out_time).toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })
-                  : '—'
-                }
-              </p>
-            </div>
-          </div>
-          {todayAtt?.late_minutes > 0 && (
-            <div className="mt-3 bg-amber-50 rounded-xl p-2 text-center">
-              <p className="text-xs text-amber-700">
-                দেরি: {todayAtt.late_minutes} মিনিট | কর্তন: ৳{parseFloat(todayAtt.salary_deduction || 0)}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Buttons */}
-        <div className="space-y-3">
-          {canCheckIn && (
-            <button
-              onClick={() => setMode('checkin')}
-              className="w-full py-4 bg-secondary text-white rounded-2xl font-bold text-lg shadow-lg shadow-secondary/30 active:scale-95 transition-transform"
-            >
-              👆 চেক-ইন করুন
-            </button>
-          )}
-
-          {canCheckOut && (
-            <button
-              onClick={() => setMode('checkout')}
-              className="w-full py-4 bg-primary text-white rounded-2xl font-bold text-lg shadow-lg shadow-primary/30 active:scale-95 transition-transform"
-            >
-              👋 চেক-আউট করুন
-            </button>
-          )}
-
-          {todayAtt?.check_out_time && (
-            <div className="text-center py-6">
-              <span className="text-4xl">✅</span>
-              <p className="text-gray-600 font-semibold mt-2">আজকের হাজিরা সম্পন্ন!</p>
-            </div>
-          )}
-
-          {!canCheckIn && !canCheckOut && !todayAtt?.check_out_time && (
-            <div className="text-center py-6 text-gray-400">
-              <p className="text-sm">চেক-ইনের সময় {settings.attendance_checkin_start} - {settings.attendance_popup_cutoff}</p>
-            </div>
-          )}
-        </div>
-      </div>
-    )
+  function cancel() {
+    setMode(null)
+    setStep('hold')
   }
 
-  // Done screen
-  if (step === 'done') {
-    return (
-      <div className="p-4 flex flex-col items-center justify-center min-h-[60vh] animate-fade-in">
-        <span className="text-6xl mb-4">🎉</span>
-        <h2 className="text-xl font-bold text-gray-800">
-          {mode === 'checkin' ? 'চেক-ইন সফল!' : 'চেক-আউট সফল!'}
-        </h2>
-        {lateInfo && (
-          <div className="mt-4 bg-amber-50 rounded-2xl p-4 text-center w-full">
-            <p className="text-amber-700 font-semibold">⚠️ দেরি হয়েছে</p>
-            <p className="text-amber-600 text-sm mt-1">
-              {lateInfo.lateMinutes} মিনিট দেরি — কর্তন: ৳{lateInfo.deduction}
+  // ── Loading ──
+  if (loading) return (
+    <div style={{ padding:16 }}>
+      <div style={{ height:200, background:'#f3f4f6', borderRadius:16, animation:'pulse 2s infinite' }}/>
+    </div>
+  )
+
+  // ── হোম স্ক্রিন ──
+  if (!mode) return (
+    <div style={{ padding:16 }}>
+      {/* হেডার */}
+      <h2 style={{ fontSize:'1.25rem', fontWeight:800, textAlign:'center', color:'#1f2937', marginBottom:16 }}>হাজিরা</h2>
+
+      {/* আজকের অবস্থা */}
+      <div style={{ background:'#fff', borderRadius:16, padding:16, boxShadow:'0 1px 4px rgba(0,0,0,0.08)', marginBottom:16 }}>
+        <p style={{ fontWeight:700, color:'#374151', marginBottom:12, fontSize:'0.9rem' }}>আজকের অবস্থা</p>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+          {[
+            { label:'চেক-ইন',  val: todayAtt?.check_in_time  },
+            { label:'চেক-আউট', val: todayAtt?.check_out_time },
+          ].map(({ label, val }) => (
+            <div key={label} style={{ background:'#f9fafb', borderRadius:12, padding:'10px 8px', textAlign:'center' }}>
+              <p style={{ fontSize:'0.75rem', color:'#6b7280' }}>{label}</p>
+              <p style={{ fontWeight:800, color: val ? '#1f2937' : '#d1d5db', marginTop:4, fontSize:'0.9rem' }}>
+                {val ? new Date(val).toLocaleTimeString('bn-BD', { hour:'2-digit', minute:'2-digit' }) : '—'}
+              </p>
+            </div>
+          ))}
+        </div>
+        {todayAtt?.late_minutes > 0 && (
+          <div style={{ marginTop:10, background:'#fffbeb', borderRadius:10, padding:'8px 12px', textAlign:'center' }}>
+            <p style={{ fontSize:'0.78rem', color:'#b45309' }}>
+              ⚠️ দেরি: {todayAtt.late_minutes} মিনিট | কর্তন: ৳{parseFloat(todayAtt.salary_deduction || 0).toFixed(0)}
             </p>
           </div>
         )}
-        <button
-          onClick={() => navigate('/worker/dashboard')}
-          className="mt-6 w-full py-3 bg-primary text-white rounded-2xl font-semibold"
-        >
-          ড্যাশবোর্ডে যান
-        </button>
       </div>
-    )
-  }
 
-  // Step: Finger
-  if (step === 'finger') {
-    return (
-      <div className="p-4 flex flex-col items-center justify-center min-h-[70vh] animate-fade-in">
-        <p className="text-lg font-bold text-gray-800 mb-2">
-          {mode === 'checkin' ? 'চেক-ইন' : 'চেক-আউট'}
-        </p>
-        <p className="text-sm text-gray-500 mb-8">৩ সেকেন্ড চেপে ধরুন</p>
-        <FingerPrint
-          onSuccess={onFingerDone}
-          label={mode === 'checkin' ? 'চেক-ইন' : 'চেক-আউট'}
-          color={mode === 'checkin' ? 'secondary' : 'primary'}
-        />
-        <button onClick={() => setMode(null)} className="mt-8 text-sm text-gray-400 hover:text-gray-600">
-          বাতিল করুন
-        </button>
+      {/* বাটন */}
+      <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+        {canCheckIn && (
+          <button
+            onClick={() => startMode('checkin')}
+            style={{
+              width:'100%', padding:'16px', borderRadius:16, border:'none',
+              background:'#065f46', color:'#fff', fontSize:'1rem', fontWeight:800,
+              cursor:'pointer', boxShadow:'0 4px 14px rgba(6,95,70,0.35)',
+              display:'flex', alignItems:'center', justifyContent:'center', gap:8
+            }}
+          >
+            ☝️ চেক-ইন করুন
+          </button>
+        )}
+        {canCheckOut && (
+          <button
+            onClick={() => startMode('checkout')}
+            style={{
+              width:'100%', padding:'16px', borderRadius:16, border:'none',
+              background:'#1e3a8a', color:'#fff', fontSize:'1rem', fontWeight:800,
+              cursor:'pointer', boxShadow:'0 4px 14px rgba(30,58,138,0.35)',
+              display:'flex', alignItems:'center', justifyContent:'center', gap:8
+            }}
+          >
+            👋 চেক-আউট করুন
+          </button>
+        )}
+        {todayAtt?.check_out_time && (
+          <div style={{ textAlign:'center', padding:'24px 0' }}>
+            <span style={{ fontSize:'3rem' }}>✅</span>
+            <p style={{ color:'#374151', fontWeight:700, marginTop:8 }}>আজকের হাজিরা সম্পন্ন!</p>
+          </div>
+        )}
+        {!canCheckIn && !canCheckOut && !todayAtt?.check_out_time && (
+          <div style={{ textAlign:'center', padding:'24px 0', color:'#9ca3af' }}>
+            <p style={{ fontSize:'0.88rem' }}>
+              চেক-ইনের সময়: {settings.attendance_checkin_start} — {settings.attendance_popup_cutoff}
+            </p>
+          </div>
+        )}
       </div>
-    )
-  }
+    </div>
+  )
 
-  // Step: Selfie
-  if (step === 'selfie') {
-    return (
-      <div className="p-4 animate-fade-in">
-        <p className="text-lg font-bold text-gray-800 mb-2 text-center">সেলফি দিন</p>
-        <p className="text-sm text-gray-500 mb-4 text-center">আপনার মুখ ফ্রেমের মধ্যে রাখুন</p>
-        <Camera onCapture={onSelfieCaptured} onClose={() => setStep('finger')} />
-      </div>
-    )
-  }
+  // ── Hold Step ──
+  if (step === 'hold') return (
+    <div style={{ padding:16, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'70vh' }}>
+      <p style={{ fontSize:'1.1rem', fontWeight:800, color:'#1f2937', marginBottom:6 }}>
+        {mode === 'checkin' ? 'চেক-ইন' : 'চেক-আউট'}
+      </p>
+      <p style={{ color:'#6b7280', fontSize:'0.85rem', marginBottom:32 }}>নিচের বাটন ৩ সেকেন্ড চেপে ধরুন</p>
 
-  // Step: Location loading
-  if (step === 'location' || step === 'submit') {
-    return (
-      <div className="p-4 flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-        <p className="text-gray-600 mt-4 font-semibold">
-          {step === 'location' ? 'লোকেশন নেওয়া হচ্ছে...' : 'সাবমিট হচ্ছে...'}
-        </p>
-      </div>
-    )
-  }
-        }
+      <HoldButton
+        label={mode === 'checkin' ? 'চেক-ইন' : 'চেক-আউট'}
+        color={mode === 'checkin' ? 'green' : 'blue'}
+        onDone={() => setStep('selfie')}
+      />
+
+      <button
+        onClick={cancel}
+        style={{ marginTop:32, background:'none', border:'none', color:'#9ca3af', fontSize:'0.88rem', cursor:'pointer' }}
+      >
+        বাতিল করুন
+      </button>
+    </div>
+  )
+
+  // ── Selfie Step ──
+  if (step === 'selfie') return (
+    <div style={{ padding:16 }}>
+      <p style={{ fontSize:'1.1rem', fontWeight:800, color:'#1f2937', textAlign:'center', marginBottom:4 }}>সেলফি দিন</p>
+      <p style={{ color:'#6b7280', fontSize:'0.85rem', textAlign:'center', marginBottom:16 }}>আপনার মুখ ফ্রেমের মধ্যে রাখুন</p>
+      <Camera onCapture={onSelfie} onClose={() => setStep('hold')} />
+    </div>
+  )
+
+  // ── Loading ──
+  if (step === 'loading') return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'60vh', gap:16 }}>
+      <div style={{
+        width:56, height:56, borderRadius:'50%',
+        border:'5px solid #e5e7eb', borderTopColor:'#1e3a8a',
+        animation:'spin 0.8s linear infinite'
+      }}/>
+      <p style={{ color:'#374151', fontWeight:600 }}>সাবমিট হচ্ছে...</p>
+    </div>
+  )
+
+  // ── Done ──
+  if (step === 'done') return (
+    <div style={{ padding:16, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'60vh' }}>
+      <span style={{ fontSize:'4rem' }}>🎉</span>
+      <h2 style={{ fontSize:'1.3rem', fontWeight:800, color:'#1f2937', marginTop:12 }}>
+        {mode === 'checkin' ? 'চেক-ইন সফল!' : 'চেক-আউট সফল!'}
+      </h2>
+      {lateInfo && (
+        <div style={{ marginTop:16, background:'#fffbeb', borderRadius:14, padding:16, textAlign:'center', width:'100%' }}>
+          <p style={{ color:'#b45309', fontWeight:700 }}>⚠️ দেরি হয়েছে</p>
+          <p style={{ color:'#92400e', fontSize:'0.88rem', marginTop:4 }}>
+            {lateInfo.lateMinutes} মিনিট দেরি — কর্তন: ৳{lateInfo.deduction}
+          </p>
+        </div>
+      )}
+      <button
+        onClick={() => navigate('/worker/dashboard')}
+        style={{
+          marginTop:24, width:'100%', padding:'14px',
+          borderRadius:14, border:'none',
+          background:'#1e3a8a', color:'#fff',
+          fontWeight:800, fontSize:'1rem', cursor:'pointer'
+        }}
+      >
+        ড্যাশবোর্ডে যান
+      </button>
+    </div>
+  )
+}
