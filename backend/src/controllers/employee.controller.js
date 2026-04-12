@@ -1,3 +1,11 @@
+const { sendEmail } = require('../services/email.service');
+const generatePassword = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let pass = 'NTB@';
+  for(let i=0;i<4;i++) pass += chars[Math.floor(Math.random()*chars.length)];
+  return pass;
+};
+
 const bcrypt            = require('bcryptjs');
 const { query, withTransaction } = require('../config/db');
 const {
@@ -280,7 +288,7 @@ const getPendingEmployees = async (req, res) => {
 const approveEmployee = async (req, res) => {
     try {
         const { id }         = req.params;
-        const { temp_password } = req.body; // Admin temp_password পাঠাবে
+        const temp_password = generatePassword(); // auto-generate
 
         // Employee তথ্য নাও
         const empResult = await query(
@@ -321,6 +329,24 @@ const approveEmployee = async (req, res) => {
         // SMS পাঠাও
         if (temp_password) {
             await sendWelcomeSMS(employee, employeeCode, temp_password);
+            if (employee.email) {
+              const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden">
+                <div style="background:#1e3a8a;padding:20px;text-align:center">
+                  <h2 style="color:white;margin:0">NovaTech BD</h2>
+                </div>
+                <div style="padding:24px">
+                  <p>আস্সালামু আলাইকুম <strong>${employee.name_bn}</strong>,</p>
+                  <p>আপনার অ্যাকাউন্ট অনুমোদিত হয়েছে। ✅</p>
+                  <div style="background:#f0f4ff;border-radius:8px;padding:16px;margin:16px 0">
+                    <p style="margin:4px 0">🪪 কর্মচারী কোড: <strong>${employeeCode}</strong></p>
+                    <p style="margin:4px 0">🔑 অস্থায়ী পাসওয়ার্ড: <strong>${temp_password}</strong></p>
+                  </div>
+                  <p style="color:#e74c3c">প্রথম লগইনের পর পাসওয়ার্ড পরিবর্তন করুন।</p>
+                  <p>ধন্যবাদ,<br><strong>NovaTech BD টিম</strong></p>
+                </div>
+              </div>`;
+              await sendEmail(employee.email, 'NovaTech BD - অ্যাকাউন্ট অনুমোদিত ✅', html);
+            }
         }
 
         return res.status(200).json({
