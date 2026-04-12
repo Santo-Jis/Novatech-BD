@@ -111,6 +111,7 @@ export default function SalesForm() {
 
       setCurrentSale({
         ...res.data.data,
+        otp_required: res.data.data.otp_required,
         customer,
         items: products.filter(p => selected[p.id]).map(p => ({
           product_id: p.id, product_name: p.name, qty: selected[p.id], price: p.price, subtotal: p.price * selected[p.id]
@@ -334,4 +335,4 @@ export default function SalesForm() {
       )}
     </div>
   )
-}
+         }
