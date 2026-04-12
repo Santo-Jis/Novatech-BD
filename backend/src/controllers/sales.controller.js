@@ -340,12 +340,16 @@ const createSale = async (req, res) => {
             success: true,
             message: 'বিক্রয় সফল।',
             data: {
-                sale_id:        saleResult.id,
-                invoice_number: invoiceNumber,
-                total_amount:   totalAmount,
-                net_amount:     netAmount,
-                otp_required:   otpRequired,
-                whatsapp_link:  `https://wa.me/${cust.whatsapp?.replace(/\D/g, '')}?text=${encodeURIComponent(waLink)}`
+                sale_id:           saleResult.id,
+                invoice_number:    invoiceNumber,
+                total_amount:      totalAmount,
+                replacement_value: replacementValue,
+                net_amount:        netAmount,
+                otp_required:      otpRequired,
+                items:             processedItems,
+                replacement_items: processedReplacement,
+                payment_method:    payment_method,
+                whatsapp_link:     `https://wa.me/${cust.whatsapp?.replace(/\D/g, '')}?text=${encodeURIComponent(waLink)}`
             }
         });
 
