@@ -95,7 +95,7 @@ const checkTeamAccess = async (req, res, next) => {
 
     // Worker শুধু নিজের ডাটা
     if (user.role === 'worker') {
-        req.teamFilter = user.id; // user_id = নিজের id
+        req.teamFilter = null; // worker সব routes দেখবে
         return next();
     }
 
