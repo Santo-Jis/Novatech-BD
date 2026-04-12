@@ -11,8 +11,6 @@ const getRoutes = async (req, res) => {
         let params     = [];
         let paramCount = 0;
 
-        // Worker সব active routes দেখবে
-
         // Manager শুধু নিজের রুট
         if (req.teamFilter) {
             paramCount++;
@@ -89,17 +87,18 @@ const createRoute = async (req, res) => {
 
 const updateRoute = async (req, res) => {
     try {
-        const { name, description, is_active } = req.body;
+        const { name, description, is_active, status } = req.body;
 
         const result = await query(
             `UPDATE routes
              SET name        = COALESCE($1, name),
                  description = COALESCE($2, description),
                  is_active   = COALESCE($3, is_active),
+                 status      = COALESCE($4, status),
                  updated_at  = NOW()
-             WHERE id = $4
+             WHERE id = $5
              RETURNING *`,
-            [name, description, is_active, req.params.id]
+            [name, description, is_active, status, req.params.id]
         );
 
         if (result.rows.length === 0) {
@@ -125,7 +124,6 @@ const updateRoute = async (req, res) => {
 
 const deleteRoute = async (req, res) => {
     try {
-        // Soft delete
         await query(
             'UPDATE routes SET is_active = false, updated_at = NOW() WHERE id = $1',
             [req.params.id]
@@ -156,7 +154,6 @@ const assignWorkerToRoute = async (req, res) => {
             });
         }
 
-        // Worker আছে কিনা যাচাই
         const worker = await query(
             "SELECT id, name_bn FROM users WHERE id = $1 AND role = 'worker' AND status = 'active'",
             [worker_id]
@@ -166,7 +163,6 @@ const assignWorkerToRoute = async (req, res) => {
             return res.status(404).json({ success: false, message: 'SR পাওয়া যায়নি।' });
         }
 
-        // Assignment তৈরি বা আপডেট
         await query(
             `INSERT INTO customer_assignments (worker_id, route_id, assigned_by)
              VALUES ($1, $2, $3)
@@ -175,7 +171,6 @@ const assignWorkerToRoute = async (req, res) => {
             [worker_id, routeId, req.user.id]
         );
 
-        // রুটের সব কাস্টমার ঐ SR কে অ্যাসাইন
         const customers = await query(
             'SELECT id FROM customers WHERE route_id = $1 AND is_active = true',
             [routeId]
