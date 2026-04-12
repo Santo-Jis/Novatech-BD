@@ -26,8 +26,8 @@ const {
     rejectEdit,
     getEmployeePDF,
     updateOwnProfile,
-    uploadProfilePhoto
-} = require('../controllers/employee.controller');
+    uploadProfilePhoto,
+    broadcastEmail} = require('../controllers/employee.controller');
 
 // ============================================================
 // FILE UPLOAD (Multer — Memory Storage)
