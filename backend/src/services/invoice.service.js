@@ -188,7 +188,7 @@ const getInvoiceWhatsAppMessage = (sale, customer, worker, items) => {
 ━━━━━━━━━━━━━━━━━━
 ${itemsList}${replacementList}
 ━━━━━━━━━━━━━━━━━━
-💰 মোট: ৳${sale.total_amount}${sale.replacement_value > 0 ? `\n↩️ রিপ্লেসমেন্ট: -৳${sale.replacement_value}` : ''}${sale.credit_balance_added > 0 ? `\n✅ ব্যালেন্সে যোগ: +৳${sale.credit_balance_added}` : ''}
+💰 মোট: ৳${sale.total_amount}${sale.discount_amount > 0 ? `\n💳 ক্রেডিট ব্যালেন্স থেকে: -৳${sale.discount_amount}` : ''}${sale.replacement_value > 0 ? `\n↩️ রিপ্লেসমেন্ট: -৳${sale.replacement_value}` : ''}${sale.credit_balance_added > 0 ? `\n✅ ব্যালেন্সে জমা: +৳${sale.credit_balance_added}` : ''}
 💳 পেমেন্ট: ${paymentLabels[sale.payment_method]}
 ✅ পরিশোধযোগ্য: *৳${sale.net_amount}*
 ━━━━━━━━━━━━━━━━━━
