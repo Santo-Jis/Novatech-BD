@@ -12,6 +12,7 @@ const {
     checkIn,
     checkOut,
     getMyAttendance,
+    getAttendanceSettings,
     getTeamAttendance,
     getAllAttendance,
     getTodayLive,
@@ -53,6 +54,9 @@ router.post('/checkout',
     upload.single('selfie'),
     checkOut
 );
+
+// হাজিরা সেটিংস (সকল authenticated user)
+router.get('/settings', auth, getAttendanceSettings);
 
 // নিজের হাজিরা ইতিহাস
 router.get('/my',    auth, getMyAttendance);
