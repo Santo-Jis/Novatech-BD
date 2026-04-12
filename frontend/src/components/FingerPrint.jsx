@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import clsx from 'clsx'
 
 export default function FingerPrint({
@@ -7,149 +7,133 @@ export default function FingerPrint({
   sublabel = '৩ সেকেন্ড চেপে ধরুন',
   color    = 'primary',
   disabled = false,
-  size     = 'lg'
 }) {
-  const [pressing,  setPressing]  = useState(false)
   const [progress,  setProgress]  = useState(0)
+  const [pressing,  setPressing]  = useState(false)
   const [completed, setCompleted] = useState(false)
 
-  const intervalRef   = useRef(null)
-  const startTimeRef  = useRef(null)
-  const buttonRef     = useRef(null)
-  const pressingRef   = useRef(false)
-  const completedRef  = useRef(false)
+  const timerRef     = useRef(null)
+  const startRef     = useRef(null)
+  const buttonRef    = useRef(null)
+  const onSuccessRef = useRef(onSuccess)
+
+  useEffect(() => { onSuccessRef.current = onSuccess }, [onSuccess])
 
   const DURATION = 3000
 
-  const colors = {
-    primary:   { ring: 'border-primary',   bg: 'bg-primary/10',   icon: 'text-primary'   },
-    secondary: { ring: 'border-secondary', bg: 'bg-secondary/10', icon: 'text-secondary' },
-    danger:    { ring: 'border-danger',    bg: 'bg-danger/10',    icon: 'text-danger'    }
-  }
-  const c = colors[color] || colors.primary
+  const ringColor = color === 'secondary' ? '#065f46' : color === 'danger' ? '#991b1b' : '#1e3a8a'
+  const borderCls = color === 'secondary' ? 'border-secondary' : color === 'danger' ? 'border-danger' : 'border-primary'
+  const bgCls     = color === 'secondary' ? 'bg-secondary/10' : color === 'danger' ? 'bg-danger/10'  : 'bg-primary/10'
+  const textCls   = color === 'secondary' ? 'text-secondary'  : color === 'danger' ? 'text-danger'   : 'text-primary'
 
-  const stopPress = useCallback(() => {
-    if (completedRef.current) return
-    clearInterval(intervalRef.current)
-    pressingRef.current = false
-    setPressing(false)
-    setProgress(0)
-  }, [])
-
-  const startPress = useCallback(() => {
-    if (disabled || completedRef.current) return
-    pressingRef.current = true
+  function doStart() {
+    if (disabled || completed) return
+    startRef.current = Date.now()
     setPressing(true)
-    startTimeRef.current = Date.now()
 
-    intervalRef.current = setInterval(() => {
-      if (!pressingRef.current) return
-      const elapsed = Date.now() - startTimeRef.current
-      const pct     = Math.min(100, (elapsed / DURATION) * 100)
+    timerRef.current = setInterval(() => {
+      const pct = Math.min(100, ((Date.now() - startRef.current) / DURATION) * 100)
       setProgress(pct)
-
       if (pct >= 100) {
-        clearInterval(intervalRef.current)
-        completedRef.current = true
+        clearInterval(timerRef.current)
         setCompleted(true)
         setPressing(false)
-        onSuccess?.()
+        onSuccessRef.current?.()
       }
-    }, 50)
-  }, [disabled, onSuccess])
+    }, 30)
+  }
 
-  // DOM এ সরাসরি non-passive event listener লাগানো
+  function doStop() {
+    if (completed) return
+    clearInterval(timerRef.current)
+    setPressing(false)
+    setProgress(0)
+  }
+
+  // touch events — passive: false দিয়ে
   useEffect(() => {
     const btn = buttonRef.current
     if (!btn) return
 
-    const onStart = (e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      startPress()
-    }
-    const onEnd = (e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      stopPress()
-    }
-    const onCtx = (e) => e.preventDefault()
+    const onTS  = (e) => { e.preventDefault(); doStart() }
+    const onTE  = (e) => { e.preventDefault(); doStop()  }
+    const onCtx = (e) => { e.preventDefault() }
 
-    btn.addEventListener('touchstart',  onStart, { passive: false })
-    btn.addEventListener('touchend',    onEnd,   { passive: false })
-    btn.addEventListener('touchcancel', onEnd,   { passive: false })
-    btn.addEventListener('contextmenu', onCtx,   { passive: false })
+    btn.addEventListener('touchstart',  onTS,  { passive: false })
+    btn.addEventListener('touchend',    onTE,  { passive: false })
+    btn.addEventListener('touchcancel', onTE,  { passive: false })
+    btn.addEventListener('contextmenu', onCtx, { passive: false })
 
     return () => {
-      btn.removeEventListener('touchstart',  onStart)
-      btn.removeEventListener('touchend',    onEnd)
-      btn.removeEventListener('touchcancel', onEnd)
+      btn.removeEventListener('touchstart',  onTS)
+      btn.removeEventListener('touchend',    onTE)
+      btn.removeEventListener('touchcancel', onTE)
       btn.removeEventListener('contextmenu', onCtx)
     }
-  }, [startPress, stopPress])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [disabled, completed])
 
-  useEffect(() => () => clearInterval(intervalRef.current), [])
+  useEffect(() => () => clearInterval(timerRef.current), [])
 
-  const radius       = 60
+  const radius        = 60
   const circumference = 2 * Math.PI * radius
-  const strokeDash   = circumference - (progress / 100) * circumference
+  const dashOffset    = circumference - (progress / 100) * circumference
 
   return (
-    <div className="flex flex-col items-center gap-4" style={{ userSelect: 'none', WebkitUserSelect: 'none' }}>
-      <div className="relative flex items-center justify-center" style={{ width: 160, height: 160 }}>
-        {/* Progress ring */}
-        <svg className="absolute inset-0 -rotate-90" width="160" height="160">
+    <div className="flex flex-col items-center gap-4" style={{ userSelect:'none', WebkitUserSelect:'none' }}>
+      <div className="relative flex items-center justify-center" style={{ width:160, height:160 }}>
+
+        {/* SVG ring */}
+        <svg className="absolute inset-0" style={{ transform:'rotate(-90deg)' }} width="160" height="160">
           <circle cx="80" cy="80" r={radius} fill="none" stroke="#e5e7eb" strokeWidth="6" />
           <circle
             cx="80" cy="80" r={radius}
             fill="none"
-            stroke={color === 'primary' ? '#1e3a8a' : color === 'secondary' ? '#065f46' : '#991b1b'}
+            stroke={completed ? '#059669' : ringColor}
             strokeWidth="6"
             strokeLinecap="round"
             strokeDasharray={circumference}
-            strokeDashoffset={strokeDash}
-            style={{ transition: 'stroke-dashoffset 0.1s' }}
+            strokeDashoffset={dashOffset}
+            style={{ transition:'stroke-dashoffset 0.03s' }}
           />
         </svg>
 
         {/* Pulse */}
         {pressing && (
-          <div className={`absolute inset-0 rounded-full border-2 ${c.ring} animate-ping opacity-30`} />
+          <div className={`absolute inset-0 rounded-full border-2 ${borderCls} animate-ping opacity-25 pointer-events-none`} />
         )}
 
-        {/* Button — mouse events inline, touch via ref */}
-        <button
+        {/* Button */}
+        <div
           ref={buttonRef}
-          onMouseDown={startPress}
-          onMouseUp={stopPress}
-          onMouseLeave={stopPress}
-          disabled={disabled}
-          style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'none' }}
+          onMouseDown={doStart}
+          onMouseUp={doStop}
+          onMouseLeave={doStop}
+          style={{ touchAction:'none', WebkitTapHighlightColor:'transparent', cursor:'pointer' }}
           className={clsx(
-            'w-32 h-32 rounded-full flex flex-col items-center justify-center gap-1 border-4 transition-all duration-200',
-            c.ring, c.bg,
-            pressing  && 'scale-95 shadow-inner',
-            completed && 'bg-emerald-100 border-emerald-500',
-            disabled  && 'opacity-50 cursor-not-allowed'
+            'w-32 h-32 rounded-full flex flex-col items-center justify-center gap-1 border-4 transition-all duration-150',
+            completed ? 'bg-emerald-100 border-emerald-500' : `${borderCls} ${bgCls}`,
+            pressing && 'scale-95',
+            disabled && 'opacity-50'
           )}
         >
-          <span style={{ fontSize: '2.5rem', lineHeight: 1 }}>
-            {completed ? '✅' : '👆'}
+          <span style={{ fontSize:'2.2rem', lineHeight:1 }}>
+            {completed ? '✅' : pressing ? '👆' : '☝️'}
           </span>
-          <span className={clsx('text-xs font-semibold', completed ? 'text-emerald-600' : c.icon)}>
+          <span className={clsx('text-xs font-bold', completed ? 'text-emerald-600' : textCls)}>
             {completed ? 'সম্পন্ন!' : pressing ? `${Math.round(progress)}%` : label}
           </span>
-        </button>
+        </div>
       </div>
 
       {!completed && (
-        <div className="text-center">
+        <div className="text-center pointer-events-none">
           <p className="text-sm font-semibold text-gray-700">{label}</p>
           <p className="text-xs text-gray-400 mt-0.5">{sublabel}</p>
         </div>
       )}
       {completed && (
-        <p className="text-sm font-semibold text-emerald-600">সফলভাবে সম্পন্ন!</p>
+        <p className="text-sm font-semibold text-emerald-600 pointer-events-none">সফলভাবে সম্পন্ন!</p>
       )}
     </div>
   )
