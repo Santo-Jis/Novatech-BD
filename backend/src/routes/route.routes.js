@@ -58,3 +58,20 @@ router.post('/request', auth, allowRoles('worker'), async (req, res) => {
     res.status(500).json({ success: false, message: 'সমস্যা হয়েছে' })
   }
 })
+
+// Pending routes list (Admin/Manager/Accountant)
+router.get('/pending/list', auth, allowRoles('admin', 'manager', 'accountant'), async (req, res) => {
+  try {
+    const { query } = require('../config/db')
+    const result = await query(
+      `SELECT r.*, u.name_bn AS requested_by_name
+       FROM routes r
+       LEFT JOIN users u ON r.requested_by = u.id
+       WHERE r.status = 'pending'
+       ORDER BY r.created_at DESC`
+    )
+    res.json({ success: true, data: result.rows })
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'সমস্যা হয়েছে' })
+  }
+})
