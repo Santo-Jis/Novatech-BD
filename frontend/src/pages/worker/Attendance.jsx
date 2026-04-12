@@ -17,9 +17,20 @@ export default function WorkerAttendance() {
   const [loading,   setLoading]   = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [lateInfo,  setLateInfo]  = useState(null)
+  const [settings,  setSettings]  = useState({
+    attendance_checkin_start: '09:00',
+    attendance_popup_cutoff:  '14:30',
+  })
 
-  // আজকের হাজিরা চেক
+  // আজকের হাজিরা ও সেটিংস লোড
   useEffect(() => {
+    // Settings লোড করুন
+    api.get('/admin/settings')
+      .then(res => {
+        if (res.data?.data) setSettings(res.data.data)
+      })
+      .catch(() => {})
+
     api.get('/attendance/my?month=' + (new Date().getMonth() + 1) + '&year=' + new Date().getFullYear())
       .then(res => {
         const today = new Date().toISOString().split('T')[0]
@@ -109,7 +120,14 @@ export default function WorkerAttendance() {
     const hour   = now.getHours()
     const minute = now.getMinutes()
     const time   = hour * 60 + minute
-    const canCheckIn  = !todayAtt?.check_in_time  && time >= 9 * 60 && time <= 14 * 60 + 30
+
+    // Settings থেকে সময় নেওয়া (hardcoded নয়)
+    const [startH, startM] = (settings.attendance_checkin_start || '09:00').split(':').map(Number)
+    const [cutH,   cutM]   = (settings.attendance_popup_cutoff  || '14:30').split(':').map(Number)
+    const startTime = startH * 60 + startM
+    const cutTime   = cutH   * 60 + cutM
+
+    const canCheckIn  = !todayAtt?.check_in_time  && time >= startTime && time <= cutTime
     const canCheckOut = !!todayAtt?.check_in_time && !todayAtt?.check_out_time
 
     return (
@@ -177,7 +195,7 @@ export default function WorkerAttendance() {
 
           {!canCheckIn && !canCheckOut && !todayAtt?.check_out_time && (
             <div className="text-center py-6 text-gray-400">
-              <p className="text-sm">চেক-ইনের সময় সকাল ৯:০০ - দুপুর ২:৩০</p>
+              <p className="text-sm">চেক-ইনের সময় {settings.attendance_checkin_start} - {settings.attendance_popup_cutoff}</p>
             </div>
           )}
         </div>
