@@ -349,6 +349,8 @@ const createSale = async (req, res) => {
                 items:                processedItems,
                 replacement_items:    processedReplacement,
                 payment_method:       payment_method,
+                discount_amount:      discountAmount,
+                credit_balance_used:  creditBalanceUsed,
                 credit_balance_added: creditBalanceAdded,
                 whatsapp_link:     `https://wa.me/${cust.whatsapp?.replace(/\D/g, '')}?text=${encodeURIComponent(waLink)}`
             }
