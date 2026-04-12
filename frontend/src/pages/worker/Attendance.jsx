@@ -25,7 +25,7 @@ export default function WorkerAttendance() {
   // আজকের হাজিরা ও সেটিংস লোড
   useEffect(() => {
     // Settings লোড করুন
-    api.get('/admin/settings')
+    api.get('/attendance/settings')
       .then(res => {
         if (res.data?.data) setSettings(res.data.data)
       })
@@ -271,4 +271,4 @@ export default function WorkerAttendance() {
       </div>
     )
   }
-}
+        }
