@@ -4,13 +4,15 @@ import { Card } from '../../components/ui/Badge'
 import Badge from '../../components/ui/Badge'
 import Modal from '../../components/ui/Modal'
 import toast from 'react-hot-toast'
-import { FiCheck, FiX, FiUser, FiEdit, FiEye, FiMapPin } from 'react-icons/fi'
+import { FiCheck, FiX, FiUser, FiEdit, FiEye, FiMapPin, FiShoppingCart, FiDollarSign } from 'react-icons/fi'
 
 export default function PendingApprovals() {
   const [tab,           setTab]           = useState('employees')
   const [employees,     setEmployees]     = useState([])
   const [edits,         setEdits]         = useState([])
   const [routes,        setRoutes]        = useState([])
+  const [orders,        setOrders]        = useState([])
+  const [settlements,   setSettlements]   = useState([])
   const [loading,       setLoading]       = useState(true)
   const [detailModal,   setDetailModal]   = useState(null)
   const [tempPasswords, setTempPasswords] = useState({})
@@ -19,16 +21,19 @@ export default function PendingApprovals() {
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [empRes, editRes, routeRes] = await Promise.all([
+      const [empRes, editRes, routeRes, orderRes, settlementRes] = await Promise.all([
         api.get('/employees/pending'),
         api.get('/employees/audit'),
-        api.get('/routes/pending/list')
+        api.get('/routes/pending/list'),
+        api.get('/orders/pending'),
+        api.get('/settlements/pending'),
       ])
       setEmployees(empRes.data.data || [])
       setEdits(editRes.data.data || [])
-      // pending routes ফিল্টার করো
       const allRoutes = routeRes.data.data || []
       setRoutes(allRoutes.filter(r => r.status === 'pending'))
+      setOrders(orderRes.data.data || [])
+      setSettlements(settlementRes.data.data || [])
     } catch { toast.error('তথ্য আনতে সমস্যা হয়েছে।') }
     finally { setLoading(false) }
   }
@@ -95,10 +100,42 @@ export default function PendingApprovals() {
     }
   }
 
+  const approveOrder = async (id) => {
+    setProcessing(p => ({ ...p, [id]: true }))
+    try {
+      await api.put(`/orders/${id}/approve`)
+      toast.success('অর্ডার অনুমোদন সফল।')
+      setOrders(prev => prev.filter(o => o.id !== id))
+    } catch (err) { toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।') }
+    finally { setProcessing(p => ({ ...p, [id]: false })) }
+  }
+
+  const rejectOrder = async (id) => {
+    setProcessing(p => ({ ...p, [id]: true }))
+    try {
+      await api.put(`/orders/${id}/reject`, { reason: 'Admin কর্তৃক বাতিল' })
+      toast.success('অর্ডার বাতিল করা হয়েছে।')
+      setOrders(prev => prev.filter(o => o.id !== id))
+    } catch (err) { toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।') }
+    finally { setProcessing(p => ({ ...p, [id]: false })) }
+  }
+
+  const approveSettlement = async (id) => {
+    setProcessing(p => ({ ...p, [`s_${id}`]: true }))
+    try {
+      await api.put(`/settlements/${id}/approve`)
+      toast.success('হিসাব অনুমোদন সফল।')
+      setSettlements(prev => prev.filter(s => s.id !== id))
+    } catch (err) { toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।') }
+    finally { setProcessing(p => ({ ...p, [`s_${id}`]: false })) }
+  }
+
   const tabs = [
-    { key: 'employees', label: `নতুন কর্মচারী (${employees.length})` },
-    { key: 'edits',     label: `এডিট রিকোয়েস্ট (${edits.length})` },
-    { key: 'routes',    label: `রুট আবেদন (${routes.length})` },
+    { key: 'employees',   label: `নতুন কর্মচারী (${employees.length})` },
+    { key: 'edits',       label: `এডিট রিকোয়েস্ট (${edits.length})` },
+    { key: 'routes',      label: `রুট আবেদন (${routes.length})` },
+    { key: 'orders',      label: `অর্ডার (${orders.length})` },
+    { key: 'settlements', label: `হিসাব (${settlements.length})` },
   ]
 
   return (
@@ -204,6 +241,94 @@ export default function PendingApprovals() {
                   </button>
                   <button onClick={() => approveEdit(edit.id)} className="px-4 py-2 rounded-lg bg-secondary text-white text-sm font-semibold flex items-center gap-1">
                     <FiCheck /> অনুমোদন
+                  </button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+
+      ) : tab === 'orders' ? (
+
+        /* ── অর্ডার অনুমোদন ── */
+        <div className="space-y-3">
+          {orders.length === 0 ? (
+            <Card><p className="text-center text-gray-400 py-8">কোনো পেন্ডিং অর্ডার নেই।</p></Card>
+          ) : orders.map(order => (
+            <Card key={order.id}>
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                  <FiShoppingCart className="text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-800">{order.worker_name}</p>
+                  <p className="text-xs text-gray-400">{order.employee_code}</p>
+                  <p className="text-sm text-gray-600 mt-1">
+                    মোট: <span className="font-bold text-primary">৳{Number(order.total_amount || 0).toLocaleString('bn-BD')}</span>
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    সময়: {new Date(order.requested_at || order.created_at).toLocaleString('bn-BD')}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => rejectOrder(order.id)}
+                    disabled={processing[order.id]}
+                    className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 disabled:opacity-50"
+                  >
+                    {processing[order.id]
+                      ? <span className="w-4 h-4 border-2 border-red-300 border-t-red-600 rounded-full animate-spin block" />
+                      : <FiX />}
+                  </button>
+                  <button
+                    onClick={() => approveOrder(order.id)}
+                    disabled={processing[order.id]}
+                    className="px-4 py-2 rounded-lg bg-secondary text-white text-sm font-semibold flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {processing[order.id]
+                      ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      : <FiCheck />}
+                    অনুমোদন
+                  </button>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+
+      ) : tab === 'settlements' ? (
+
+        /* ── হিসাব অনুমোদন ── */
+        <div className="space-y-3">
+          {settlements.length === 0 ? (
+            <Card><p className="text-center text-gray-400 py-8">কোনো পেন্ডিং হিসাব নেই।</p></Card>
+          ) : settlements.map(s => (
+            <Card key={s.id}>
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <FiDollarSign className="text-green-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="font-semibold text-gray-800">{s.worker_name || s.employee_name || '—'}</p>
+                  <p className="text-xs text-gray-400">{s.employee_code || ''}</p>
+                  <div className="mt-1 text-sm text-gray-600 space-y-0.5">
+                    <p>মোট বিক্রয়: <span className="font-bold text-primary">৳{Number(s.total_sales || 0).toLocaleString('bn-BD')}</span></p>
+                    <p>নগদ সংগ্রহ: <span className="font-bold text-secondary">৳{Number(s.cash_collected || 0).toLocaleString('bn-BD')}</span></p>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    তারিখ: {new Date(s.settlement_date || s.created_at).toLocaleDateString('bn-BD')}
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => approveSettlement(s.id)}
+                    disabled={processing[`s_${s.id}`]}
+                    className="px-4 py-2 rounded-lg bg-secondary text-white text-sm font-semibold flex items-center gap-1 disabled:opacity-50"
+                  >
+                    {processing[`s_${s.id}`]
+                      ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      : <FiCheck />}
+                    অনুমোদন
                   </button>
                 </div>
               </div>
