@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import api from '../api/axios'
+import axios from 'axios'
 import toast from 'react-hot-toast'
 import Modal from './ui/Modal'
 import { FiMail, FiSend } from 'react-icons/fi'
@@ -13,7 +14,7 @@ export default function BroadcastEmailModal({ isOpen, onClose }) {
     if (!subject || !message) return toast.error('Subject ও message দিন।')
     setLoading(true)
     try {
-      const res = await api.post('/employees/broadcast-email', { subject, message })
+      const res = await api.post('/employees/broadcast-email', { subject, message }, { timeout: 60000 })
       toast.success(res.data.message)
       setSubject('')
       setMessage('')
