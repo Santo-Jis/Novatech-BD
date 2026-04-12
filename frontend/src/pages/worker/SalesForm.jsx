@@ -54,11 +54,11 @@ export default function SalesForm() {
     .filter(p => replacements[p.id])
     .reduce((sum, p) => sum + p.price * replacements[p.id], 0)
 
-  const creditBalance     = parseFloat(customer?.credit_balance || 0)
-  const discountAmount    = useCreditBalance ? Math.min(creditBalance, totalAmount) : 0
-  const netAfterDiscount  = totalAmount - discountAmount
-  const vatAmount         = parseFloat(((netAfterDiscount - replacementValue) * vatRate / 100).toFixed(2))
-  const netAmount         = Math.max(0, netAfterDiscount - replacementValue + vatAmount)
+  const creditBalance      = parseFloat(customer?.credit_balance || 0)
+  const discountAmount     = useCreditBalance ? Math.min(creditBalance, totalAmount) : 0
+  const netAfterDiscount   = totalAmount - discountAmount
+  const vatAmount          = parseFloat(((netAfterDiscount - replacementValue) * vatRate / 100).toFixed(2))
+  const netAmount          = Math.max(0, netAfterDiscount - replacementValue + vatAmount)
   const creditBalanceAdded = Math.max(0, replacementValue - netAfterDiscount)
 
   const canCredit = paymentMethod === 'credit' &&
@@ -73,26 +73,41 @@ export default function SalesForm() {
 
     setSubmitting(true)
     try {
-      const items = Object.entries(selected).map(([product_id, qty]) => ({ product_id, qty }))
-      const replacementItems = Object.entries(replacements).map(([product_id, qty]) => ({ product_id, qty }))
+      const items = Object.entries(selected).map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
+      const replacementItems = Object.entries(replacements).map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
 
       const todayOrder = await api.get('/orders/today')
       const orderId = todayOrder.data.data?.id
 
-      const formData = new FormData()
-      formData.append('customer_id', customerId)
-      if (visitId) formData.append('visit_id', visitId)
-      if (orderId) formData.append('order_id', orderId)
-      formData.append('items', JSON.stringify(items))
-      formData.append('payment_method', paymentMethod)
-      formData.append('replacement_items', JSON.stringify(replacementItems))
-      formData.append('use_credit_balance', useCreditBalance)
-      formData.append('vat_rate', vatRate)
-      if (receiptPhoto) formData.append('receipt_photo', receiptPhoto, 'receipt.jpg')
+      // ── ছবি আছে কিনা দেখো ──────────────────────────────
+      let receiptPhotoUrl = null
+      if (receiptPhoto) {
+        const photoForm = new FormData()
+        photoForm.append('receipt_photo', receiptPhoto, 'receipt.jpg')
+        try {
+          const uploadRes = await api.post('/sales/upload-receipt', photoForm, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          })
+          receiptPhotoUrl = uploadRes.data.data?.url
+        } catch {
+          // ছবি upload ব্যর্থ হলেও sale চলবে
+        }
+      }
 
-      const res = await api.post('/sales', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      })
+      // ── JSON দিয়ে পাঠাও (FormData না) ──────────────────
+      const payload = {
+        customer_id:       customerId,
+        visit_id:          visitId || undefined,
+        order_id:          orderId || undefined,
+        items,
+        payment_method:    paymentMethod,
+        replacement_items: replacementItems,
+        use_credit_balance: useCreditBalance,
+        vat_rate:          vatRate,
+        receipt_photo:     receiptPhotoUrl || undefined,
+      }
+
+      const res = await api.post('/sales', payload)
 
       setCurrentSale({
         ...res.data.data,
@@ -233,7 +248,7 @@ export default function SalesForm() {
           {/* VAT */}
           <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-gray-100 dark:border-slate-700 shadow-sm">
             <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">ভ্যাট হার (%) — ঐচ্ছিক</p>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               {[0, 5, 7.5, 10, 15].map(r => (
                 <button key={r} onClick={() => setVatRate(r)}
                   className={`px-3 py-1.5 rounded-xl text-sm border transition-colors ${vatRate === r ? 'bg-amber-100 border-amber-400 text-amber-700 font-bold' : 'border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-300'}`}>
@@ -275,24 +290,32 @@ export default function SalesForm() {
 
           {/* Payment method */}
           <div className="space-y-2">
-            <p className="text-sm font-semibold text-gray-700">পেমেন্ট পদ্ধতি:</p>
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">পেমেন্ট পদ্ধতি:</p>
             {[
-              { key: 'cash', label: '💵 নগদ', desc: 'সম্পূর্ণ নগদে পরিশোধ' },
-              { key: 'credit', label: '📋 বাকি', desc: `লিমিট: ৳${parseFloat(customer?.credit_limit || 0)} | বাকি: ৳${parseFloat(customer?.current_credit || 0)}` },
+              { key: 'cash',   label: '💵 নগদ',  desc: 'সম্পূর্ণ নগদে পরিশোধ' },
+              { key: 'credit', label: '📋 বাকি', desc: `লিমিট: ৳${parseFloat(customer?.credit_limit || 0).toLocaleString()} | বর্তমান বাকি: ৳${parseFloat(customer?.current_credit || 0).toLocaleString()}` },
             ].map(pm => (
               <button
                 key={pm.key}
                 onClick={() => setPaymentMethod(pm.key)}
                 disabled={pm.key === 'credit' && parseFloat(customer?.credit_limit || 0) === 0}
-                className={`w-full p-4 rounded-2xl border text-left transition-all disabled:opacity-40 ${
-                  paymentMethod === pm.key ? 'border-primary bg-primary/5' : 'border-gray-200 bg-white'
+                className={`w-full p-4 rounded-2xl border-2 text-left transition-all disabled:opacity-40 active:scale-[0.98] ${
+                  paymentMethod === pm.key
+                    ? 'border-primary bg-primary/5'
+                    : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-600'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${paymentMethod === pm.key ? 'border-primary bg-primary' : 'border-gray-300'}`} />
+                  <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
+                    paymentMethod === pm.key ? 'border-primary bg-primary' : 'border-gray-300'
+                  }`}>
+                    {paymentMethod === pm.key && (
+                      <div className="w-2 h-2 rounded-full bg-white" />
+                    )}
+                  </div>
                   <div>
-                    <p className="font-semibold text-sm">{pm.label}</p>
-                    <p className="text-xs text-gray-400">{pm.desc}</p>
+                    <p className="font-semibold text-sm text-gray-800 dark:text-gray-100">{pm.label}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{pm.desc}</p>
                   </div>
                 </div>
               </button>
