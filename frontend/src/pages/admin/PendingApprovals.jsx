@@ -143,7 +143,7 @@ export default function PendingApprovals() {
       <h1 className="text-2xl font-bold text-gray-800">পেন্ডিং অনুমোদন</h1>
 
       {/* Tabs */}
-      <div className="flex gap-2 bg-gray-100 p-1 rounded-xl w-fit overflow-x-auto">
+      <div className="flex gap-2 bg-gray-100 p-1 rounded-xl overflow-x-auto scrollbar-hide">
         {tabs.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
