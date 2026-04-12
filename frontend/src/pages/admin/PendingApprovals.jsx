@@ -130,7 +130,15 @@ export default function PendingApprovals() {
     finally { setProcessing(p => ({ ...p, [`s_${id}`]: false })) }
   }
 
+  const allItems = [
+    ...employees.map(e=>({...e,_type:'employee'})),
+    ...edits.map(e=>({...e,_type:'edit'})),
+    ...routes.map(e=>({...e,_type:'route'})),
+    ...orders.map(e=>({...e,_type:'order'})),
+    ...settlements.map(e=>({...e,_type:'settlement'})),
+  ]
   const tabs = [
+    { key: 'all', label: `সব (${allItems.length})` },
     { key: 'employees',   label: `নতুন কর্মচারী (${employees.length})` },
     { key: 'edits',       label: `এডিট রিকোয়েস্ট (${edits.length})` },
     { key: 'routes',      label: `রুট আবেদন (${routes.length})` },
@@ -159,6 +167,39 @@ export default function PendingApprovals() {
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => <div key={i} className="h-24 bg-white rounded-2xl animate-pulse" />)}
         </div>
+            ) : tab === 'all' ? (
+        <div className="space-y-3">
+          {allItems.length === 0 ? (
+            <Card><p className="text-center text-gray-400 py-8">কোনো পেন্ডিং আইটেম নেই।</p></Card>
+          ) : allItems.map(item => (
+            <Card key={item._type+'-'+item.id}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 text-lg
+                  ${item._type==='employee'?'bg-blue-100':item._type==='edit'?'bg-amber-100':item._type==='route'?'bg-purple-100':item._type==='order'?'bg-green-100':'bg-teal-100'}">
+                  {item._type==='employee'?'👤':item._type==='edit'?'✏️':item._type==='route'?'📍':item._type==='order'?'🛒':'💰'}
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium
+                      ${item._type==='employee'?'bg-blue-100 text-blue-700':item._type==='edit'?'bg-amber-100 text-amber-700':item._type==='route'?'bg-purple-100 text-purple-700':item._type==='order'?'bg-green-100 text-green-700':'bg-teal-100 text-teal-700'}">
+                      {item._type==='employee'?'কর্মচারী':item._type==='edit'?'এডিট':item._type==='route'?'রুট':item._type==='order'?'অর্ডার':'হিসাব'}
+                    </span>
+                  </div>
+                  <p className="font-semibold text-gray-800 mt-0.5">
+                    {item.name_bn || item.worker_name || item.name || '—'}
+                  </p>
+                  {item.total_amount && <p className="text-sm text-primary font-bold">৳{Number(item.total_amount).toLocaleString('bn-BD')}</p>}
+                  {item.total_sales && <p className="text-sm text-primary font-bold">৳{Number(item.total_sales).toLocaleString('bn-BD')}</p>}
+                </div>
+                <button onClick={()=>setTab(item._type==='settlement'?'settlements':item._type+'s')}
+                  className="px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium">
+                  দেখুন
+                </button>
+              </div>
+            </Card>
+          ))}
+        </div>
+
       ) : tab === 'employees' ? (
 
         /* ── নতুন কর্মচারী ── */
