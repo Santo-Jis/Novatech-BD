@@ -758,25 +758,6 @@ const uploadProfilePhoto = async (req, res) => {
     }
 };
 
-module.exports = {
-    broadcastEmail,
-    getEmployees,
-    getEmployee,
-    createEmployee,
-    getPendingEmployees,
-    approveEmployee,
-    broadcastEmail,
-    rejectEmployee,
-    suspendEmployee,
-    editEmployee,
-    getPendingEdits,
-    approveEdit,
-    rejectEdit,
-    getEmployeePDF,
-    updateOwnProfile,
-    uploadProfilePhoto
-};
-
 // POST /api/employees/broadcast-email
 const broadcastEmail = async (req, res) => {
   try {
@@ -812,3 +793,24 @@ const broadcastEmail = async (req, res) => {
     res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
   }
 };
+
+module.exports = {
+    broadcastEmail,
+    getEmployees,
+    getEmployee,
+    createEmployee,
+    getPendingEmployees,
+    approveEmployee,
+    broadcastEmail,
+    rejectEmployee,
+    suspendEmployee,
+    editEmployee,
+    getPendingEdits,
+    approveEdit,
+    rejectEdit,
+    getEmployeePDF,
+    updateOwnProfile,
+    uploadProfilePhoto
+};
+
+
