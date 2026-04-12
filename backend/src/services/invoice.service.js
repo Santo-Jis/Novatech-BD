@@ -172,6 +172,11 @@ const getInvoiceWhatsAppMessage = (sale, customer, worker, items) => {
         .map(i => `• ${i.product_name}: ${i.qty} × ৳${i.price} = ৳${i.qty * i.price}`)
         .join('\n');
 
+    const replacementList = sale.replacement_items?.length > 0
+        ? '\n↩️ *রিপ্লেসমেন্ট (ফেরত):*\n' +
+          sale.replacement_items.map(i => `• ${i.product_name}: ${i.qty} পিস = -৳${i.total}`).join('\n')
+        : '';
+
     const paymentLabels = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
 
     return `🧾 *NovaTech BD Invoice*
@@ -181,9 +186,9 @@ const getInvoiceWhatsAppMessage = (sale, customer, worker, items) => {
 🏪 দোকান: *${customer.shop_name}*
 👤 SR: ${worker.name_bn}
 ━━━━━━━━━━━━━━━━━━
-${itemsList}
+${itemsList}${replacementList}
 ━━━━━━━━━━━━━━━━━━
-💰 মোট: ৳${sale.total_amount}
+💰 মোট: ৳${sale.total_amount}${sale.replacement_value > 0 ? `\n↩️ রিপ্লেসমেন্ট: -৳${sale.replacement_value}` : ''}
 💳 পেমেন্ট: ${paymentLabels[sale.payment_method]}
 ✅ পরিশোধযোগ্য: *৳${sale.net_amount}*
 ━━━━━━━━━━━━━━━━━━
