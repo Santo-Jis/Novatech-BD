@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/app.store'
 import api from '../../api/axios'
-import { FiMapPin, FiSearch, FiPlus, FiX, FiUser, FiPhone, FiCamera, FiNavigation, FiCheck } from 'react-icons/fi'
+import { FiMapPin, FiSearch, FiPlus, FiX, FiUser, FiPhone, FiCamera, FiNavigation, FiCheck, FiEdit2 } from 'react-icons/fi'
 import toast from 'react-hot-toast'
+import CustomerEditModal from '../../components/CustomerEditModal'
 
 export default function CustomerList() {
   const navigate = useNavigate()
@@ -13,6 +14,7 @@ export default function CustomerList() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [showAddModal, setShowAddModal] = useState(false)
+  const [editModal, setEditModal] = useState(null)
   const [saving, setSaving] = useState(false)
   const [gpsLoading, setGpsLoading] = useState(false)
   const fileRef = useRef()
@@ -130,27 +132,57 @@ export default function CustomerList() {
           </div>
         )}
         {filtered.map(c => (
-          <div key={c._id || c.id} onClick={() => navigate(`/worker/visit/${c._id || c.id}`)}
+          <div key={c._id || c.id}
             className={`bg-white rounded-2xl p-4 shadow-sm border-l-4 ${c.visited_today ? 'border-green-400' : 'border-gray-200'}`}>
             <div className="flex justify-between items-start">
-              <div className="flex-1">
-                <h3 className="font-semibold text-gray-800">{c.shop_name}</h3>
+
+              {/* ক্লিক করলে ভিজিট পেজে যাবে */}
+              <div className="flex-1" onClick={() => navigate(`/worker/visit/${c._id || c.id}`)}>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-gray-800">{c.shop_name}</h3>
+                  {c.has_pending_edit && (
+                    <span className="text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">⏳ pending</span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-500">{c.owner_name}</p>
                 <p className="text-xs text-gray-400 mt-1">{c.address}</p>
                 {parseFloat(c.current_credit || 0) > 0 && (
                   <p className="text-xs text-red-500 mt-1">বকেয়া: ৳{parseInt(c.current_credit).toLocaleString()}</p>
                 )}
               </div>
-              <div>
+
+              <div className="flex flex-col items-end gap-2">
                 {c.visited_today
                   ? <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">✅ ভিজিট</span>
                   : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">বাকি</span>
                 }
+                {/* ✏️ Edit button */}
+                {!c.has_pending_edit && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setEditModal(c) }}
+                    className="p-1.5 rounded-lg bg-blue-50 text-blue-500"
+                  >
+                    <FiEdit2 size={14} />
+                  </button>
+                )}
               </div>
+
             </div>
           </div>
         ))}
       </div>
+
+      {/* Edit Modal */}
+      {editModal && (
+        <CustomerEditModal
+          customer={editModal}
+          onClose={() => setEditModal(null)}
+          onUpdate={(updated) => {
+            setCustomers(prev => prev.map(c => c.id === updated.id ? updated : c))
+            setEditModal(null)
+          }}
+        />
+      )}
 
       {showAddModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
