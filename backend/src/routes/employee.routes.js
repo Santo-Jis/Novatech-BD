@@ -10,6 +10,7 @@ const {
     selfOrAdmin,
     isAdmin
 } = require('../middlewares/roleCheck');
+const { auth } = require('../middlewares/auth');
 
 const {
     getEmployees,
