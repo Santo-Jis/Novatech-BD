@@ -36,8 +36,9 @@ export default function FingerPrint({
   const c = colors[color]  || colors.primary
   const s = sizes[size]    || sizes.lg
 
-  const startPress = () => {
+  const startPress = (e) => {
     if (disabled || completed) return
+    if (e && e.preventDefault) e.preventDefault()
     setPressing(true)
     startTimeRef.current = Date.now()
 
@@ -55,7 +56,8 @@ export default function FingerPrint({
     }, 50)
   }
 
-  const endPress = () => {
+  const endPress = (e) => {
+    if (e && e.preventDefault) e.preventDefault()
     if (completed) return
     clearInterval(intervalRef.current)
     setPressing(false)
@@ -103,11 +105,13 @@ export default function FingerPrint({
           onMouseDown={startPress}
           onMouseUp={endPress}
           onMouseLeave={endPress}
-          onTouchStart={startPress}
-          onTouchEnd={endPress}
+          onTouchStart={(e) => { e.preventDefault(); startPress(e); }}
+          onTouchEnd={(e) => { e.preventDefault(); endPress(e); }}
+          onTouchCancel={endPress}
+          onContextMenu={(e) => e.preventDefault()}
           disabled={disabled}
           className={clsx(
-            'w-32 h-32 rounded-full flex flex-col items-center justify-center gap-1 border-4 transition-all duration-200 touch-none',
+            'w-32 h-32 rounded-full flex flex-col items-center justify-center gap-1 border-4 transition-all duration-200 touch-none cursor-pointer select-none',
             c.ring, c.bg,
             pressing  && 'scale-95 shadow-inner',
             completed && 'bg-emerald-100 border-emerald-500',
