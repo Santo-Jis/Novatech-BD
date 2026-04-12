@@ -1,24 +1,21 @@
-const nodemailer = require('nodemailer');
-
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT),
-  secure: false,
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  }
-});
+const axios = require('axios');
 
 const sendEmail = async (to, subject, html) => {
   try {
-    await transporter.sendMail({
-      from: process.env.MAIL_FROM,
-      to, subject, html
+    await axios.post('https://api.brevo.com/v3/smtp/email', {
+      sender: { name: 'NovaTech BD', email: 'jisbusinessbd@gmail.com' },
+      to: [{ email: to }],
+      subject,
+      htmlContent: html
+    }, {
+      headers: {
+        'api-key': process.env.BREVO_API_KEY,
+        'Content-Type': 'application/json'
+      }
     });
     console.log('Email sent to:', to);
   } catch(err) {
-    console.error('Email error:', err.message);
+    console.error('Email error:', err.response?.data || err.message);
   }
 };
 
