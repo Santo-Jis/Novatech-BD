@@ -133,9 +133,13 @@ export default function InvoiceCard({ sale, customer, worker, onShare, onDownloa
           </div>
 
           {sale.discount_amount > 0 && (
-            <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.83rem', color:'#059669' }}>
-              <span>ব্যালেন্স ছাড়</span>
-              <span style={{ fontWeight:600 }}>-৳{parseFloat(sale.discount_amount).toLocaleString()}</span>
+            <div style={{
+              display:'flex', justifyContent:'space-between', fontSize:'0.83rem',
+              color:'#059669', background:'#ecfdf5', borderRadius:8,
+              padding:'6px 10px', margin:'2px -4px'
+            }}>
+              <span style={{ fontWeight:600 }}>💳 ক্রেডিট ব্যালেন্স থেকে কাটা</span>
+              <span style={{ fontWeight:700 }}>-৳{parseFloat(sale.discount_amount).toLocaleString()}</span>
             </div>
           )}
 
@@ -228,7 +232,7 @@ export default function InvoiceCard({ sale, customer, worker, onShare, onDownloa
         textAlign:'center',
       }}>
         <p style={{ color:'rgba(255,255,255,0.5)', fontSize:'0.7rem', letterSpacing:'0.5px' }}>
-          আমাদের সাথে কেনাকাটার জন্য ধন্যবাদ 🙏
+          আমাদের সাথে যুক্ত থাকার জন্য ধন্যবাদ 
         </p>
         <p style={{ color:'rgba(255,255,255,0.25)', fontSize:'0.62rem', marginTop:3 }}>
           NovaTech BD (Ltd.) • বরিশাল
