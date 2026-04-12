@@ -488,8 +488,182 @@ const getMyCustomerCount = async (req, res) => {
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
+// ============================================================
+// REQUEST CUSTOMER EDIT (Worker করবে)
+// POST /api/customers/:id/edit-request
+// ============================================================
 
+const requestCustomerEdit = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const current = await query('SELECT * FROM customers WHERE id = $1', [id]);
+        if (current.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
+        }
+        if (['admin', 'manager'].includes(req.user.role)) {
+            const { shop_name, owner_name, business_type, whatsapp, sms_phone, route_id } = req.body;
+            await query(
+                `UPDATE customers SET
+                    shop_name = COALESCE($1, shop_name),
+                    owner_name = COALESCE($2, owner_name),
+                    business_type = COALESCE($3, business_type),
+                    whatsapp = COALESCE($4, whatsapp),
+                    sms_phone = COALESCE($5, sms_phone),
+                    route_id = COALESCE($6, route_id),
+                    updated_at = NOW()
+                 WHERE id = $7`,
+                [shop_name, owner_name, business_type, whatsapp, sms_phone, route_id, id]
+            );
+            return res.status(200).json({ success: true, message: 'কাস্টমার আপডেট সফল।' });
+        }
+        const existingPending = await query(
+            `SELECT id FROM customer_edit_requests WHERE customer_id = $1 AND status = 'pending'`,
+            [id]
+        );
+        if (existingPending.rows.length > 0) {
+            return res.status(400).json({ success: false, message: 'আগের এডিট রিকোয়েস্ট এখনো অপেক্ষায় আছে।' });
+        }
+        const { shop_name, owner_name, business_type, whatsapp, sms_phone } = req.body;
+        const previousData = {
+            shop_name: current.rows[0].shop_name,
+            owner_name: current.rows[0].owner_name,
+            business_type: current.rows[0].business_type,
+            whatsapp: current.rows[0].whatsapp,
+            sms_phone: current.rows[0].sms_phone
+        };
+        const newData = {};
+        if (shop_name && shop_name !== previousData.shop_name) newData.shop_name = shop_name;
+        if (owner_name && owner_name !== previousData.owner_name) newData.owner_name = owner_name;
+        if (business_type !== undefined && business_type !== previousData.business_type) newData.business_type = business_type;
+        if (whatsapp !== undefined && whatsapp !== previousData.whatsapp) newData.whatsapp = whatsapp;
+        if (sms_phone !== undefined && sms_phone !== previousData.sms_phone) newData.sms_phone = sms_phone;
+        if (Object.keys(newData).length === 0) {
+            return res.status(400).json({ success: false, message: 'কোনো পরিবর্তন নেই।' });
+        }
+        const request = await query(
+            `INSERT INTO customer_edit_requests (customer_id, requested_by, new_data, previous_data, status)
+             VALUES ($1, $2, $3, $4, 'pending') RETURNING id`,
+            [id, req.user.id, JSON.stringify(newData), JSON.stringify(previousData)]
+        );
+        await query(`UPDATE customers SET has_pending_edit = true WHERE id = $1`, [id]);
+        const updateFields = [];
+        const updateParams = [];
+        let paramCount = 0;
+        if (newData.shop_name) { paramCount++; updateFields.push(`shop_name = $${paramCount}`); updateParams.push(newData.shop_name); }
+        if (newData.owner_name) { paramCount++; updateFields.push(`owner_name = $${paramCount}`); updateParams.push(newData.owner_name); }
+        if (newData.business_type !== undefined) { paramCount++; updateFields.push(`business_type = $${paramCount}`); updateParams.push(newData.business_type); }
+        if (newData.whatsapp !== undefined) { paramCount++; updateFields.push(`whatsapp = $${paramCount}`); updateParams.push(newData.whatsapp); }
+        if (newData.sms_phone !== undefined) { paramCount++; updateFields.push(`sms_phone = $${paramCount}`); updateParams.push(newData.sms_phone); }
+        if (updateFields.length > 0) {
+            paramCount++;
+            updateParams.push(id);
+            await query(`UPDATE customers SET ${updateFields.join(', ')}, updated_at = NOW() WHERE id = $${paramCount}`, updateParams);
+        }
+        return res.status(200).json({ success: true, message: 'এডিট রিকোয়েস্ট পাঠানো হয়েছে। ম্যানেজার অনুমোদন দিলে চূড়ান্ত হবে।', data: { request_id: request.rows[0].id } });
+    } catch (error) {
+        console.error('❌ Request Customer Edit Error:', error.message);
+        return res.status(500).json({ success: false, message: 'এডিট রিকোয়েস্টে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET PENDING CUSTOMER EDITS (Manager দেখবে)
+// GET /api/customers/edit-requests/pending
+// ============================================================
+
+const getPendingCustomerEdits = async (req, res) => {
+    try {
+        let whereClause = `cer.status = 'pending'`;
+        const params = [];
+        if (req.user.role === 'manager') {
+            params.push(req.user.id);
+            whereClause += ` AND c.route_id IN (SELECT id FROM routes WHERE manager_id = $${params.length})`;
+        }
+        const result = await query(
+            `SELECT cer.id, cer.customer_id, cer.new_data, cer.previous_data, cer.created_at,
+                    c.shop_name, c.owner_name, c.customer_code,
+                    u.name_bn AS requested_by_name, u.phone AS requested_by_phone
+             FROM customer_edit_requests cer
+             JOIN customers c ON cer.customer_id = c.id
+             JOIN users u ON cer.requested_by = u.id
+             WHERE ${whereClause}
+             ORDER BY cer.created_at DESC`,
+            params
+        );
+        return res.status(200).json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ Get Pending Customer Edits Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// APPROVE CUSTOMER EDIT
+// PUT /api/customers/edit-requests/:requestId/approve
+// ============================================================
+
+const approveCustomerEdit = async (req, res) => {
+    try {
+        const { requestId } = req.params;
+        const reqData = await query(`SELECT * FROM customer_edit_requests WHERE id = $1 AND status = 'pending'`, [requestId]);
+        if (reqData.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'রিকোয়েস্ট পাওয়া যায়নি।' });
+        }
+        const editReq = reqData.rows[0];
+        await query(`UPDATE customer_edit_requests SET status = 'approved', reviewed_by = $1, reviewed_at = NOW() WHERE id = $2`, [req.user.id, requestId]);
+        await query(`UPDATE customers SET has_pending_edit = false WHERE id = $1`, [editReq.customer_id]);
+        await query(`INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value) VALUES ($1, 'APPROVE_CUSTOMER_EDIT', 'customers', $2, $3)`, [req.user.id, editReq.customer_id, JSON.stringify(editReq.new_data)]);
+        return res.status(200).json({ success: true, message: 'কাস্টমার এডিট অনুমোদন সফল।' });
+    } catch (error) {
+        console.error('❌ Approve Customer Edit Error:', error.message);
+        return res.status(500).json({ success: false, message: 'অনুমোদনে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// REJECT CUSTOMER EDIT — আগের data ফিরে আসবে
+// PUT /api/customers/edit-requests/:requestId/reject
+// ============================================================
+
+const rejectCustomerEdit = async (req, res) => {
+    try {
+        const { requestId } = req.params;
+        const { reason } = req.body;
+        const reqData = await query(`SELECT * FROM customer_edit_requests WHERE id = $1 AND status = 'pending'`, [requestId]);
+        if (reqData.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'রিকোয়েস্ট পাওয়া যায়নি।' });
+        }
+        const editReq = reqData.rows[0];
+        const previousData = editReq.previous_data;
+        const rollbackFields = [];
+        const rollbackParams = [];
+        let paramCount = 0;
+        for (const field of ['shop_name', 'owner_name', 'business_type', 'whatsapp', 'sms_phone']) {
+            if (previousData[field] !== undefined) {
+                paramCount++;
+                rollbackFields.push(`${field} = $${paramCount}`);
+                rollbackParams.push(previousData[field]);
+            }
+        }
+        if (rollbackFields.length > 0) {
+            paramCount++;
+            rollbackParams.push(editReq.customer_id);
+            await query(`UPDATE customers SET ${rollbackFields.join(', ')}, updated_at = NOW() WHERE id = $${paramCount}`, rollbackParams);
+        }
+        await query(`UPDATE customer_edit_requests SET status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_note = $2 WHERE id = $3`, [req.user.id, reason || 'ম্যানেজার কর্তৃক বাতিল', requestId]);
+        await query(`UPDATE customers SET has_pending_edit = false WHERE id = $1`, [editReq.customer_id]);
+        return res.status(200).json({ success: true, message: 'এডিট বাতিল। আগের তথ্য পুনরুদ্ধার হয়েছে।', rollback: previousData });
+    } catch (error) {
+        console.error('❌ Reject Customer Edit Error:', error.message);
+        return res.status(500).json({ success: false, message: 'বাতিলে সমস্যা হয়েছে।' });
+    }
+};
 module.exports = {
+    getMyCustomerCount,
+    requestCustomerEdit,
+    getPendingCustomerEdits,
+    approveCustomerEdit,
+    rejectCustomerEdit,
     getCustomers,
     getCustomer,
     createCustomer,
