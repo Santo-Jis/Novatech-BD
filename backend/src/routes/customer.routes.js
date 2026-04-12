@@ -16,7 +16,11 @@ const {
     getCustomerHistory,
     setCreditLimit,
     collectCredit,
-    getMyCustomerCount
+    getMyCustomerCount,
+    requestCustomerEdit,
+    getPendingCustomerEdits,
+    approveCustomerEdit,
+    rejectCustomerEdit
 } = require('../controllers/customer.controller');
 
 // ============================================================
@@ -43,7 +47,11 @@ const upload = multer({
 router.get('/',          auth, checkTeamAccess, getCustomers);
 
 // Worker এর মোট কাস্টমার সংখ্যা
-router.get('/my-count',  auth, getMyCustomerCount);
+router.get('/my-count',  auth, getMyCustomerCount,
+    requestCustomerEdit,
+    getPendingCustomerEdits,
+    approveCustomerEdit,
+    rejectCustomerEdit);
 
 // নতুন কাস্টমার তৈরি
 router.post('/',    auth, canCreateCustomer, upload.single('shop_photo'), createCustomer);
@@ -72,3 +80,8 @@ router.post('/:id/collect-credit',
 );
 
 module.exports = router;
+
+router.post('/:id/edit-request', auth, requestCustomerEdit);
+router.get('/edit-requests/pending', auth, allowRoles('admin', 'manager'), getPendingCustomerEdits);
+router.put('/edit-requests/:requestId/approve', auth, allowRoles('admin', 'manager'), approveCustomerEdit);
+router.put('/edit-requests/:requestId/reject', auth, allowRoles('admin', 'manager'), rejectCustomerEdit);
