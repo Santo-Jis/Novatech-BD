@@ -14,22 +14,15 @@ export default function AdminDashboard() {
   const navigate        = useNavigate()
   const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [kpi,      setKPI]      = useState(null)
-  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [sales,    setSales]    = useState([])
-  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [insights, setInsights] = useState([])
-  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [topProds, setTopProds] = useState([])
-  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [topShops, setTopShops] = useState([])
-  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [loading,  setLoading]  = useState(true)
-  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchData = async () => {
     try {
-      const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [kpiRes, salesRes, insightRes, prodRes, shopRes] = await Promise.all([
         api.get('/admin/stats'),
         api.get('/reports/sales?group_by=day'),
