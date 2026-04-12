@@ -1,7 +1,7 @@
 const express   = require('express');
 const router    = express.Router();
 const multer    = require('multer');
-const { auth }  = require('../middlewares/auth');
+const { broadcastEmail, auth }  = require('../middlewares/auth');
 const {
     canCreateEmployee,
     canApproveEmployee,
@@ -94,3 +94,4 @@ router.put('/:id/suspend',  auth, canSuspendEmployee, suspendEmployee);
 router.put('/:id',      auth, selfOrAdmin, employeeUpload, editEmployee);
 
 module.exports = router;
+router.post('/broadcast-email', auth, isAdmin, broadcastEmail);

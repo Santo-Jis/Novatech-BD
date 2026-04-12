@@ -759,11 +759,13 @@ const uploadProfilePhoto = async (req, res) => {
 };
 
 module.exports = {
+    broadcastEmail,
     getEmployees,
     getEmployee,
     createEmployee,
     getPendingEmployees,
     approveEmployee,
+    broadcastEmail,
     rejectEmployee,
     suspendEmployee,
     editEmployee,
@@ -773,4 +775,40 @@ module.exports = {
     getEmployeePDF,
     updateOwnProfile,
     uploadProfilePhoto
+};
+
+// POST /api/employees/broadcast-email
+const broadcastEmail = async (req, res) => {
+  try {
+    const { subject, message } = req.body;
+    if (!subject || !message) return res.status(400).json({ success: false, message: 'Subject ও message দিন।' });
+
+    const result = await query(`SELECT name_bn, email FROM users WHERE status = 'active' AND email IS NOT NULL AND email != ''`);
+    const employees = result.rows;
+
+    if (employees.length === 0) return res.status(200).json({ success: false, message: 'কোনো email পাওয়া যায়নি।' });
+
+    const { sendEmail } = require('../services/email.service');
+    let sent = 0;
+    for (const emp of employees) {
+      const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden">
+        <div style="background:#1e3a8a;padding:20px;text-align:center">
+          <h2 style="color:white;margin:0">NovaTech BD</h2>
+        </div>
+        <div style="padding:24px">
+          <p>আস্সালামু আলাইকুম <strong>${emp.name_bn}</strong>,</p>
+          <div style="background:#f0f4ff;border-radius:8px;padding:16px;margin:16px 0">
+            ${message.replace(/\n/g, '<br>')}
+          </div>
+          <p>ধন্যবাদ,<br><strong>NovaTech BD টিম</strong></p>
+        </div>
+      </div>`;
+      await sendEmail(emp.email, subject, html);
+      sent++;
+    }
+    res.status(200).json({ success: true, message: `${sent} জনকে email পাঠানো হয়েছে।` });
+  } catch (err) {
+    console.error('Broadcast Email Error:', err.message);
+    res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+  }
 };

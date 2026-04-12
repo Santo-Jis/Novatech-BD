@@ -12,17 +12,25 @@ import {
 
 export default function AdminDashboard() {
   const navigate        = useNavigate()
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [kpi,      setKPI]      = useState(null)
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [sales,    setSales]    = useState([])
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [insights, setInsights] = useState([])
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [topProds, setTopProds] = useState([])
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [topShops, setTopShops] = useState([])
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [loading,  setLoading]  = useState(true)
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
 
   const fetchData = async () => {
     try {
-      const [kpiRes, salesRes, insightRes, prodRes, shopRes] = await Promise.all([
+      const [broadcastOpen, setBroadcastOpen] = useState(false)
+  const [kpiRes, salesRes, insightRes, prodRes, shopRes] = await Promise.all([
         api.get('/admin/stats'),
         api.get('/reports/sales?group_by=day'),
         api.get('/ai/insights?unread_only=false&limit=5'),
@@ -276,6 +284,13 @@ export default function AdminDashboard() {
           )}
         </div>
       )}
+      <div className="fixed bottom-20 right-4">
+      <button onClick={() => setBroadcastOpen(true)}
+        className="flex items-center gap-2 px-4 py-3 rounded-xl bg-primary text-white shadow-lg text-sm font-semibold">
+        ✉️ সবাইকে Email
+      </button>
     </div>
+    <BroadcastEmailModal isOpen={broadcastOpen} onClose={() => setBroadcastOpen(false)} />
+  </div>
   )
 }
