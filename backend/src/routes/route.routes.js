@@ -31,10 +31,10 @@ router.post('/',    auth, canCreateRoute, createRoute);
 router.put('/:id',  auth, canCreateRoute, updateRoute);
 
 // রুট মুছে দেওয়া
-router.delete('/:id', auth, allowRoles('admin', 'manager'), deleteRoute);
+router.delete('/:id', auth, allowRoles('admin', 'manager', 'accountant'), deleteRoute);
 
 // SR কে রুট অ্যাসাইন
-router.post('/:id/assign', auth, allowRoles('admin', 'manager'), assignWorkerToRoute);
+router.post('/:id/assign', auth, allowRoles('admin', 'manager', 'accountant'), assignWorkerToRoute);
 
 // রুটের SR তালিকা
 router.get('/:id/workers', auth, checkTeamAccess, getRouteWorkers);
