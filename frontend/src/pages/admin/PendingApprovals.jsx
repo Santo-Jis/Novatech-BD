@@ -22,7 +22,7 @@ export default function PendingApprovals() {
       const [empRes, editRes, routeRes] = await Promise.all([
         api.get('/employees/pending'),
         api.get('/employees/audit'),
-        api.get('/routes?status=pending')
+        api.get('/routes/pending/list')
       ])
       setEmployees(empRes.data.data || [])
       setEdits(editRes.data.data || [])
