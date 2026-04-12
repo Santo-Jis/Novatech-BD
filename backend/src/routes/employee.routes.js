@@ -1,7 +1,7 @@
 const express   = require('express');
 const router    = express.Router();
 const multer    = require('multer');
-const { broadcastEmail, auth }  = require('../middlewares/auth');
+const { broadcastEmail }  = require('../middlewares/auth');
 const {
     canCreateEmployee,
     canApproveEmployee,
