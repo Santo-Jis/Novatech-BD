@@ -5,7 +5,7 @@ import { FiHome, FiMapPin, FiShoppingBag, FiDollarSign, FiUser, FiBell, FiMoon, 
 
 const bottomNav = [
   { path: '/worker/dashboard',  icon: <FiHome />,        label: 'হোম' },
-  { path: '/worker/customers',  icon: <FiMapPin />,      label: 'রুট' },
+  { path: '/worker/route',  icon: <FiMapPin />,      label: 'রুট' },
   { path: '/worker/settlement', icon: <FiShoppingBag />, label: 'হিসাব' },
   { path: '/worker/commission', icon: <FiDollarSign />,  label: 'কমিশন' },
   { path: '/worker/profile',    icon: <FiUser />,        label: 'প্রোফাইল' },
