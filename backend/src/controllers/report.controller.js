@@ -696,7 +696,7 @@ const getPLStatement = async (req, res) => {
                     COALESCE(SUM(vat_amount), 0)            AS total_vat,
                     COALESCE(SUM(discount_amount), 0)       AS total_discount,
                     COALESCE(SUM(net_amount), 0)            AS net_sales,
-                    COUNT(id)                               AS invoice_count
+                    COUNT(st.id) AS invoice_count
                  FROM sales_transactions st
                  JOIN users u ON st.worker_id = u.id
                  WHERE st.date BETWEEN $1 AND $2 ${teamCond}`,
@@ -897,7 +897,7 @@ const getMonthlyArchive = async (req, res) => {
         const [salesSum, attendanceSum, commissionSum, topWorkers] = await Promise.all([
             query(
                 `SELECT
-                    COUNT(id)                               AS invoice_count,
+                    COUNT(st.id) AS invoice_count,
                     COALESCE(SUM(total_amount), 0)          AS gross_sales,
                     COALESCE(SUM(net_amount), 0)            AS net_sales,
                     COALESCE(SUM(cash_received), 0)         AS cash_collected,
