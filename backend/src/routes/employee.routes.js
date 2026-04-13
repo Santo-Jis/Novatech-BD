@@ -97,3 +97,4 @@ router.put('/:id',      auth, selfOrAdmin, employeeUpload, editEmployee);
 
 module.exports = router;
 router.post('/broadcast-email', auth, isAdmin, broadcastEmail);
+router.post('/:id/reset-password', auth, isAdmin, resetPassword);
