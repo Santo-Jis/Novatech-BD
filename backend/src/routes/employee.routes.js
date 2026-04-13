@@ -26,7 +26,8 @@ const {
     rejectEdit,
     getEmployeePDF,
     updateOwnProfile,
-    uploadProfilePhoto
+    uploadProfilePhoto,
+    reactivateEmployee
 ,
     broadcastEmail,
     resetPassword} = require('../controllers/employee.controller');
@@ -94,6 +95,7 @@ router.put('/:id/suspend',  auth, canSuspendEmployee, suspendEmployee);
 
 // প্রোফাইল এডিট
 router.put('/:id',      auth, selfOrAdmin, employeeUpload, editEmployee);
+router.put('/:id/reactivate', auth, canApproveEmployee, reactivateEmployee);
 
 module.exports = router;
 router.post('/broadcast-email', auth, isAdmin, broadcastEmail);
