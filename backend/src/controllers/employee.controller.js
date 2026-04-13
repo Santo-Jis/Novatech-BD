@@ -354,6 +354,10 @@ const approveEmployee = async (req, res) => {
                     <p style="margin:4px 0">🔑 অস্থায়ী পাসওয়ার্ড: <strong>${temp_password}</strong></p>
                   </div>
                   <p style="color:#e74c3c">প্রথম লগইনের পর পাসওয়ার্ড পরিবর্তন করুন।</p>
+                  <div style="text-align:center;margin:20px 0">
+                    <a href="https://novatech-bd-kqrn.vercel.app" style="background:#1e3a8a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">🚀 অ্যাপে লগইন করুন</a>
+                  </div>
+                  <p style="font-size:13px;color:#666;text-align:center">অথবা এই লিংকে যান: <a href="https://novatech-bd-kqrn.vercel.app" style="color:#1e3a8a">https://novatech-bd-kqrn.vercel.app</a></p>
                   <p>ধন্যবাদ,<br><strong>NovaTech BD টিম</strong></p>
                 </div>
               </div>`;
@@ -793,6 +797,10 @@ const broadcastEmail = async (req, res) => {
           <div style="background:#f0f4ff;border-radius:8px;padding:16px;margin:16px 0">
             ${message.replace(/\n/g, '<br>')}
           </div>
+          <div style="text-align:center;margin:20px 0">
+            <a href="https://novatech-bd-kqrn.vercel.app" style="background:#1e3a8a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">🚀 অ্যাপে যান</a>
+          </div>
+          <p style="font-size:13px;color:#666;text-align:center">অথবা এই লিংকে যান: <a href="https://novatech-bd-kqrn.vercel.app" style="color:#1e3a8a">https://novatech-bd-kqrn.vercel.app</a></p>
           <p>ধন্যবাদ,<br><strong>NovaTech BD টিম</strong></p>
         </div>
       </div>`;
@@ -818,7 +826,7 @@ const resetPassword = async (req, res) => {
     if (emp.rows.length === 0) return res.status(404).json({ success: false, message: 'কর্মচারী পাওয়া যায়নি।' });
     if (send_email && emp.rows[0].email) {
       const { sendEmail } = require('../services/email.service');
-      const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden"><div style="background:#1e3a8a;padding:20px;text-align:center"><h2 style="color:white;margin:0">NovaTech BD</h2></div><div style="padding:24px"><p>আস্সালামু আলাইকুম <strong>${emp.rows[0].name_bn}</strong>,</p><p>আপনার পাসওয়ার্ড রিসেট করা হয়েছে।</p><div style="background:#f0f4ff;border-radius:8px;padding:16px"><p>🔑 নতুন পাসওয়ার্ড: <strong>${newPass}</strong></p></div><p style="color:red">প্রথম লগইনের পর পাসওয়ার্ড পরিবর্তন করুন।</p><p>ধন্যবাদ,<br><strong>NovaTech BD টিম</strong></p></div></div>`;
+      const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden"><div style="background:#1e3a8a;padding:20px;text-align:center"><h2 style="color:white;margin:0">NovaTech BD</h2></div><div style="padding:24px"><p>আস্সালামু আলাইকুম <strong>${emp.rows[0].name_bn}</strong>,</p><p>আপনার পাসওয়ার্ড রিসেট করা হয়েছে।</p><div style="background:#f0f4ff;border-radius:8px;padding:16px"><p>🔑 নতুন পাসওয়ার্ড: <strong>${newPass}</strong></p></div><p style="color:red">প্রথম লগইনের পর পাসওয়ার্ড পরিবর্তন করুন।</p><div style="text-align:center;margin:20px 0"><a href="https://novatech-bd-kqrn.vercel.app" style="background:#1e3a8a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">🚀 অ্যাপে লগইন করুন</a></div><p style="font-size:13px;color:#666;text-align:center">অথবা এই লিংকে যান: <a href="https://novatech-bd-kqrn.vercel.app" style="color:#1e3a8a">https://novatech-bd-kqrn.vercel.app</a></p><p>ধন্যবাদ,<br><strong>NovaTech BD টিম</strong></p></div></div>`;
       await sendEmail(emp.rows[0].email, 'NovaTech BD - পাসওয়ার্ড রিসেট 🔑', html);
     }
     res.status(200).json({ success: true, message: 'পাসওয়ার্ড রিসেট সফল।', data: { new_password: newPass, name_bn: emp.rows[0].name_bn } });
@@ -892,6 +900,10 @@ const reactivateEmployee = async (req, res) => {
                     <p style="margin:4px 0">🔑 অস্থায়ী পাসওয়ার্ড: <strong>${newPassword}</strong></p>
                   </div>
                   <p style="color:#e74c3c">প্রথম লগইনের পর পাসওয়ার্ড পরিবর্তন করুন।</p>
+                  <div style="text-align:center;margin:20px 0">
+                    <a href="https://novatech-bd-kqrn.vercel.app" style="background:#1e3a8a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">🚀 অ্যাপে লগইন করুন</a>
+                  </div>
+                  <p style="font-size:13px;color:#666;text-align:center">অথবা এই লিংকে যান: <a href="https://novatech-bd-kqrn.vercel.app" style="color:#1e3a8a">https://novatech-bd-kqrn.vercel.app</a></p>
                   <p>ধন্যবাদ,<br><strong>NovaTech BD টিম</strong></p>
                 </div>
               </div>`;
