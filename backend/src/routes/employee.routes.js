@@ -28,8 +28,8 @@ const {
     updateOwnProfile,
     uploadProfilePhoto
 ,
-    broadcastEmail
-} = require('../controllers/employee.controller');
+    broadcastEmail,
+    resetPassword} = require('../controllers/employee.controller');
 
 // ============================================================
 // FILE UPLOAD (Multer — Memory Storage)
