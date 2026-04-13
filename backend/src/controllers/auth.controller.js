@@ -306,8 +306,7 @@ const forgotPassword = async (req, res) => {
         );
 
         if (result.rows.length === 0) {
-            // Security: নির্দিষ্ট করে বলব না কে নেই
-            return res.status(200).json({ success: true, message: 'যদি এই ইমেইল আমাদের সিস্টেমে থাকে, OTP পাঠানো হয়েছে।' });
+            return res.status(404).json({ success: false, message: 'এই ইমেইল দিয়ে কোনো অ্যাকাউন্ট পাওয়া যায়নি।' });
         }
 
         const user = result.rows[0];
