@@ -1,14 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { FiEye, FiEyeOff, FiLock, FiMail, FiPhone, FiHash, FiArrowLeft, FiCheck } from 'react-icons/fi'
 import axios from '../api/axios'
 
-const useTypingEffect = (text, speed = 80, delay = 0) => {
+/* ─────────────────────────────────────────
+   Typing Effect Hook
+───────────────────────────────────────── */
+const useTypingEffect = (text, speed = 70, delay = 0) => {
   const [displayed, setDisplayed] = useState('')
   const [done, setDone] = useState(false)
   useEffect(() => {
-    let timeout
     const start = setTimeout(() => {
       let i = 0
       const interval = setInterval(() => {
@@ -23,11 +25,62 @@ const useTypingEffect = (text, speed = 80, delay = 0) => {
 }
 
 const LOGIN_TYPES = [
-  { id: 'email',  label: 'ইমেইল',     icon: FiMail,  placeholder: 'আপনার ইমেইল লিখুন',      type: 'email' },
-  { id: 'phone',  label: 'ফোন',       icon: FiPhone, placeholder: 'আপনার ফোন নম্বর লিখুন', type: 'tel'   },
-  { id: 'code',   label: 'কর্মী কোড', icon: FiHash,  placeholder: 'আপনার কর্মী কোড লিখুন', type: 'text'  },
+  { id: 'email', label: 'ইমেইল',     icon: FiMail,  placeholder: 'ইমেইল লিখুন',      type: 'email' },
+  { id: 'phone', label: 'ফোন',       icon: FiPhone, placeholder: 'ফোন নম্বর লিখুন', type: 'tel'   },
+  { id: 'code',  label: 'কর্মী কোড', icon: FiHash,  placeholder: 'কর্মী কোড লিখুন', type: 'text'  },
 ]
 
+/* ─────────────────────────────────────────
+   NT Logo SVG Component
+───────────────────────────────────────── */
+function NTLogo({ size = 56 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Orbit ring */}
+      <ellipse cx="50" cy="50" rx="46" ry="22" stroke="#4ade80" strokeWidth="2.5" fill="none"
+        strokeDasharray="4 3" opacity="0.7"
+        style={{ transformOrigin: '50px 50px', animation: 'spin 8s linear infinite' }} />
+      <ellipse cx="50" cy="50" rx="46" ry="22" stroke="#22c55e" strokeWidth="1" fill="none"
+        style={{ transformOrigin: '50px 50px', animation: 'spin 8s linear infinite', transform: 'rotate(-15deg)' }} />
+      {/* NT Letters */}
+      <text x="50" y="62" textAnchor="middle" fontFamily="'Georgia', serif" fontSize="38"
+        fontWeight="bold" fill="white" letterSpacing="-1">NT</text>
+    </svg>
+  )
+}
+
+/* ─────────────────────────────────────────
+   Particle Background
+───────────────────────────────────────── */
+function Particles() {
+  const particles = Array.from({ length: 18 }, (_, i) => ({
+    id: i,
+    x: Math.random() * 100,
+    y: Math.random() * 100,
+    size: Math.random() * 3 + 1,
+    delay: Math.random() * 4,
+    duration: Math.random() * 6 + 6,
+  }))
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
+      {particles.map(p => (
+        <div key={p.id} style={{
+          position: 'absolute',
+          left: `${p.x}%`, top: `${p.y}%`,
+          width: p.size, height: p.size,
+          borderRadius: '50%',
+          background: '#4ade80',
+          opacity: 0.25,
+          animation: `float ${p.duration}s ${p.delay}s ease-in-out infinite alternate`,
+        }} />
+      ))}
+    </div>
+  )
+}
+
+/* ─────────────────────────────────────────
+   Main Login Component
+───────────────────────────────────────── */
 export default function Login() {
   const navigate = useNavigate()
   const { login, user, loading } = useAuthStore()
@@ -36,10 +89,11 @@ export default function Login() {
   const [identifier, setIdentifier] = useState('')
   const [password,   setPassword]   = useState('')
   const [showPass,   setShowPass]   = useState(false)
+  const [loginError, setLoginError] = useState('')
 
   const [step,        setStep]        = useState('login')
   const [fpEmail,     setFpEmail]     = useState('')
-  const [otp,         setOtp]         = useState(['', '', '', '', '', ''])
+  const [otp,         setOtp]         = useState(['','','','','',''])
   const [resetToken,  setResetToken]  = useState('')
   const [newPass,     setNewPass]     = useState('')
   const [confirmPass, setConfirmPass] = useState('')
@@ -47,12 +101,14 @@ export default function Login() {
   const [fpLoading,   setFpLoading]   = useState(false)
   const [fpError,     setFpError]     = useState('')
   const [resendTimer, setResendTimer] = useState(0)
+  const [mounted,     setMounted]     = useState(false)
 
-  const bismillah = useTypingEffect('بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيم', 60, 300)
-  const salam     = useTypingEffect('আসসালামু আলাইকুম', 80, bismillah.done ? 0 : 3000)
+  const bismillah = useTypingEffect('بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيم', 55, 600)
+  const salam     = useTypingEffect('আসসালামু আলাইকুম', 75, bismillah.done ? 200 : 4000)
 
+  useEffect(() => { setTimeout(() => setMounted(true), 100) }, [])
   useEffect(() => { if (user) redirectByRole(user.role) }, [user])
-  useEffect(() => { setIdentifier('') }, [activeTab])
+  useEffect(() => { setIdentifier(''); setLoginError('') }, [activeTab])
   useEffect(() => {
     if (resendTimer <= 0) return
     const t = setTimeout(() => setResendTimer(r => r - 1), 1000)
@@ -60,20 +116,17 @@ export default function Login() {
   }, [resendTimer])
 
   const redirectByRole = (role) => {
-    switch (role) {
-      case 'admin': navigate('/admin/dashboard', { replace: true }); break
-      case 'manager': case 'supervisor': case 'asm': case 'rsm': case 'accountant':
-        navigate('/manager/dashboard', { replace: true }); break
-      case 'worker': navigate('/worker/dashboard', { replace: true }); break
-      default: navigate('/', { replace: true })
-    }
+    const map = { admin: '/admin/dashboard', manager: '/manager/dashboard', supervisor: '/manager/dashboard', asm: '/manager/dashboard', rsm: '/manager/dashboard', accountant: '/manager/dashboard', worker: '/worker/dashboard' }
+    navigate(map[role] || '/', { replace: true })
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    setLoginError('')
     if (!identifier || !password) return
     const result = await login(identifier.trim(), password)
     if (result.success) redirectByRole(result.user.role)
+    else setLoginError(result.message || 'লগইন ব্যর্থ হয়েছে।')
   }
 
   const handleForgotSubmit = async () => {
@@ -97,41 +150,36 @@ export default function Login() {
       const res = await axios.post('/auth/verify-otp', { email: fpEmail, otp: otpStr })
       if (res.data.success) { setResetToken(res.data.data.reset_token); setStep('newpass') }
       else setFpError(res.data.message)
-    } catch { setFpError('সমস্যা হয়েছে, আবার চেষ্টা করুন।') }
+    } catch { setFpError('সমস্যা হয়েছে।') }
     setFpLoading(false)
   }
 
   const handleNewPassSubmit = async () => {
     setFpError('')
     if (!newPass || !confirmPass) return setFpError('সব ঘর পূরণ করুন।')
-    if (newPass.length < 6) return setFpError('পাসওয়ার্ড কমপক্ষে ৬ অক্ষর হতে হবে।')
+    if (newPass.length < 6) return setFpError('পাসওয়ার্ড কমপক্ষে ৬ অক্ষর।')
     if (newPass !== confirmPass) return setFpError('পাসওয়ার্ড মিলছে না।')
     setFpLoading(true)
     try {
       const res = await axios.post('/auth/reset-password', { email: fpEmail, reset_token: resetToken, new_password: newPass })
       if (res.data.success) setStep('done')
       else setFpError(res.data.message)
-    } catch { setFpError('সমস্যা হয়েছে, আবার চেষ্টা করুন।') }
+    } catch { setFpError('সমস্যা হয়েছে।') }
     setFpLoading(false)
   }
 
   const handleOtpChange = (index, value) => {
     if (!/^\d*$/.test(value)) return
-    const newOtp = [...otp]
-    newOtp[index] = value.slice(-1)
-    setOtp(newOtp)
+    const n = [...otp]; n[index] = value.slice(-1); setOtp(n)
     if (value && index < 5) document.getElementById(`otp-${index + 1}`)?.focus()
   }
-
   const handleOtpKeyDown = (index, e) => {
     if (e.key === 'Backspace' && !otp[index] && index > 0) document.getElementById(`otp-${index - 1}`)?.focus()
   }
-
   const handleOtpPaste = (e) => {
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
-    if (pasted.length === 6) { setOtp(pasted.split('')); document.getElementById('otp-5')?.focus() }
+    const p = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    if (p.length === 6) { setOtp(p.split('')); document.getElementById('otp-5')?.focus() }
   }
-
   const resetForgotFlow = () => {
     setStep('login'); setFpEmail(''); setOtp(['','','','','',''])
     setResetToken(''); setNewPass(''); setConfirmPass(''); setFpError(''); setResendTimer(0)
@@ -139,204 +187,390 @@ export default function Login() {
 
   const activeType = LOGIN_TYPES.find(t => t.id === activeTab)
 
+  /* ── Shared input style ── */
+  const inputCls = `w-full pl-11 pr-4 py-3.5 rounded-xl text-sm text-white placeholder-gray-500
+    border border-gray-700 bg-gray-900/80 focus:outline-none focus:border-green-500
+    focus:ring-1 focus:ring-green-500/40 transition-all duration-200`
+
+  const btnCls = `w-full py-3.5 rounded-xl font-bold text-sm tracking-wide transition-all duration-200
+    active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed
+    bg-gradient-to-r from-green-500 to-emerald-400 text-gray-950
+    hover:from-green-400 hover:to-emerald-300 hover:shadow-lg hover:shadow-green-500/25`
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-dark via-primary to-primary-light dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center p-4 transition-colors">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-96 h-96 bg-white/5 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-white/5 rounded-full blur-3xl" />
-      </div>
+    <>
+      {/* ── Global Styles ── */}
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Noto+Sans+Bengali:wght@400;500;600&display=swap');
 
-      <div className="relative w-full max-w-sm">
-        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden animate-fade-in">
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @keyframes float {
+          from { transform: translateY(0px) scale(1); opacity: 0.2; }
+          to   { transform: translateY(-20px) scale(1.3); opacity: 0.5; }
+        }
+        @keyframes fadeUp {
+          from { opacity: 0; transform: translateY(24px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes scanline {
+          0%   { transform: translateY(-100%); }
+          100% { transform: translateY(400%); }
+        }
+        @keyframes pulse-green {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0.0); }
+          50%       { box-shadow: 0 0 0 8px rgba(74,222,128,0.08); }
+        }
+        @keyframes logoGlow {
+          0%, 100% { filter: drop-shadow(0 0 8px rgba(74,222,128,0.4)); }
+          50%       { filter: drop-shadow(0 0 20px rgba(74,222,128,0.8)); }
+        }
+        @keyframes borderFlow {
+          0%   { background-position: 0% 50%; }
+          50%  { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        .fade-up { animation: fadeUp 0.5s ease both; }
+        .fade-up-1 { animation: fadeUp 0.5s 0.1s ease both; }
+        .fade-up-2 { animation: fadeUp 0.5s 0.2s ease both; }
+        .fade-up-3 { animation: fadeUp 0.5s 0.3s ease both; }
+        .fade-up-4 { animation: fadeUp 0.5s 0.4s ease both; }
+        .logo-glow { animation: logoGlow 3s ease-in-out infinite; }
 
-          {/* Header */}
-          <div className="bg-gradient-to-b from-primary to-primary-light px-8 pt-10 pb-8 text-center">
-            <div className="min-h-[32px] mb-2">
-              <p className="text-white/90 text-xl font-light tracking-wider" dir="rtl">
-                {bismillah.displayed}
-                {!bismillah.done && <span className="opacity-70 animate-pulse">|</span>}
-              </p>
-            </div>
-            <div className="min-h-[28px] mb-6">
-              <p className="text-white/80 text-base">
-                {salam.displayed}
-                {bismillah.done && !salam.done && <span className="opacity-70 animate-pulse">|</span>}
-              </p>
-            </div>
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-sm border border-white/30">
-                <span className="text-white font-bold text-2xl">N</span>
+        .card-border {
+          position: relative;
+        }
+        .card-border::before {
+          content: '';
+          position: absolute;
+          inset: -1px;
+          border-radius: 20px;
+          background: linear-gradient(135deg, #4ade80, #1f2937, #4ade80, #064e3b);
+          background-size: 300% 300%;
+          animation: borderFlow 6s ease infinite;
+          z-index: -1;
+        }
+
+        .tab-active {
+          background: linear-gradient(135deg, #16a34a, #059669);
+          color: #000 !important;
+          box-shadow: 0 2px 12px rgba(74,222,128,0.3);
+        }
+
+        .otp-input:focus {
+          border-color: #4ade80 !important;
+          box-shadow: 0 0 0 3px rgba(74,222,128,0.2);
+          background: rgba(74,222,128,0.05) !important;
+          color: #4ade80 !important;
+        }
+        .otp-filled {
+          border-color: #22c55e !important;
+          background: rgba(34,197,94,0.08) !important;
+          color: #4ade80 !important;
+        }
+      `}</style>
+
+      {/* ── Background ── */}
+      <div style={{
+        minHeight: '100vh',
+        background: 'linear-gradient(135deg, #030712 0%, #0a0f1a 40%, #051a0e 100%)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '16px', fontFamily: "'Noto Sans Bengali', sans-serif",
+        position: 'relative', overflow: 'hidden',
+      }}>
+        <Particles />
+
+        {/* Grid overlay */}
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          backgroundImage: 'linear-gradient(rgba(74,222,128,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(74,222,128,0.03) 1px, transparent 1px)',
+          backgroundSize: '40px 40px',
+        }} />
+
+        {/* Glow blobs */}
+        <div style={{ position: 'absolute', top: '-100px', right: '-100px', width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(74,222,128,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', bottom: '-100px', left: '-100px', width: '350px', height: '350px', background: 'radial-gradient(circle, rgba(34,197,94,0.06) 0%, transparent 70%)', pointerEvents: 'none' }} />
+
+        {/* ── Card ── */}
+        <div className="card-border" style={{
+          width: '100%', maxWidth: '400px', position: 'relative', zIndex: 1,
+          opacity: mounted ? 1 : 0, transition: 'opacity 0.6s ease',
+        }}>
+          <div style={{
+            background: 'rgba(10,15,26,0.95)',
+            backdropFilter: 'blur(20px)',
+            borderRadius: '20px',
+            overflow: 'hidden',
+          }}>
+
+            {/* ── Header ── */}
+            <div style={{
+              padding: '32px 24px 24px',
+              textAlign: 'center',
+              borderBottom: '1px solid rgba(74,222,128,0.1)',
+              background: 'linear-gradient(180deg, rgba(74,222,128,0.04) 0%, transparent 100%)',
+              position: 'relative', overflow: 'hidden',
+            }}>
+              {/* Scanline effect */}
+              <div style={{
+                position: 'absolute', left: 0, right: 0, height: '2px',
+                background: 'linear-gradient(90deg, transparent, rgba(74,222,128,0.4), transparent)',
+                animation: 'scanline 4s linear infinite',
+              }} />
+
+              {/* Bismillah */}
+              <div style={{ minHeight: '28px', marginBottom: '6px' }} className="fade-up">
+                <p style={{ color: 'rgba(74,222,128,0.8)', fontSize: '15px', fontFamily: 'serif', letterSpacing: '2px' }} dir="rtl">
+                  {bismillah.displayed}
+                  {!bismillah.done && <span style={{ animation: 'fadeIn 0.5s ease infinite alternate' }}>|</span>}
+                </p>
               </div>
-              <div>
-                <h1 className="text-white font-bold text-xl tracking-wide">NovaTech BD</h1>
-                <p className="text-white/60 text-xs mt-0.5">Management System</p>
+
+              {/* Salam */}
+              <div style={{ minHeight: '22px', marginBottom: '20px' }} className="fade-up-1">
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', letterSpacing: '1px' }}>
+                  {salam.displayed}
+                  {bismillah.done && !salam.done && <span style={{ animation: 'fadeIn 0.5s ease infinite alternate' }}>|</span>}
+                </p>
+              </div>
+
+              {/* NT Logo */}
+              <div className="logo-glow fade-up-2" style={{ display: 'inline-block', marginBottom: '12px' }}>
+                <NTLogo size={64} />
+              </div>
+
+              <div className="fade-up-3">
+                <h1 style={{ color: 'white', fontSize: '22px', fontWeight: '700', fontFamily: "'Rajdhani', sans-serif", letterSpacing: '3px', margin: '0 0 2px' }}>
+                  NOVATECH BD
+                </h1>
+                <p style={{ color: 'rgba(74,222,128,0.6)', fontSize: '11px', letterSpacing: '4px', textTransform: 'uppercase', margin: 0 }}>
+                  Management System
+                </p>
               </div>
             </div>
-          </div>
 
-          {/* ── LOGIN ── */}
-          {step === 'login' && (
-            <div className="px-8 py-8">
-              <h2 className="text-gray-700 font-semibold text-lg mb-5 text-center">লগইন করুন</h2>
-              <div className="flex bg-gray-100 rounded-xl p-1 mb-5 gap-1">
-                {LOGIN_TYPES.map(tab => (
-                  <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
-                    className={`flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-medium transition-all ${activeTab === tab.id ? 'bg-white text-primary shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
-                    <tab.icon className="text-sm" />{tab.label}
+            {/* ── Body ── */}
+            <div style={{ padding: '28px 24px 24px' }}>
+
+              {/* ══ LOGIN ══ */}
+              {step === 'login' && (
+                <div>
+                  <p className="fade-up" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', textAlign: 'center', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '20px' }}>
+                    লগইন করুন
+                  </p>
+
+                  {/* Tabs */}
+                  <div className="fade-up-1" style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: '12px', padding: '4px', gap: '4px', marginBottom: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    {LOGIN_TYPES.map(tab => (
+                      <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
+                        className={activeTab === tab.id ? 'tab-active' : ''}
+                        style={{
+                          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                          padding: '8px 4px', borderRadius: '9px', border: 'none', cursor: 'pointer',
+                          fontSize: '12px', fontWeight: '600', transition: 'all 0.2s',
+                          background: activeTab === tab.id ? undefined : 'transparent',
+                          color: activeTab === tab.id ? undefined : 'rgba(255,255,255,0.4)',
+                          fontFamily: "'Noto Sans Bengali', sans-serif",
+                        }}>
+                        <tab.icon style={{ fontSize: '13px' }} />
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div className="fade-up-2">
+                      <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '11px', letterSpacing: '1px', marginBottom: '8px' }}>
+                        {activeType.label.toUpperCase()}
+                      </label>
+                      <div style={{ position: 'relative' }}>
+                        <activeType.icon style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(74,222,128,0.6)', fontSize: '16px' }} />
+                        <input type={activeType.type} value={identifier} onChange={e => setIdentifier(e.target.value)}
+                          placeholder={activeType.placeholder} required autoComplete="username"
+                          className={inputCls} />
+                      </div>
+                    </div>
+
+                    <div className="fade-up-3">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                        <label style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', letterSpacing: '1px' }}>পাসওয়ার্ড</label>
+                        <button type="button" onClick={() => { setStep('forgot'); setFpError('') }}
+                          style={{ color: '#4ade80', fontSize: '11px', background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '0.5px' }}>
+                          ভুলে গেছেন?
+                        </button>
+                      </div>
+                      <div style={{ position: 'relative' }}>
+                        <FiLock style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(74,222,128,0.6)', fontSize: '16px' }} />
+                        <input type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                          placeholder="পাসওয়ার্ড লিখুন" required autoComplete="current-password"
+                          className={inputCls} style={{ paddingRight: '44px' }} />
+                        <button type="button" onClick={() => setShowPass(!showPass)}
+                          style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                          {showPass ? <FiEyeOff /> : <FiEye />}
+                        </button>
+                      </div>
+                    </div>
+
+                    {loginError && (
+                      <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px' }}>
+                        <p style={{ color: '#f87171', fontSize: '12px', margin: 0, textAlign: 'center' }}>{loginError}</p>
+                      </div>
+                    )}
+
+                    <button type="submit" disabled={loading} className={`${btnCls} fade-up-4`} style={{ marginTop: '4px' }}>
+                      {loading
+                        ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                            <span style={{ width: '16px', height: '16px', border: '2px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
+                            লগইন হচ্ছে...
+                          </span>
+                        : '→ লগইন করুন'
+                      }
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* ══ FORGOT: EMAIL ══ */}
+              {step === 'forgot' && (
+                <div>
+                  <button onClick={resetForgotFlow} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'rgba(74,222,128,0.7)', fontSize: '12px', background: 'none', border: 'none', cursor: 'pointer', marginBottom: '20px', padding: 0 }}>
+                    <FiArrowLeft /> ফিরে যান
                   </button>
-                ))}
-              </div>
-              <form onSubmit={handleSubmit} className="space-y-4">
+                  <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '700', textAlign: 'center', marginBottom: '6px', fontFamily: "'Rajdhani', sans-serif", letterSpacing: '1px' }}>পাসওয়ার্ড রিসেট</h2>
+                  <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', textAlign: 'center', marginBottom: '24px' }}>রেজিস্টার্ড ইমেইলে OTP পাঠানো হবে।</p>
+
+                  {fpError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
+                    <p style={{ color: '#f87171', fontSize: '12px', margin: 0, textAlign: 'center' }}>{fpError}</p>
+                  </div>}
+
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '11px', letterSpacing: '1px', marginBottom: '8px' }}>ইমেইল</label>
+                    <div style={{ position: 'relative' }}>
+                      <FiMail style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(74,222,128,0.6)', fontSize: '16px' }} />
+                      <input type="email" value={fpEmail} onChange={e => setFpEmail(e.target.value)} placeholder="আপনার ইমেইল লিখুন" className={inputCls} />
+                    </div>
+                  </div>
+                  <button onClick={handleForgotSubmit} disabled={fpLoading} className={btnCls}>
+                    {fpLoading ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><span style={{ width: '16px', height: '16px', border: '2px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />পাঠানো হচ্ছে...</span> : '→ OTP পাঠান'}
+                  </button>
+                </div>
+              )}
+
+              {/* ══ OTP ══ */}
+              {step === 'otp' && (
                 <div>
-                  <label className="block text-sm text-gray-600 mb-1.5 font-medium">{activeType.label}</label>
-                  <div className="relative">
-                    <activeType.icon className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
-                    <input type={activeType.type} value={identifier} onChange={e => setIdentifier(e.target.value)}
-                      placeholder={activeType.placeholder} required autoComplete="username"
-                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all bg-gray-50" />
+                  <button onClick={() => { setStep('forgot'); setFpError('') }} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'rgba(74,222,128,0.7)', fontSize: '12px', background: 'none', border: 'none', cursor: 'pointer', marginBottom: '20px', padding: 0 }}>
+                    <FiArrowLeft /> ফিরে যান
+                  </button>
+                  <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '700', textAlign: 'center', marginBottom: '6px', fontFamily: "'Rajdhani', sans-serif", letterSpacing: '1px' }}>OTP যাচাই</h2>
+                  <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', textAlign: 'center', marginBottom: '4px' }}>
+                    <span style={{ color: '#4ade80' }}>{fpEmail}</span> এ কোড পাঠানো হয়েছে
+                  </p>
+                  <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px', textAlign: 'center', marginBottom: '24px' }}>১০ মিনিটের মধ্যে দিন</p>
+
+                  {fpError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
+                    <p style={{ color: '#f87171', fontSize: '12px', margin: 0, textAlign: 'center' }}>{fpError}</p>
+                  </div>}
+
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '24px' }} onPaste={handleOtpPaste}>
+                    {otp.map((digit, i) => (
+                      <input key={i} id={`otp-${i}`} type="text" inputMode="numeric" maxLength={1} value={digit}
+                        onChange={e => handleOtpChange(i, e.target.value)}
+                        onKeyDown={e => handleOtpKeyDown(i, e)}
+                        className={`otp-input ${digit ? 'otp-filled' : ''}`}
+                        style={{
+                          width: '46px', height: '52px', textAlign: 'center',
+                          fontSize: '22px', fontWeight: '700',
+                          border: `2px solid ${digit ? '#22c55e' : 'rgba(255,255,255,0.1)'}`,
+                          borderRadius: '12px', background: digit ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
+                          color: digit ? '#4ade80' : 'white', outline: 'none', transition: 'all 0.2s',
+                        }} />
+                    ))}
+                  </div>
+
+                  <button onClick={handleOtpSubmit} disabled={fpLoading || otp.join('').length < 6} className={btnCls}>
+                    {fpLoading ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><span style={{ width: '16px', height: '16px', border: '2px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />যাচাই হচ্ছে...</span> : '→ যাচাই করুন'}
+                  </button>
+                  <div style={{ textAlign: 'center', marginTop: '16px' }}>
+                    {resendTimer > 0
+                      ? <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '12px' }}>{resendTimer}s পর আবার পাঠাতে পারবেন</p>
+                      : <button onClick={handleForgotSubmit} disabled={fpLoading} style={{ color: '#4ade80', fontSize: '12px', background: 'none', border: 'none', cursor: 'pointer' }}>আবার OTP পাঠান</button>
+                    }
                   </div>
                 </div>
+              )}
+
+              {/* ══ NEW PASSWORD ══ */}
+              {step === 'newpass' && (
                 <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-sm text-gray-600 font-medium">পাসওয়ার্ড</label>
-                    <button type="button" onClick={() => { setStep('forgot'); setFpError('') }}
-                      className="text-xs text-primary hover:underline font-medium">পাসওয়ার্ড ভুলে গেছেন?</button>
-                  </div>
-                  <div className="relative">
-                    <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
-                    <input type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
-                      placeholder="পাসওয়ার্ড লিখুন" required autoComplete="current-password"
-                      className="w-full pl-10 pr-12 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all bg-gray-50" />
-                    <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                      {showPass ? <FiEyeOff /> : <FiEye />}
+                  <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '700', textAlign: 'center', marginBottom: '6px', fontFamily: "'Rajdhani', sans-serif", letterSpacing: '1px' }}>নতুন পাসওয়ার্ড</h2>
+                  <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', textAlign: 'center', marginBottom: '24px' }}>কমপক্ষে ৬ অক্ষরের পাসওয়ার্ড দিন।</p>
+
+                  {fpError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
+                    <p style={{ color: '#f87171', fontSize: '12px', margin: 0, textAlign: 'center' }}>{fpError}</p>
+                  </div>}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                    <div>
+                      <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '11px', letterSpacing: '1px', marginBottom: '8px' }}>নতুন পাসওয়ার্ড</label>
+                      <div style={{ position: 'relative' }}>
+                        <FiLock style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(74,222,128,0.6)', fontSize: '16px' }} />
+                        <input type={showNewPass ? 'text' : 'password'} value={newPass} onChange={e => setNewPass(e.target.value)} placeholder="নতুন পাসওয়ার্ড" className={inputCls} style={{ paddingRight: '44px' }} />
+                        <button type="button" onClick={() => setShowNewPass(!showNewPass)} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                          {showNewPass ? <FiEyeOff /> : <FiEye />}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '11px', letterSpacing: '1px', marginBottom: '8px' }}>নিশ্চিত করুন</label>
+                      <div style={{ position: 'relative' }}>
+                        <FiLock style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: confirmPass && newPass !== confirmPass ? 'rgba(239,68,68,0.6)' : 'rgba(74,222,128,0.6)', fontSize: '16px' }} />
+                        <input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} placeholder="আবার লিখুন"
+                          className={inputCls}
+                          style={{ borderColor: confirmPass && newPass !== confirmPass ? 'rgba(239,68,68,0.5)' : undefined }} />
+                      </div>
+                      {confirmPass && newPass !== confirmPass && <p style={{ color: '#f87171', fontSize: '11px', marginTop: '6px' }}>পাসওয়ার্ড মিলছে না</p>}
+                    </div>
+                    <button onClick={handleNewPassSubmit} disabled={fpLoading} className={btnCls}>
+                      {fpLoading ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><span style={{ width: '16px', height: '16px', border: '2px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />পরিবর্তন হচ্ছে...</span> : '→ পাসওয়ার্ড পরিবর্তন করুন'}
                     </button>
                   </div>
                 </div>
-                <button type="submit" disabled={loading}
-                  className="w-full bg-gradient-to-r from-primary to-primary-light text-white py-3.5 rounded-xl font-semibold text-sm mt-2 hover:shadow-lg hover:shadow-primary/30 active:scale-95 transition-all disabled:opacity-60 disabled:cursor-not-allowed">
-                  {loading ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />লগইন হচ্ছে...</span> : 'লগইন করুন'}
-                </button>
-              </form>
-            </div>
-          )}
+              )}
 
-          {/* ── FORGOT: EMAIL ── */}
-          {step === 'forgot' && (
-            <div className="px-8 py-8">
-              <button onClick={resetForgotFlow} className="flex items-center gap-1 text-sm text-gray-500 hover:text-primary mb-5 transition-colors">
-                <FiArrowLeft /> ফিরে যান
-              </button>
-              <h2 className="text-gray-700 font-semibold text-lg mb-2 text-center">পাসওয়ার্ড ভুলে গেছেন?</h2>
-              <p className="text-gray-500 text-xs text-center mb-6">আপনার রেজিস্টার্ড ইমেইলে OTP পাঠানো হবে।</p>
-              {fpError && <p className="text-red-500 text-xs text-center bg-red-50 rounded-lg py-2 px-3 mb-4">{fpError}</p>}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1.5 font-medium">ইমেইল</label>
-                  <div className="relative">
-                    <FiMail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
-                    <input type="email" value={fpEmail} onChange={e => setFpEmail(e.target.value)}
-                      placeholder="আপনার ইমেইল লিখুন"
-                      className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all bg-gray-50" />
+              {/* ══ DONE ══ */}
+              {step === 'done' && (
+                <div style={{ textAlign: 'center', padding: '16px 0' }}>
+                  <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: 'rgba(74,222,128,0.1)', border: '2px solid rgba(74,222,128,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', animation: 'pulse-green 2s ease infinite' }}>
+                    <FiCheck style={{ color: '#4ade80', fontSize: '32px' }} />
                   </div>
+                  <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '700', marginBottom: '8px', fontFamily: "'Rajdhani', sans-serif" }}>সফল হয়েছে!</h2>
+                  <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '28px' }}>নতুন পাসওয়ার্ড দিয়ে লগইন করুন।</p>
+                  <button onClick={resetForgotFlow} className={btnCls}>→ লগইনে ফিরে যান</button>
                 </div>
-                <button onClick={handleForgotSubmit} disabled={fpLoading}
-                  className="w-full bg-gradient-to-r from-primary to-primary-light text-white py-3.5 rounded-xl font-semibold text-sm hover:shadow-lg active:scale-95 transition-all disabled:opacity-60">
-                  {fpLoading ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />পাঠানো হচ্ছে...</span> : 'OTP পাঠান'}
-                </button>
-              </div>
-            </div>
-          )}
+              )}
 
-          {/* ── OTP ── */}
-          {step === 'otp' && (
-            <div className="px-8 py-8">
-              <button onClick={() => { setStep('forgot'); setFpError('') }} className="flex items-center gap-1 text-sm text-gray-500 hover:text-primary mb-5 transition-colors">
-                <FiArrowLeft /> ফিরে যান
-              </button>
-              <h2 className="text-gray-700 font-semibold text-lg mb-2 text-center">OTP যাচাই করুন</h2>
-              <p className="text-gray-500 text-xs text-center mb-1"><strong>{fpEmail}</strong> এ OTP পাঠানো হয়েছে।</p>
-              <p className="text-gray-400 text-xs text-center mb-6">১০ মিনিটের মধ্যে OTP দিন।</p>
-              {fpError && <p className="text-red-500 text-xs text-center bg-red-50 rounded-lg py-2 px-3 mb-4">{fpError}</p>}
-              <div className="flex gap-2 justify-center mb-6" onPaste={handleOtpPaste}>
-                {otp.map((digit, i) => (
-                  <input key={i} id={`otp-${i}`} type="text" inputMode="numeric" maxLength={1} value={digit}
-                    onChange={e => handleOtpChange(i, e.target.value)} onKeyDown={e => handleOtpKeyDown(i, e)}
-                    className={`w-11 h-12 text-center text-xl font-bold border-2 rounded-xl focus:outline-none transition-all ${digit ? 'border-primary bg-primary/5 text-primary' : 'border-gray-200 bg-gray-50 text-gray-700'} focus:border-primary focus:ring-2 focus:ring-primary/20`} />
-                ))}
-              </div>
-              <button onClick={handleOtpSubmit} disabled={fpLoading || otp.join('').length < 6}
-                className="w-full bg-gradient-to-r from-primary to-primary-light text-white py-3.5 rounded-xl font-semibold text-sm hover:shadow-lg active:scale-95 transition-all disabled:opacity-60">
-                {fpLoading ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />যাচাই হচ্ছে...</span> : 'OTP যাচাই করুন'}
-              </button>
-              <div className="text-center mt-4">
-                {resendTimer > 0
-                  ? <p className="text-xs text-gray-400">{resendTimer} সেকেন্ড পর আবার পাঠাতে পারবেন</p>
-                  : <button onClick={handleForgotSubmit} disabled={fpLoading} className="text-xs text-primary hover:underline font-medium">আবার OTP পাঠান</button>
-                }
-              </div>
             </div>
-          )}
 
-          {/* ── NEW PASSWORD ── */}
-          {step === 'newpass' && (
-            <div className="px-8 py-8">
-              <h2 className="text-gray-700 font-semibold text-lg mb-2 text-center">নতুন পাসওয়ার্ড দিন</h2>
-              <p className="text-gray-500 text-xs text-center mb-6">কমপক্ষে ৬ অক্ষরের পাসওয়ার্ড দিন।</p>
-              {fpError && <p className="text-red-500 text-xs text-center bg-red-50 rounded-lg py-2 px-3 mb-4">{fpError}</p>}
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1.5 font-medium">নতুন পাসওয়ার্ড</label>
-                  <div className="relative">
-                    <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
-                    <input type={showNewPass ? 'text' : 'password'} value={newPass} onChange={e => setNewPass(e.target.value)}
-                      placeholder="নতুন পাসওয়ার্ড লিখুন"
-                      className="w-full pl-10 pr-12 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all bg-gray-50" />
-                    <button type="button" onClick={() => setShowNewPass(!showNewPass)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                      {showNewPass ? <FiEyeOff /> : <FiEye />}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-600 mb-1.5 font-medium">পাসওয়ার্ড নিশ্চিত করুন</label>
-                  <div className="relative">
-                    <FiLock className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-lg" />
-                    <input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)}
-                      placeholder="আবার পাসওয়ার্ড লিখুন"
-                      className={`w-full pl-10 pr-4 py-3 border rounded-xl text-sm focus:outline-none focus:ring-2 transition-all bg-gray-50 ${confirmPass && newPass !== confirmPass ? 'border-red-300 focus:ring-red-200 focus:border-red-400' : 'border-gray-200 focus:ring-primary/30 focus:border-primary'}`} />
-                  </div>
-                  {confirmPass && newPass !== confirmPass && <p className="text-red-400 text-xs mt-1">পাসওয়ার্ড মিলছে না</p>}
-                </div>
-                <button onClick={handleNewPassSubmit} disabled={fpLoading}
-                  className="w-full bg-gradient-to-r from-primary to-primary-light text-white py-3.5 rounded-xl font-semibold text-sm hover:shadow-lg active:scale-95 transition-all disabled:opacity-60">
-                  {fpLoading ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />পরিবর্তন হচ্ছে...</span> : 'পাসওয়ার্ড পরিবর্তন করুন'}
-                </button>
-              </div>
+            {/* ── Footer ── */}
+            <div style={{ padding: '14px 24px 20px', borderTop: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}>
+              <p style={{ color: 'rgba(255,255,255,0.15)', fontSize: '11px', letterSpacing: '1px', margin: '0 0 2px' }}>
+                NOVATECH BD (LTD.) © {new Date().getFullYear()}
+              </p>
+              <p style={{ color: 'rgba(74,222,128,0.25)', fontSize: '10px', letterSpacing: '0.5px', margin: 0 }}>
+                জানকি সিংহ রোড, বরিশাল সদর
+              </p>
             </div>
-          )}
 
-          {/* ── DONE ── */}
-          {step === 'done' && (
-            <div className="px-8 py-10 text-center">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <FiCheck className="text-green-500 text-3xl" />
-              </div>
-              <h2 className="text-gray-700 font-semibold text-lg mb-2">পাসওয়ার্ড পরিবর্তন সফল! ✅</h2>
-              <p className="text-gray-500 text-sm mb-6">এখন নতুন পাসওয়ার্ড দিয়ে লগইন করুন।</p>
-              <button onClick={resetForgotFlow}
-                className="w-full bg-gradient-to-r from-primary to-primary-light text-white py-3.5 rounded-xl font-semibold text-sm hover:shadow-lg active:scale-95 transition-all">
-                লগইনে ফিরে যান
-              </button>
-            </div>
-          )}
-
-          {/* Footer */}
-          <div className="px-8 pb-6 text-center">
-            <p className="text-xs text-gray-400">NovaTech BD (Ltd.) © {new Date().getFullYear()}</p>
-            <p className="text-xs text-gray-300 mt-0.5">জানকি সিংহ রোড, বরিশাল সদর</p>
           </div>
-
         </div>
       </div>
-    </div>
+    </>
   )
 }
