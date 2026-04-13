@@ -146,6 +146,16 @@ const sendWelcomeSMS = async (employee, employeeCode, tempPassword) => {
 const generateEmployeePDF = async (employee) => {
     return new Promise((resolve, reject) => {
         try {
+            // JSON fields safe parse করি
+            const parseJ = (val, fallback) => {
+                if (!val) return fallback;
+                if (typeof val === 'string') { try { return JSON.parse(val); } catch { return fallback; } }
+                return val;
+            };
+            employee.education         = parseJ(employee.education, []);
+            employee.experience        = parseJ(employee.experience, []);
+            employee.emergency_contact = parseJ(employee.emergency_contact, {});
+
             const doc    = new PDFDocument({ margin: 50, size: 'A4' });
             const chunks = [];
 
