@@ -92,7 +92,24 @@ export default function EmployeeForm() {
       }
       navigate('/admin/employees')
     } catch (err) {
-      toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।')
+      // পুরনো archived কর্মচারী → reactivate করার সুযোগ দাও
+      if (err.response?.data?.code === 'ARCHIVED_EXISTS') {
+        const existingId = err.response.data.data.existing_id
+        const confirmed  = window.confirm(
+          `${err.response.data.message}\n\nহ্যাঁ চাপলে তাকে পুনরায় যুক্ত করা হবে এবং নতুন পাসওয়ার্ড Email এ যাবে।`
+        )
+        if (confirmed) {
+          try {
+            const res = await api.put(`/employees/${existingId}/reactivate`)
+            toast.success(res.data.message)
+            navigate('/admin/employees')
+          } catch {
+            toast.error('পুনরায় যুক্ত করতে সমস্যা হয়েছে।')
+          }
+        }
+      } else {
+        toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।')
+      }
     } finally {
       setLoading(false)
     }
