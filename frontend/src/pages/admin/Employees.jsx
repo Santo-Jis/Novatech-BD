@@ -1,3 +1,4 @@
+import ResetPasswordModal from '../../components/ResetPasswordModal';
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
@@ -14,7 +15,8 @@ import {
 
 export default function AdminEmployees() {
   const navigate = useNavigate()
-  const [employees, setEmployees] = useState([])
+  const [resetEmp, setResetEmp] = useState(null)
+  const [employees, setmployees] = useState([])
   const [loading,   setLoading]   = useState(true)
   const [search,    setSearch]    = useState('')
   const [roleFilter, setRoleFilter] = useState('')
