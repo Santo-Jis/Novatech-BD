@@ -6,7 +6,10 @@ const {
     refresh,
     logout,
     me,
-    changePassword
+    changePassword,
+    forgotPassword,
+    verifyOtp,
+    resetPasswordWithOtp
 } = require('../controllers/auth.controller');
 
 const { auth } = require('../middlewares/auth');
@@ -35,5 +38,17 @@ router.get('/me', auth, me);
 // PUT /api/auth/change-password
 // পাসওয়ার্ড পরিবর্তন
 router.put('/change-password', auth, changePassword);
+
+// POST /api/auth/forgot-password
+// OTP পাঠাও
+router.post('/forgot-password', forgotPassword);
+
+// POST /api/auth/verify-otp
+// OTP যাচাই
+router.post('/verify-otp', verifyOtp);
+
+// POST /api/auth/reset-password
+// নতুন পাসওয়ার্ড সেট
+router.post('/reset-password', resetPasswordWithOtp);
 
 module.exports = router;
