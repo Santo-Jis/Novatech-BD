@@ -794,6 +794,28 @@ const broadcastEmail = async (req, res) => {
   }
 };
 
+// POST /api/employees/:id/reset-password
+const resetPassword = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { send_email } = req.body;
+    const bcrypt = require('bcryptjs');
+    const newPass = generatePassword();
+    const hashed = await bcrypt.hash(newPass, 10);
+    const emp = await query(`UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2 RETURNING name_bn, email`, [hashed, id]);
+    if (emp.rows.length === 0) return res.status(404).json({ success: false, message: 'কর্মচারী পাওয়া যায়নি।' });
+    if (send_email && emp.rows[0].email) {
+      const { sendEmail } = require('../services/email.service');
+      const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden"><div style="background:#1e3a8a;padding:20px;text-align:center"><h2 style="color:white;margin:0">NovaTech BD</h2></div><div style="padding:24px"><p>আস্সালামু আলাইকুম <strong>${emp.rows[0].name_bn}</strong>,</p><p>আপনার পাসওয়ার্ড রিসেট করা হয়েছে।</p><div style="background:#f0f4ff;border-radius:8px;padding:16px"><p>🔑 নতুন পাসওয়ার্ড: <strong>${newPass}</strong></p></div><p style="color:red">প্রথম লগইনের পর পাসওয়ার্ড পরিবর্তন করুন।</p><p>ধন্যবাদ,<br><strong>NovaTech BD টিম</strong></p></div></div>`;
+      await sendEmail(emp.rows[0].email, 'NovaTech BD - পাসওয়ার্ড রিসেট 🔑', html);
+    }
+    res.status(200).json({ success: true, message: 'পাসওয়ার্ড রিসেট সফল।', data: { new_password: newPass, name_bn: emp.rows[0].name_bn } });
+  } catch (err) {
+    console.error('Reset Password Error:', err.message);
+    res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+  }
+};
+
 module.exports = {
     resetPassword,
     broadcastEmail,
@@ -816,24 +838,3 @@ module.exports = {
 
 
 
-// POST /api/employees/:id/reset-password
-const resetPassword = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { send_email } = req.body;
-    const bcrypt = require('bcryptjs');
-    const newPass = generatePassword();
-    const hashed = await bcrypt.hash(newPass, 10);
-    const emp = await query(`UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2 RETURNING name_bn, email`, [hashed, id]);
-    if (emp.rows.length === 0) return res.status(404).json({ success: false, message: 'কর্মচারী পাওয়া যায়নি।' });
-    if (send_email && emp.rows[0].email) {
-      const { sendEmail } = require('../services/email.service');
-      const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden"><div style="background:#1e3a8a;padding:20px;text-align:center"><h2 style="color:white;margin:0">NovaTech BD</h2></div><div style="padding:24px"><p>আস্সালামু আলাইকুম <strong>${emp.rows[0].name_bn}</strong>,</p><p>আপনার পাসওয়ার্ড রিসেট করা হয়েছে।</p><div style="background:#f0f4ff;border-radius:8px;padding:16px"><p>🔑 নতুন পাসওয়ার্ড: <strong>${newPass}</strong></p></div><p style="color:red">প্রথম লগইনের পর পাসওয়ার্ড পরিবর্তন করুন।</p><p>ধন্যবাদ,<br><strong>NovaTech BD টিম</strong></p></div></div>`;
-      await sendEmail(emp.rows[0].email, 'NovaTech BD - পাসওয়ার্ড রিসেট 🔑', html);
-    }
-    res.status(200).json({ success: true, message: 'পাসওয়ার্ড রিসেট সফল।', data: { new_password: newPass, name_bn: emp.rows[0].name_bn } });
-  } catch (err) {
-    console.error('Reset Password Error:', err.message);
-    res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
-  }
-};
