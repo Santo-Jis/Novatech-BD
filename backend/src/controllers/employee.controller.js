@@ -289,6 +289,7 @@ const approveEmployee = async (req, res) => {
     try {
         const { id }         = req.params;
         const temp_password = generatePassword(); // auto-generate
+        const passwordHash  = await bcrypt.hash(temp_password, 10); // ✅ DB তে save করার জন্য hash
 
         // Employee তথ্য নাও
         const empResult = await query(
@@ -311,12 +312,12 @@ const approveEmployee = async (req, res) => {
             employee.join_date
         );
 
-        // Status আপডেট
+        // Status আপডেট + নতুন password_hash ✅ save করো
         await query(
             `UPDATE users 
-             SET status = 'active', employee_code = $1, updated_at = NOW()
-             WHERE id = $2`,
-            [employeeCode, id]
+             SET status = 'active', employee_code = $1, password_hash = $2, updated_at = NOW()
+             WHERE id = $3`,
+            [employeeCode, passwordHash, id]
         );
 
         // Audit Log
