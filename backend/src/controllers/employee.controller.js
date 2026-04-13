@@ -165,11 +165,22 @@ const createEmployee = async (req, res) => {
 
         // ফোন নম্বর আগে থেকে আছে কিনা
         const existing = await query(
-            'SELECT id FROM users WHERE phone = $1 OR email = $2',
+            'SELECT id, status FROM users WHERE phone = $1 OR (email IS NOT NULL AND email = $2)',
             [phone, email || null]
         );
 
         if (existing.rows.length > 0) {
+            const found = existing.rows[0];
+            // যদি archived হয় → reactivate করার সুযোগ দাও
+            if (found.status === 'archived') {
+                return res.status(409).json({
+                    success: false,
+                    code: 'ARCHIVED_EXISTS',
+                    message: 'এই কর্মচারী আগে বরখাস্ত হয়েছিলেন। পুনরায় যুক্ত করবেন?',
+                    data: { existing_id: found.id }
+                });
+            }
+            // active/pending/suspended → সত্যিকারের duplicate
             return res.status(400).json({
                 success: false,
                 message: 'এই ফোন নম্বর বা ইমেইল আগে থেকেই নিবন্ধিত।'
@@ -817,6 +828,88 @@ const resetPassword = async (req, res) => {
   }
 };
 
+// ============================================================
+// REACTIVATE ARCHIVED EMPLOYEE
+// PUT /api/employees/:id/reactivate
+// ============================================================
+
+const reactivateEmployee = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const empResult = await query(
+            'SELECT * FROM users WHERE id = $1 AND status = $2',
+            [id, 'archived']
+        );
+
+        if (empResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'আর্কাইভ কর্মচারী পাওয়া যায়নি।' });
+        }
+
+        const employee = empResult.rows[0];
+
+        // নতুন পাসওয়ার্ড তৈরি
+        const generatePassword = () => {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+            let pass = 'NTB@';
+            for (let i = 0; i < 4; i++) pass += chars[Math.floor(Math.random() * chars.length)];
+            return pass;
+        };
+        const newPassword  = generatePassword();
+        const passwordHash = await bcrypt.hash(newPassword, 10);
+
+        // নতুন employee code তৈরি
+        const { generateEmployeeCode } = require('../services/employee.service');
+        const newCode = await generateEmployeeCode(employee.role, new Date());
+
+        // reactivate
+        await query(
+            `UPDATE users
+             SET status = 'active', employee_code = $1, password_hash = $2,
+                 join_date = CURRENT_DATE, updated_at = NOW()
+             WHERE id = $3`,
+            [newCode, passwordHash, id]
+        );
+
+        await query(
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
+             VALUES ($1, 'REACTIVATE_EMPLOYEE', 'users', $2, $3)`,
+            [req.user.id, id, JSON.stringify({ employee_code: newCode, status: 'active' })]
+        );
+
+        // Email পাঠাও
+        if (employee.email) {
+            const { sendEmail } = require('../services/email.service');
+            const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden">
+                <div style="background:#1e3a8a;padding:20px;text-align:center">
+                  <h2 style="color:white;margin:0">NovaTech BD</h2>
+                </div>
+                <div style="padding:24px">
+                  <p>আস্সালামু আলাইকুম <strong>${employee.name_bn}</strong>,</p>
+                  <p>আপনাকে পুনরায় যুক্ত করা হয়েছে। ✅</p>
+                  <div style="background:#f0f4ff;border-radius:8px;padding:16px;margin:16px 0">
+                    <p style="margin:4px 0">🪪 নতুন কর্মচারী কোড: <strong>${newCode}</strong></p>
+                    <p style="margin:4px 0">🔑 অস্থায়ী পাসওয়ার্ড: <strong>${newPassword}</strong></p>
+                  </div>
+                  <p style="color:#e74c3c">প্রথম লগইনের পর পাসওয়ার্ড পরিবর্তন করুন।</p>
+                  <p>ধন্যবাদ,<br><strong>NovaTech BD টিম</strong></p>
+                </div>
+              </div>`;
+            await sendEmail(employee.email, 'NovaTech BD - পুনরায় যুক্ত হয়েছেন ✅', html);
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `${employee.name_bn} কে পুনরায় যুক্ত করা হয়েছে। নতুন কোড: ${newCode}`,
+            data: { employee_code: newCode, new_password: newPassword }
+        });
+
+    } catch (error) {
+        console.error('❌ Reactivate Error:', error.message);
+        return res.status(500).json({ success: false, message: 'পুনরায় যুক্ত করতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     resetPassword,
     broadcastEmail,
@@ -834,7 +927,8 @@ module.exports = {
     rejectEdit,
     getEmployeePDF,
     updateOwnProfile,
-    uploadProfilePhoto
+    uploadProfilePhoto,
+    reactivateEmployee
 };
 
 
