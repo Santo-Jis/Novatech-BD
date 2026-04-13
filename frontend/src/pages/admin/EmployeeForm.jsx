@@ -33,6 +33,16 @@ export default function EmployeeForm() {
       api.get(`/employees/${id}`)
         .then(res => {
           const emp = res.data.data
+          // DB থেকে JSON fields string হিসেবে আসতে পারে - parse করতে হবে
+          const parseJSON = (val, fallback) => {
+            if (!val) return fallback
+            if (typeof val === 'string') { try { return JSON.parse(val) } catch { return fallback } }
+            return val
+          }
+          emp.education         = parseJSON(emp.education, [{ exam: 'SSC', board: '', year: '', gpa: '' }])
+          emp.experience        = parseJSON(emp.experience, [])
+          emp.skills            = parseJSON(emp.skills, { bangla_communication: 'medium', english_communication: 'low', smartphone: 'medium', ms_office: 'low', motorcycle: false, motorcycle_license: '' })
+          emp.emergency_contact = parseJSON(emp.emergency_contact, { name: '', relation: '', phone: '', address: '' })
           setForm(prev => ({ ...prev, ...emp }))
           if (emp.profile_photo) setPhotoPreview(emp.profile_photo)
         })
