@@ -13,7 +13,7 @@ const POPULAR_MODELS = {
         // ══ ফ্রি মডেল (:free) ══════════════════════════════════════════════════
 
         // 💬 General Chat / Daily Insight — দ্রুত, GPT-4 মানের
-        { id: 'meta-llama/llama-3.3-70b-instruct:free',              name: '💬 Llama 3.3 70B — Daily Chat & Insight (Free)',          tier: 'free' },
+        { id: 'openrouter/auto',              name: '💬 Llama 3.3 70B — Daily Chat & Insight (Free)',          tier: 'free' },
 
         // 🧠 Complex Analysis / Reasoning — step-by-step চিন্তা, math, logic
         { id: 'deepseek/deepseek-r1:free',                            name: '🧠 DeepSeek R1 — Complex Analysis & Reasoning (Free)',    tier: 'free' },
@@ -50,7 +50,7 @@ const POPULAR_MODELS = {
         { id: 'deepseek/deepseek-chat',      name: 'DeepSeek Chat — Budget (Paid)',     tier: 'budget' },
     ],
     anthropic: [
-        { id: 'claude-haiku-4-5',  name: 'Claude Haiku 4.5 (Fast)',   tier: 'fast'  },
+        { id: 'claude-haiku-4-5-20251001',  name: 'Claude Haiku 4.5 (Fast)',   tier: 'fast'  },
         { id: 'claude-sonnet-4-6',          name: 'Claude Sonnet 4.6 (Smart)', tier: 'smart' },
         { id: 'claude-opus-4-6',            name: 'Claude Opus 4.6 (Best)',    tier: 'best'  },
     ],
@@ -307,7 +307,7 @@ const aiChat = async (req, res) => {
 সংক্ষেপে ও বাস্তবসম্মত পরামর্শ দাও।`;
 
         const chatHistory = history.slice(-6).map(h => ({ role: h.role, content: h.content }));
-        const model       = dbConfig.daily_model || (provider === 'openrouter' ? 'meta-llama/llama-3.3-70b-instruct:free' : 'gpt-4o-mini');
+        const model       = dbConfig.daily_model || (provider === 'openrouter' ? 'openrouter/auto' : 'gpt-4o-mini');
         const maxTokens   = 800;
 
         let reply = '';
