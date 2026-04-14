@@ -70,7 +70,7 @@ export default function AIChat() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">AI ম্যানেজার চ্যাট</h1>
-            <p className="text-xs text-gray-400">Claude AI · রিয়েল-টাইম ব্যবসায়িক পরামর্শ</p>
+            <p className="text-xs text-gray-400">AI · রিয়েল-টাইম ব্যবসায়িক পরামর্শ</p>
           </div>
         </div>
         <button onClick={clearChat} className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 dark:border-slate-700 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors">
