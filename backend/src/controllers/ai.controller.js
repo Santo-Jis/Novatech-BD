@@ -50,7 +50,7 @@ const POPULAR_MODELS = {
         { id: 'deepseek/deepseek-chat',      name: 'DeepSeek Chat — Budget (Paid)',     tier: 'budget' },
     ],
     anthropic: [
-        { id: 'claude-haiku-4-5-20251001',  name: 'Claude Haiku 4.5 (Fast)',   tier: 'fast'  },
+        { id: 'claude-haiku-4-5',  name: 'Claude Haiku 4.5 (Fast)',   tier: 'fast'  },
         { id: 'claude-sonnet-4-6',          name: 'Claude Sonnet 4.6 (Smart)', tier: 'smart' },
         { id: 'claude-opus-4-6',            name: 'Claude Opus 4.6 (Best)',    tier: 'best'  },
     ],
