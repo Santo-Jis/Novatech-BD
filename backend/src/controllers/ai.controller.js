@@ -13,7 +13,7 @@ const POPULAR_MODELS = {
         // ══ ফ্রি মডেল (:free) ══════════════════════════════════════════════════
 
         // 💬 General Chat / Daily Insight — দ্রুত, GPT-4 মানের
-        { id: 'openrouter/auto',              name: '💬 Llama 3.3 70B — Daily Chat & Insight (Free)',          tier: 'free' },
+        { id: 'meta-llama/llama-3.3-70b-instruct:free',              name: '💬 Llama 3.3 70B — Daily Chat & Insight (Free)',          tier: 'free' },
 
         // 🧠 Complex Analysis / Reasoning — step-by-step চিন্তা, math, logic
         { id: 'deepseek/deepseek-r1:free',                            name: '🧠 DeepSeek R1 — Complex Analysis & Reasoning (Free)',    tier: 'free' },
@@ -307,14 +307,36 @@ const aiChat = async (req, res) => {
 সংক্ষেপে ও বাস্তবসম্মত পরামর্শ দাও।`;
 
         const chatHistory = history.slice(-6).map(h => ({ role: h.role, content: h.content }));
-        const model       = dbConfig.daily_model || (provider === 'openrouter' ? 'openrouter/auto' : 'gpt-4o-mini');
+        const primaryModel = dbConfig.daily_model || (provider === 'openrouter' ? 'meta-llama/llama-3.3-70b-instruct:free' : 'gpt-4o-mini');
         const maxTokens   = 800;
+
+        // OpenRouter free model fallback list — rate limit হলে পরেরটা try করবে
+        const FREE_FALLBACKS = [
+            'meta-llama/llama-3.3-70b-instruct:free',
+            'google/gemma-3-27b-it:free',
+            'mistralai/mistral-7b-instruct:free',
+            'openrouter/auto',
+        ];
+
+        const callOpenRouter = async (model, messages) => {
+            return axios.post(providerInfo.baseUrl,
+                { model, max_tokens: maxTokens, messages },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        [providerInfo.authHeader]: providerInfo.authValue(apiKey),
+                        ...providerInfo.extraHeaders
+                    },
+                    timeout: 30000
+                }
+            );
+        };
 
         let reply = '';
 
         // Provider অনুযায়ী কল
         if (providerInfo.format === 'gemini') {
-            const url = `${providerInfo.baseUrl}/${model}:generateContent?key=${apiKey}`;
+            const url = `${providerInfo.baseUrl}/${primaryModel}:generateContent?key=${apiKey}`;
             const contents = [...chatHistory, { role: 'user', content: message }].map(m => ({
                 role: m.role === 'assistant' ? 'model' : 'user',
                 parts: [{ text: m.content }]
@@ -329,37 +351,48 @@ const aiChat = async (req, res) => {
         } else if (providerInfo.format === 'anthropic') {
             const messages = [...chatHistory, { role: 'user', content: message }];
             const antRes = await axios.post(providerInfo.baseUrl,
-                { model, max_tokens: maxTokens, system: systemPrompt, messages },
+                { model: primaryModel, max_tokens: maxTokens, system: systemPrompt, messages },
                 { headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, timeout: 30000 }
             );
             reply = antRes.data.content[0]?.text || 'উত্তর পাওয়া যায়নি।';
 
         } else {
-            // OpenAI-compatible (OpenRouter + OpenAI)
-            const messages = [
+            // OpenAI-compatible (OpenRouter + OpenAI) — with fallback retry
+            const oaiMessages = [
                 { role: 'system', content: systemPrompt },
                 ...chatHistory,
                 { role: 'user', content: message }
             ];
-            const oaiRes = await axios.post(providerInfo.baseUrl,
-                { model, max_tokens: maxTokens, messages },
-                {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        [providerInfo.authHeader]: providerInfo.authValue(apiKey),
-                        ...providerInfo.extraHeaders
-                    },
-                    timeout: 30000
+
+            // Build model list: primary first, then fallbacks (deduped)
+            const modelsToTry = [primaryModel, ...FREE_FALLBACKS.filter(m => m !== primaryModel)];
+            let lastError = null;
+
+            for (const model of modelsToTry) {
+                try {
+                    const oaiRes = await callOpenRouter(model, oaiMessages);
+                    reply = oaiRes.data?.choices?.[0]?.message?.content || 'উত্তর পাওয়া যায়নি।';
+                    break; // সফল হলে loop থেকে বের হও
+                } catch (err) {
+                    const errStatus = err.response?.status;
+                    // শুধু 429 বা 404 হলে fallback করো, অন্যথায় throw করো
+                    if (errStatus === 429 || errStatus === 404) {
+                        console.warn(`⚠️ Model ${model} failed (${errStatus}), trying next...`);
+                        lastError = err;
+                        continue;
+                    }
+                    throw err;
                 }
-            );
-            reply = oaiRes.data?.choices?.[0]?.message?.content || 'উত্তর পাওয়া যায়নি।';
+            }
+
+            if (!reply && lastError) throw lastError;
         }
 
         return res.status(200).json({
             success: true,
             data: {
                 reply,
-                model,
+                model: primaryModel,
                 provider:      providerInfo.name,
                 provider_key:  provider
             }
