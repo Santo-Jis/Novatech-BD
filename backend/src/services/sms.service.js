@@ -1,57 +1,192 @@
 const axios = require('axios');
+const { query } = require('../config/db');
+const { decrypt } = require('../config/encryption');
 
 // ============================================================
-// SMS Service — SSL Wireless Adapter
+// SMS Service — Multi-Provider Adapter
 // NovaTechBD Management System
 // ============================================================
-// যদি পরে অন্য provider ব্যবহার করতে চান,
-// শুধু এই ফাইলের sendSMS() ফাংশন বদলালেই হবে
+// Supported providers:
+//   softbarta     → ms.softbarta.com  (Android phone gateway)  ← DEFAULT
+//   ssl_wireless  → smsc.sslwireless.com
+//   twilio        → api.twilio.com/2010-04-01
+//   custom        → DB-এ sms_custom_url
 // ============================================================
 
+// DB থেকে SMS কনফিগ পড়া (cached 60s)
+let _configCache = null;
+let _configCacheAt = 0;
+
+const getSmsConfig = async () => {
+    if (_configCache && Date.now() - _configCacheAt < 60_000) {
+        return _configCache;
+    }
+
+    const SMS_KEYS = [
+        'sms_api_key', 'sms_sender_id', 'sms_provider',
+        'sms_custom_url', 'sms_enabled', 'sms_device_id'
+    ];
+    const result = await query(
+        `SELECT key, value FROM system_settings WHERE key = ANY($1)`,
+        [SMS_KEYS]
+    );
+
+    const raw = {};
+    result.rows.forEach(r => { raw[r.key] = r.value; });
+
+    // API key ডিক্রিপ্ট করো
+    let apiKey = raw.sms_api_key || process.env.SMS_API_KEY || '';
+    if (apiKey && !apiKey.includes('****')) {
+        try { apiKey = decrypt(apiKey); } catch { /* .env key decrypt লাগবে না */ }
+    }
+
+    _configCache = {
+        provider:  raw.sms_provider  || 'softbarta',
+        apiKey,
+        senderId:  raw.sms_sender_id || process.env.SMS_SENDER_ID || '',
+        customUrl: raw.sms_custom_url || '',
+        deviceId:  raw.sms_device_id  || '',          // SoftBarta device ID (optional)
+        enabled:   raw.sms_enabled !== 'false',
+    };
+    _configCacheAt = Date.now();
+
+    return _configCache;
+};
+
+const clearSmsConfigCache = () => {
+    _configCache = null;
+    _configCacheAt = 0;
+};
+
 // ============================================================
-// CORE SMS SENDER
-// SSL Wireless API দিয়ে SMS পাঠানো
+// PHONE NUMBER FORMATTER
+// ============================================================
+
+const formatPhone = (phone) => {
+    let p = phone.replace(/\D/g, '');
+    if (p.startsWith('0'))  p = '88' + p;
+    if (!p.startsWith('88')) p = '88' + p;
+    return p; // "8801XXXXXXXXX"
+};
+
+// ============================================================
+// PROVIDER ADAPTERS
+// ============================================================
+
+// ── SoftBarta (ms.softbarta.com) ──────────────────────────
+// API: GET https://ms.softbarta.com/api/send-sms
+// Params: api_token, mobile, message, device_id (optional)
+// Success: { "status": "success", "message": "SMS queued" }
+// Docs: API page → Generate Link
+const sendViaSoftBarta = async (formattedPhone, message, config) => {
+    const params = new URLSearchParams({
+        api_token: config.apiKey,
+        mobile:    formattedPhone,
+        message,
+    });
+
+    // নির্দিষ্ট device থেকে পাঠাতে চাইলে
+    if (config.deviceId) params.append('device_id', config.deviceId);
+
+    const response = await axios.get(
+        `https://ms.softbarta.com/api/send-sms?${params.toString()}`,
+        { timeout: 15000 }
+    );
+
+    // SoftBarta success response: { status: "success" }
+    if (response.data?.status === 'success' || response.data?.status === 'Success') {
+        return { success: true, data: response.data };
+    }
+    throw new Error(
+        response.data?.message || response.data?.error || 'SoftBarta: SMS পাঠানো ব্যর্থ'
+    );
+};
+
+// ── SSL Wireless ───────────────────────────────────────────
+const sendViaSSLWireless = async (formattedPhone, message, config) => {
+    const response = await axios.post(
+        'https://smsc.sslwireless.com/api/v3/send-sms',
+        {
+            api_token: config.apiKey,
+            sid:       config.senderId,
+            sms:       message,
+            msisdn:    formattedPhone,
+            csmsid:    `NTB_${Date.now()}`
+        },
+        { timeout: 10000 }
+    );
+    if (response.data?.status_code === 1000) {
+        return { success: true, data: response.data };
+    }
+    throw new Error(response.data?.status_message || 'SSL Wireless: SMS পাঠানো ব্যর্থ');
+};
+
+// ── Twilio ─────────────────────────────────────────────────
+// API Key format: "AccountSID:AuthToken"
+const sendViaTwilio = async (formattedPhone, message, config) => {
+    const [accountSid, authToken] = config.apiKey.split(':');
+    if (!accountSid || !authToken) {
+        throw new Error('Twilio API Key ফরম্যাট ভুল। "AccountSID:AuthToken" দিন।');
+    }
+    const response = await axios.post(
+        `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+        new URLSearchParams({
+            From: config.senderId,
+            To:   `+${formattedPhone}`,
+            Body: message,
+        }),
+        { auth: { username: accountSid, password: authToken }, timeout: 10000 }
+    );
+    if (response.data?.sid) {
+        return { success: true, data: response.data };
+    }
+    throw new Error(response.data?.message || 'Twilio: SMS পাঠানো ব্যর্থ');
+};
+
+// ── Custom API ─────────────────────────────────────────────
+const sendViaCustom = async (formattedPhone, message, config) => {
+    if (!config.customUrl) throw new Error('Custom SMS URL সেট করা নেই।');
+    const response = await axios.post(
+        config.customUrl,
+        { api_token: config.apiKey, mobile: formattedPhone, message },
+        { timeout: 10000 }
+    );
+    if (response.status === 200 && (response.data?.status === 'success' || response.data?.success)) {
+        return { success: true, data: response.data };
+    }
+    throw new Error(response.data?.message || 'Custom API: SMS পাঠানো ব্যর্থ');
+};
+
+// ============================================================
+// CORE SENDER
 // ============================================================
 
 const sendSMS = async (phone, message) => {
     try {
-        // ফোন নম্বর ফরম্যাট করো (88 prefix যোগ)
-        let formattedPhone = phone.replace(/\D/g, ''); // শুধু সংখ্যা রাখো
-        if (formattedPhone.startsWith('0')) {
-            formattedPhone = '88' + formattedPhone;
-        }
-        if (!formattedPhone.startsWith('88')) {
-            formattedPhone = '88' + formattedPhone;
+        const formattedPhone = formatPhone(phone);
+        const config = await getSmsConfig();
+
+        if (!config.enabled) {
+            console.log(`📵 SMS বন্ধ (${formattedPhone})`);
+            return { success: true, disabled: true };
         }
 
-        const apiKey   = process.env.SMS_API_KEY;
-        const senderId = process.env.SMS_SENDER_ID || 'NovaTechBD';
-
-        // SMS API Key না থাকলে লগ করো (Development mode)
-        if (!apiKey) {
-            console.log(`📱 SMS (Dev Mode) → ${formattedPhone}: ${message}`);
+        if (!config.apiKey) {
+            console.log(`📱 Dev Mode [${config.provider}] → ${formattedPhone}: ${message}`);
             return { success: true, dev: true };
         }
 
-        // SSL Wireless API
-        const response = await axios.post(
-            'https://smsc.sslwireless.com/api/v3/send-sms',
-            {
-                api_token: apiKey,
-                sid:       senderId,
-                sms:       message,
-                msisdn:    formattedPhone,
-                csmsid:    `NTB_${Date.now()}`
-            },
-            { timeout: 10000 }
-        );
-
-        if (response.data?.status_code === 1000) {
-            console.log(`✅ SMS পাঠানো সফল → ${formattedPhone}`);
-            return { success: true, data: response.data };
+        let result;
+        switch (config.provider) {
+            case 'softbarta':    result = await sendViaSoftBarta(formattedPhone, message, config);  break;
+            case 'twilio':       result = await sendViaTwilio(formattedPhone, message, config);     break;
+            case 'custom':       result = await sendViaCustom(formattedPhone, message, config);     break;
+            case 'ssl_wireless':
+            default:             result = await sendViaSSLWireless(formattedPhone, message, config); break;
         }
 
-        throw new Error(response.data?.status_message || 'SMS পাঠানো ব্যর্থ');
+        console.log(`✅ SMS সফল [${config.provider}] → ${formattedPhone}`);
+        return result;
 
     } catch (error) {
         console.error(`❌ SMS Error → ${phone}:`, error.message);
@@ -60,82 +195,36 @@ const sendSMS = async (phone, message) => {
 };
 
 // ============================================================
-// OTP পাঠানো (বিক্রয়ে Invoice যাচাইয়ের জন্য)
+// HELPER FUNCTIONS
 // ============================================================
 
 const sendOTP = async (phone, otp, shopName) => {
-    const message =
-        `NovaTechBD\n` +
-        `দোকান: ${shopName}\n` +
-        `OTP: ${otp}\n` +
-        `মেয়াদ: ১০ মিনিট\n` +
-        `এই কোড কাউকে দেবেন না।`;
-
-    return await sendSMS(phone, message);
+    const msg = `NovaTechBD\nদোকান: ${shopName}\nOTP: ${otp}\nমেয়াদ: ১০ মিনিট\nএই কোড কাউকে দেবেন না।`;
+    return sendSMS(phone, msg);
 };
-
-// ============================================================
-// Invoice পাঠানো (WhatsApp লিংক সহ)
-// ============================================================
 
 const sendInvoice = async (phone, invoiceNumber, totalAmount, shopName) => {
-    const message =
-        `NovaTechBD Invoice\n` +
-        `দোকান: ${shopName}\n` +
-        `Invoice: ${invoiceNumber}\n` +
-        `মোট: ৳${totalAmount.toLocaleString('bn-BD')}\n` +
-        `ধন্যবাদ আমাদের সাথে থাকার জন্য।`;
-
-    return await sendSMS(phone, message);
+    const msg = `NovaTechBD Invoice\nদোকান: ${shopName}\nInvoice: ${invoiceNumber}\nমোট: ৳${totalAmount.toLocaleString('bn-BD')}\nধন্যবাদ।`;
+    return sendSMS(phone, msg);
 };
-
-// ============================================================
-// নতুন কর্মচারীর Login Credentials পাঠানো
-// ============================================================
 
 const sendLoginCredentials = async (phone, employeeCode, password, name) => {
-    const message =
-        `NovaTechBD\n` +
-        `স্বাগতম ${name}!\n` +
-        `আপনার লগইন তথ্য:\n` +
-        `ID: ${employeeCode}\n` +
-        `Password: ${password}\n` +
-        `প্রথম লগইনে পাসওয়ার্ড পরিবর্তন করুন।`;
-
-    return await sendSMS(phone, message);
+    const msg = `NovaTechBD\nস্বাগতম ${name}!\nID: ${employeeCode}\nPassword: ${password}\nপ্রথম লগইনে পাসওয়ার্ড পরিবর্তন করুন।`;
+    return sendSMS(phone, msg);
 };
 
-// ============================================================
-// WhatsApp এ Invoice পাঠানো
-// (WhatsApp API না থাকলে wa.me লিংক ব্যবহার করো)
-// ============================================================
-
 const getWhatsAppInvoiceLink = (phone, invoiceNumber, totalAmount, shopName, items) => {
-    let formattedPhone = phone.replace(/\D/g, '');
-    if (formattedPhone.startsWith('0')) {
-        formattedPhone = '88' + formattedPhone;
-    }
-
-    // Items list তৈরি
+    const fp = formatPhone(phone);
     const itemsList = items
-        .map(item => `• ${item.name}: ${item.qty} × ৳${item.price} = ৳${item.subtotal}`)
+        .map(i => `• ${i.name}: ${i.qty} × ৳${i.price} = ৳${i.subtotal}`)
         .join('\n');
-
     const message =
-        `🧾 *NovaTech BD Invoice*\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `🏪 দোকান: *${shopName}*\n` +
-        `📋 Invoice: *${invoiceNumber}*\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `${itemsList}\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `💰 মোট: *৳${totalAmount.toLocaleString('bn-BD')}*\n` +
-        `━━━━━━━━━━━━━━━━━━\n` +
-        `_NovaTech BD (Ltd.)_\n` +
-        `_জানকি সিংহ রোড, বরিশাল_`;
-
-    const encodedMessage = encodeURIComponent(message);
-    return `https://wa.me/${formattedPhone}?text=${encodedMessage}`;
+        `🧾 *NovaTech BD Invoice*\n━━━━━━━━━━━━━━━━━━\n` +
+        `🏪 দোকান: *${shopName}*\n📋 Invoice: *${invoiceNumber}*\n` +
+        `━━━━━━━━━━━━━━━━━━\n${itemsList}\n━━━━━━━━━━━━━━━━━━\n` +
+        `💰 মোট: *৳${totalAmount.toLocaleString('bn-BD')}*\n━━━━━━━━━━━━━━━━━━\n` +
+        `_NovaTech BD (Ltd.)_\n_জানকি সিংহ রোড, বরিশাল_`;
+    return `https://wa.me/${fp}?text=${encodeURIComponent(message)}`;
 };
 
 module.exports = {
@@ -143,5 +232,6 @@ module.exports = {
     sendOTP,
     sendInvoice,
     sendLoginCredentials,
-    getWhatsAppInvoiceLink
+    getWhatsAppInvoiceLink,
+    clearSmsConfigCache
 };
