@@ -4,20 +4,26 @@ import { Card } from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import toast from 'react-hot-toast'
-import { FiSave, FiPlus, FiTrash2 } from 'react-icons/fi'
+import { FiSave, FiPlus, FiTrash2, FiMessageSquare, FiCheckCircle, FiLoader, FiAlertCircle } from 'react-icons/fi'
 
 export default function AdminSettings() {
-  const [settings,  setSettings]  = useState({})
-  const [holidays,  setHolidays]  = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [saving,    setSaving]    = useState(false)
-  const [newHoliday, setNewHoliday] = useState('')
+  const [settings,    setSettings]    = useState({})
+  const [holidays,    setHolidays]    = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [saving,      setSaving]      = useState(false)
+  const [newHoliday,  setNewHoliday]  = useState('')
+  const [smsApiKey,   setSmsApiKey]   = useState('')
+  const [smsKeyDirty, setSmsKeyDirty] = useState(false)
+  const [testPhone,   setTestPhone]   = useState('')
+  const [testStatus,  setTestStatus]  = useState(null) // null | 'sending' | 'success' | 'error'
 
   useEffect(() => {
     api.get('/admin/settings').then(res => {
       const s = {}
       res.data.data.forEach(item => { s[item.key] = item.value })
       setSettings(s)
+      // API key masked থাকে (xxxx****), field খালি রাখো — user নতুন key দিলে update হবে
+      setSmsApiKey(s.sms_api_key && s.sms_api_key.includes('****') ? '' : (s.sms_api_key || ''))
       try { setHolidays(JSON.parse(s.holidays || '[]')) } catch { setHolidays([]) }
     }).finally(() => setLoading(false))
   }, [])
@@ -27,9 +33,16 @@ export default function AdminSettings() {
   const save = async () => {
     setSaving(true)
     try {
-      const settingsArray = Object.entries(settings).map(([key, value]) => ({ key, value }))
+      const settingsArray = Object.entries(settings)
+        .filter(([key]) => key !== 'sms_api_key') // আলাদা handle করা হবে
+        .map(([key, value]) => ({ key, value }))
       settingsArray.push({ key: 'holidays', value: JSON.stringify(holidays) })
+      // SMS API Key শুধু নতুন দিলে পাঠাও
+      if (smsKeyDirty && smsApiKey.trim()) {
+        settingsArray.push({ key: 'sms_api_key', value: smsApiKey.trim() })
+      }
       await api.put('/admin/settings', { settings: settingsArray })
+      setSmsKeyDirty(false)
       toast.success('সেটিংস সেভ হয়েছে।')
     } catch { toast.error('সমস্যা হয়েছে।') }
     finally { setSaving(false) }
@@ -39,6 +52,21 @@ export default function AdminSettings() {
     if (!newHoliday) return
     setHolidays(prev => [...new Set([...prev, newHoliday])].sort())
     setNewHoliday('')
+  }
+
+  const sendTestSms = async () => {
+    if (!testPhone.trim()) { toast.error('ফোন নম্বর দিন।'); return }
+    setTestStatus('sending')
+    try {
+      await api.post('/admin/sms-test', { phone: testPhone.trim() })
+      setTestStatus('success')
+      toast.success('টেস্ট SMS পাঠানো হয়েছে।')
+    } catch (err) {
+      setTestStatus('error')
+      toast.error(err?.response?.data?.message || 'SMS পাঠানো ব্যর্থ।')
+    } finally {
+      setTimeout(() => setTestStatus(null), 3000)
+    }
   }
 
   if (loading) return <div className="h-96 bg-white rounded-2xl animate-pulse" />
@@ -149,6 +177,158 @@ export default function AdminSettings() {
             onChange={e => set('default_vat_rate', e.target.value)} />
           <Input label="সর্বোচ্চ ডিসকাউন্ট (%)" type="number" value={settings.max_discount_percent || '20'}
             onChange={e => set('max_discount_percent', e.target.value)} />
+        </div>
+      </Card>
+
+      {/* SMS Gateway */}
+      <Card title="SMS গেটওয়ে কনফিগারেশন">
+        <div className="space-y-4">
+          {/* Provider Selector */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SMS প্রোভাইডার</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { value: 'softbarta',    label: '📱 SoftBarta',    hint: 'ms.softbarta.com',        badge: 'আপনার গেটওয়ে' },
+                { value: 'ssl_wireless', label: 'SSL Wireless',    hint: 'smsc.sslwireless.com',    badge: null },
+                { value: 'twilio',       label: 'Twilio',          hint: 'api.twilio.com',          badge: null },
+                { value: 'custom',       label: 'Custom API',      hint: 'নিজস্ব URL',              badge: null },
+              ].map(p => (
+                <label
+                  key={p.value}
+                  className={`relative flex flex-col items-center justify-center border-2 rounded-xl p-3 cursor-pointer transition-all text-center
+                    ${(settings.sms_provider || 'softbarta') === p.value
+                      ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                      : 'border-gray-200 dark:border-slate-600 hover:border-gray-300'}`}
+                >
+                  {p.badge && (
+                    <span className="absolute -top-2 right-2 text-[10px] bg-green-500 text-white px-1.5 py-0.5 rounded-full font-medium">
+                      {p.badge}
+                    </span>
+                  )}
+                  <input type="radio" name="sms_provider" value={p.value}
+                    checked={(settings.sms_provider || 'softbarta') === p.value}
+                    onChange={() => set('sms_provider', p.value)}
+                    className="sr-only"
+                  />
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{p.label}</span>
+                  <span className="text-xs text-gray-400 mt-0.5 font-mono">{p.hint}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* SoftBarta info box */}
+          {(settings.sms_provider || 'softbarta') === 'softbarta' && (
+            <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 text-xs text-blue-700 dark:text-blue-300 space-y-1">
+              <p className="font-semibold">📱 SoftBarta Android SMS Gateway</p>
+              <p>API Key পাবেন: <span className="font-mono">ms.softbarta.com → API মেনু</span></p>
+              <p>Device ID (ঐচ্ছিক) — নির্দিষ্ট ফোন থেকে পাঠাতে চাইলে দিন।</p>
+              <p>Phone format: <span className="font-mono">8801XXXXXXXXX</span> (স্বয়ংক্রিয়ভাবে যোগ হবে)</p>
+            </div>
+          )}
+
+          {/* SoftBarta Device ID — শুধু softbarta provider এ দেখাবে */}
+          {(settings.sms_provider || 'softbarta') === 'softbarta' && (
+            <Input
+              label="Device ID (ঐচ্ছিক)"
+              placeholder="SoftBarta Device ID — খালি রাখলে যেকোনো device ব্যবহার হবে"
+              value={settings.sms_device_id || ''}
+              onChange={e => set('sms_device_id', e.target.value)}
+            />
+          )}
+
+          {/* Custom API URL — শুধু custom provider এ দেখাবে */}
+          {settings.sms_provider === 'custom' && (
+            <Input
+              label="Custom API URL"
+              placeholder="https://your-sms-api.com/send"
+              value={settings.sms_custom_url || ''}
+              onChange={e => set('sms_custom_url', e.target.value)}
+              hint="POST request: {api_token, mobile, message}"
+            />
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            {/* API Key */}
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                API Key / Token
+                {!smsKeyDirty && settings.sms_api_key && (
+                  <span className="ml-2 inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-normal">
+                    <FiCheckCircle className="text-xs" /> সেট করা আছে (পরিবর্তনের জন্য নতুন key দিন)
+                  </span>
+                )}
+              </label>
+              <input
+                type="password"
+                placeholder={settings.sms_api_key ? '••••••••••••  (অপরিবর্তিত)' : 'আপনার SMS API Key দিন'}
+                value={smsApiKey}
+                onChange={e => { setSmsApiKey(e.target.value); setSmsKeyDirty(true) }}
+                className="w-full border border-gray-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 dark:text-gray-100 focus:outline-none focus:border-primary font-mono"
+              />
+              <p className="mt-1 text-xs text-gray-400">এনক্রিপ্ট করে সংরক্ষণ হয়। সেভের পর দেখা যাবে না।</p>
+            </div>
+
+            {/* Sender ID */}
+            <Input
+              label="Sender ID / SID"
+              placeholder="NovaTechBD"
+              value={settings.sms_sender_id || ''}
+              onChange={e => set('sms_sender_id', e.target.value)}
+              hint="SSL Wireless-এ অনুমোদিত SID"
+            />
+
+            {/* SMS চালু/বন্ধ */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SMS সিস্টেম</label>
+              <div className="flex gap-3 mt-1">
+                {['true', 'false'].map(v => (
+                  <label key={v} className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="sms_enabled" value={v}
+                      checked={(settings.sms_enabled ?? 'true') === v}
+                      onChange={() => set('sms_enabled', v)}
+                      className="accent-primary"
+                    />
+                    <span className="text-sm dark:text-gray-300">{v === 'true' ? '✅ চালু' : '⛔ বন্ধ'}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Test SMS */}
+          <div className="border-t border-gray-100 dark:border-slate-700 pt-4">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2">
+              <FiMessageSquare /> টেস্ট SMS পাঠান
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="tel"
+                placeholder="01XXXXXXXXX"
+                value={testPhone}
+                onChange={e => setTestPhone(e.target.value)}
+                className="flex-1 border border-gray-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-slate-800 dark:text-gray-100 focus:outline-none focus:border-primary"
+              />
+              <button
+                onClick={sendTestSms}
+                disabled={testStatus === 'sending'}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all
+                  ${testStatus === 'success' ? 'bg-green-500 text-white'
+                  : testStatus === 'error'   ? 'bg-red-500 text-white'
+                  : 'bg-primary text-white hover:bg-primary/90'} disabled:opacity-60`}
+              >
+                {testStatus === 'sending' && <FiLoader className="animate-spin" />}
+                {testStatus === 'success' && <FiCheckCircle />}
+                {testStatus === 'error'   && <FiAlertCircle />}
+                {!testStatus && <FiMessageSquare />}
+                {testStatus === 'sending' ? 'পাঠানো হচ্ছে...'
+                  : testStatus === 'success' ? 'সফল!'
+                  : testStatus === 'error'   ? 'ব্যর্থ!'
+                  : 'পাঠান'}
+              </button>
+            </div>
+            <p className="mt-1.5 text-xs text-gray-400">সেভ করার পর টেস্ট করুন। Gateway সঠিক কাজ করছে কিনা যাচাই হবে।</p>
+          </div>
         </div>
       </Card>
 
