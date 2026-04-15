@@ -1,20 +1,34 @@
-const express = require('express');
-const router  = express.Router();
+const express  = require('express');
+const router   = express.Router();
 const { auth } = require('../middlewares/auth');
-const { allowRoles, isAdmin } = require('../middlewares/roleCheck');
-const {
-    getInsights, markInsightRead,
-    getAIConfig, getModels, updateAIConfig,
-    testAIConnection, triggerAIJob, aiChat
-} = require('../controllers/ai.controller');
+const { isAdmin } = require('../middlewares/roleCheck');
 
-router.get('/insights',         auth,          getInsights);
-router.put('/insights/:id/read',auth,          markInsightRead);
-router.get('/config',           auth, isAdmin, getAIConfig);
-router.get('/models',           auth, isAdmin, getModels);
-router.put('/config',           auth, isAdmin, updateAIConfig);
-router.post('/test',            auth, isAdmin, testAIConnection);
-router.post('/trigger',         auth, isAdmin, triggerAIJob);
-router.post('/chat',            auth, allowRoles('admin','manager','supervisor','asm','rsm'), aiChat);
+const {
+    getSettings,
+    updateSettings,
+    getAuditLogs,
+    getSystemStats,
+    testSmsGateway
+} = require('../controllers/admin.controller');
+
+// ============================================================
+// ADMIN ROUTES
+// Base: /api/admin
+// ============================================================
+
+// সিস্টেম সেটিংস দেখা
+router.get('/settings',    auth, isAdmin, getSettings);
+
+// সিস্টেম সেটিংস আপডেট
+router.put('/settings',    auth, isAdmin, updateSettings);
+
+// Audit Log
+router.get('/audit-logs',  auth, isAdmin, getAuditLogs);
+
+// সিস্টেম পরিসংখ্যান
+router.get('/stats',       auth, isAdmin, getSystemStats);
+
+// SMS গেটওয়ে টেস্ট
+router.post('/sms-test',   auth, isAdmin, testSmsGateway);
 
 module.exports = router;
