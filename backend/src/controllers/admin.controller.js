@@ -1,5 +1,6 @@
 const { query } = require('../config/db');
 const { encrypt } = require('../config/encryption');
+const smsService = require('../services/sms.service');
 
 // ============================================================
 // GET SETTINGS
@@ -12,10 +13,11 @@ const getSettings = async (req, res) => {
             'SELECT id, key, value, description FROM system_settings ORDER BY key'
         );
 
-        // SMS API Key মাস্ক করো
+        // সংবেদনশীল keys মাস্ক করো
+        const MASKED_KEYS = ['sms_api_key'];
         const settings = result.rows.map(s => ({
             ...s,
-            value: s.key === 'sms_api_key' && s.value
+            value: MASKED_KEYS.includes(s.key) && s.value
                 ? s.value.slice(0, 4) + '****'
                 : s.value
         }));
@@ -44,16 +46,20 @@ const updateSettings = async (req, res) => {
             });
         }
 
+        // Encrypt করার keys
+        const ENCRYPT_KEYS = ['sms_api_key'];
+
         for (const setting of settings) {
             if (!setting.key || setting.value === undefined) continue;
 
             let value = setting.value;
 
-            // SMS API Key এনক্রিপ্ট করো
-            if (setting.key === 'sms_api_key' && value && !value.includes('****')) {
+            // Sensitive keys এনক্রিপ্ট করো (masked value এলে skip)
+            if (ENCRYPT_KEYS.includes(setting.key) && value && !value.includes('****')) {
                 value = encrypt(value);
             }
 
+            // original এর মতো UPDATE — নতুন key migration SQL এ insert হবে
             await query(
                 `UPDATE system_settings
                  SET value = $1, updated_by = $2, updated_at = NOW()
@@ -65,7 +71,7 @@ const updateSettings = async (req, res) => {
         // Audit log
         const safeSettings = settings.map(s => ({
             ...s,
-            value: s.key === 'sms_api_key' ? '***' : s.value
+            value: ['sms_api_key'].includes(s.key) ? '***' : s.value
         }));
 
         await query(
@@ -73,6 +79,9 @@ const updateSettings = async (req, res) => {
              VALUES ($1, 'UPDATE_SETTINGS', 'system_settings', $2)`,
             [req.user.id, JSON.stringify(safeSettings)]
         );
+
+        // SMS config cache বাতিল করো
+        smsService.clearSmsConfigCache();
 
         return res.status(200).json({
             success: true,
@@ -82,6 +91,36 @@ const updateSettings = async (req, res) => {
     } catch (error) {
         console.error('❌ Update Settings Error:', error.message);
         return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// TEST SMS GATEWAY
+// POST /api/admin/sms-test
+// ============================================================
+
+const testSmsGateway = async (req, res) => {
+    try {
+        const { phone } = req.body;
+
+        if (!phone) {
+            return res.status(400).json({ success: false, message: 'phone নম্বর দিন।' });
+        }
+
+        const result = await smsService.sendSMS(
+            phone,
+            `NovaTechBD\nটেস্ট SMS সফল!\nSMS গেটওয়ে সঠিকভাবে কাজ করছে।\nসময়: ${new Date().toLocaleTimeString('bn-BD')}`
+        );
+
+        if (result.success) {
+            return res.status(200).json({ success: true, message: 'টেস্ট SMS পাঠানো সফল।', data: result });
+        }
+
+        return res.status(502).json({ success: false, message: result.error || 'SMS গেটওয়ে সাড়া দেয়নি।' });
+
+    } catch (error) {
+        console.error('❌ SMS Test Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সার্ভার সমস্যা।' });
     }
 };
 
@@ -203,5 +242,6 @@ module.exports = {
     getSettings,
     updateSettings,
     getAuditLogs,
-    getSystemStats
+    getSystemStats,
+    testSmsGateway
 };
