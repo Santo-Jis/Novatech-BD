@@ -7,7 +7,7 @@ const { decrypt } = require('../config/encryption');
 // NovaTechBD Management System
 // ============================================================
 // Supported providers:
-//   softbarta     → ms.softbarta.com  (Android phone gateway)  ← DEFAULT
+//   softbarta     → sms.softbarta.com (Android phone gateway)  ← DEFAULT
 //   ssl_wireless  → smsc.sslwireless.com
 //   twilio        → api.twilio.com/2010-04-01
 //   custom        → DB-এ sms_custom_url
@@ -73,33 +73,32 @@ const formatPhone = (phone) => {
 // PROVIDER ADAPTERS
 // ============================================================
 
-// ── SoftBarta (ms.softbarta.com) ──────────────────────────
-// API: GET https://ms.softbarta.com/api/send-sms
-// Params: api_token, mobile, message, device_id (optional)
-// Success: { "status": "success", "message": "SMS queued" }
-// Docs: API page → Generate Link
+// ── SoftBarta (sms.softbarta.com) ────────────────────────
+// API: GET https://sms.softbarta.com/services/send.php
+// Params: key, number, message, option=1, type=sms
+// Success: { "success": true }
 const sendViaSoftBarta = async (formattedPhone, message, config) => {
     const params = new URLSearchParams({
-        api_token: config.apiKey,
-        mobile:    formattedPhone,
+        key:     config.apiKey,
+        number:  formattedPhone,
         message,
+        option:  '1',
+        type:    'sms',
     });
 
-    // নির্দিষ্ট device থেকে পাঠাতে চাইলে
-    if (config.deviceId) params.append('device_id', config.deviceId);
-
     const response = await axios.get(
-        `https://ms.softbarta.com/api/send-sms?${params.toString()}`,
+        `https://sms.softbarta.com/services/send.php?${params.toString()}`,
         { timeout: 15000 }
     );
 
-    // SoftBarta success response: { status: "success" }
-    if (response.data?.status === 'success' || response.data?.status === 'Success') {
+    if (response.data?.success === true) {
         return { success: true, data: response.data };
     }
-    throw new Error(
-        response.data?.message || response.data?.error || 'SoftBarta: SMS পাঠানো ব্যর্থ'
-    );
+    // error message বের করো
+    const errMsg = response.data?.error?.message
+        || response.data?.message
+        || 'SoftBarta: SMS পাঠানো ব্যর্থ';
+    throw new Error(errMsg);
 };
 
 // ── SSL Wireless ───────────────────────────────────────────
