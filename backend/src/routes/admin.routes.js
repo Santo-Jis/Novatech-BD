@@ -7,7 +7,8 @@ const {
     getSettings,
     updateSettings,
     getAuditLogs,
-    getSystemStats
+    getSystemStats,
+    testSmsGateway
 } = require('../controllers/admin.controller');
 
 // ============================================================
@@ -26,5 +27,8 @@ router.get('/audit-logs',  auth, isAdmin, getAuditLogs);
 
 // সিস্টেম পরিসংখ্যান
 router.get('/stats',       auth, isAdmin, getSystemStats);
+
+// SMS গেটওয়ে টেস্ট
+router.post('/sms-test',   auth, isAdmin, testSmsGateway);
 
 module.exports = router;
