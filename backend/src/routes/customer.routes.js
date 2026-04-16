@@ -49,14 +49,20 @@ const upload = multer({
 router.get('/',          auth, checkTeamAccess, getCustomers);
 
 // Worker এর মোট কাস্টমার সংখ্যা
-router.get('/my-count',  auth, getMyCustomerCount,
-    requestCustomerEdit,
-    getPendingCustomerEdits,
-    approveCustomerEdit,
-    rejectCustomerEdit);
+router.get('/my-count',  auth, getMyCustomerCount);
 
 // নতুন কাস্টমার তৈরি
 router.post('/',    auth, canCreateCustomer, upload.single('shop_photo'), createCustomer);
+
+// Email OTP যাচাই (কাস্টমার তৈরির আগে)
+router.post('/verify-email/send',    auth, sendEmailVerifyOTP);
+router.post('/verify-email/confirm', auth, confirmEmailVerifyOTP);
+
+// Edit request routes
+router.post('/:id/edit-request', auth, requestCustomerEdit);
+router.get('/edit-requests/pending', auth, allowRoles('admin', 'manager'), getPendingCustomerEdits);
+router.put('/edit-requests/:requestId/approve', auth, allowRoles('admin', 'manager'), approveCustomerEdit);
+router.put('/edit-requests/:requestId/reject', auth, allowRoles('admin', 'manager'), rejectCustomerEdit);
 
 // একজনের বিস্তারিত
 router.get('/:id',  auth, getCustomer);
@@ -81,13 +87,4 @@ router.post('/:id/collect-credit',
     collectCredit
 );
 
-// Email OTP যাচাই (কাস্টমার তৈরির আগে)
-router.post('/verify-email/send',    auth, sendEmailVerifyOTP);
-router.post('/verify-email/confirm', auth, confirmEmailVerifyOTP);
-
 module.exports = router;
-
-router.post('/:id/edit-request', auth, requestCustomerEdit);
-router.get('/edit-requests/pending', auth, allowRoles('admin', 'manager'), getPendingCustomerEdits);
-router.put('/edit-requests/:requestId/approve', auth, allowRoles('admin', 'manager'), approveCustomerEdit);
-router.put('/edit-requests/:requestId/reject', auth, allowRoles('admin', 'manager'), rejectCustomerEdit);
