@@ -1,6 +1,7 @@
 const PDFDocument = require('pdfkit');
 const { generateOTP } = require('../config/encryption');
 const { sendOTP, sendInvoice: sendInvoiceSMS, getWhatsAppInvoiceLink } = require('./sms.service');
+const { sendOTPEmail, sendInvoiceEmail } = require('./email.service');
 
 // ============================================================
 // Invoice Number জেনারেশন
@@ -13,15 +14,101 @@ const generateInvoiceNumber = async () => {
 };
 
 // ============================================================
-// OTP পাঠানো
+// OTP পাঠানো — Email + SMS Fallback
+// ============================================================
+// লজিক:
+//   1. কাস্টমারের email থাকলে → Email পাঠাও
+//   2. Email না থাকলে বা fail হলে → SMS দিয়ে পাঠাও
+//   3. দুটোই পাঠানো হলে সেটাও OK
 // ============================================================
 
-const sendInvoiceOTP = async (customer, saleId, otp) => {
+const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10) => {
     const phone = customer.whatsapp || customer.sms_phone;
-    if (!phone) return null;
+    const email = customer.email;
 
-    await sendOTP(phone, otp, customer.shop_name);
-    return otp;
+    const results = { email: null, sms: null };
+    let anySent   = false;
+
+    // ── Email চেষ্টা ──
+    if (email) {
+        try {
+            results.email = await sendOTPEmail(email, otp, customer.shop_name, expiryMinutes);
+            if (results.email?.success && !results.email?.dev && !results.email?.disabled) {
+                anySent = true;
+                console.log(`📧 OTP Email সফল → ${email}`);
+            }
+        } catch (err) {
+            console.error(`❌ OTP Email ব্যর্থ → ${email}:`, err.message);
+            results.email = { success: false, error: err.message };
+        }
+    }
+
+    // ── SMS চেষ্টা (Email না থাকলে বা fail হলে) ──
+    if (phone && (!anySent)) {
+        try {
+            results.sms = await sendOTP(phone, otp, customer.shop_name);
+            if (results.sms?.success) {
+                anySent = true;
+                console.log(`📱 OTP SMS সফল → ${phone}`);
+            }
+        } catch (err) {
+            console.error(`❌ OTP SMS ব্যর্থ → ${phone}:`, err.message);
+            results.sms = { success: false, error: err.message };
+        }
+    }
+
+    if (!anySent) {
+        console.warn(`⚠️ OTP পাঠানো যায়নি। Sale ID: ${saleId} | Email: ${email || 'নেই'} | Phone: ${phone || 'নেই'}`);
+    }
+
+    return { otp, results };
+};
+
+// ============================================================
+// Invoice পাঠানো — Email + SMS Fallback
+// ============================================================
+
+const sendInvoiceNotification = async (customer, sale, worker, items) => {
+    const phone = customer.whatsapp || customer.sms_phone;
+    const email = customer.email;
+
+    const results = { email: null, sms: null };
+    let anySent   = false;
+
+    // ── Email চেষ্টা ──
+    if (email) {
+        try {
+            results.email = await sendInvoiceEmail(email, sale, customer, worker, items);
+            if (results.email?.success && !results.email?.dev && !results.email?.disabled) {
+                anySent = true;
+                console.log(`📧 Invoice Email সফল → ${email}`);
+            }
+        } catch (err) {
+            console.error(`❌ Invoice Email ব্যর্থ → ${email}:`, err.message);
+            results.email = { success: false, error: err.message };
+        }
+    }
+
+    // ── SMS Fallback ──
+    if (phone && (!anySent)) {
+        try {
+            results.sms = await sendInvoiceSMS(
+                phone,
+                sale.invoice_number,
+                sale.net_amount,
+                customer.shop_name
+            );
+            if (results.sms?.success) {
+                anySent = true;
+                console.log(`📱 Invoice SMS সফল → ${phone}`);
+            }
+        } catch (err) {
+            console.error(`❌ Invoice SMS ব্যর্থ → ${phone}:`, err.message);
+            results.sms = { success: false, error: err.message };
+        }
+    }
+
+    return { results, anySent };
 };
 
 // ============================================================
@@ -66,7 +153,7 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
 
             // ── Items ──
             doc.fontSize(8).font('Helvetica-Bold')
-               .text('পণ্য', 40, doc.y, { width: 100, continued: false })
+               .text('পণ্য', 40, doc.y, { width: 100, continued: false });
 
             let yPos = doc.y;
             doc.text('পরিমাণ', 140, yPos, { width: 40 });
@@ -122,12 +209,7 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
 
             doc.moveDown(0.2);
 
-            // পেমেন্ট মেথড
-            const paymentLabels = {
-                cash:        'নগদ',
-                credit:      'বাকি',
-                replacement: 'রিপ্লেসমেন্ট'
-            };
+            const paymentLabels = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
             addSummaryRow('পেমেন্ট পদ্ধতি', paymentLabels[sale.payment_method]);
 
             if (sale.cash_received > 0) {
@@ -198,6 +280,7 @@ _NovaTech BD (Ltd.) | বরিশাল_`;
 module.exports = {
     generateInvoiceNumber,
     sendInvoiceOTP,
+    sendInvoiceNotification,
     generateInvoicePDF,
     getInvoiceWhatsAppMessage
 };
