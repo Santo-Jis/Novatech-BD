@@ -20,7 +20,9 @@ const {
     requestCustomerEdit,
     getPendingCustomerEdits,
     approveCustomerEdit,
-    rejectCustomerEdit
+    rejectCustomerEdit,
+    sendEmailVerifyOTP,
+    confirmEmailVerifyOTP
 } = require('../controllers/customer.controller');
 
 // ============================================================
@@ -78,6 +80,10 @@ router.post('/:id/collect-credit',
     allowRoles('admin', 'manager', 'supervisor', 'worker'),
     collectCredit
 );
+
+// Email OTP যাচাই (কাস্টমার তৈরির আগে)
+router.post('/verify-email/send',    auth, sendEmailVerifyOTP);
+router.post('/verify-email/confirm', auth, confirmEmailVerifyOTP);
 
 module.exports = router;
 
