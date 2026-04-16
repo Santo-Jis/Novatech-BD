@@ -727,11 +727,6 @@ const confirmEmailVerifyOTP = async (req, res) => {
 };
 
 module.exports = {
-    getMyCustomerCount,
-    requestCustomerEdit,
-    getPendingCustomerEdits,
-    approveCustomerEdit,
-    rejectCustomerEdit,
     getCustomers,
     getCustomer,
     createCustomer,
@@ -739,6 +734,11 @@ module.exports = {
     getCustomerHistory,
     setCreditLimit,
     collectCredit,
+    getMyCustomerCount,
+    requestCustomerEdit,
+    getPendingCustomerEdits,
+    approveCustomerEdit,
+    rejectCustomerEdit,
     sendEmailVerifyOTP,
     confirmEmailVerifyOTP
 };
