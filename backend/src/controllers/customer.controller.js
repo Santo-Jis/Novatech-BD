@@ -739,5 +739,6 @@ module.exports = {
     getCustomerHistory,
     setCreditLimit,
     collectCredit,
-    getMyCustomerCount
+    sendEmailVerifyOTP,
+    confirmEmailVerifyOTP
 };
