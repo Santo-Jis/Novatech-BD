@@ -167,7 +167,7 @@ const createCustomer = async (req, res) => {
     try {
         const {
             shop_name, owner_name, business_type,
-            whatsapp, sms_phone, route_id,
+            whatsapp, sms_phone, email, route_id,
             latitude, longitude
         } = req.body;
 
@@ -199,16 +199,16 @@ const createCustomer = async (req, res) => {
         const result = await query(
             `INSERT INTO customers
              (customer_code, shop_name, owner_name, shop_photo,
-              business_type, whatsapp, sms_phone, route_id,
+              business_type, whatsapp, sms_phone, email, route_id,
               location, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8,
-              ${locationPoint}, $9)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
+              ${locationPoint}, $10)
              RETURNING *`,
             [
                 customerCode, shop_name, owner_name, shopPhotoUrl,
                 business_type || null, whatsapp || null,
-                sms_phone || null, route_id || null,
-                req.user.id
+                sms_phone || null, email || null,
+                route_id || null, req.user.id
             ]
         );
 
@@ -263,7 +263,7 @@ const updateCustomer = async (req, res) => {
 
         const {
             shop_name, owner_name, business_type,
-            whatsapp, sms_phone, route_id,
+            whatsapp, sms_phone, email, route_id,
             latitude, longitude
         } = req.body;
 
@@ -278,15 +278,16 @@ const updateCustomer = async (req, res) => {
                 business_type = COALESCE($3, business_type),
                 whatsapp      = COALESCE($4, whatsapp),
                 sms_phone     = COALESCE($5, sms_phone),
-                route_id      = COALESCE($6, route_id),
-                shop_photo    = COALESCE($7, shop_photo),
+                email         = COALESCE($6, email),
+                route_id      = COALESCE($7, route_id),
+                shop_photo    = COALESCE($8, shop_photo),
                 location      = COALESCE(${locationPoint ? locationPoint : 'location'}, location),
                 updated_at    = NOW()
-             WHERE id = $8`,
+             WHERE id = $9`,
             [
                 shop_name, owner_name, business_type,
-                whatsapp, sms_phone, route_id,
-                shopPhotoUrl, id
+                whatsapp, sms_phone, email || null,
+                route_id, shopPhotoUrl, id
             ]
         );
 
@@ -501,7 +502,7 @@ const requestCustomerEdit = async (req, res) => {
             return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
         }
         if (['admin', 'manager'].includes(req.user.role)) {
-            const { shop_name, owner_name, business_type, whatsapp, sms_phone, route_id } = req.body;
+            const { shop_name, owner_name, business_type, whatsapp, sms_phone, email, route_id } = req.body;
             await query(
                 `UPDATE customers SET
                     shop_name = COALESCE($1, shop_name),
@@ -509,10 +510,11 @@ const requestCustomerEdit = async (req, res) => {
                     business_type = COALESCE($3, business_type),
                     whatsapp = COALESCE($4, whatsapp),
                     sms_phone = COALESCE($5, sms_phone),
-                    route_id = COALESCE($6, route_id),
+                    email = COALESCE($6, email),
+                    route_id = COALESCE($7, route_id),
                     updated_at = NOW()
-                 WHERE id = $7`,
-                [shop_name, owner_name, business_type, whatsapp, sms_phone, route_id, id]
+                 WHERE id = $8`,
+                [shop_name, owner_name, business_type, whatsapp, sms_phone, email || null, route_id, id]
             );
             return res.status(200).json({ success: true, message: 'কাস্টমার আপডেট সফল।' });
         }
@@ -658,6 +660,72 @@ const rejectCustomerEdit = async (req, res) => {
         return res.status(500).json({ success: false, message: 'বাতিলে সমস্যা হয়েছে।' });
     }
 };
+
+// ============================================================
+// EMAIL OTP — কাস্টমার তৈরির আগে Email যাচাই
+// POST /api/customers/verify-email/send
+// POST /api/customers/verify-email/confirm
+// ============================================================
+
+const emailOtpStore = new Map(); // { email: { otp, expiresAt } }
+
+const sendEmailVerifyOTP = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+            return res.status(400).json({ success: false, message: 'সঠিক Email দিন।' });
+        }
+
+        const { generateOTP } = require('../config/encryption');
+        const { sendOTPEmail }  = require('../services/email.service');
+
+        const otp       = generateOTP(6);
+        const expiresAt = Date.now() + 10 * 60 * 1000; // 10 মিনিট
+
+        emailOtpStore.set(email.toLowerCase(), { otp, expiresAt });
+
+        const result = await sendOTPEmail(email, otp, 'নতুন কাস্টমার নিবন্ধন');
+
+        if (!result.success && !result.dev) {
+            return res.status(500).json({ success: false, message: 'Email পাঠানো যায়নি। পরে চেষ্টা করুন।' });
+        }
+
+        return res.status(200).json({ success: true, message: `OTP পাঠানো হয়েছে ${email}-এ।` });
+
+    } catch (error) {
+        console.error('❌ sendEmailVerifyOTP:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
+const confirmEmailVerifyOTP = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        if (!email || !otp) {
+            return res.status(400).json({ success: false, message: 'Email ও OTP দিন।' });
+        }
+
+        const record = emailOtpStore.get(email.toLowerCase());
+        if (!record) {
+            return res.status(400).json({ success: false, message: 'OTP পাঠানো হয়নি। আবার চেষ্টা করুন।' });
+        }
+        if (Date.now() > record.expiresAt) {
+            emailOtpStore.delete(email.toLowerCase());
+            return res.status(400).json({ success: false, message: 'OTP মেয়াদ শেষ। নতুন OTP নিন।' });
+        }
+        if (record.otp !== otp.trim()) {
+            return res.status(400).json({ success: false, message: 'OTP ভুল।' });
+        }
+
+        emailOtpStore.delete(email.toLowerCase());
+        return res.status(200).json({ success: true, message: 'Email যাচাই সফল ✅' });
+
+    } catch (error) {
+        console.error('❌ confirmEmailVerifyOTP:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getMyCustomerCount,
     requestCustomerEdit,
