@@ -7,8 +7,7 @@ const { decrypt } = require('../config/encryption');
 // NovaTechBD Management System
 // ============================================================
 // Supported providers:
-//   textbee       → api.textbee.dev (Android phone gateway)  ← DEFAULT
-//   softbarta     → sms.softbarta.com (Android phone gateway)
+//   softbarta     → sms.softbarta.com (Android phone gateway)  ← DEFAULT
 //   ssl_wireless  → smsc.sslwireless.com
 //   twilio        → api.twilio.com/2010-04-01
 //   custom        → DB-এ sms_custom_url
@@ -42,8 +41,9 @@ const getSmsConfig = async () => {
     }
 
     _configCache = {
-        provider:  raw.sms_provider  || 'textbee',
+        provider:  raw.sms_provider  || 'softbarta',
         apiKey,
+        deviceId:  raw.sms_device_id  || process.env.SMS_DEVICE_ID  || '',
         senderId:  raw.sms_sender_id || process.env.SMS_SENDER_ID || '',
         customUrl: raw.sms_custom_url || '',
         deviceId:  raw.sms_device_id  || '',          // SoftBarta device ID (optional)
@@ -73,38 +73,6 @@ const formatPhone = (phone) => {
 // ============================================================
 // PROVIDER ADAPTERS
 // ============================================================
-
-// ── TextBee (api.textbee.dev) ─────────────────────────────
-// API: POST https://api.textbee.dev/api/v1/gateway/devices/{deviceId}/send-sms
-// Headers: x-api-key: <apiKey>
-// Body: { recipients: ["8801XXXXXXXXX"], message: "..." }
-// Success: { success: true }
-const sendViaTextBee = async (formattedPhone, message, config) => {
-    if (!config.deviceId) {
-        throw new Error('TextBee Device ID সেট করা নেই। Admin Settings → SMS Gateway → Device ID দিন।');
-    }
-
-    const response = await axios.post(
-        `https://api.textbee.dev/api/v1/gateway/devices/${config.deviceId}/send-sms`,
-        {
-            recipients: [`+${formattedPhone}`],
-            message,
-        },
-        {
-            headers: {
-                'x-api-key': config.apiKey,
-                'Content-Type': 'application/json',
-            },
-            timeout: 15000,
-        }
-    );
-
-    if (response.data?.success === true || response.status === 200 || response.status === 201) {
-        return { success: true, data: response.data };
-    }
-
-    throw new Error(response.data?.message || 'TextBee: SMS পাঠানো ব্যর্থ');
-};
 
 // ── SoftBarta (sms.softbarta.com) ────────────────────────
 // API: GET https://sms.softbarta.com/services/send.php
@@ -173,6 +141,26 @@ const sendViaTwilio = async (formattedPhone, message, config) => {
         return { success: true, data: response.data };
     }
     throw new Error(response.data?.message || 'Twilio: SMS পাঠানো ব্যর্থ');
+};
+
+// ── TextBee (textbee.dev) ─────────────────────────────────
+// API: POST https://api.textbee.dev/api/v1/gateway/devices/{deviceId}/send-sms
+// Header: x-api-key: YOUR_API_KEY
+// Body: { "receivers": ["8801XXXXXXXXX"], "message": "..." }
+const sendViaTextBee = async (formattedPhone, message, config) => {
+    if (!config.deviceId) throw new Error('TextBee Device ID সেট করা নেই। SMS_DEVICE_ID যোগ করুন।');
+    const response = await axios.post(
+        `https://api.textbee.dev/api/v1/gateway/devices/${config.deviceId}/send-sms`,
+        { receivers: [formattedPhone], message },
+        {
+            headers: { 'x-api-key': config.apiKey },
+            timeout: 15000
+        }
+    );
+    if (response.data?.data?.successCount > 0 || response.status === 200) {
+        return { success: true, data: response.data };
+    }
+    throw new Error(response.data?.message || 'TextBee: SMS পাঠানো ব্যর্থ');
 };
 
 // ── Custom API ─────────────────────────────────────────────
