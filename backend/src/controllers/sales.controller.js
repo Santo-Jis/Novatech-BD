@@ -3,6 +3,7 @@ const { generateOTP }            = require('../config/encryption');
 const {
     generateInvoiceNumber,
     sendInvoiceOTP,
+    sendInvoiceNotification,
     generateInvoicePDF,
     getInvoiceWhatsAppMessage
 } = require('../services/invoice.service');
@@ -312,10 +313,16 @@ const createSale = async (req, res) => {
             return result.rows[0];
         });
 
-        // OTP ও Invoice SMS পাঠাও
+        // OTP পাঠাও — Email (প্রথম চেষ্টা) + SMS (Fallback)
         if (otp) {
-            await sendInvoiceOTP(cust, saleResult.id, otp);
+            const otpResult = await sendInvoiceOTP(cust, saleResult.id, otp, expiryMinutes);
+            console.log('📤 OTP পাঠানো:', JSON.stringify(otpResult.results));
         }
+
+        // Invoice নোটিফিকেশন — Email (প্রথম চেষ্টা) + SMS (Fallback)
+        sendInvoiceNotification(cust, saleResult, req.user, processedItems)
+            .then(r => console.log('📄 Invoice নোটিফিকেশন:', JSON.stringify(r.results)))
+            .catch(e => console.error('⚠️ Invoice নোটিফিকেশন Error:', e.message));
 
         // WhatsApp লিংক তৈরি
         const waLink = getInvoiceWhatsAppMessage(
@@ -385,7 +392,10 @@ const sendInvoice = async (req, res) => {
 
         const s = sale.rows[0];
 
-        if (send_via === 'sms') {
+        // send_via: 'email', 'sms', 'auto' (default)
+        const sendVia = send_via || 'auto';
+
+        if (sendVia === 'sms') {
             const { sendInvoice: smsSend } = require('../services/sms.service');
             await smsSend(
                 s.sms_phone || s.whatsapp,
@@ -393,6 +403,14 @@ const sendInvoice = async (req, res) => {
                 s.net_amount,
                 s.shop_name
             );
+        } else if (sendVia === 'email' && s.email) {
+            const { sendInvoiceEmail } = require('../services/email.service');
+            const items = typeof s.items === 'string' ? JSON.parse(s.items) : (s.items || []);
+            await sendInvoiceEmail(s.email, s, s, req.user, items);
+        } else {
+            // 'auto' — Email আগে, না থাকলে SMS
+            const items = typeof s.items === 'string' ? JSON.parse(s.items) : (s.items || []);
+            await sendInvoiceNotification(s, s, req.user, items);
         }
 
         return res.status(200).json({
