@@ -188,8 +188,8 @@ export default function AdminSettings() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SMS প্রোভাইডার</label>
             <div className="grid grid-cols-2 gap-2">
               {[
-                { value: 'textbee',      label: '📱 TextBee',      hint: 'api.textbee.dev',         badge: '✅ সক্রিয়' },
-                { value: 'softbarta',    label: '📱 SoftBarta',    hint: 'sms.softbarta.com',       badge: null },
+                { value: 'textbee',      label: '📲 TextBee',      hint: 'textbee.dev',             badge: 'নতুন' },
+                { value: 'softbarta',    label: '📱 SoftBarta',    hint: 'ms.softbarta.com',        badge: null },
                 { value: 'ssl_wireless', label: 'SSL Wireless',    hint: 'smsc.sslwireless.com',    badge: null },
                 { value: 'twilio',       label: 'Twilio',          hint: 'api.twilio.com',          badge: null },
                 { value: 'custom',       label: 'Custom API',      hint: 'নিজস্ব URL',              badge: null },
@@ -219,17 +219,26 @@ export default function AdminSettings() {
           </div>
 
           {/* TextBee info box */}
-          {(settings.sms_provider || 'textbee') === 'textbee' && (
-            <div className="rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 text-xs text-green-700 dark:text-green-300 space-y-1">
-              <p className="font-semibold">📱 TextBee Android SMS Gateway (আপনার ফোন)</p>
-              <p>API Key: <span className="font-mono">76d6f671-5dee-4751-98c4-379a377fc194</span> (সেট করা আছে)</p>
-              <p>Device ID: <span className="font-mono">69e0c061b5cd3ce4c730b5c</span> (সেট করা আছে)</p>
-              <p className="text-green-600 font-medium">✅ আপনার vivo V2120 ফোনের SIM দিয়ে ০.০৬৳/SMS</p>
+          {settings.sms_provider === 'textbee' && (
+            <div className="rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-3 text-xs text-indigo-700 dark:text-indigo-300 space-y-1">
+              <p className="font-semibold">📲 TextBee — Android SMS Gateway</p>
+              <p>API Key ও Device ID পাবেন: <span className="font-mono">app.textbee.dev → Dashboard</span></p>
+              <p>Phone format: <span className="font-mono">8801XXXXXXXXX</span> (স্বয়ংক্রিয়ভাবে যোগ হবে)</p>
             </div>
           )}
 
+          {/* TextBee Device ID */}
+          {settings.sms_provider === 'textbee' && (
+            <Input
+              label="Device ID *"
+              placeholder="textbee.dev Dashboard থেকে নিন"
+              value={settings.sms_device_id || ''}
+              onChange={e => set('sms_device_id', e.target.value)}
+            />
+          )}
+
           {/* SoftBarta info box */}
-          {settings.sms_provider === 'softbarta' && (
+          {(settings.sms_provider || 'softbarta') === 'softbarta' && (
             <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 text-xs text-blue-700 dark:text-blue-300 space-y-1">
               <p className="font-semibold">📱 SoftBarta Android SMS Gateway</p>
               <p>API Key পাবেন: <span className="font-mono">ms.softbarta.com → API মেনু</span></p>
@@ -238,8 +247,8 @@ export default function AdminSettings() {
             </div>
           )}
 
-          {/* Device ID — textbee ও softbarta provider এ দেখাবে */}
-          {(['textbee', 'softbarta'].includes(settings.sms_provider || 'textbee')) && (
+          {/* SoftBarta Device ID — শুধু softbarta provider এ দেখাবে */}
+          {(settings.sms_provider || 'softbarta') === 'softbarta' && (
             <Input
               label="Device ID (ঐচ্ছিক)"
               placeholder="SoftBarta Device ID — খালি রাখলে যেকোনো device ব্যবহার হবে"
