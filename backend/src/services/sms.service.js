@@ -36,8 +36,17 @@ const getSmsConfig = async () => {
 
     // API key ডিক্রিপ্ট করো
     let apiKey = raw.sms_api_key || process.env.SMS_API_KEY || '';
-    if (apiKey && !apiKey.includes('****')) {
-        try { apiKey = decrypt(apiKey); } catch { /* .env key decrypt লাগবে না */ }
+    if (apiKey && !apiKey.includes('****') && !apiKey.includes('****')) {
+        try {
+            // hex-encoded encrypted value হলে decrypt করো
+            if (/^[0-9a-f]{65,}$/i.test(apiKey)) {
+                apiKey = decrypt(apiKey);
+            }
+        } catch (e) {
+            console.warn('⚠️ SMS API Key decrypt হয়নি — plain text হিসেবে ব্যবহার হবে।');
+            // encrypted key decrypt না হলে SMS_API_KEY .env থেকে নাও
+            apiKey = process.env.SMS_API_KEY || '';
+        }
     }
 
     _configCache = {
