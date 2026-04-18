@@ -36,20 +36,21 @@ const createOrder = async (req, res) => {
             });
         }
 
-        // আজকে আগে অর্ডার আছে কিনা
+        // আজকে কতটি অর্ডার আছে (সর্বোচ্চ ৩টি)
         const today    = new Date().toISOString().split('T')[0];
         const existing = await query(
-            `SELECT id FROM orders
+            `SELECT COUNT(*) AS count FROM orders
              WHERE worker_id = $1
                AND DATE(requested_at) = $2
                AND status != 'rejected'`,
             [workerId, today]
         );
 
-        if (existing.rows.length > 0) {
+        const todayCount = parseInt(existing.rows[0].count);
+        if (todayCount >= 3) {
             return res.status(400).json({
                 success: false,
-                message: 'আজকে ইতোমধ্যে অর্ডার দেওয়া হয়েছে।'
+                message: 'আজকে ইতোমধ্যে ৩টি অর্ডার দেওয়া হয়েছে। আর অর্ডার দেওয়া যাবে না।'
             });
         }
 
@@ -241,7 +242,7 @@ const getPendingOrders = async (req, res) => {
 const approveOrder = async (req, res) => {
     try {
         const { id }           = req.params;
-        const { items, note }  = req.body; // Manager approved items
+        const { items, note }  = req.body;
 
         const order = await query(
             "SELECT * FROM orders WHERE id = $1 AND status = 'pending'",
@@ -255,19 +256,58 @@ const approveOrder = async (req, res) => {
             });
         }
 
-        const originalItems = order.rows[0].items;
+        // items কলাম TEXT হলে parse করো, JSONB হলে already object
+        let originalItems = order.rows[0].items;
+        if (typeof originalItems === 'string') {
+            try { originalItems = JSON.parse(originalItems); } catch { originalItems = []; }
+        }
+        if (!Array.isArray(originalItems)) originalItems = [];
 
-        // Manager এর approved items (পরিমাণ পরিবর্তন)
-        const approvedItems = items || originalItems;
-        let totalAmount     = 0;
+        // Manager এর approved items অথবা original
+        let approvedItems = items || originalItems;
+        if (typeof approvedItems === 'string') {
+            try { approvedItems = JSON.parse(approvedItems); } catch { approvedItems = originalItems; }
+        }
+        if (!Array.isArray(approvedItems)) approvedItems = originalItems;
+
+        let totalAmount = 0;
+
+        // প্রতিটি item এ price ও qty নিশ্চিত করো
+        const safeItems = approvedItems.map(item => {
+            const original    = originalItems.find(o => o.product_id === item.product_id);
+            const approvedQty = Math.max(0, parseInt(item.approved_qty)  >= 0 ? parseInt(item.approved_qty)  :
+                                            parseInt(item.requested_qty) >= 0 ? parseInt(item.requested_qty) :
+                                            parseInt(original?.approved_qty)  >= 0 ? parseInt(original?.approved_qty) :
+                                            parseInt(original?.requested_qty) >= 0 ? parseInt(original?.requested_qty) : 0);
+            const itemPrice   = parseFloat(item.price) > 0 ? parseFloat(item.price) :
+                                parseFloat(original?.price) > 0 ? parseFloat(original?.price) : 0;
+
+            totalAmount += itemPrice * approvedQty;
+
+            return {
+                ...item,
+                approved_qty: approvedQty,
+                requested_qty: parseInt(original?.requested_qty) || approvedQty,
+                price: itemPrice
+            };
+        });
+
+        // NaN guard - DB তে NaN পাঠানো যাবে না
+        if (isNaN(totalAmount) || !isFinite(totalAmount)) {
+            console.error('⚠️ totalAmount is NaN/Infinity, items:', JSON.stringify(safeItems));
+            totalAmount = 0;
+        }
+        totalAmount = Math.round(totalAmount * 100) / 100; // 2 decimal
+
+        console.log(`✅ Approve Order ${id}: totalAmount=${totalAmount}, items=${safeItems.length}`);
 
         await withTransaction(async (client) => {
-            // রিজার্ভ আপডেট
-            for (const item of approvedItems) {
-                const original = originalItems.find(o => o.product_id === item.product_id);
-                const diff     = (original?.requested_qty || 0) - (item.approved_qty || item.requested_qty);
+            // reserved_stock আপডেট
+            for (const item of safeItems) {
+                const original    = originalItems.find(o => o.product_id === item.product_id);
+                const origQty     = parseInt(original?.requested_qty) || parseInt(original?.approved_qty) || 0;
+                const diff        = origQty - item.approved_qty;
 
-                // রিজার্ভ ঠিক করো
                 if (diff !== 0) {
                     await client.query(
                         `UPDATE products
@@ -276,24 +316,19 @@ const approveOrder = async (req, res) => {
                         [diff, item.product_id]
                     );
                 }
-
-                item.approved_qty = parseInt(item.approved_qty) || parseInt(item.requested_qty) || 0;
-                const itemPrice = parseFloat(item.price) || parseFloat(original?.price) || 0;
-                item.price = itemPrice;
-                totalAmount += itemPrice * item.approved_qty;
             }
 
             // অর্ডার আপডেট
             await client.query(
                 `UPDATE orders
-                 SET status      = 'approved',
-                     manager_id  = $1,
-                     items       = $2,
+                 SET status       = 'approved',
+                     manager_id   = $1,
+                     items        = $2,
                      total_amount = $3,
-                     approved_at = NOW(),
-                     updated_at  = NOW()
+                     approved_at  = NOW(),
+                     updated_at   = NOW()
                  WHERE id = $4`,
-                [req.user.id, JSON.stringify(approvedItems), totalAmount, id]
+                [req.user.id, JSON.stringify(safeItems), totalAmount, id]
             );
         });
 
