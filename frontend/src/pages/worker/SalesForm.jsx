@@ -3,8 +3,127 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../api/axios'
 import { useAppStore } from '../../store/app.store'
 import toast from 'react-hot-toast'
-import { FiMinus, FiPlus, FiCheck } from 'react-icons/fi'
+import { FiMinus, FiPlus, FiCheck, FiPackage, FiChevronDown, FiChevronUp } from 'react-icons/fi'
 
+// ─── চূড়ান্ত মূল্য গণনা ───────────────────────────────────
+function calcFinalPrice(p) {
+  const price    = parseFloat(p.price)    || 0
+  const discount = parseFloat(p.discount) || 0
+  const vat      = parseFloat(p.vat)      || 0
+  const tax      = parseFloat(p.tax)      || 0
+
+  const discAmt = p.discount_type === 'percent' ? (price * discount) / 100 : discount
+  const after   = Math.max(0, price - discAmt)
+  return after + (after * vat / 100) + (after * tax / 100)
+}
+
+// ─── একটি পণ্য কার্ড ──────────────────────────────────────
+function ProductCard({ p, qty, onUpdate, isReplacement = false }) {
+  const [expanded, setExpanded] = useState(false)
+  const finalPrice = calcFinalPrice(p)
+  const hasDiscount = parseFloat(p.discount) > 0
+  const hasVat      = parseFloat(p.vat)      > 0
+  const hasTax      = parseFloat(p.tax)      > 0
+  const hasExtras   = hasDiscount || hasVat || hasTax || p.description
+
+  return (
+    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${qty > 0 ? 'border-primary/30' : 'border-gray-100'}`}>
+      <div className="p-4">
+        <div className="flex items-center gap-3">
+          {/* ছবি */}
+          {p.image_url ? (
+            <img
+              src={p.image_url}
+              alt={p.name}
+              className="w-14 h-14 rounded-xl object-cover border border-gray-100 flex-shrink-0"
+            />
+          ) : (
+            <div className="w-14 h-14 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+              <FiPackage className="text-gray-400" size={22} />
+            </div>
+          )}
+
+          {/* নাম ও মূল্য */}
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm text-gray-800 leading-tight">{p.name}</p>
+            <p className="text-xs text-gray-400 font-mono mt-0.5">{p.sku}</p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              {hasDiscount ? (
+                <>
+                  <span className="text-xs text-gray-400 line-through">৳{parseFloat(p.price).toLocaleString()}</span>
+                  <span className={`text-sm font-bold ${isReplacement ? 'text-orange-500' : 'text-secondary'}`}>
+                    ৳{finalPrice.toLocaleString('en', { maximumFractionDigits: 2 })}
+                  </span>
+                  <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
+                    ছাড় {p.discount_type === 'percent' ? `${p.discount}%` : `৳${p.discount}`}
+                  </span>
+                </>
+              ) : (
+                <span className={`text-sm font-bold ${isReplacement ? 'text-orange-500' : 'text-secondary'}`}>
+                  ৳{finalPrice.toLocaleString('en', { maximumFractionDigits: 2 })} / {p.unit}
+                </span>
+              )}
+              {hasVat && (
+                <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">VAT {p.vat}%</span>
+              )}
+              {hasTax && (
+                <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Tax {p.tax}%</span>
+              )}
+            </div>
+          </div>
+
+          {/* কাউন্টার */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => onUpdate(p.id, -1)}
+              disabled={qty === 0}
+              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center disabled:opacity-30 active:scale-95"
+            >
+              <FiMinus size={13} />
+            </button>
+            <span className={`w-7 text-center font-bold text-sm ${qty > 0 ? 'text-primary' : 'text-gray-300'}`}>{qty}</span>
+            <button
+              onClick={() => onUpdate(p.id, 1)}
+              className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary active:scale-95"
+            >
+              <FiPlus size={13} />
+            </button>
+          </div>
+        </div>
+
+        {/* সাবটোটাল */}
+        {qty > 0 && (
+          <p className="text-xs text-right text-secondary font-semibold mt-2">
+            {qty} × ৳{finalPrice.toLocaleString('en', { maximumFractionDigits: 2 })} = ৳{(qty * finalPrice).toLocaleString('en', { maximumFractionDigits: 2 })}
+          </p>
+        )}
+
+        {/* বিবরণ টগল বাটন */}
+        {hasExtras && (
+          <button
+            onClick={() => setExpanded(!expanded)}
+            className="mt-2 text-xs text-primary flex items-center gap-1"
+          >
+            {expanded ? <FiChevronUp size={12} /> : <FiChevronDown size={12} />}
+            {expanded ? 'কম দেখুন' : 'বিস্তারিত দেখুন'}
+          </button>
+        )}
+      </div>
+
+      {/* Expanded: description */}
+      {expanded && p.description && (
+        <div className="px-4 pb-4 pt-0">
+          <div className="bg-gray-50 rounded-xl p-3">
+            <p className="text-xs text-gray-400 mb-1 font-medium">বিবরণ</p>
+            <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">{p.description}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── MAIN COMPONENT ────────────────────────────────────────
 export default function SalesForm() {
   const { id: customerId }    = useParams()
   const [searchParams]         = useSearchParams()
@@ -12,18 +131,18 @@ export default function SalesForm() {
   const navigate               = useNavigate()
   const { setCurrentSale }     = useAppStore()
 
-  const [customer,  setCustomer]  = useState(null)
-  const [products,  setProducts]  = useState([])
-  const [selected,  setSelected]  = useState({})
+  const [customer,     setCustomer]     = useState(null)
+  const [products,     setProducts]     = useState([])
+  const [selected,     setSelected]     = useState({})
   const [replacements, setReplacements] = useState({})
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [useCreditBalance, setUseCreditBalance] = useState(false)
-  const [vatRate,   setVatRate]   = useState(0)
+  const [vatRate,      setVatRate]      = useState(0)
   const [receiptPhoto, setReceiptPhoto] = useState(null)
   const [receiptPreview, setReceiptPreview] = useState(null)
-  const [loading,   setLoading]   = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [step,      setStep]      = useState('products') // products | replacement | payment
+  const [loading,      setLoading]      = useState(true)
+  const [submitting,   setSubmitting]   = useState(false)
+  const [step,         setStep]         = useState('products')
 
   useEffect(() => {
     Promise.all([
@@ -45,14 +164,14 @@ export default function SalesForm() {
     })
   }
 
-  // হিসাব
+  // চূড়ান্ত মূল্য দিয়ে হিসাব
   const totalAmount = products
     .filter(p => selected[p.id])
-    .reduce((sum, p) => sum + p.price * selected[p.id], 0)
+    .reduce((sum, p) => sum + calcFinalPrice(p) * selected[p.id], 0)
 
   const replacementValue = products
     .filter(p => replacements[p.id])
-    .reduce((sum, p) => sum + p.price * replacements[p.id], 0)
+    .reduce((sum, p) => sum + calcFinalPrice(p) * replacements[p.id], 0)
 
   const creditBalance      = parseFloat(customer?.credit_balance || 0)
   const discountAmount     = useCreditBalance ? Math.min(creditBalance, totalAmount) : 0
@@ -79,7 +198,6 @@ export default function SalesForm() {
       const todayOrder = await api.get('/orders/today')
       const orderId = todayOrder.data.data?.id
 
-      // ── ছবি আছে কিনা দেখো ──────────────────────────────
       let receiptPhotoUrl = null
       if (receiptPhoto) {
         const photoForm = new FormData()
@@ -89,22 +207,19 @@ export default function SalesForm() {
             headers: { 'Content-Type': 'multipart/form-data' }
           })
           receiptPhotoUrl = uploadRes.data.data?.url
-        } catch {
-          // ছবি upload ব্যর্থ হলেও sale চলবে
-        }
+        } catch { /* ছবি upload ব্যর্থ হলেও sale চলবে */ }
       }
 
-      // ── JSON দিয়ে পাঠাও (FormData না) ──────────────────
       const payload = {
-        customer_id:       customerId,
-        visit_id:          visitId || undefined,
-        order_id:          orderId || undefined,
+        customer_id:        customerId,
+        visit_id:           visitId || undefined,
+        order_id:           orderId || undefined,
         items,
-        payment_method:    paymentMethod,
-        replacement_items: replacementItems,
+        payment_method:     paymentMethod,
+        replacement_items:  replacementItems,
         use_credit_balance: useCreditBalance,
-        vat_rate:          vatRate,
-        receipt_photo:     receiptPhotoUrl || undefined,
+        vat_rate:           vatRate,
+        receipt_photo:      receiptPhotoUrl || undefined,
       }
 
       const res = await api.post('/sales', payload)
@@ -114,7 +229,9 @@ export default function SalesForm() {
         otp_required: res.data.data.otp_required,
         customer,
         items: products.filter(p => selected[p.id]).map(p => ({
-          product_id: p.id, product_name: p.name, qty: selected[p.id], price: p.price, subtotal: p.price * selected[p.id]
+          product_id: p.id, product_name: p.name, qty: selected[p.id],
+          price: calcFinalPrice(p),
+          subtotal: calcFinalPrice(p) * selected[p.id]
         }))
       })
 
@@ -149,38 +266,17 @@ export default function SalesForm() {
         ))}
       </div>
 
-      {/* Products */}
+      {/* ── Products ── */}
       {step === 'products' && (
         <div className="space-y-3">
-          {products.map(p => {
-            const qty = selected[p.id] || 0
-            return (
-              <div key={p.id} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
-                    <p className="font-semibold text-sm text-gray-800">{p.name}</p>
-                    <p className="text-xs text-secondary font-bold">৳{p.price} / {p.unit}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => updateQty(p.id, -1)} disabled={qty === 0}
-                      className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center disabled:opacity-30">
-                      <FiMinus className="text-sm" />
-                    </button>
-                    <span className={`w-8 text-center font-bold text-sm ${qty > 0 ? 'text-primary' : 'text-gray-300'}`}>{qty}</span>
-                    <button onClick={() => updateQty(p.id, 1)}
-                      className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                      <FiPlus className="text-sm" />
-                    </button>
-                  </div>
-                </div>
-                {qty > 0 && (
-                  <p className="text-xs text-right text-secondary font-semibold mt-1">
-                    = ৳{(qty * p.price).toLocaleString()}
-                  </p>
-                )}
-              </div>
-            )
-          })}
+          {products.map(p => (
+            <ProductCard
+              key={p.id}
+              p={p}
+              qty={selected[p.id] || 0}
+              onUpdate={updateQty}
+            />
+          ))}
           <button onClick={() => setStep('replacement')}
             className="w-full py-3 bg-primary text-white rounded-2xl font-semibold">
             পরবর্তী →
@@ -188,39 +284,24 @@ export default function SalesForm() {
         </div>
       )}
 
-      {/* Replacement */}
+      {/* ── Replacement ── */}
       {step === 'replacement' && (
         <div className="space-y-3">
           <p className="text-sm text-gray-500">কাস্টমার কোনো পণ্য ফেরত দিচ্ছেন?</p>
-          {products.map(p => {
-            const qty = replacements[p.id] || 0
-            return (
-              <div key={p.id} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-                <div className="flex items-center gap-3">
-                  <div className="flex-1">
-                    <p className="font-semibold text-sm text-gray-800">{p.name}</p>
-                    <p className="text-xs text-orange-500 font-bold">৳{p.price} ফেরত মূল্য</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => updateQty(p.id, -1, true)} disabled={qty === 0}
-                      className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center disabled:opacity-30">
-                      <FiMinus className="text-sm" />
-                    </button>
-                    <span className={`w-8 text-center font-bold text-sm ${qty > 0 ? 'text-orange-500' : 'text-gray-300'}`}>{qty}</span>
-                    <button onClick={() => updateQty(p.id, 1, true)}
-                      className="w-8 h-8 rounded-full bg-orange-50 flex items-center justify-center text-orange-500">
-                      <FiPlus className="text-sm" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )
-          })}
+          {products.map(p => (
+            <ProductCard
+              key={p.id}
+              p={p}
+              qty={replacements[p.id] || 0}
+              onUpdate={(pid, delta) => updateQty(pid, delta, true)}
+              isReplacement
+            />
+          ))}
           {replacementValue > 0 && (
             <div className="bg-orange-50 rounded-xl p-3 text-sm text-orange-700 font-semibold">
-              রিপ্লেসমেন্ট মূল্য: ৳{replacementValue.toLocaleString()}
+              রিপ্লেসমেন্ট মূল্য: ৳{replacementValue.toLocaleString('en', { maximumFractionDigits: 2 })}
               {creditBalanceAdded > 0 && (
-                <p className="text-xs text-emerald-600 mt-1">৳{creditBalanceAdded} কাস্টমারের ব্যালেন্সে যাবে</p>
+                <p className="text-xs text-emerald-600 mt-1">৳{creditBalanceAdded.toFixed(2)} কাস্টমারের ব্যালেন্সে যাবে</p>
               )}
             </div>
           )}
@@ -231,28 +312,28 @@ export default function SalesForm() {
         </div>
       )}
 
-      {/* Payment */}
+      {/* ── Payment ── */}
       {step === 'payment' && (
         <div className="space-y-4">
           {/* Summary */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-gray-100 dark:border-slate-700 shadow-sm space-y-2 text-sm">
-            <div className="flex justify-between"><span className="text-gray-500">পণ্যের মোট</span><span className="font-semibold">৳{totalAmount.toLocaleString()}</span></div>
-            {discountAmount > 0 && <div className="flex justify-between text-emerald-600"><span>ব্যালেন্স ছাড়</span><span>-৳{discountAmount}</span></div>}
-            {replacementValue > 0 && <div className="flex justify-between text-orange-600"><span>রিপ্লেসমেন্ট</span><span>-৳{replacementValue}</span></div>}
+          <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm space-y-2 text-sm">
+            <div className="flex justify-between"><span className="text-gray-500">পণ্যের মোট</span><span className="font-semibold">৳{totalAmount.toLocaleString('en', { maximumFractionDigits: 2 })}</span></div>
+            {discountAmount > 0 && <div className="flex justify-between text-emerald-600"><span>ব্যালেন্স ছাড়</span><span>-৳{discountAmount.toFixed(2)}</span></div>}
+            {replacementValue > 0 && <div className="flex justify-between text-orange-600"><span>রিপ্লেসমেন্ট</span><span>-৳{replacementValue.toFixed(2)}</span></div>}
             {vatAmount > 0 && <div className="flex justify-between text-amber-600"><span>ভ্যাট ({vatRate}%)</span><span>+৳{vatAmount}</span></div>}
-            <div className="flex justify-between font-bold text-base pt-2 border-t border-gray-100 dark:border-slate-700">
+            <div className="flex justify-between font-bold text-base pt-2 border-t border-gray-100">
               <span>পরিশোধযোগ্য</span>
-              <span className="text-secondary">৳{netAmount.toLocaleString()}</span>
+              <span className="text-secondary">৳{netAmount.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
             </div>
           </div>
 
           {/* VAT */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-gray-100 dark:border-slate-700 shadow-sm">
-            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">ভ্যাট হার (%) — ঐচ্ছিক</p>
+          <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+            <p className="text-sm font-semibold text-gray-700 mb-2">ভ্যাট হার (%) — ঐচ্ছিক</p>
             <div className="flex gap-2 flex-wrap">
               {[0, 5, 7.5, 10, 15].map(r => (
                 <button key={r} onClick={() => setVatRate(r)}
-                  className={`px-3 py-1.5 rounded-xl text-sm border transition-colors ${vatRate === r ? 'bg-amber-100 border-amber-400 text-amber-700 font-bold' : 'border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-300'}`}>
+                  className={`px-3 py-1.5 rounded-xl text-sm border transition-colors ${vatRate === r ? 'bg-amber-100 border-amber-400 text-amber-700 font-bold' : 'border-gray-200 text-gray-600'}`}>
                   {r}%
                 </button>
               ))}
@@ -260,13 +341,13 @@ export default function SalesForm() {
           </div>
 
           {/* Receipt Photo */}
-          <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 border border-gray-100 dark:border-slate-700 shadow-sm">
-            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">📷 রশিদ ছবি (ঐচ্ছিক)</p>
+          <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+            <p className="text-sm font-semibold text-gray-700 mb-2">📷 রশিদ ছবি (ঐচ্ছিক)</p>
             <label className="cursor-pointer block">
-              <div className={`border-2 border-dashed rounded-xl overflow-hidden flex items-center justify-center transition-colors ${receiptPreview ? 'border-primary h-40' : 'border-gray-200 dark:border-slate-600 h-16 hover:border-primary'}`}>
+              <div className={`border-2 border-dashed rounded-xl overflow-hidden flex items-center justify-center transition-colors ${receiptPreview ? 'border-primary h-40' : 'border-gray-200 h-16 hover:border-primary'}`}>
                 {receiptPreview
                   ? <img src={receiptPreview} alt="receipt" className="w-full h-full object-cover" />
-                  : <span className="text-sm text-gray-400 dark:text-gray-500">ট্যাপ করে ছবি নিন</span>
+                  : <span className="text-sm text-gray-400">ট্যাপ করে ছবি নিন</span>
                 }
               </div>
               <input type="file" accept="image/*" capture="environment" className="hidden"
@@ -291,7 +372,7 @@ export default function SalesForm() {
 
           {/* Payment method */}
           <div className="space-y-2">
-            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">পেমেন্ট পদ্ধতি:</p>
+            <p className="text-sm font-semibold text-gray-700">পেমেন্ট পদ্ধতি:</p>
             {[
               { key: 'cash',   label: '💵 নগদ',  desc: 'সম্পূর্ণ নগদে পরিশোধ' },
               { key: 'credit', label: '📋 বাকি', desc: `লিমিট: ৳${parseFloat(customer?.credit_limit || 0).toLocaleString()} | বর্তমান বাকি: ৳${parseFloat(customer?.current_credit || 0).toLocaleString()}` },
@@ -300,23 +381,15 @@ export default function SalesForm() {
                 key={pm.key}
                 onClick={() => setPaymentMethod(pm.key)}
                 disabled={pm.key === 'credit' && parseFloat(customer?.credit_limit || 0) === 0}
-                className={`w-full p-4 rounded-2xl border-2 text-left transition-all disabled:opacity-40 active:scale-[0.98] ${
-                  paymentMethod === pm.key
-                    ? 'border-primary bg-primary/5'
-                    : 'border-gray-200 bg-white dark:bg-slate-800 dark:border-slate-600'
-                }`}
+                className={`w-full p-4 rounded-2xl border-2 text-left transition-all disabled:opacity-40 active:scale-[0.98] ${paymentMethod === pm.key ? 'border-primary bg-primary/5' : 'border-gray-200 bg-white'}`}
               >
                 <div className="flex items-center gap-3">
-                  <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${
-                    paymentMethod === pm.key ? 'border-primary bg-primary' : 'border-gray-300'
-                  }`}>
-                    {paymentMethod === pm.key && (
-                      <div className="w-2 h-2 rounded-full bg-white" />
-                    )}
+                  <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 flex items-center justify-center ${paymentMethod === pm.key ? 'border-primary bg-primary' : 'border-gray-300'}`}>
+                    {paymentMethod === pm.key && <div className="w-2 h-2 rounded-full bg-white" />}
                   </div>
                   <div>
-                    <p className="font-semibold text-sm text-gray-800 dark:text-gray-100">{pm.label}</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{pm.desc}</p>
+                    <p className="font-semibold text-sm text-gray-800">{pm.label}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{pm.desc}</p>
                   </div>
                 </div>
               </button>
@@ -335,4 +408,4 @@ export default function SalesForm() {
       )}
     </div>
   )
-         }
+}
