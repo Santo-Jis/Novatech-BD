@@ -22,7 +22,9 @@ const getProducts = async (req, res) => {
         const result = await query(
             `SELECT id, name, sku, price, stock, reserved_stock,
                     (stock - reserved_stock) AS available_stock,
-                    unit, is_active, updated_at
+                    unit, is_active, updated_at,
+                    image_url, description,
+                    discount, discount_type, vat, tax
              FROM products
              WHERE ${conditions.join(' AND ')}
              ORDER BY name ASC`,
@@ -69,7 +71,12 @@ const getProduct = async (req, res) => {
 
 const createProduct = async (req, res) => {
     try {
-        const { name, sku, price, stock, unit } = req.body;
+        const {
+            name, sku, price, stock, unit,
+            image_url, description,
+            discount, discount_type,
+            vat, tax
+        } = req.body;
 
         if (!name || !sku || price === undefined) {
             return res.status(400).json({
@@ -79,10 +86,22 @@ const createProduct = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO products (name, sku, price, stock, unit)
-             VALUES ($1, $2, $3, $4, $5)
+            `INSERT INTO products
+               (name, sku, price, stock, unit,
+                image_url, description,
+                discount, discount_type,
+                vat, tax)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
              RETURNING *`,
-            [name, sku, price, stock || 0, unit || 'pcs']
+            [
+                name, sku, price, stock || 0, unit || 'pcs',
+                image_url    || null,
+                description  || null,
+                discount     || 0,
+                discount_type || 'flat',
+                vat          || 0,
+                tax          || 0
+            ]
         );
 
         // স্টক মুভমেন্ট লগ
@@ -117,19 +136,43 @@ const createProduct = async (req, res) => {
 
 const updateProduct = async (req, res) => {
     try {
-        const { name, sku, price, unit, is_active } = req.body;
+        const {
+            name, sku, price, unit, is_active,
+            image_url, description,
+            discount, discount_type,
+            vat, tax
+        } = req.body;
 
         const result = await query(
             `UPDATE products SET
-                name      = COALESCE($1, name),
-                sku       = COALESCE($2, sku),
-                price     = COALESCE($3, price),
-                unit      = COALESCE($4, unit),
-                is_active = COALESCE($5, is_active),
-                updated_at = NOW()
-             WHERE id = $6
+                name          = COALESCE($1,  name),
+                sku           = COALESCE($2,  sku),
+                price         = COALESCE($3,  price),
+                unit          = COALESCE($4,  unit),
+                is_active     = COALESCE($5,  is_active),
+                image_url     = COALESCE($6,  image_url),
+                description   = COALESCE($7,  description),
+                discount      = COALESCE($8,  discount),
+                discount_type = COALESCE($9,  discount_type),
+                vat           = COALESCE($10, vat),
+                tax           = COALESCE($11, tax),
+                updated_at    = NOW()
+             WHERE id = $12
              RETURNING *`,
-            [name, sku, price, unit, is_active, req.params.id]
+            [
+                name        ?? null,
+                sku         ?? null,
+                price       ?? null,
+                unit        ?? null,
+                is_active   ?? null,
+                image_url   ?? null,
+                description ?? null,
+                discount    ?? null,
+                discount_type ?? null,
+                vat         ?? null,
+                tax         ?? null,
+                req.params.id
+            ]
         );
 
         if (result.rows.length === 0) {
@@ -167,8 +210,8 @@ const adjustStock = async (req, res) => {
             return res.status(404).json({ success: false, message: 'পণ্য পাওয়া যায়নি।' });
         }
 
-        const newStock      = parseInt(product.rows[0].stock) + parseInt(quantity);
-        const movementType  = quantity > 0 ? 'in' : 'adjustment';
+        const newStock     = parseInt(product.rows[0].stock) + parseInt(quantity);
+        const movementType = quantity > 0 ? 'in' : 'adjustment';
 
         if (newStock < 0) {
             return res.status(400).json({
