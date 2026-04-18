@@ -71,47 +71,55 @@ const createOrder = async (req, res) => {
             }
 
             const p             = product.rows[0];
-            const availableStock = p.stock - p.reserved_stock;
+            const availableStock = p.stock - (p.reserved_stock || 0);
+            const itemQty = item.qty || item.requested_qty || 0;
 
-            if (item.qty > availableStock) {
+            if (itemQty > availableStock) {
                 return res.status(400).json({
                     success: false,
                     message: `${p.name} এর পর্যাপ্ত স্টক নেই। পাওয়া যাচ্ছে: ${availableStock}`
                 });
             }
 
+            // frontend থেকে আসা final price (discount/VAT/tax সহ), না থাকলে DB price
+            const finalPrice = Number(item.price) || Number(p.price) || 0;
+
             orderItems.push({
                 product_id:   p.id,
                 product_name: p.name,
-                requested_qty: item.qty,
-                approved_qty:  item.qty, // Manager পরিবর্তন করতে পারবে
-                price:         p.price
+                requested_qty: itemQty,
+                approved_qty:  itemQty,
+                price:         finalPrice
             });
 
-            totalAmount += p.price * item.qty;
+            totalAmount += finalPrice * itemQty;
         }
 
-        // অর্ডার সেভ
-        const result = await query(
-            `INSERT INTO orders (worker_id, items, total_amount, note)
-             VALUES ($1, $2, $3, $4)
-             RETURNING id`,
-            [workerId, JSON.stringify(orderItems), totalAmount, note || null]
-        );
-
-        const orderId = result.rows[0].id;
-
-        // পণ্য রিজার্ভ করো
-        for (const item of orderItems) {
-            await query(
-                `UPDATE products
-                 SET reserved_stock = COALESCE(reserved_stock, 0) + $1, updated_at = NOW()
-                 WHERE id = $2`,
-                [item.requested_qty, item.product_id]
+        // Transaction এর মধ্যে সব করো - যেকোনো error হলে rollback
+        let orderId;
+        await withTransaction(async (client) => {
+            // অর্ডার সেভ
+            const result = await client.query(
+                `INSERT INTO orders (worker_id, items, total_amount, note)
+                 VALUES ($1, $2, $3, $4)
+                 RETURNING id`,
+                [workerId, JSON.stringify(orderItems), totalAmount, note || null]
             );
-        }
 
-        // Manager কে Firebase নোটিফিকেশন
+            orderId = result.rows[0].id;
+
+            // পণ্য রিজার্ভ করো
+            for (const item of orderItems) {
+                await client.query(
+                    `UPDATE products
+                     SET reserved_stock = COALESCE(reserved_stock, 0) + $1, updated_at = NOW()
+                     WHERE id = $2`,
+                    [item.requested_qty, item.product_id]
+                );
+            }
+        });
+
+        // Manager কে Firebase নোটিফিকেশন (transaction এর বাইরে)
         if (req.user.manager_id) {
             await firebaseNotify(
                 `notifications/${req.user.manager_id}/orders`,
@@ -269,8 +277,8 @@ const approveOrder = async (req, res) => {
                     );
                 }
 
-                item.approved_qty = item.approved_qty || item.requested_qty;
-                const itemPrice = Number(item.price) || Number(original?.price) || 0;
+                item.approved_qty = parseInt(item.approved_qty) || parseInt(item.requested_qty) || 0;
+                const itemPrice = parseFloat(item.price) || parseFloat(original?.price) || 0;
                 item.price = itemPrice;
                 totalAmount += itemPrice * item.approved_qty;
             }
