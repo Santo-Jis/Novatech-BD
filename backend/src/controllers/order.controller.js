@@ -105,7 +105,7 @@ const createOrder = async (req, res) => {
         for (const item of orderItems) {
             await query(
                 `UPDATE products
-                 SET reserved_stock = reserved_stock + $1, updated_at = NOW()
+                 SET reserved_stock = COALESCE(reserved_stock, 0) + $1, updated_at = NOW()
                  WHERE id = $2`,
                 [item.requested_qty, item.product_id]
             );
@@ -263,14 +263,16 @@ const approveOrder = async (req, res) => {
                 if (diff !== 0) {
                     await client.query(
                         `UPDATE products
-                         SET reserved_stock = reserved_stock - $1, updated_at = NOW()
+                         SET reserved_stock = GREATEST(0, COALESCE(reserved_stock, 0) - $1), updated_at = NOW()
                          WHERE id = $2`,
                         [diff, item.product_id]
                     );
                 }
 
                 item.approved_qty = item.approved_qty || item.requested_qty;
-                totalAmount += item.price * item.approved_qty;
+                const itemPrice = Number(item.price) || Number(original?.price) || 0;
+                item.price = itemPrice;
+                totalAmount += itemPrice * item.approved_qty;
             }
 
             // অর্ডার আপডেট
