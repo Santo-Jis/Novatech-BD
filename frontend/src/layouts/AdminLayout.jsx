@@ -2,11 +2,12 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
-import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare } from 'react-icons/fi'
+import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus } from 'react-icons/fi'
 
 const navItems = [
   { path: '/admin/dashboard',   icon: <FiHome />,         label: 'ড্যাশবোর্ড' },
   { path: '/admin/employees',   icon: <FiUsers />,        label: 'কর্মী তালিকা' },
+  { path: '/admin/recruitment', icon: <FiUserPlus />,     label: 'SR নিয়োগ' },
   { path: '/admin/pending',     icon: <FiCheckSquare />,  label: 'অনুমোদন বাকি' },
   { path: '/admin/products',    icon: <FiPackage />,      label: 'পণ্য' },
   { path: '/admin/reports',     icon: <FiBarChart2 />,    label: 'রিপোর্ট' },
