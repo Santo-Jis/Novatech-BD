@@ -584,6 +584,7 @@ export default function SRApplicationForm() {
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 p-6">
             <SREmailOTPVerify
               email={currentEmail}
+              name={getValues('name_bn') || getValues('name_en') || ''}
               onVerified={handleOTPVerified}
               onBack={() => { setShowOTP(false); setPendingSubmit(null) }}
             />
