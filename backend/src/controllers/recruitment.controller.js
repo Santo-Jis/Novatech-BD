@@ -6,7 +6,8 @@ const generateAppId = () => {
     const d = new Date();
     const date = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`;
     const rand = String(Math.floor(1000 + Math.random() * 9000));
-    return `SR-${date}-${rand}`;
+    // Firebase key এ hyphen(-) ব্যবহার করা যাবে না — nested path হিসেবে ব্যবহার হয়
+    return `SR_${date}_${rand}`;
 };
 
 // ── POST /api/recruitment/apply (Public — no auth) ────────────
@@ -15,13 +16,15 @@ exports.submitApplication = async (req, res) => {
         const db = getDB();
         const d  = req.body;
 
-        // Duplicate check by phone AND device_id
+        // Duplicate check by phone, NID এবং device_id
         const allSnap = await db.ref('sr_applications').once('value');
         let alreadyApplied = false;
+        let nidUsed = false;
         let deviceUsed = false;
         allSnap.forEach(child => {
             const val = child.val();
             if (val.phone === d.phone) alreadyApplied = true;
+            if (d.nid && val.nid === d.nid) nidUsed = true;
             if (d.device_id && val.device_id === d.device_id) deviceUsed = true;
         });
 
@@ -29,6 +32,12 @@ exports.submitApplication = async (req, res) => {
             return res.status(409).json({
                 success: false,
                 message: 'এই ফোন নম্বরে আগেই আবেদন করা হয়েছে।',
+            });
+        }
+        if (nidUsed) {
+            return res.status(409).json({
+                success: false,
+                message: 'এই NID দিয়ে আগেই আবেদন করা হয়েছে।',
             });
         }
         if (deviceUsed) {
@@ -119,7 +128,7 @@ exports.submitApplication = async (req, res) => {
             updated_at:     now,
         };
 
-        await db.ref(`sr_applications/${application_id}`).set(appData);
+        await db.ref('sr_applications').push(appData);
 
         res.status(201).json({
             success: true,
