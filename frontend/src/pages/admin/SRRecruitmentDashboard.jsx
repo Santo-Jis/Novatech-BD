@@ -340,18 +340,25 @@ export default function SRRecruitmentDashboard() {
         ...(statusFilter && { status: statusFilter }),
       })
       const res = await api.get(`/recruitment?${params}`)
-      setApps(res.data.data.applications)
-      setTotal(res.data.data.total)
-      setStats(res.data.data.stats)
-    } catch { toast.error('তথ্য আনতে সমস্যা হয়েছে।') }
+      if (res.data?.success && res.data?.data) {
+        setApps(res.data.data.applications || [])
+        setTotal(res.data.data.total || 0)
+        setStats(res.data.data.stats || null)
+      }
+    } catch (err) {
+      // 401 হলে axios interceptor নিজেই handle করবে
+      // অন্য error হলে retry করো
+      if (err?.response?.status !== 401) {
+        toast.error('তথ্য আনতে সমস্যা হয়েছে।')
+      } else {
+        // token refresh এর পর আবার try করো
+        setTimeout(() => fetchApps(), 1500)
+      }
+    }
     finally { setLoading(false) }
   }
 
-  useEffect(() => { fetchApps() }, [page, statusFilter])
-  useEffect(() => {
-    const t = setTimeout(fetchApps, 500)
-    return () => clearTimeout(t)
-  }, [search])
+  useEffect(() => { fetchApps() }, [page, statusFilter, search])
 
   const handleStatusChange = (updated) => {
     setApps(prev => prev.map(a => a._id === updated._id ? updated : a))
