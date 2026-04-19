@@ -132,7 +132,7 @@ function maskEmail(email) {
 }
 
 // ── Main Component ────────────────────────────────────────────
-export default function SREmailOTPVerify({ email, onVerified, onBack }) {
+export default function SREmailOTPVerify({ email, name, onVerified, onBack }) {
   const [otp,       setOtp]       = useState('')
   const [sent,      setSent]      = useState(false)
   const [sending,   setSending]   = useState(false)
@@ -154,7 +154,7 @@ export default function SREmailOTPVerify({ email, onVerified, onBack }) {
     setOtp('')
     setHasError(false)
     try {
-      await axios.post(`${API_BASE}/api/recruitment/verify-email/send`, { email })
+      await axios.post(`${API_BASE}/api/recruitment/verify-email/send`, { email, name: name || '' })
       setSent(true)
       setTimerKey(k => k + 1)
       toast.success('OTP পাঠানো হয়েছে! ইনবক্স চেক করুন 📧', { duration: 4000 })
