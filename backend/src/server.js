@@ -84,6 +84,7 @@ const reportRoutes      = require('./routes/report.routes');
 const aiRoutes          = require('./routes/ai.routes');
 const adminRoutes       = require('./routes/admin.routes');
 const noticeRoutes      = require('./routes/notice.routes');
+const recruitmentRoutes = require('./routes/recruitment.routes');
 
 app.use('/api/auth',        loginLimiter, authRoutes);
 app.use('/api/employees',   employeeRoutes);
@@ -99,6 +100,7 @@ app.use('/api/reports',     reportRoutes);
 app.use('/api/ai',          aiRoutes);
 app.use('/api/admin',       adminRoutes);
 app.use('/api/notices',     noticeRoutes);
+app.use('/api/recruitment', recruitmentRoutes);
 
 // ============================================================
 // HEALTH CHECK
