@@ -1,7 +1,8 @@
 const { getDB } = require('../config/firebase');
 const { uploadToCloudinary } = require('../services/employee.service');
 const { generateOTP } = require('../config/encryption');
-const { sendSRApplicationOTPEmail } = require('../services/email.service');
+const { sendSRApplicationOTPEmail, sendSRApplicationConfirmEmail, sendSRApplicationAdminNotifyEmail } = require('../services/email.service');
+const { query } = require('../config/db');
 
 // ── In-Memory OTP Store (SR Recruitment — public, no DB needed) ──
 // Key: email_lower → { otp, expiresAt, attempts }
@@ -226,6 +227,42 @@ exports.submitApplication = async (req, res) => {
         };
 
         await db.ref('sr_applications').push(appData);
+
+        // ── Confirmation Email — আবেদনকারী ও Admin উভয়কে ──
+        try {
+            const emailData = {
+                name:           d.name_bn || d.name_en || 'আবেদনকারী',
+                application_id,
+                phone:          d.phone    || null,
+                email:          d.email    || null,
+                district:       d.district || null,
+                nid:            d.nid      || null,
+                created_at:     now,
+            };
+
+            // আবেদনকারীকে Confirmation Email
+            if (d.email) {
+                sendSRApplicationConfirmEmail(d.email, emailData).catch(err =>
+                    console.warn('⚠️ আবেদনকারী confirmation email ব্যর্থ:', err.message)
+                );
+            }
+
+            // Admin-দের Notification Email
+            const adminResult = await query(
+                `SELECT email FROM users
+                 WHERE role = 'admin' AND status = 'active'
+                   AND email IS NOT NULL AND email != ''`
+            );
+            const adminEmails = adminResult.rows.map(r => r.email);
+            if (adminEmails.length > 0) {
+                sendSRApplicationAdminNotifyEmail(adminEmails, emailData).catch(err =>
+                    console.warn('⚠️ Admin notification email ব্যর্থ:', err.message)
+                );
+            }
+        } catch (emailErr) {
+            // Email ব্যর্থ হলেও আবেদন জমা সফল ধরা হবে
+            console.warn('⚠️ SR application email error:', emailErr.message);
+        }
 
         res.status(201).json({
             success: true,
