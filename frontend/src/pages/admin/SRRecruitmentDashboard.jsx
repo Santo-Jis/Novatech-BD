@@ -104,7 +104,7 @@ function DetailModal({ app, onClose, onStatusChange }) {
                 <FiMapPin size={11}/> {app.district}, {app.thana}
               </span>
               <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
-                <FiCalendar size={11}/> {new Date(app.createdAt).toLocaleDateString('bn-BD')}
+                <FiCalendar size={11}/> {new Date(app.created_at).toLocaleDateString('bn-BD')}
               </span>
             </div>
           </div>
@@ -308,7 +308,7 @@ function AppRow({ app, onView }) {
         </span>
       </td>
       <td className="px-4 py-3 text-xs text-gray-400 hidden lg:table-cell">
-        {new Date(app.createdAt).toLocaleDateString('bn-BD')}
+        {new Date(app.created_at).toLocaleDateString('bn-BD')}
       </td>
       <td className="px-4 py-3">
         <button className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">
