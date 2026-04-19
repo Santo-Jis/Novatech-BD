@@ -152,7 +152,14 @@ exports.getApplications = async (req, res) => {
         const snap = await db.ref('sr_applications').once('value');
 
         let apps = [];
-        snap.forEach(child => apps.push({ _id: child.key, ...child.val() }));
+        snap.forEach(child => {
+            const val = child.val();
+            // null বা object না হলে skip করো
+            if (val && typeof val === 'object') {
+                apps.push({ _id: child.key, ...val });
+            }
+        });
+        console.log(`[Recruitment] Firebase থেকে ${apps.length}টি আবেদন পাওয়া গেছে`);
 
         // created_at দিয়ে sort — নতুন আগে
         apps.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
