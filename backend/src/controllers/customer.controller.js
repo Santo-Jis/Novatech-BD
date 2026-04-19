@@ -233,7 +233,7 @@ const createCustomer = async (req, res) => {
                 let workerInfo = null;
                 if (req.user.role === 'worker') {
                     const workerResult = await query(
-                        `SELECT name_bn, name, phone FROM users WHERE id = $1`,
+                        `SELECT name_bn, name_en, phone FROM users WHERE id = $1`,
                         [req.user.id]
                     );
                     workerInfo = workerResult.rows[0] || null;
