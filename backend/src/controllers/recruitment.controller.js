@@ -1,5 +1,101 @@
 const { getDB } = require('../config/firebase');
 const { uploadToCloudinary } = require('../services/employee.service');
+const { generateOTP } = require('../config/encryption');
+const { sendOTPEmail } = require('../services/email.service');
+
+// ── In-Memory OTP Store (SR Recruitment — public, no DB needed) ──
+// Key: email_lower → { otp, expiresAt, attempts }
+const _srOtpStore = new Map();
+
+// ── POST /api/recruitment/verify-email/send (Public) ──────────
+exports.sendSROTP = async (req, res) => {
+    try {
+        const { email } = req.body;
+        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            return res.status(400).json({ success: false, message: 'সঠিক ইমেইল ঠিকানা দিন।' });
+        }
+
+        const emailLower = email.toLowerCase().trim();
+
+        // Rate limit: একই email-এ ২ মিনিটের মধ্যে পুনরায় অনুরোধ রোধ
+        const existing = _srOtpStore.get(emailLower);
+        if (existing && (Date.now() - existing.sentAt) < 60_000) {
+            const wait = Math.ceil((60_000 - (Date.now() - existing.sentAt)) / 1000);
+            return res.status(429).json({
+                success: false,
+                message: `অনুগ্রহ করে ${wait} সেকেন্ড অপেক্ষা করুন।`,
+            });
+        }
+
+        const otp       = generateOTP(6);
+        const expiresAt = Date.now() + 10 * 60 * 1000; // 10 মিনিট
+
+        _srOtpStore.set(emailLower, { otp, expiresAt, sentAt: Date.now(), attempts: 0 });
+
+        const result = await sendOTPEmail(email, otp, 'SR নিয়োগ আবেদন যাচাই');
+
+        if (!result.success && !result.dev) {
+            _srOtpStore.delete(emailLower);
+            return res.status(500).json({ success: false, message: 'ইমেইল পাঠানো যায়নি। পরে চেষ্টা করুন।' });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: `OTP পাঠানো হয়েছে ${email}-এ।`,
+        });
+
+    } catch (err) {
+        console.error('❌ sendSROTP:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+// ── POST /api/recruitment/verify-email/confirm (Public) ───────
+exports.confirmSROTP = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        if (!email || !otp) {
+            return res.status(400).json({ success: false, message: 'ইমেইল ও OTP দিন।' });
+        }
+
+        const emailLower = email.toLowerCase().trim();
+        const record     = _srOtpStore.get(emailLower);
+
+        if (!record) {
+            return res.status(400).json({ success: false, message: 'OTP পাঠানো হয়নি। প্রথমে OTP পাঠান।' });
+        }
+
+        // Max attempts (brute-force সুরক্ষা)
+        if (record.attempts >= 5) {
+            _srOtpStore.delete(emailLower);
+            return res.status(400).json({ success: false, message: 'বেশি ভুল চেষ্টা। নতুন OTP নিন।' });
+        }
+
+        if (Date.now() > record.expiresAt) {
+            _srOtpStore.delete(emailLower);
+            return res.status(400).json({ success: false, message: 'OTP মেয়াদ শেষ হয়েছে। নতুন OTP নিন।' });
+        }
+
+        if (record.otp !== otp.trim()) {
+            record.attempts += 1;
+            _srOtpStore.set(emailLower, record);
+            const left = 5 - record.attempts;
+            return res.status(400).json({
+                success: false,
+                message: `OTP ভুল হয়েছে। আরও ${left}টি সুযোগ বাকি।`,
+            });
+        }
+
+        // যাচাই সফল — মুছে ফেলো
+        _srOtpStore.delete(emailLower);
+
+        return res.status(200).json({ success: true, message: 'ইমেইল যাচাই সফল ✅' });
+
+    } catch (err) {
+        console.error('❌ confirmSROTP:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
 
 // Application ID generator: SR-YYYYMMDD-XXXX
 const generateAppId = () => {
