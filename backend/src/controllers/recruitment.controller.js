@@ -15,16 +15,26 @@ exports.submitApplication = async (req, res) => {
         const db = getDB();
         const d  = req.body;
 
-        // Duplicate check by phone
-        const snap = await db.ref('sr_applications')
-            .orderByChild('phone')
-            .equalTo(d.phone)
-            .once('value');
+        // Duplicate check by phone AND device_id
+        const allSnap = await db.ref('sr_applications').once('value');
+        let alreadyApplied = false;
+        let deviceUsed = false;
+        allSnap.forEach(child => {
+            const val = child.val();
+            if (val.phone === d.phone) alreadyApplied = true;
+            if (d.device_id && val.device_id === d.device_id) deviceUsed = true;
+        });
 
-        if (snap.exists()) {
+        if (alreadyApplied) {
             return res.status(409).json({
                 success: false,
                 message: 'এই ফোন নম্বরে আগেই আবেদন করা হয়েছে।',
+            });
+        }
+        if (deviceUsed) {
+            return res.status(409).json({
+                success: false,
+                message: 'এই ডিভাইস থেকে আগেই আবেদন করা হয়েছে।',
             });
         }
 
@@ -101,6 +111,7 @@ exports.submitApplication = async (req, res) => {
             ref2_phone:      d.ref2_phone      || null,
             ref2_address:    d.ref2_address    || null,
             photo_url:      photo_url || null,
+            device_id:      d.device_id || null,
             status:         'pending',
             admin_comment:  null,
             interview_date: null,
