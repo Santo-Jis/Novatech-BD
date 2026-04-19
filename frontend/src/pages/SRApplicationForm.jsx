@@ -432,16 +432,35 @@ export default function SRApplicationForm() {
   const prevStep = () => setStep(s => Math.max(s - 1, 1))
 
   const onSubmit = async (data) => {
+    // ── Device check: এই ডিভাইস থেকে আগে আবেদন হয়েছে কিনা ──
+    const deviceKey = 'sr_applied'
+    if (localStorage.getItem(deviceKey)) {
+      toast.error('এই ডিভাইস থেকে আগেই আবেদন করা হয়েছে।')
+      return
+    }
+
     setLoading(true)
     try {
+      // Device fingerprint তৈরি করো
+      const deviceId = btoa([
+        navigator.userAgent,
+        navigator.language,
+        screen.width + 'x' + screen.height,
+        new Date().getTimezoneOffset(),
+      ].join('|')).slice(0, 32)
+
       const fd = new FormData()
       Object.entries(data).forEach(([k, v]) => {
         if (k === 'photo') { if (v[0]) fd.append('photo', v[0]) }
         else fd.append(k, v ?? '')
       })
+      fd.append('device_id', deviceId)
+
       const res = await axios.post(`${API_BASE}/api/recruitment/apply`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
+      // সফল হলে localStorage এ mark করো
+      localStorage.setItem(deviceKey, res.data?.data?.application_id)
       setAppId(res.data?.data?.application_id)
       setSubmitted(true)
     } catch (err) {
