@@ -54,7 +54,8 @@ export default function CustomerList() {
   const fileRef = useRef()
 
   const emptyForm = {
-    shop_name: '', owner_name: '', phone: '', address: '',
+    shop_name: '', owner_name: '', business_type: '',
+    whatsapp: '', sms_phone: '',
     email: '', credit_limit: '5000', route_id: '',
     lat: null, lng: null, photo: null
   }
@@ -108,7 +109,7 @@ export default function CustomerList() {
   // ── Form → Next Step ─────────────────────────────────────────
   const handleFormNext = () => {
     if (!newCustomer.shop_name.trim()) return toast.error('দোকানের নাম দিন')
-    if (!newCustomer.phone.trim())     return toast.error('ফোন নম্বর দিন')
+    if (!newCustomer.whatsapp.trim())  return toast.error('WhatsApp নম্বর দিন')
     if (!newCustomer.lat)              return toast.error('GPS লোকেশন নিন')
 
     if (newCustomer.email.trim() && !emailVerified) {
@@ -125,15 +126,15 @@ export default function CustomerList() {
       const formData = new FormData()
       formData.append('shop_name',    newCustomer.shop_name.trim())
       formData.append('owner_name',   newCustomer.owner_name.trim())
-      formData.append('whatsapp',     newCustomer.phone.trim())
-      formData.append('sms_phone',    newCustomer.phone.trim())
-      formData.append('address',      newCustomer.address.trim())
+      formData.append('whatsapp',     newCustomer.whatsapp.trim())
+      formData.append('sms_phone',    newCustomer.sms_phone.trim() || newCustomer.whatsapp.trim())
       formData.append('credit_limit', newCustomer.credit_limit || 5000)
       formData.append('latitude',     newCustomer.lat)
       formData.append('longitude',    newCustomer.lng)
-      if (newCustomer.email.trim())  formData.append('email',      newCustomer.email.trim())
-      if (newCustomer.route_id)      formData.append('route_id',   newCustomer.route_id)
-      if (newCustomer.photo)         formData.append('shop_photo', newCustomer.photo)
+      if (newCustomer.business_type) formData.append('business_type', newCustomer.business_type)
+      if (newCustomer.email.trim())  formData.append('email',         newCustomer.email.trim())
+      if (newCustomer.route_id)      formData.append('route_id',      newCustomer.route_id)
+      if (newCustomer.photo)         formData.append('shop_photo',    newCustomer.photo)
 
       await api.post('/customers', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
       toast.success('নতুন কাস্টমার যোগ হয়েছে ✅')
@@ -331,12 +332,31 @@ export default function CustomerList() {
                     </select>
                   </div>
 
+                  {/* ব্যবসার ধরন */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">ব্যবসার ধরন</label>
+                    <select value={newCustomer.business_type}
+                      onChange={e => setNewCustomer(p => ({ ...p, business_type: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/60 bg-white">
+                      <option value="">-- ব্যবসার ধরন বেছে নিন --</option>
+                      <option value="মুদি">মুদি</option>
+                      <option value="ফার্মেসি">ফার্মেসি</option>
+                      <option value="হার্ডওয়্যার">হার্ডওয়্যার</option>
+                      <option value="কসমেটিক্স">কসমেটিক্স</option>
+                      <option value="ইলেকট্রনিক্স">ইলেকট্রনিক্স</option>
+                      <option value="কাপড়">কাপড়</option>
+                      <option value="খাদ্য ও পানীয়">খাদ্য ও পানীয়</option>
+                      <option value="স্টেশনারি">স্টেশনারি</option>
+                      <option value="অন্যান্য">অন্যান্য</option>
+                    </select>
+                  </div>
+
                   {/* Text Fields */}
                   {[
                     { label: 'দোকানের নাম',      required: true,  key: 'shop_name',    placeholder: 'যেমন: আল-আমিন স্টোর', type: 'text'   },
-                    { label: 'মালিকের নাম',        required: false, key: 'owner_name',   placeholder: 'মালিকের নাম',           type: 'text'   },
-                    { label: 'ফোন নম্বর',          required: true,  key: 'phone',        placeholder: '01XXXXXXXXX',            type: 'tel'    },
-                    { label: 'ঠিকানা',             required: false, key: 'address',      placeholder: 'দোকানের ঠিকানা',         type: 'text'   },
+                    { label: 'মালিকের নাম',        required: true,  key: 'owner_name',   placeholder: 'মালিকের নাম',           type: 'text'   },
+                    { label: 'WhatsApp নম্বর',     required: true,  key: 'whatsapp',     placeholder: '01XXXXXXXXX',            type: 'tel'    },
+                    { label: 'SMS নম্বর',          required: false, key: 'sms_phone',    placeholder: 'আলাদা হলে দিন, না হলে ফাঁকা রাখুন', type: 'tel' },
                     { label: 'ক্রেডিট লিমিট (৳)', required: false, key: 'credit_limit', placeholder: '5000',                   type: 'number' },
                   ].map(f => (
                     <div key={f.key}>
