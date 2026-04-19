@@ -588,9 +588,156 @@ const sendWelcomeEmail = async (email, customer, worker) => {
     return sendEmail(email, subject, html, text);
 };
 
+// ============================================================
+// SR নিয়োগ আবেদন — Email যাচাইয়ের OTP টেম্পলেট
+// আবেদনকারীকে "গ্রাহক" না বলে সঠিকভাবে সম্বোধন করা হয়েছে
+// ============================================================
+
+const sendSRApplicationOTPEmail = async (email, otp, applicantName, expiryMinutes = 10) => {
+    const subject = `NovaTech BD — SR আবেদন যাচাই কোড: ${otp}`;
+
+    const html = `<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>SR আবেদন যাচাই</title>
+</head>
+<body style="margin:0;padding:0;background:#eef2f7;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7;padding:40px 0;">
+<tr><td align="center">
+<table width="540" cellpadding="0" cellspacing="0"
+       style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 6px 30px rgba(0,0,0,.10);">
+
+  <!-- ══ HEADER ══ -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#1565c0 0%,#0d47a1 100%);padding:32px 40px;text-align:center;">
+      <table width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td style="text-align:center;">
+          <div style="display:inline-block;background:rgba(255,255,255,.15);border-radius:50%;width:56px;height:56px;line-height:56px;font-size:26px;margin-bottom:12px;">🏢</div>
+          <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;letter-spacing:.5px;">NovaTech BD</h1>
+          <p style="color:#90caf9;margin:6px 0 0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;">Management System</p>
+        </td>
+      </tr></table>
+    </td>
+  </tr>
+
+  <!-- ══ BADGE ══ -->
+  <tr>
+    <td style="padding:0;">
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="background:#e3f2fd;border-bottom:2px solid #bbdefb;padding:14px 40px;text-align:center;">
+            <span style="display:inline-block;background:#1565c0;color:#fff;font-size:11px;font-weight:700;letter-spacing:1.5px;padding:5px 18px;border-radius:20px;text-transform:uppercase;">SR নিয়োগ আবেদন যাচাইকরণ</span>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- ══ BODY ══ -->
+  <tr>
+    <td style="padding:36px 40px 28px;">
+
+      <!-- Greeting -->
+      <p style="color:#1a1a2e;font-size:16px;font-weight:600;margin:0 0 6px;">
+        প্রিয় ${applicantName ? applicantName : 'আবেদনকারী'},
+      </p>
+      <p style="color:#546e7a;font-size:13.5px;margin:0 0 28px;line-height:1.7;">
+        আপনার <strong style="color:#1565c0;">SR (Sales Representative) নিয়োগ আবেদন</strong> প্রক্রিয়া শুরু হয়েছে।
+        নিচের ওয়ান-টাইম পাসওয়ার্ড (OTP) ব্যবহার করে আপনার ইমেইল ঠিকানা যাচাই করুন।
+      </p>
+
+      <!-- OTP Box -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 28px;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#e8f0fe,#dce8fd);border:2px solid #1a73e8;border-radius:14px;padding:30px 20px;text-align:center;">
+            <p style="color:#5c7cfa;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 12px;">আপনার যাচাই কোড</p>
+            <div style="display:inline-block;">
+              <span style="color:#1565c0;font-size:48px;font-weight:800;letter-spacing:16px;font-family:'Courier New',Courier,monospace;display:block;line-height:1;">${otp}</span>
+            </div>
+            <table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;"><tr>
+              <td align="center">
+                <span style="display:inline-block;background:#fff3e0;border:1px solid #ffe0b2;border-radius:20px;padding:5px 16px;">
+                  <span style="color:#e65100;font-size:12px;font-weight:600;">⏱ মেয়াদ: ${expiryMinutes} মিনিট</span>
+                </span>
+              </td>
+            </tr></table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Steps -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9ff;border-radius:10px;padding:18px 20px;margin:0 0 22px;">
+        <tr>
+          <td>
+            <p style="color:#37474f;font-size:12.5px;font-weight:700;margin:0 0 12px;letter-spacing:.5px;">📋 পরবর্তী ধাপ:</p>
+            <table cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding:4px 0;vertical-align:top;">
+                  <span style="display:inline-block;background:#1565c0;color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;font-size:11px;font-weight:700;margin-right:10px;">১</span>
+                </td>
+                <td style="padding:4px 0;color:#546e7a;font-size:12.5px;">আবেদন ফর্মে ফিরে যান</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;vertical-align:top;">
+                  <span style="display:inline-block;background:#1565c0;color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;font-size:11px;font-weight:700;margin-right:10px;">২</span>
+                </td>
+                <td style="padding:4px 0;color:#546e7a;font-size:12.5px;">উপরের ৬-সংখ্যার কোডটি নির্ধারিত ঘরে প্রবেশ করান</td>
+              </tr>
+              <tr>
+                <td style="padding:4px 0;vertical-align:top;">
+                  <span style="display:inline-block;background:#1565c0;color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;font-size:11px;font-weight:700;margin-right:10px;">৩</span>
+                </td>
+                <td style="padding:4px 0;color:#546e7a;font-size:12.5px;">${expiryMinutes} মিনিটের মধ্যে যাচাই সম্পন্ন করুন</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Warning -->
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="background:#fff8e1;border-left:4px solid #f9a825;border-radius:0 8px 8px 0;padding:14px 18px;">
+            <p style="color:#e65100;font-size:12.5px;font-weight:700;margin:0 0 4px;">⚠️ সতর্কতা</p>
+            <p style="color:#6d4c41;font-size:12px;margin:0;line-height:1.6;">
+              এই কোডটি <strong>কাউকে শেয়ার করবেন না</strong> — ফোন, মেসেজ বা অন্য কোনো মাধ্যমে।
+              NovaTech BD কর্তৃপক্ষ কখনো আপনার কাছে OTP চাইবে না।
+            </p>
+          </td>
+        </tr>
+      </table>
+
+      <p style="color:#b0bec5;font-size:11px;margin:22px 0 0;text-align:center;">
+        এই ইমেইলটি আপনি আবেদন না করলে নিরাপদে উপেক্ষা করুন।
+      </p>
+    </td>
+  </tr>
+
+  <!-- ══ FOOTER ══ -->
+  <tr>
+    <td style="background:#f4f6f9;border-top:1px solid #e0e0e0;padding:18px 40px;text-align:center;">
+      <p style="color:#78909c;font-size:11.5px;margin:0 0 4px;font-weight:600;">NovaTech BD (Ltd.)</p>
+      <p style="color:#b0bec5;font-size:10.5px;margin:0;">inf.novatechbd@gmail.com &nbsp;|&nbsp; বরিশাল সদর – ১২০০</p>
+      <p style="color:#cfd8dc;font-size:10px;margin:6px 0 0;">এই ইমেইলটি স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে। সরাসরি রিপ্লাই করবেন না।</p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+    const text = `NovaTech BD — SR নিয়োগ আবেদন যাচাই\nআবেদনকারী: ${applicantName || 'আবেদনকারী'}\nOTP কোড: ${otp}\nমেয়াদ: ${expiryMinutes} মিনিট\nএই কোড কাউকে দেবেন না।`;
+    return sendEmail(email, subject, html, text);
+};
+
 module.exports = {
     sendEmail,
     sendOTPEmail,
+    sendSRApplicationOTPEmail,
     sendInvoiceEmail,
     sendOrderNotificationEmail,
     sendWelcomeEmail,
