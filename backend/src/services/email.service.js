@@ -31,7 +31,7 @@ const getEmailConfig = async () => {
         result.rows.forEach(r => { raw[r.key] = r.value; });
 
         _emailConfigCache = {
-            host:    raw.email_host    || process.env.EMAIL_HOST    || 'smtp.gmail.com',
+            host:    raw.email_host    || process.env.EMAIL_HOST    || 'smtp-relay.brevo.com',
             port:    parseInt(raw.email_port || process.env.EMAIL_PORT || '587'),
             user:    raw.email_user    || process.env.EMAIL_USER    || '',
             pass:    raw.email_pass    || process.env.EMAIL_PASS    || '',
@@ -41,7 +41,7 @@ const getEmailConfig = async () => {
     } catch {
         // DB ফেল হলে .env থেকে নাও
         _emailConfigCache = {
-            host:    process.env.EMAIL_HOST    || 'smtp.gmail.com',
+            host:    process.env.EMAIL_HOST    || 'smtp-relay.brevo.com',
             port:    parseInt(process.env.EMAIL_PORT || '587'),
             user:    process.env.EMAIL_USER    || '',
             pass:    process.env.EMAIL_PASS    || '',
