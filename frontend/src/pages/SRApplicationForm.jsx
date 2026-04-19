@@ -313,12 +313,17 @@ function Step5({ register, errors }) {
 
 // ── STEP 6: Photo & Declaration ───────────────────────────────
 function Step6({ register, errors, photoPreview, setPhotoPreview }) {
+  // register থেকে onChange আলাদা করে নিই, তারপর দুটো একসাথে call করবো
+  const { onChange: rhfOnChange, ...photoRest } = register('photo', { required: 'ছবি আপলোড করা আবশ্যক' })
+
   const handlePhoto = (e) => {
     const file = e.target.files[0]
     if (file) {
       if (file.size > 2 * 1024 * 1024) { toast.error('ছবির সাইজ ২ MB এর বেশি হবে না।'); return }
       setPhotoPreview(URL.createObjectURL(file))
     }
+    // RHF-এর onChange অবশ্যই call করতে হবে, নাহলে form-এ file আসে না
+    rhfOnChange(e)
   }
   return (
     <div className="space-y-6">
@@ -340,7 +345,7 @@ function Step6({ register, errors, photoPreview, setPhotoPreview }) {
             <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border cursor-pointer text-sm font-medium transition-all
               ${photoPreview ? 'border-green-400 text-green-600 bg-green-50' : 'border-gray-300 hover:border-red-400 hover:text-red-600 hover:bg-red-50 dark:border-slate-600 dark:text-gray-300'}`}>
               <FiUpload size={16}/> ছবি আপলোড করুন
-              <input type="file" accept="image/*" {...register('photo', { required: 'ছবি আপলোড করা আবশ্যক' })} onChange={handlePhoto} className="hidden" />
+              <input type="file" accept="image/*" {...photoRest} onChange={handlePhoto} className="hidden" />
             </label>
             <p className="text-xs text-gray-400">JPG / PNG • সর্বোচ্চ ২ MB • পাসপোর্ট সাইজ</p>
             {errors.photo && <p className="text-xs text-red-500 flex items-center gap-1"><FiAlertCircle size={11}/> {errors.photo.message}</p>}
