@@ -734,10 +734,301 @@ const sendSRApplicationOTPEmail = async (email, otp, applicantName, expiryMinute
     return sendEmail(email, subject, html, text);
 };
 
+// ============================================================
+// SR আবেদন সফল — আবেদনকারীকে Confirmation Email
+// ============================================================
+
+const sendSRApplicationConfirmEmail = async (email, applicantData) => {
+    const { name, application_id, phone, district, created_at } = applicantData;
+
+    const subject = `✅ আবেদন সফল হয়েছে — ${application_id} | NovaTech BD`;
+
+    const dateStr = new Date(created_at || Date.now()).toLocaleString('bn-BD', {
+        timeZone: 'Asia/Dhaka',
+        year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+    });
+
+    const html = `<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background:#eef2f7;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7;padding:40px 0;">
+<tr><td align="center">
+<table width="540" cellpadding="0" cellspacing="0"
+       style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 6px 30px rgba(0,0,0,.10);">
+
+  <!-- HEADER -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#1b5e20 0%,#2e7d32 100%);padding:32px 40px;text-align:center;">
+      <div style="font-size:40px;margin-bottom:10px;">✅</div>
+      <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;">আবেদন সফলভাবে জমা হয়েছে!</h1>
+      <p style="color:#a5d6a7;margin:6px 0 0;font-size:12px;letter-spacing:1px;">NovaTech BD — SR নিয়োগ বিভাগ</p>
+    </td>
+  </tr>
+
+  <!-- BODY -->
+  <tr>
+    <td style="padding:32px 40px;">
+
+      <p style="color:#1a1a2e;font-size:16px;font-weight:600;margin:0 0 6px;">প্রিয় ${name},</p>
+      <p style="color:#546e7a;font-size:13.5px;margin:0 0 28px;line-height:1.8;">
+        আপনার <strong style="color:#2e7d32;">SR (Sales Representative)</strong> পদের জন্য আবেদন সফলভাবে জমা হয়েছে।
+        আমাদের নিয়োগ দল শীঘ্রই আপনার আবেদন পর্যালোচনা করবে এবং যোগাযোগ করবে।
+      </p>
+
+      <!-- Application ID Box -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 24px;">
+        <tr>
+          <td style="background:linear-gradient(135deg,#e8f5e9,#f1f8e9);border:2px solid #66bb6a;border-radius:14px;padding:24px;text-align:center;">
+            <p style="color:#388e3c;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin:0 0 10px;">আবেদন নম্বর</p>
+            <p style="color:#1b5e20;font-size:26px;font-weight:800;font-family:'Courier New',monospace;margin:0;letter-spacing:3px;">${application_id}</p>
+            <p style="color:#81c784;font-size:11px;margin:8px 0 0;">এই নম্বরটি সংরক্ষণ করুন — পরবর্তী যোগাযোগে প্রয়োজন হবে</p>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Info Grid -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:12px;padding:20px;margin:0 0 24px;">
+        <tr>
+          <td>
+            <p style="color:#37474f;font-size:12px;font-weight:700;margin:0 0 14px;letter-spacing:.5px;">📋 আবেদনের সারসংক্ষেপ</p>
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding:6px 0;color:#78909c;font-size:12.5px;width:45%;">আবেদনকারীর নাম</td>
+                <td style="padding:6px 0;color:#263238;font-size:12.5px;font-weight:600;">${name}</td>
+              </tr>
+              <tr>
+                <td colspan="2"><div style="border-top:1px dashed #e0e0e0;margin:4px 0;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#78909c;font-size:12.5px;">মোবাইল নম্বর</td>
+                <td style="padding:6px 0;color:#263238;font-size:12.5px;font-weight:600;">${phone || '—'}</td>
+              </tr>
+              <tr>
+                <td colspan="2"><div style="border-top:1px dashed #e0e0e0;margin:4px 0;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#78909c;font-size:12.5px;">জেলা</td>
+                <td style="padding:6px 0;color:#263238;font-size:12.5px;font-weight:600;">${district || '—'}</td>
+              </tr>
+              <tr>
+                <td colspan="2"><div style="border-top:1px dashed #e0e0e0;margin:4px 0;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#78909c;font-size:12.5px;">আবেদনের সময়</td>
+                <td style="padding:6px 0;color:#263238;font-size:12.5px;font-weight:600;">${dateStr}</td>
+              </tr>
+              <tr>
+                <td colspan="2"><div style="border-top:1px dashed #e0e0e0;margin:4px 0;"></div></td>
+              </tr>
+              <tr>
+                <td style="padding:6px 0;color:#78909c;font-size:12.5px;">বর্তমান অবস্থা</td>
+                <td style="padding:6px 0;">
+                  <span style="background:#fff8e1;color:#f57f17;font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;border:1px solid #ffe082;">⏳ পর্যালোচনাধীন</span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Next Steps -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#e3f2fd;border-radius:12px;padding:20px;margin:0 0 20px;">
+        <tr>
+          <td>
+            <p style="color:#1565c0;font-size:12px;font-weight:700;margin:0 0 12px;">📌 পরবর্তী ধাপ</p>
+            <table cellpadding="0" cellspacing="0">
+              <tr>
+                <td style="padding:5px 0;vertical-align:top;">
+                  <span style="display:inline-block;background:#1565c0;color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;font-size:10px;font-weight:700;margin-right:10px;">১</span>
+                </td>
+                <td style="padding:5px 0;color:#37474f;font-size:12.5px;">আবেদন পর্যালোচনায় <strong>৩-৫ কার্যদিবস</strong> সময় লাগতে পারে</td>
+              </tr>
+              <tr>
+                <td style="padding:5px 0;vertical-align:top;">
+                  <span style="display:inline-block;background:#1565c0;color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;font-size:10px;font-weight:700;margin-right:10px;">২</span>
+                </td>
+                <td style="padding:5px 0;color:#37474f;font-size:12.5px;">নির্বাচিত হলে আপনার মোবাইলে কল বা SMS করা হবে</td>
+              </tr>
+              <tr>
+                <td style="padding:5px 0;vertical-align:top;">
+                  <span style="display:inline-block;background:#1565c0;color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;font-size:10px;font-weight:700;margin-right:10px;">৩</span>
+                </td>
+                <td style="padding:5px 0;color:#37474f;font-size:12.5px;">মোবাইল নম্বর সবসময় চালু রাখুন</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Contact -->
+      <table width="100%" cellpadding="0" cellspacing="0">
+        <tr>
+          <td style="background:#fff8e1;border-left:4px solid #f9a825;border-radius:0 8px 8px 0;padding:14px 18px;">
+            <p style="color:#e65100;font-size:12px;font-weight:700;margin:0 0 4px;">📞 যোগাযোগ</p>
+            <p style="color:#6d4c41;font-size:12px;margin:0;line-height:1.7;">
+              আবেদন সম্পর্কে জানতে: <strong>01836-191102</strong><br>
+              ইমেইল: <strong>inf.novatechbd@gmail.com</strong>
+            </p>
+          </td>
+        </tr>
+      </table>
+
+    </td>
+  </tr>
+
+  <!-- FOOTER -->
+  <tr>
+    <td style="background:#f4f6f9;border-top:1px solid #e0e0e0;padding:18px 40px;text-align:center;">
+      <p style="color:#78909c;font-size:11.5px;margin:0 0 4px;font-weight:600;">NovaTech BD (Ltd.)</p>
+      <p style="color:#b0bec5;font-size:10.5px;margin:0;">inf.novatechbd@gmail.com &nbsp;|&nbsp; বরিশাল সদর – ১২০০</p>
+      <p style="color:#cfd8dc;font-size:10px;margin:6px 0 0;">এই ইমেইলটি স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে। সরাসরি রিপ্লাই করবেন না।</p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+    const text = `আবেদন সফল! আবেদন নম্বর: ${application_id}\nনাম: ${name}\nমোবাইল: ${phone}\nজেলা: ${district}\nসময়: ${dateStr}\nযোগাযোগ: 01836-191102`;
+    return sendEmail(email, subject, html, text);
+};
+
+// ============================================================
+// SR আবেদন সফল — Admin কে Notification Email
+// ============================================================
+
+const sendSRApplicationAdminNotifyEmail = async (toEmails, applicantData) => {
+    const { name, application_id, phone, email: applicantEmail, district, nid, created_at } = applicantData;
+
+    const subject = `📋 নতুন SR আবেদন: ${name} (${application_id})`;
+
+    const dateStr = new Date(created_at || Date.now()).toLocaleString('bn-BD', {
+        timeZone: 'Asia/Dhaka',
+        year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit',
+    });
+
+    const html = `<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background:#eef2f7;font-family:'Segoe UI',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#eef2f7;padding:40px 0;">
+<tr><td align="center">
+<table width="540" cellpadding="0" cellspacing="0"
+       style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 6px 30px rgba(0,0,0,.10);">
+
+  <!-- HEADER -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#1a237e 0%,#283593 100%);padding:28px 40px;">
+      <table width="100%" cellpadding="0" cellspacing="0"><tr>
+        <td>
+          <p style="color:#9fa8da;font-size:11px;margin:0 0 4px;letter-spacing:1px;text-transform:uppercase;">NovaTech BD — নিয়োগ বিভাগ</p>
+          <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">📋 নতুন SR আবেদন এসেছে</h1>
+        </td>
+        <td style="text-align:right;white-space:nowrap;">
+          <span style="display:inline-block;background:#ff6f00;color:#fff;font-size:11px;font-weight:700;padding:5px 14px;border-radius:20px;">নতুন আবেদন</span>
+        </td>
+      </tr></table>
+    </td>
+  </tr>
+
+  <!-- ALERT -->
+  <tr>
+    <td style="background:#fff8e1;border-bottom:2px solid #ffe082;padding:12px 40px;">
+      <p style="margin:0;color:#e65100;font-size:13px;font-weight:600;">
+        ⚡ একটি নতুন SR আবেদন জমা পড়েছে। অনুগ্রহ করে পর্যালোচনা করুন।
+      </p>
+    </td>
+  </tr>
+
+  <!-- APPLICATION ID -->
+  <tr>
+    <td style="padding:28px 40px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="background:#e8eaf6;border-radius:10px;padding:16px 20px;margin-bottom:24px;">
+        <tr>
+          <td style="color:#3949ab;font-size:12px;font-weight:700;letter-spacing:1px;">আবেদন নম্বর</td>
+          <td style="text-align:right;">
+            <span style="color:#1a237e;font-size:20px;font-weight:800;font-family:'Courier New',monospace;letter-spacing:2px;">${application_id}</span>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2" style="color:#7986cb;font-size:11px;padding-top:4px;">জমার সময়: ${dateStr}</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- APPLICANT INFO -->
+  <tr>
+    <td style="padding:0 40px 28px;">
+      <p style="color:#37474f;font-size:12px;font-weight:700;margin:0 0 14px;letter-spacing:.5px;">👤 আবেদনকারীর তথ্য</p>
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f9fa;border-radius:10px;padding:16px 18px;">
+        <tr>
+          <td style="padding:6px 0;color:#78909c;font-size:12.5px;width:40%;">নাম</td>
+          <td style="padding:6px 0;color:#263238;font-size:12.5px;font-weight:700;">${name}</td>
+        </tr>
+        <tr><td colspan="2"><div style="border-top:1px dashed #e0e0e0;margin:2px 0;"></div></td></tr>
+        <tr>
+          <td style="padding:6px 0;color:#78909c;font-size:12.5px;">মোবাইল</td>
+          <td style="padding:6px 0;color:#263238;font-size:12.5px;font-weight:600;">${phone || '—'}</td>
+        </tr>
+        <tr><td colspan="2"><div style="border-top:1px dashed #e0e0e0;margin:2px 0;"></div></td></tr>
+        <tr>
+          <td style="padding:6px 0;color:#78909c;font-size:12.5px;">ইমেইল</td>
+          <td style="padding:6px 0;color:#263238;font-size:12.5px;font-weight:600;">${applicantEmail || '—'}</td>
+        </tr>
+        <tr><td colspan="2"><div style="border-top:1px dashed #e0e0e0;margin:2px 0;"></div></td></tr>
+        <tr>
+          <td style="padding:6px 0;color:#78909c;font-size:12.5px;">NID</td>
+          <td style="padding:6px 0;color:#263238;font-size:12.5px;font-weight:600;">${nid || '—'}</td>
+        </tr>
+        <tr><td colspan="2"><div style="border-top:1px dashed #e0e0e0;margin:2px 0;"></div></td></tr>
+        <tr>
+          <td style="padding:6px 0;color:#78909c;font-size:12.5px;">জেলা</td>
+          <td style="padding:6px 0;color:#263238;font-size:12.5px;font-weight:600;">${district || '—'}</td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- FOOTER -->
+  <tr>
+    <td style="background:#f4f6f9;border-top:1px solid #e0e0e0;padding:18px 40px;text-align:center;">
+      <p style="color:#78909c;font-size:11.5px;margin:0 0 4px;font-weight:600;">NovaTech BD (Ltd.) — Admin Panel</p>
+      <p style="color:#cfd8dc;font-size:10px;margin:4px 0 0;">এই ইমেইলটি স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে।</p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+    const text = `নতুন SR আবেদন!\nআবেদন নম্বর: ${application_id}\nনাম: ${name}\nমোবাইল: ${phone}\nজেলা: ${district}\nসময়: ${dateStr}`;
+
+    for (const email of (Array.isArray(toEmails) ? toEmails : [toEmails])) {
+        await sendEmail(email, subject, html, text);
+    }
+};
+
 module.exports = {
     sendEmail,
     sendOTPEmail,
     sendSRApplicationOTPEmail,
+    sendSRApplicationConfirmEmail,
+    sendSRApplicationAdminNotifyEmail,
     sendInvoiceEmail,
     sendOrderNotificationEmail,
     sendWelcomeEmail,
