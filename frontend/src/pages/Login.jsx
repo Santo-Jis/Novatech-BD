@@ -563,9 +563,25 @@ export default function Login() {
               <p style={{ color: 'rgba(255,255,255,0.15)', fontSize: '11px', letterSpacing: '1px', margin: '0 0 2px' }}>
                 NOVATECH BD (LTD.) © {new Date().getFullYear()}
               </p>
-              <p style={{ color: 'rgba(74,222,128,0.25)', fontSize: '10px', letterSpacing: '0.5px', margin: 0 }}>
+              <p style={{ color: 'rgba(74,222,128,0.25)', fontSize: '10px', letterSpacing: '0.5px', margin: '0 0 14px' }}>
                 জানকি সিংহ রোড, বরিশাল সদর
               </p>
+
+              {/* SR নিয়োগ বাটন */}
+              <a href="/apply/sr" style={{
+                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                padding: '9px 20px', borderRadius: '12px',
+                background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
+                color: '#f87171', fontSize: '12px', fontWeight: '600',
+                textDecoration: 'none', transition: 'all 0.2s',
+                letterSpacing: '0.3px',
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.25)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.7)'; }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', animation: 'pulse-green 2s ease infinite', flexShrink: 0 }} />
+                SR পদে আবেদন করুন
+                <span style={{ fontSize: '14px' }}>→</span>
+              </a>
             </div>
 
           </div>
