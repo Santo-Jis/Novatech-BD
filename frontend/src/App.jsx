@@ -20,10 +20,12 @@ import AIInsights       from './pages/admin/AIInsights'
 import AdminSettings    from './pages/admin/Settings'
 import AdminProducts    from './pages/admin/Products'
 import AdminNotices     from './pages/admin/Notices'
+import SRRecruitmentDashboard from './pages/admin/SRRecruitmentDashboard'
 
 // Shared Pages
 import AIChat        from './pages/shared/AIChat'
 import NoticesView   from './pages/shared/NoticesView'
+import SRApplicationForm from './pages/SRApplicationForm'
 
 // Manager Pages
 import ManagerDashboard   from './pages/manager/Dashboard'
@@ -101,6 +103,7 @@ export default function App() {
     <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
+      <Route path="/apply/sr" element={<SRApplicationForm />} />
       <Route path="/"      element={<HomeRedirect />} />
 
       {/* Unauthorized */}
@@ -129,6 +132,7 @@ export default function App() {
         <Route path="ai-insights"     element={<AIInsights />} />
         <Route path="ai-chat"         element={<AIChat />} />
         <Route path="notices"         element={<AdminNotices />} />
+        <Route path="recruitment"     element={<SRRecruitmentDashboard />} />
         <Route path="settings"        element={<AdminSettings />} />
         <Route path="products"        element={<AdminProducts />} />
       </Route>
