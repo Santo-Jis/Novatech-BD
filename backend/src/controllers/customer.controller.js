@@ -168,7 +168,7 @@ const createCustomer = async (req, res) => {
         const {
             shop_name, owner_name, business_type,
             whatsapp, sms_phone, email, route_id,
-            latitude, longitude
+            latitude, longitude, credit_limit
         } = req.body;
 
         if (!shop_name || !owner_name) {
@@ -200,15 +200,17 @@ const createCustomer = async (req, res) => {
             `INSERT INTO customers
              (customer_code, shop_name, owner_name, shop_photo,
               business_type, whatsapp, sms_phone, email, route_id,
-              location, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9,
-              ${locationPoint}, $10)
+              credit_limit, location, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+              ${locationPoint}, $11)
              RETURNING *`,
             [
                 customerCode, shop_name, owner_name, shopPhotoUrl,
                 business_type || null, whatsapp || null,
                 sms_phone || null, email || null,
-                route_id || null, req.user.id
+                route_id || null,
+                credit_limit ? parseFloat(credit_limit) : 5000,
+                req.user.id
             ]
         );
 
@@ -220,6 +222,29 @@ const createCustomer = async (req, res) => {
                  VALUES ($1, $2, $3, $4)`,
                 [req.user.id, result.rows[0].id, route_id || null, req.user.id]
             );
+        }
+
+        // ✅ স্বাগতম Email পাঠাও (email থাকলে)
+        if (email) {
+            try {
+                const { sendWelcomeEmail } = require('../services/email.service');
+
+                // SR এর তথ্য আনো (worker হলে)
+                let workerInfo = null;
+                if (req.user.role === 'worker') {
+                    const workerResult = await query(
+                        `SELECT name_bn, name, phone FROM users WHERE id = $1`,
+                        [req.user.id]
+                    );
+                    workerInfo = workerResult.rows[0] || null;
+                }
+
+                await sendWelcomeEmail(email, result.rows[0], workerInfo);
+                console.log(`📧 স্বাগতম Email পাঠানো হয়েছে → ${email}`);
+            } catch (emailErr) {
+                // Email ব্যর্থ হলেও customer creation সফল রাখো
+                console.error('⚠️ Welcome Email পাঠানো যায়নি:', emailErr.message);
+            }
         }
 
         return res.status(201).json({
