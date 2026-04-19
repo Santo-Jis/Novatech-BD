@@ -4,31 +4,43 @@ const { auth } = require('../middlewares/auth');
 const { isAdmin } = require('../middlewares/roleCheck');
 
 const {
-    getSettings,
-    updateSettings,
-    getAuditLogs,
-    getSystemStats,
-    testSmsGateway
-} = require('../controllers/admin.controller');
+    getInsights,
+    markInsightRead,
+    getAIConfig,
+    getModels,
+    updateAIConfig,
+    testAIConnection,
+    triggerAIJob,
+    aiChat
+} = require('../controllers/ai.controller');
 
 // ============================================================
-// ADMIN ROUTES
-// Base: /api/admin
+// AI ROUTES
+// Base: /api/ai
 // ============================================================
 
-// সিস্টেম সেটিংস দেখা
-router.get('/settings',    auth, isAdmin, getSettings);
+// AI Insights দেখুন
+router.get('/insights',        auth, isAdmin, getInsights);
 
-// সিস্টেম সেটিংস আপডেট
-router.put('/settings',    auth, isAdmin, updateSettings);
+// Insight পড়া হিসেবে মার্ক করুন
+router.put('/insights/:id/read', auth, isAdmin, markInsightRead);
 
-// Audit Log
-router.get('/audit-logs',  auth, isAdmin, getAuditLogs);
+// AI Config দেখুন
+router.get('/config',          auth, isAdmin, getAIConfig);
 
-// সিস্টেম পরিসংখ্যান
-router.get('/stats',       auth, isAdmin, getSystemStats);
+// Available Models
+router.get('/models',          auth, isAdmin, getModels);
 
-// SMS গেটওয়ে টেস্ট
-router.post('/sms-test',   auth, isAdmin, testSmsGateway);
+// AI Config আপডেট
+router.put('/config',          auth, isAdmin, updateAIConfig);
+
+// Connection টেস্ট
+router.post('/test',           auth, isAdmin, testAIConnection);
+
+// Manual AI Job trigger
+router.post('/trigger',        auth, isAdmin, triggerAIJob);
+
+// AI Chat
+router.post('/chat',           auth, aiChat);
 
 module.exports = router;
