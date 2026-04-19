@@ -33,6 +33,9 @@ exports.submitApplication = async (req, res) => {
         if (req.file) {
             const filename = `sr_${Date.now()}`;
             photo_url = await uploadToCloudinary(req.file.buffer, 'recruitment', filename);
+            if (!photo_url) {
+                console.warn('⚠️ ছবি আপলোড হয়নি। CLOUDINARY_CLOUD_NAME ও CLOUDINARY_UPLOAD_PRESET .env এ সেট আছে কিনা দেখুন।');
+            }
         }
 
         const application_id = generateAppId();
@@ -40,7 +43,6 @@ exports.submitApplication = async (req, res) => {
 
         const appData = {
             application_id,
-            // Personal
             name_bn:          d.name_bn        || null,
             name_en:          d.name_en        || null,
             father_name:      d.father_name    || null,
@@ -51,12 +53,10 @@ exports.submitApplication = async (req, res) => {
             nid:              d.nid            || null,
             phone:            d.phone          || null,
             email:            d.email          || null,
-            // Address
             permanent_address: d.permanent_address || null,
             current_address:   d.current_address   || null,
             district:          d.district          || null,
             thana:             d.thana             || null,
-            // Education
             edu_ssc_board:      d.edu_ssc_board      || null,
             edu_ssc_year:       d.edu_ssc_year       || null,
             edu_ssc_gpa:        d.edu_ssc_gpa        || null,
@@ -69,7 +69,6 @@ exports.submitApplication = async (req, res) => {
             edu_other_edu_board: d.edu_other_edu_board || null,
             edu_other_edu_year:  d.edu_other_edu_year  || null,
             edu_other_edu_gpa:   d.edu_other_edu_gpa   || null,
-            // Experience
             exp_0_company:  d.exp_0_company  || null,
             exp_0_position: d.exp_0_position || null,
             exp_0_duration: d.exp_0_duration || null,
@@ -84,18 +83,15 @@ exports.submitApplication = async (req, res) => {
             exp_2_duties:   d.exp_2_duties   || null,
             total_exp_years:  d.total_exp_years  || null,
             total_exp_months: d.total_exp_months || null,
-            // Skills
             skill_bangla:     d.skill_bangla     || null,
             skill_english:    d.skill_english    || null,
             skill_smartphone: d.skill_smartphone || null,
             skill_computer:   d.skill_computer   || null,
             has_bike:         d.has_bike         || null,
-            // Emergency
             emergency_name:     d.emergency_name     || null,
             emergency_relation: d.emergency_relation || null,
             emergency_phone:    d.emergency_phone    || null,
             emergency_address:  d.emergency_address  || null,
-            // References
             ref1_name:       d.ref1_name       || null,
             ref1_profession: d.ref1_profession || null,
             ref1_phone:      d.ref1_phone      || null,
@@ -104,16 +100,14 @@ exports.submitApplication = async (req, res) => {
             ref2_profession: d.ref2_profession || null,
             ref2_phone:      d.ref2_phone      || null,
             ref2_address:    d.ref2_address    || null,
-            // Meta
-            photo_url,
-            status:        'pending',
-            admin_comment: null,
+            photo_url:      photo_url || null,
+            status:         'pending',
+            admin_comment:  null,
             interview_date: null,
-            created_at:    now,
-            updated_at:    now,
+            created_at:     now,
+            updated_at:     now,
         };
 
-        // Firebase এ সেভ করো
         await db.ref(`sr_applications/${application_id}`).set(appData);
 
         res.status(201).json({
@@ -139,14 +133,10 @@ exports.getApplications = async (req, res) => {
 
         let apps = [];
         snap.forEach(child => apps.push({ _id: child.key, ...child.val() }));
-
-        // সবচেয়ে নতুন আগে
         apps.reverse();
 
-        // Filter by status
         if (status) apps = apps.filter(a => a.status === status);
 
-        // Search
         if (search) {
             const s = search.toLowerCase();
             apps = apps.filter(a =>
@@ -158,7 +148,6 @@ exports.getApplications = async (req, res) => {
             );
         }
 
-        // Stats (সব data থেকে)
         const allSnap = await db.ref('sr_applications').once('value');
         let allApps = [];
         allSnap.forEach(c => allApps.push(c.val()));
@@ -171,7 +160,6 @@ exports.getApplications = async (req, res) => {
             rejected: allApps.filter(a => a.status === 'rejected').length,
         };
 
-        // Pagination
         const total     = apps.length;
         const startIdx  = (Number(page) - 1) * Number(limit);
         const paginated = apps.slice(startIdx, startIdx + Number(limit));
@@ -212,12 +200,23 @@ exports.updateStatus = async (req, res) => {
             return res.status(404).json({ success: false, message: 'আবেদন পাওয়া যায়নি।' });
         }
 
-        await ref.update({
-            status:         status         || snap.val().status,
-            admin_comment:  admin_comment  ?? snap.val().admin_comment,
-            interview_date: interview_date ?? snap.val().interview_date,
-            updated_at:     Date.now(),
-        });
+        const existing = snap.val();
+
+        // Firebase undefined value দিলে crash করে — সব null/string নিশ্চিত করতে হবে
+        const updateData = {
+            status: (status !== undefined && status !== null && status !== '')
+                        ? String(status)
+                        : existing.status,
+            admin_comment: (admin_comment !== undefined && admin_comment !== null)
+                        ? String(admin_comment)
+                        : (existing.admin_comment || null),
+            interview_date: (interview_date !== undefined && interview_date !== null && interview_date !== '')
+                        ? String(interview_date)
+                        : (existing.interview_date || null),
+            updated_at: Date.now(),
+        };
+
+        await ref.update(updateData);
 
         const updated = await ref.once('value');
         res.json({
@@ -226,6 +225,7 @@ exports.updateStatus = async (req, res) => {
             data: { _id: updated.key, ...updated.val() },
         });
     } catch (err) {
+        console.error('updateStatus error:', err);
         res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
