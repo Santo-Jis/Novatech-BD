@@ -468,10 +468,138 @@ const sendOrderNotificationEmail = async (toEmails, orderData) => {
     return results;
 };
 
+// ============================================================
+// WELCOME EMAIL TEMPLATE — নতুন কাস্টমার নিবন্ধন সম্পন্ন হলে
+// ============================================================
+
+const sendWelcomeEmail = async (email, customer, worker) => {
+    const subject = `🎉 স্বাগতম NovaTech BD পরিবারে! | ${customer.shop_name}`;
+
+    const html = `<!DOCTYPE html>
+<html lang="bn">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:30px 0;">
+<tr><td align="center">
+<table width="540" cellpadding="0" cellspacing="0"
+       style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.12);">
+
+  <!-- Header -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#1a73e8,#0d47a1);padding:30px 35px;text-align:center;">
+      <h1 style="color:#fff;margin:0;font-size:26px;letter-spacing:1px;">NovaTech BD</h1>
+      <p style="color:#bbdefb;margin:6px 0 0;font-size:13px;">Management System</p>
+    </td>
+  </tr>
+
+  <!-- Welcome Banner -->
+  <tr>
+    <td style="background:#e8f5e9;padding:20px 35px;text-align:center;border-bottom:2px solid #c8e6c9;">
+      <p style="margin:0;font-size:28px;">🎉</p>
+      <h2 style="color:#2e7d32;font-size:20px;margin:8px 0 4px;">স্বাগতম NovaTech BD পরিবারে!</h2>
+      <p style="color:#388e3c;font-size:13px;margin:0;">আপনার নিবন্ধন সফলভাবে সম্পন্ন হয়েছে।</p>
+    </td>
+  </tr>
+
+  <!-- Body -->
+  <tr>
+    <td style="padding:30px 35px;">
+
+      <p style="color:#333;font-size:15px;margin:0 0 6px;">প্রিয় <strong>${customer.owner_name}</strong>,</p>
+      <p style="color:#555;font-size:13px;margin:0 0 25px;line-height:1.8;">
+        <strong>${customer.shop_name}</strong> দোকানটি আমাদের সিস্টেমে সফলভাবে যুক্ত হয়েছে।
+        আমরা আপনাকে আমাদের পরিবারের নতুন সদস্য হিসেবে স্বাগত জানাচ্ছি।
+        আপনার সাথে কাজ করতে পেরে আমরা আনন্দিত।
+      </p>
+
+      <!-- Customer Info Card -->
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="background:#e8f0fe;border-radius:10px;border:1px solid #c5d8f8;margin:0 0 22px;">
+        <tr>
+          <td style="padding:18px 22px;">
+            <p style="color:#1a73e8;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;font-weight:bold;">আপনার অ্যাকাউন্টের তথ্য</p>
+            <table width="100%">
+              <tr>
+                <td style="color:#555;font-size:13px;padding:5px 0;">🏪 দোকানের নাম</td>
+                <td style="color:#222;font-size:13px;font-weight:bold;text-align:right;padding:5px 0;">${customer.shop_name}</td>
+              </tr>
+              <tr>
+                <td style="color:#555;font-size:13px;padding:5px 0;">👤 মালিকের নাম</td>
+                <td style="color:#222;font-size:13px;text-align:right;padding:5px 0;">${customer.owner_name}</td>
+              </tr>
+              <tr>
+                <td style="color:#555;font-size:13px;padding:5px 0;">🆔 কাস্টমার কোড</td>
+                <td style="text-align:right;padding:5px 0;">
+                  <span style="background:#1a73e8;color:#fff;font-size:13px;font-weight:bold;padding:3px 10px;border-radius:12px;font-family:monospace;">${customer.customer_code}</span>
+                </td>
+              </tr>
+              ${customer.business_type ? `<tr>
+                <td style="color:#555;font-size:13px;padding:5px 0;">🏷️ ব্যবসার ধরন</td>
+                <td style="color:#222;font-size:13px;text-align:right;padding:5px 0;">${customer.business_type}</td>
+              </tr>` : ''}
+              ${customer.credit_limit > 0 ? `<tr>
+                <td style="color:#555;font-size:13px;padding:5px 0;">💳 ক্রেডিট সীমা</td>
+                <td style="color:#2e7d32;font-size:13px;font-weight:bold;text-align:right;padding:5px 0;">৳${parseFloat(customer.credit_limit).toLocaleString('bn-BD')}</td>
+              </tr>` : ''}
+            </table>
+          </td>
+        </tr>
+      </table>
+
+      <!-- SR Info -->
+      ${worker ? `
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="background:#fff8e1;border-radius:10px;border:1px solid #ffe082;margin:0 0 22px;">
+        <tr>
+          <td style="padding:16px 22px;">
+            <p style="color:#f57f17;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;font-weight:bold;">আপনার সেলস রিপ্রেজেন্টেটিভ</p>
+            <p style="color:#333;font-size:14px;font-weight:bold;margin:0;">👤 ${worker.name_bn || worker.name}</p>
+            ${worker.phone ? `<p style="color:#555;font-size:13px;margin:5px 0 0;">📱 ${worker.phone}</p>` : ''}
+            <p style="color:#777;font-size:12px;margin:5px 0 0;">যেকোনো প্রয়োজনে তার সাথে যোগাযোগ করুন।</p>
+          </td>
+        </tr>
+      </table>` : ''}
+
+      <!-- Message -->
+      <div style="background:#f3e5f5;border-left:4px solid #7b1fa2;padding:14px 18px;border-radius:0 8px 8px 0;margin:0 0 10px;">
+        <p style="color:#6a1b9a;font-size:13px;margin:0;line-height:1.8;">
+          🌟 <strong>আমাদের প্রতিশ্রুতি:</strong> আমরা সর্বদা আপনাকে সেরা পণ্য ও সেবা প্রদানে প্রতিশ্রুতিবদ্ধ।
+          যেকোনো সমস্যায় আমাদের সাথে যোগাযোগ করুন।
+        </p>
+      </div>
+
+    </td>
+  </tr>
+
+  <!-- Footer Banner -->
+  <tr>
+    <td style="background:#e8f0fe;padding:16px 35px;text-align:center;border-top:2px solid #bbdefb;">
+      <p style="color:#1a73e8;font-size:14px;font-weight:bold;margin:0;">🙏 আমাদের সাথে থাকার জন্য আন্তরিক ধন্যবাদ!</p>
+    </td>
+  </tr>
+  <tr>
+    <td style="background:#f8f9fa;padding:14px 35px;text-align:center;border-top:1px solid #e0e0e0;">
+      <p style="color:#999;font-size:11px;margin:0;">NovaTech BD (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+      <p style="color:#bbb;font-size:10px;margin:4px 0 0;">এই Email স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে। সরাসরি রিপ্লাই করবেন না।</p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+    const text = `স্বাগতম NovaTech BD পরিবারে!\nদোকান: ${customer.shop_name}\nমালিক: ${customer.owner_name}\nকাস্টমার কোড: ${customer.customer_code}\nধন্যবাদ আমাদের সাথে থাকার জন্য।`;
+
+    return sendEmail(email, subject, html, text);
+};
+
 module.exports = {
     sendEmail,
     sendOTPEmail,
     sendInvoiceEmail,
     sendOrderNotificationEmail,
+    sendWelcomeEmail,
     clearEmailConfigCache,
 };
