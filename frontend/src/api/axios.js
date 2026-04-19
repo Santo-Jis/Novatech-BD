@@ -49,6 +49,17 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
+    // Token নেই বা invalid — সরাসরি login এ পাঠাও
+    if (
+      error.response?.status === 401 &&
+      !error.response?.data?.code &&
+      !originalRequest._retry
+    ) {
+      localStorage.clear()
+      window.location.href = '/login'
+      return Promise.reject(error)
+    }
+
     // Token মেয়াদ শেষ হলে Refresh করো
     if (
       error.response?.status === 401 &&
