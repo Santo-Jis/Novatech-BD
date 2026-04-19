@@ -9,6 +9,8 @@ const {
     getApplication,
     updateStatus,
     exportCSV,
+    sendSROTP,
+    confirmSROTP,
 } = require('../controllers/recruitment.controller');
 
 // Photo upload — memory storage (Cloudinary তে পাঠাবো)
@@ -23,6 +25,9 @@ const upload = multer({
 }).single('photo');
 
 // ── Public (লগিন ছাড়া) ───────────────────────────────────────
+// Email OTP যাচাই (SR আবেদনের আগে) — auth ছাড়া কারণ এটি public form
+router.post('/verify-email/send',    sendSROTP);
+router.post('/verify-email/confirm', confirmSROTP);
 router.post('/apply', upload, submitApplication);
 
 // ── Admin only ────────────────────────────────────────────────
