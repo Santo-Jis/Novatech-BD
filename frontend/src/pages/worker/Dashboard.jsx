@@ -6,7 +6,8 @@ import { useAppStore }  from '../../store/app.store'
 import { ProgressBar }  from '../../components/charts/Charts'
 import {
   FiMapPin, FiShoppingBag, FiDollarSign,
-  FiRefreshCw, FiAlertTriangle, FiCheckCircle
+  FiRefreshCw, FiAlertTriangle, FiCheckCircle,
+  FiChevronDown, FiChevronUp, FiPackage
 } from 'react-icons/fi'
 
 export default function WorkerDashboard() {
@@ -17,6 +18,7 @@ export default function WorkerDashboard() {
   const [order,     setOrder]     = useState(null)
   const [loading,   setLoading]   = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [showOrderDetail, setShowOrderDetail] = useState(false)
 
   const fetchData = async () => {
     try {
@@ -80,34 +82,92 @@ export default function WorkerDashboard() {
 
       {/* Order Status */}
       {order ? (
-        <div className={`rounded-2xl p-4 border ${
-          order.status === 'approved' ? 'bg-emerald-50 border-emerald-200' :
-          order.status === 'pending'  ? 'bg-amber-50 border-amber-200' :
-          'bg-red-50 border-red-200'
+        <div className={`rounded-2xl border overflow-hidden ${
+          order.status === 'approved' ? 'border-emerald-200' :
+          order.status === 'pending'  ? 'border-amber-200' :
+          'border-red-200'
         }`}>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-semibold text-sm text-gray-800">আজকের অর্ডার</p>
-              <p className="text-xs text-gray-500 mt-0.5">
-                মোট: ৳{parseInt(order.total_amount || 0).toLocaleString()}
-              </p>
+          {/* Header */}
+          <div className={`p-4 ${
+            order.status === 'approved' ? 'bg-emerald-50' :
+            order.status === 'pending'  ? 'bg-amber-50' :
+            'bg-red-50'
+          }`}>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="font-bold text-sm text-gray-800">আজকের অর্ডার</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {new Date(order.requested_at).toLocaleString('bn-BD')}
+                </p>
+              </div>
+              <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                order.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
+                order.status === 'pending'  ? 'bg-amber-100 text-amber-700' :
+                'bg-red-100 text-red-700'
+              }`}>
+                {order.status === 'approved' ? '✅ অনুমোদিত' :
+                 order.status === 'pending'  ? '⏳ অপেক্ষায়' : '❌ বাতিল'}
+              </div>
             </div>
-            <div className={`px-3 py-1 rounded-full text-xs font-semibold ${
-              order.status === 'approved' ? 'bg-emerald-100 text-emerald-700' :
-              order.status === 'pending'  ? 'bg-amber-100 text-amber-700' :
-              'bg-red-100 text-red-700'
-            }`}>
-              {order.status === 'approved' ? '✅ অনুমোদিত' :
-               order.status === 'pending'  ? '⏳ অপেক্ষায়' : '❌ বাতিল'}
-            </div>
-          </div>
-          {order.status === 'approved' && (
+
+            {/* Toggle detail button */}
             <button
-              onClick={() => navigate('/worker/customers')}
-              className="mt-3 w-full py-2 bg-secondary text-white rounded-xl text-sm font-semibold"
+              onClick={() => setShowOrderDetail(!showOrderDetail)}
+              className="mt-2 flex items-center gap-1 text-xs text-primary font-medium"
             >
-              রুটে যান →
+              {showOrderDetail ? <FiChevronUp size={13}/> : <FiChevronDown size={13}/>}
+              {showOrderDetail ? 'কম দেখুন' : 'বিস্তারিত দেখুন'}
             </button>
+          </div>
+
+          {/* Detail Table */}
+          {showOrderDetail && (
+            <div className="bg-white">
+              {/* Table header */}
+              <div className="grid grid-cols-12 px-4 py-2 bg-gray-50 border-b border-gray-100">
+                <p className="col-span-5 text-xs font-semibold text-gray-500">পণ্য</p>
+                <p className="col-span-2 text-xs font-semibold text-gray-500 text-center">দাম</p>
+                <p className="col-span-2 text-xs font-semibold text-gray-500 text-center">চাহিদা</p>
+                <p className="col-span-1 text-xs font-semibold text-gray-500 text-center">অনু.</p>
+                <p className="col-span-2 text-xs font-semibold text-gray-500 text-right">মোট</p>
+              </div>
+
+              {/* Rows */}
+              {(Array.isArray(order.items) ? order.items : []).map((item, i) => (
+                <div key={i} className={`grid grid-cols-12 px-4 py-3 items-center ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                  <div className="col-span-5 flex items-center gap-2">
+                    <div className="w-7 h-7 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <FiPackage className="text-primary" size={12}/>
+                    </div>
+                    <p className="text-xs font-medium text-gray-800 leading-tight">{item.product_name}</p>
+                  </div>
+                  <p className="col-span-2 text-xs text-gray-600 text-center">৳{parseFloat(item.price || 0).toLocaleString()}</p>
+                  <p className="col-span-2 text-xs font-semibold text-amber-600 text-center">{item.requested_qty || 0}</p>
+                  <p className="col-span-1 text-xs font-semibold text-emerald-600 text-center">{item.approved_qty ?? '—'}</p>
+                  <p className="col-span-2 text-xs font-bold text-primary text-right">
+                    ৳{(parseFloat(item.price || 0) * (item.approved_qty || item.requested_qty || 0)).toLocaleString()}
+                  </p>
+                </div>
+              ))}
+
+              {/* Footer total */}
+              <div className="flex justify-between items-center px-4 py-3 border-t border-gray-200 bg-gray-50">
+                <p className="text-sm font-bold text-gray-700">মোট</p>
+                <p className="text-sm font-bold text-primary">৳{parseFloat(order.total_amount || 0).toLocaleString()}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Action button */}
+          {order.status === 'approved' && (
+            <div className="px-4 pb-4 bg-white">
+              <button
+                onClick={() => navigate('/worker/customers')}
+                className="w-full py-2.5 bg-secondary text-white rounded-xl text-sm font-semibold"
+              >
+                রুটে যান →
+              </button>
+            </div>
           )}
         </div>
       ) : (
