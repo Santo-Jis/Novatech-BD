@@ -51,7 +51,7 @@ exports.submitApplication = async (req, res) => {
         let photo_url = null;
         if (req.file) {
             const filename = `sr_${Date.now()}`;
-            photo_url = await uploadToCloudinary(req.file.buffer, 'recruitment', filename);
+            photo_url = await uploadToCloudinary(req.file.buffer, 'recruitment', filename, req.file.mimetype);
             if (!photo_url) {
                 console.warn('⚠️ ছবি আপলোড হয়নি। CLOUDINARY env সেট আছে কিনা দেখুন।');
             }
