@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import axios from 'axios'
 import toast from 'react-hot-toast'
-import { FiUser, FiPhone, FiMail, FiMapPin, FiBook, FiBriefcase, FiUpload, FiCheck, FiChevronRight, FiChevronLeft, FiAlertCircle } from 'react-icons/fi'
+import { FiUser, FiPhone, FiMail, FiMapPin, FiBook, FiBriefcase, FiUpload, FiCheck, FiChevronRight, FiChevronLeft, FiAlertCircle, FiShield } from 'react-icons/fi'
+import SREmailOTPVerify from '../components/SREmailOTPVerify'
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/api$/, '')
 
@@ -79,7 +80,7 @@ function Field({ label, required, error, children, hint }) {
 const inputCls = 'w-full border rounded-xl px-3 py-2.5 text-sm transition-all focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 bg-white dark:bg-slate-800 dark:text-gray-100 border-gray-200 dark:border-slate-600 text-gray-800'
 
 // ── STEP 1: Personal Info ─────────────────────────────────────
-function Step1({ register, errors, watch }) {
+function Step1({ register, errors, watch, emailVerified }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <Field label="পূর্ণ নাম (বাংলায়)" required error={errors.name_bn?.message}>
@@ -118,8 +119,37 @@ function Step1({ register, errors, watch }) {
       <Field label="মোবাইল নম্বর" required error={errors.phone?.message}>
         <input {...register('phone', { required: 'মোবাইল নম্বর দিন', pattern: { value: /^01[3-9]\d{8}$/, message: 'সঠিক বাংলাদেশি মোবাইল নম্বর দিন' } })} className={inputCls} placeholder="01XXXXXXXXX" />
       </Field>
-      <Field label="ইমেইল" error={errors.email?.message} hint="ইমেইল না থাকলে ফাঁকা রাখুন">
-        <input type="email" {...register('email', { pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'সঠিক ইমেইল দিন' } })} className={inputCls} placeholder="example@gmail.com" />
+
+      {/* ── Email — বাধ্যতামূলক + OTP যাচাই ── */}
+      <Field
+        label="ইমেইল ঠিকানা"
+        required
+        error={errors.email?.message}
+        hint={emailVerified ? null : "আবেদন জমার আগে ইমেইল OTP দিয়ে যাচাই করতে হবে"}
+      >
+        <div className="relative">
+          <input
+            type="email"
+            {...register('email', {
+              required: 'ইমেইল ঠিকানা দিন',
+              pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'সঠিক ইমেইল দিন' },
+            })}
+            className={inputCls + (emailVerified ? ' pr-10 border-green-400 bg-green-50' : '')}
+            placeholder="example@gmail.com"
+            readOnly={emailVerified}
+          />
+          {emailVerified && (
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-green-600">
+              <FiCheck size={16} strokeWidth={3} />
+            </span>
+          )}
+        </div>
+        {emailVerified && (
+          <div className="flex items-center gap-1.5 mt-1 text-xs text-green-600 font-semibold">
+            <FiShield size={11} />
+            ইমেইল যাচাই সম্পন্ন
+          </div>
+        )}
       </Field>
     </div>
   )
@@ -419,10 +449,15 @@ export default function SRApplicationForm() {
   const [appId, setAppId] = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
 
+  // ── Email OTP state ──
+  const [showOTP,       setShowOTP]       = useState(false)   // OTP screen দেখাবে কিনা
+  const [emailVerified, setEmailVerified] = useState(false)   // OTP সফলভাবে যাচাই হয়েছে কিনা
+  const [pendingSubmit, setPendingSubmit] = useState(null)    // OTP পরে submit করার জন্য data hold
+
   const { register, handleSubmit, trigger, getValues, formState: { errors } } = useForm({ mode: 'onBlur' })
 
   const stepFields = {
-    1: ['name_bn', 'name_en', 'father_name', 'mother_name', 'dob', 'gender', 'marital_status', 'nid', 'phone'],
+    1: ['name_bn', 'name_en', 'father_name', 'mother_name', 'dob', 'gender', 'marital_status', 'nid', 'phone', 'email'],
     2: ['permanent_address', 'current_address', 'district', 'thana'],
     3: [],
     4: [],
@@ -436,17 +471,43 @@ export default function SRApplicationForm() {
   }
   const prevStep = () => setStep(s => Math.max(s - 1, 1))
 
+  // ── Submit: email যাচাই না হলে OTP screen দেখাও ──
   const onSubmit = async (data) => {
-    // ── Device check: এই ডিভাইস থেকে আগে আবেদন হয়েছে কিনা ──
     const deviceKey = 'sr_applied'
     if (localStorage.getItem(deviceKey)) {
       toast.error('এই ডিভাইস থেকে আগেই আবেদন করা হয়েছে।')
       return
     }
 
+    // Email যাচাই না হলে OTP screen দেখাও
+    if (!emailVerified) {
+      if (!data.email) {
+        toast.error('ইমেইল ঠিকানা দিন এবং যাচাই করুন।')
+        setStep(1)
+        return
+      }
+      setPendingSubmit(data)
+      setShowOTP(true)
+      return
+    }
+
+    // Email যাচাই হয়ে গেলে সরাসরি submit করো
+    await doSubmit(data)
+  }
+
+  // ── OTP verified callback ──
+  const handleOTPVerified = async () => {
+    setEmailVerified(true)
+    setShowOTP(false)
+    if (pendingSubmit) {
+      await doSubmit(pendingSubmit)
+    }
+  }
+
+  // ── Actual form submission ──
+  const doSubmit = async (data) => {
     setLoading(true)
     try {
-      // Device fingerprint তৈরি করো
       const deviceId = btoa([
         navigator.userAgent,
         navigator.language,
@@ -464,8 +525,7 @@ export default function SRApplicationForm() {
       const res = await axios.post(`${API_BASE}/api/recruitment/apply`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
-      // সফল হলে localStorage এ mark করো
-      localStorage.setItem(deviceKey, res.data?.data?.application_id)
+      localStorage.setItem('sr_applied', res.data?.data?.application_id)
       setAppId(res.data?.data?.application_id)
       setSubmitted(true)
     } catch (err) {
@@ -477,9 +537,73 @@ export default function SRApplicationForm() {
 
   if (submitted) return <SuccessScreen appId={appId} />
 
+  // ── OTP Verification Screen ──
+  if (showOTP) {
+    const currentEmail = pendingSubmit?.email || getValues('email')
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center px-4 py-10">
+        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fade-in 0.4s ease forwards; }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-6px)} 40%,80%{transform:translateX(6px)} }
+        .animate-shake { animation: shake 0.4s ease; }`}</style>
+
+        {/* Header */}
+        <div className="fixed top-0 left-0 right-0 bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 z-10">
+          <div className="max-w-md mx-auto px-4 py-3 flex items-center gap-3">
+            <NTLogo size={32} />
+            <div>
+              <h1 className="text-sm font-bold text-gray-900 dark:text-white leading-tight">NovaTEch BD</h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400">ইমেইল যাচাই</p>
+            </div>
+            <div className="ml-auto">
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 rounded-full text-xs font-semibold">
+                <FiShield size={11} />
+                নিরাপত্তা যাচাই
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* OTP Card */}
+        <div className="w-full max-w-md mt-16">
+          {/* Progress indicator */}
+          <div className="mb-4 flex items-center gap-2 px-1">
+            <div className="flex-1 h-1.5 rounded-full bg-red-600" />
+            <div className="flex-1 h-1.5 rounded-full bg-red-600" />
+            <div className="flex-1 h-1.5 rounded-full bg-red-600" />
+            <div className="flex-1 h-1.5 rounded-full bg-red-600" />
+            <div className="flex-1 h-1.5 rounded-full bg-red-600" />
+            <div className="flex-1 h-1.5 rounded-full bg-red-600" />
+            <div className="flex items-center gap-1 text-xs text-gray-500">
+              <FiShield size={11} className="text-red-600" />
+              ইমেইল যাচাই
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 p-6">
+            <SREmailOTPVerify
+              email={currentEmail}
+              onVerified={handleOTPVerified}
+              onBack={() => { setShowOTP(false); setPendingSubmit(null) }}
+            />
+          </div>
+
+          <p className="text-center text-xs text-gray-400 mt-4">
+            সমস্যা হলে যোগাযোগ করুন: <strong>01836-191102</strong>
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-900 dark:to-slate-800">
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fade-in 0.35s ease forwards; }
+        @keyframes shake { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-5px)} 40%,80%{transform:translateX(5px)} }
+        .animate-shake { animation: shake 0.4s ease; }`}</style>
 
       {/* Header */}
       <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-700 sticky top-0 z-10">
@@ -515,7 +639,7 @@ export default function SRApplicationForm() {
 
           <form onSubmit={handleSubmit(onSubmit)}>
             <div className="min-h-[400px]">
-              {step === 1 && <Step1 register={register} errors={errors} />}
+              {step === 1 && <Step1 register={register} errors={errors} emailVerified={emailVerified} />}
               {step === 2 && <Step2 register={register} errors={errors} />}
               {step === 3 && <Step3 register={register} errors={errors} />}
               {step === 4 && <Step4 register={register} errors={errors} />}
@@ -547,8 +671,16 @@ export default function SRApplicationForm() {
               ) : (
                 <button type="submit" disabled={loading}
                   className="flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-xl text-sm font-semibold transition-all shadow-sm shadow-red-600/30">
-                  {loading ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/> : <FiCheck size={16}/>}
-                  {loading ? 'জমা দেওয়া হচ্ছে...' : 'আবেদন জমা দিন'}
+                  {loading
+                    ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"/>
+                    : emailVerified ? <FiCheck size={16}/> : <FiShield size={16}/>
+                  }
+                  {loading
+                    ? 'জমা দেওয়া হচ্ছে...'
+                    : emailVerified
+                      ? 'আবেদন জমা দিন'
+                      : 'ইমেইল যাচাই ও জমা দিন'
+                  }
                 </button>
               )}
             </div>
