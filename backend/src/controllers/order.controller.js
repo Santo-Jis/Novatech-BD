@@ -1,5 +1,6 @@
 const { query, withTransaction } = require('../config/db');
 const axios = require('axios');
+const { sendOrderNotificationEmail } = require('../services/email.service');
 
 // ============================================================
 // Firebase নোটিফিকেশন Helper
@@ -131,6 +132,53 @@ const createOrder = async (req, res) => {
                     message:   `📦 ${req.user.name_bn} অর্ডার দিয়েছে। মোট: ৳${totalAmount}`
                 }
             );
+        }
+
+        // ============================================================
+        // Admin ও Manager কে Email নোটিফিকেশন
+        // ============================================================
+        try {
+            const adminResult = await query(
+                `SELECT email, name_bn FROM users
+                 WHERE role = 'admin' AND status = 'active'
+                   AND email IS NOT NULL AND email != ''`
+            );
+
+            let managerName  = null;
+            let managerEmail = null;
+            if (req.user.manager_id) {
+                const managerResult = await query(
+                    `SELECT email, name_bn FROM users
+                     WHERE id = $1 AND email IS NOT NULL AND email != ''`,
+                    [req.user.manager_id]
+                );
+                if (managerResult.rows.length > 0) {
+                    managerEmail = managerResult.rows[0].email;
+                    managerName  = managerResult.rows[0].name_bn;
+                }
+            }
+
+            const adminEmails = adminResult.rows.map(r => r.email);
+            const allEmails   = [...new Set([...adminEmails, ...(managerEmail ? [managerEmail] : [])])];
+
+            if (allEmails.length > 0) {
+                await sendOrderNotificationEmail(allEmails, {
+                    orderId,
+                    workerName:  req.user.name_bn || req.user.name,
+                    workerCode:  req.user.employee_code || 'N/A',
+                    workerPhone: req.user.phone || null,
+                    managerName,
+                    items:       orderItems,
+                    totalAmount,
+                    note:        note || null,
+                    requestedAt: new Date().toISOString()
+                });
+                console.log(`📧 Order Email → ${allEmails.join(', ')}`);
+            } else {
+                console.log('⚠️ কোনো Admin/Manager এর email পাওয়া যায়নি।');
+            }
+        } catch (emailErr) {
+            console.error('⚠️ Order Email Error:', emailErr.message);
         }
 
         return res.status(201).json({
