@@ -217,7 +217,7 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items) => {
         <td width="50%" style="vertical-align:top;text-align:right;">
           <p style="color:#888;font-size:10px;text-transform:uppercase;margin:0 0 5px;letter-spacing:1px;">বিক্রয় তথ্য</p>
           <p style="color:#555;font-size:12px;margin:0;">📅 ${new Date(sale.created_at || Date.now()).toLocaleDateString('bn-BD')}</p>
-          <p style="color:#555;font-size:12px;margin:3px 0 0;">👤 SR: ${worker.name_bn || worker.name} (${worker.employee_code})</p>
+          <p style="color:#555;font-size:12px;margin:3px 0 0;">👤 SR: ${worker.name_bn || worker.name_en} (${worker.employee_code})</p>
           <p style="color:${sale.otp_verified ? '#2e7d32' : '#e65100'};font-size:11px;margin:5px 0 0;font-weight:bold;">
             ${sale.otp_verified ? '✅ OTP যাচাইকৃত' : '⏳ OTP অপেক্ষায়'}
           </p>
@@ -291,13 +291,6 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items) => {
 
     const text = `NovaTechBD Invoice\nদোকান: ${customer.shop_name}\nInvoice: ${sale.invoice_number}\nমোট: ৳${sale.net_amount}\nপেমেন্ট: ${paymentLabels[sale.payment_method] || sale.payment_method}\nধন্যবাদ।`;
     return sendEmail(email, subject, html, text);
-};
-
-module.exports = {
-    sendEmail,
-    sendOTPEmail,
-    sendInvoiceEmail,
-    clearEmailConfigCache,
 };
 
 // ============================================================
@@ -553,7 +546,7 @@ const sendWelcomeEmail = async (email, customer, worker) => {
         <tr>
           <td style="padding:16px 22px;">
             <p style="color:#f57f17;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;font-weight:bold;">আপনার সেলস রিপ্রেজেন্টেটিভ</p>
-            <p style="color:#333;font-size:14px;font-weight:bold;margin:0;">👤 ${worker.name_bn || worker.name}</p>
+            <p style="color:#333;font-size:14px;font-weight:bold;margin:0;">👤 ${worker.name_bn || worker.name_en}</p>
             ${worker.phone ? `<p style="color:#555;font-size:13px;margin:5px 0 0;">📱 ${worker.phone}</p>` : ''}
             <p style="color:#777;font-size:12px;margin:5px 0 0;">যেকোনো প্রয়োজনে তার সাথে যোগাযোগ করুন।</p>
           </td>
