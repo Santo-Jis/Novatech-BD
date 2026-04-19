@@ -4,7 +4,7 @@ import axios from 'axios'
 import toast from 'react-hot-toast'
 import { FiUser, FiPhone, FiMail, FiMapPin, FiBook, FiBriefcase, FiUpload, FiCheck, FiChevronRight, FiChevronLeft, FiAlertCircle } from 'react-icons/fi'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/api$/, '')
 
 // ── NT Logo ──────────────────────────────────────────────────
 function NTLogo({ size = 40 }) {
