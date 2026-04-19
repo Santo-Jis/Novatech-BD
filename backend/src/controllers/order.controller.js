@@ -1,6 +1,5 @@
 const { query, withTransaction } = require('../config/db');
 const axios = require('axios');
-const { sendOrderNotificationEmail } = require('../services/email.service');
 
 // ============================================================
 // Firebase নোটিফিকেশন Helper
@@ -134,54 +133,6 @@ const createOrder = async (req, res) => {
             );
         }
 
-        // ============================================================
-        // Admin ও Manager কে Email নোটিফিকেশন (অর্ডার ডিটেইলস সহ)
-        // ============================================================
-        try {
-            // Admin দের email সংগ্রহ করো
-            const adminResult = await query(
-                `SELECT email, name_bn FROM users
-                 WHERE role = 'admin' AND status = 'active'
-                   AND email IS NOT NULL AND email != ''`
-            );
-
-            // Manager এর email সংগ্রহ করো
-            let managerName = null;
-            let managerEmail = null;
-            if (req.user.manager_id) {
-                const managerResult = await query(
-                    `SELECT email, name_bn FROM users WHERE id = $1 AND email IS NOT NULL AND email != ''`,
-                    [req.user.manager_id]
-                );
-                if (managerResult.rows.length > 0) {
-                    managerEmail = managerResult.rows[0].email;
-                    managerName  = managerResult.rows[0].name_bn;
-                }
-            }
-
-            // সব email একসাথে করো (Admin + Manager, duplicate বাদ দাও)
-            const adminEmails = adminResult.rows.map(r => r.email);
-            const allEmails   = [...new Set([...adminEmails, ...(managerEmail ? [managerEmail] : [])])];
-
-            if (allEmails.length > 0) {
-                await sendOrderNotificationEmail(allEmails, {
-                    orderId,
-                    workerName:  req.user.name_bn || req.user.name,
-                    workerCode:  req.user.employee_code || 'N/A',
-                    workerPhone: req.user.phone || null,
-                    managerName: managerName,
-                    items:       orderItems,
-                    totalAmount,
-                    note:        req.body.note || null,
-                    requestedAt: new Date().toISOString()
-                });
-                console.log(`📧 Order Email পাঠানো হয়েছে → ${allEmails.join(', ')}`);
-            }
-        } catch (emailErr) {
-            // Email ব্যর্থ হলেও অর্ডার সফল থাকবে
-            console.error('⚠️ Order Email Error:', emailErr.message);
-        }
-
         return res.status(201).json({
             success: true,
             message: 'অর্ডার পাঠানো হয়েছে। Manager এর অনুমোদনের অপেক্ষায়।',
@@ -227,18 +178,37 @@ const getMyOrders = async (req, res) => {
 const getTodayOrder = async (req, res) => {
     try {
         const today  = new Date().toISOString().split('T')[0];
+
+        // আজকের সব অর্ডার আনো (rejected বাদে)
         const result = await query(
             `SELECT * FROM orders
              WHERE worker_id = $1
                AND DATE(requested_at) = $2
-             ORDER BY requested_at DESC
-             LIMIT 1`,
+             ORDER BY requested_at DESC`,
             [req.user.id, today]
         );
 
+        // rejected বাদে কতটি অর্ডার দেওয়া হয়েছে
+        const countResult = await query(
+            `SELECT COUNT(*) AS count FROM orders
+             WHERE worker_id = $1
+               AND DATE(requested_at) = $2
+               AND status != 'rejected'`,
+            [req.user.id, today]
+        );
+
+        const usedCount     = parseInt(countResult.rows[0].count);
+        const remainingSlots = Math.max(0, 3 - usedCount);
+
         return res.status(200).json({
             success: true,
-            data: result.rows[0] || null
+            // সর্বশেষ অর্ডার (backward compatibility)
+            data: result.rows[0] || null,
+            // সব অর্ডার
+            all_orders:      result.rows,
+            used_count:      usedCount,
+            remaining_slots: remainingSlots,
+            can_order_again: remainingSlots > 0
         });
 
     } catch (error) {
