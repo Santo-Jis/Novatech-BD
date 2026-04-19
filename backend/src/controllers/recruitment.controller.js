@@ -1,7 +1,7 @@
 const { getDB } = require('../config/firebase');
 const { uploadToCloudinary } = require('../services/employee.service');
 const { generateOTP } = require('../config/encryption');
-const { sendOTPEmail } = require('../services/email.service');
+const { sendSRApplicationOTPEmail } = require('../services/email.service');
 
 // ── In-Memory OTP Store (SR Recruitment — public, no DB needed) ──
 // Key: email_lower → { otp, expiresAt, attempts }
@@ -10,12 +10,13 @@ const _srOtpStore = new Map();
 // ── POST /api/recruitment/verify-email/send (Public) ──────────
 exports.sendSROTP = async (req, res) => {
     try {
-        const { email } = req.body;
+        const { email, name } = req.body;
         if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
             return res.status(400).json({ success: false, message: 'সঠিক ইমেইল ঠিকানা দিন।' });
         }
 
-        const emailLower = email.toLowerCase().trim();
+        const emailLower    = email.toLowerCase().trim();
+        const applicantName = (name || '').trim() || 'আবেদনকারী';
 
         // Rate limit: একই email-এ ২ মিনিটের মধ্যে পুনরায় অনুরোধ রোধ
         const existing = _srOtpStore.get(emailLower);
@@ -32,7 +33,7 @@ exports.sendSROTP = async (req, res) => {
 
         _srOtpStore.set(emailLower, { otp, expiresAt, sentAt: Date.now(), attempts: 0 });
 
-        const result = await sendOTPEmail(email, otp, 'SR নিয়োগ আবেদন যাচাই');
+        const result = await sendSRApplicationOTPEmail(email, otp, applicantName, 10);
 
         if (!result.success && !result.dev) {
             _srOtpStore.delete(emailLower);
