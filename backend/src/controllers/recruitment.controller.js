@@ -34,7 +34,7 @@ exports.submitApplication = async (req, res) => {
             const filename = `sr_${Date.now()}`;
             photo_url = await uploadToCloudinary(req.file.buffer, 'recruitment', filename);
             if (!photo_url) {
-                console.warn('⚠️ ছবি আপলোড হয়নি। CLOUDINARY_CLOUD_NAME ও CLOUDINARY_UPLOAD_PRESET .env এ সেট আছে কিনা দেখুন।');
+                console.warn('⚠️ ছবি আপলোড হয়নি। CLOUDINARY env সেট আছে কিনা দেখুন।');
             }
         }
 
@@ -127,42 +127,45 @@ exports.getApplications = async (req, res) => {
         const db = getDB();
         const { search = '', status = '', page = 1, limit = 20 } = req.query;
 
-        const snap = await db.ref('sr_applications')
-            .orderByChild('created_at')
-            .once('value');
+        // orderByChild এর বদলে সরাসরি সব data নিয়ে JS এ sort করা হচ্ছে
+        // কারণ Firebase index না থাকলে orderByChild ঠিকমতো কাজ করে না
+        const snap = await db.ref('sr_applications').once('value');
 
         let apps = [];
         snap.forEach(child => apps.push({ _id: child.key, ...child.val() }));
-        apps.reverse();
 
-        if (status) apps = apps.filter(a => a.status === status);
+        // created_at দিয়ে sort — নতুন আগে
+        apps.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
 
+        // Stats আলাদা query ছাড়াই এখান থেকেই নেওয়া হচ্ছে
+        const stats = {
+            total:    apps.length,
+            pending:  apps.filter(a => a.status === 'pending').length,
+            reviewed: apps.filter(a => a.status === 'reviewed').length,
+            selected: apps.filter(a => a.status === 'selected').length,
+            rejected: apps.filter(a => a.status === 'rejected').length,
+        };
+
+        // Filter by status
+        let filtered = [...apps];
+        if (status) filtered = filtered.filter(a => a.status === status);
+
+        // Search
         if (search) {
             const s = search.toLowerCase();
-            apps = apps.filter(a =>
-                (a.name_bn         || '').toLowerCase().includes(s) ||
-                (a.name_en         || '').toLowerCase().includes(s) ||
-                (a.phone           || '').includes(s) ||
-                (a.nid             || '').includes(s) ||
-                (a.application_id  || '').toLowerCase().includes(s)
+            filtered = filtered.filter(a =>
+                (a.name_bn        || '').toLowerCase().includes(s) ||
+                (a.name_en        || '').toLowerCase().includes(s) ||
+                (a.phone          || '').includes(s) ||
+                (a.nid            || '').includes(s) ||
+                (a.application_id || '').toLowerCase().includes(s)
             );
         }
 
-        const allSnap = await db.ref('sr_applications').once('value');
-        let allApps = [];
-        allSnap.forEach(c => allApps.push(c.val()));
-
-        const stats = {
-            total:    allApps.length,
-            pending:  allApps.filter(a => a.status === 'pending').length,
-            reviewed: allApps.filter(a => a.status === 'reviewed').length,
-            selected: allApps.filter(a => a.status === 'selected').length,
-            rejected: allApps.filter(a => a.status === 'rejected').length,
-        };
-
-        const total     = apps.length;
+        // Pagination
+        const total     = filtered.length;
         const startIdx  = (Number(page) - 1) * Number(limit);
-        const paginated = apps.slice(startIdx, startIdx + Number(limit));
+        const paginated = filtered.slice(startIdx, startIdx + Number(limit));
 
         res.json({
             success: true,
@@ -234,11 +237,11 @@ exports.updateStatus = async (req, res) => {
 exports.exportCSV = async (req, res) => {
     try {
         const db   = getDB();
-        const snap = await db.ref('sr_applications').orderByChild('created_at').once('value');
+        const snap = await db.ref('sr_applications').once('value');
 
         let apps = [];
         snap.forEach(c => apps.push(c.val()));
-        apps.reverse();
+        apps.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
 
         const headers = [
             'আবেদন নং','আবেদনের তারিখ','বাংলায় নাম','ইংরেজিতে নাম',
