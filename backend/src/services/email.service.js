@@ -299,3 +299,179 @@ module.exports = {
     sendInvoiceEmail,
     clearEmailConfigCache,
 };
+
+// ============================================================
+// ORDER NOTIFICATION EMAIL — Admin ও Manager কে নোটিফাই করা
+// SR/কর্মি নতুন অর্ডার দিলে সাথে সাথে Email যাবে
+// ============================================================
+
+const sendOrderNotificationEmail = async (toEmails, orderData) => {
+    const {
+        orderId,
+        workerName,
+        workerCode,
+        workerPhone,
+        managerName,
+        items,
+        totalAmount,
+        note,
+        requestedAt
+    } = orderData;
+
+    const subject = `📦 নতুন অর্ডার: ${workerName} (${workerCode}) — ৳${(totalAmount || 0).toLocaleString('bn-BD')}`;
+
+    const itemsHTML = (items || []).map((item, i) => `
+        <tr style="background:${i % 2 === 0 ? '#fff' : '#f9fafb'};">
+            <td style="padding:10px 14px;border-bottom:1px solid #e0e0e0;color:#333;font-size:13px;">${item.product_name}</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e0e0e0;color:#555;font-size:13px;text-align:center;">${item.requested_qty} পিস</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e0e0e0;color:#555;font-size:13px;text-align:center;">৳${(item.price || 0).toLocaleString('bn-BD')}</td>
+            <td style="padding:10px 14px;border-bottom:1px solid #e0e0e0;color:#1a73e8;font-size:13px;text-align:right;font-weight:bold;">৳${((item.price || 0) * (item.requested_qty || 0)).toLocaleString('bn-BD')}</td>
+        </tr>`
+    ).join('');
+
+    const dateStr = new Date(requestedAt || Date.now()).toLocaleString('bn-BD', {
+        timeZone: 'Asia/Dhaka',
+        year: 'numeric', month: 'long', day: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    });
+
+    const html = `<!DOCTYPE html>
+<html lang="bn">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f0f4f8;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f0f4f8;padding:30px 0;">
+<tr><td align="center">
+<table width="580" cellpadding="0" cellspacing="0"
+       style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.12);">
+
+  <!-- Header -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#e65100,#bf360c);padding:26px 35px;">
+      <table width="100%"><tr>
+        <td>
+          <h1 style="color:#fff;margin:0;font-size:20px;">📦 নতুন অর্ডার</h1>
+          <p style="color:#ffccbc;margin:5px 0 0;font-size:12px;">NovaTech BD — অর্ডার নোটিফিকেশন</p>
+        </td>
+        <td style="text-align:right;">
+          <p style="color:#ffccbc;margin:0;font-size:11px;">অর্ডার আইডি</p>
+          <p style="color:#fff;margin:4px 0 0;font-size:18px;font-weight:bold;font-family:monospace;">#${orderId}</p>
+        </td>
+      </tr></table>
+    </td>
+  </tr>
+
+  <!-- Alert Banner -->
+  <tr>
+    <td style="background:#fff3e0;padding:12px 35px;border-bottom:2px solid #ffe0b2;">
+      <p style="margin:0;color:#e65100;font-size:13px;font-weight:bold;">
+        ⚠️ একটি নতুন অর্ডার অনুমোদনের অপেক্ষায় আছে। অনুগ্রহ করে দ্রুত পর্যালোচনা করুন।
+      </p>
+    </td>
+  </tr>
+
+  <!-- Worker Info -->
+  <tr>
+    <td style="padding:22px 35px 0;">
+      <table width="100%">
+        <tr>
+          <td width="50%" style="vertical-align:top;">
+            <p style="color:#888;font-size:10px;text-transform:uppercase;margin:0 0 8px;letter-spacing:1px;">SR / কর্মির তথ্য</p>
+            <p style="color:#222;font-size:15px;font-weight:bold;margin:0;">${workerName}</p>
+            <p style="color:#555;font-size:13px;margin:4px 0 0;">🪪 কোড: <strong>${workerCode}</strong></p>
+            ${workerPhone ? `<p style="color:#555;font-size:13px;margin:4px 0 0;">📱 ফোন: ${workerPhone}</p>` : ''}
+            ${managerName ? `<p style="color:#555;font-size:13px;margin:4px 0 0;">👔 ম্যানেজার: ${managerName}</p>` : ''}
+          </td>
+          <td width="50%" style="vertical-align:top;text-align:right;">
+            <p style="color:#888;font-size:10px;text-transform:uppercase;margin:0 0 8px;letter-spacing:1px;">অর্ডারের সময়</p>
+            <p style="color:#333;font-size:13px;margin:0;">📅 ${dateStr}</p>
+            <p style="color:#e65100;font-size:12px;margin:8px 0 0;font-weight:bold;">🕐 অনুমোদন বাকি</p>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Items Table -->
+  <tr>
+    <td style="padding:18px 35px;">
+      <p style="color:#555;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;">পণ্যের বিবরণ</p>
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
+        <thead>
+          <tr style="background:#fbe9e7;">
+            <th style="padding:10px 14px;text-align:left;color:#bf360c;font-size:12px;">পণ্যের নাম</th>
+            <th style="padding:10px 14px;text-align:center;color:#bf360c;font-size:12px;">পরিমাণ</th>
+            <th style="padding:10px 14px;text-align:center;color:#bf360c;font-size:12px;">একক মূল্য</th>
+            <th style="padding:10px 14px;text-align:right;color:#bf360c;font-size:12px;">মোট</th>
+          </tr>
+        </thead>
+        <tbody>${itemsHTML}</tbody>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Total -->
+  <tr>
+    <td style="padding:0 35px 22px;">
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="background:#e8f5e9;border-radius:8px;padding:16px 20px;">
+        <tr><td>
+          <table width="100%">
+            <tr>
+              <td style="color:#2e7d32;font-size:16px;font-weight:bold;">💰 সর্বমোট অর্ডার মূল্য</td>
+              <td style="color:#1b5e20;font-size:20px;font-weight:bold;text-align:right;">৳${(totalAmount || 0).toLocaleString('bn-BD')}</td>
+            </tr>
+          </table>
+        </td></tr>
+      </table>
+    </td>
+  </tr>
+
+  ${note ? `
+  <tr>
+    <td style="padding:0 35px 22px;">
+      <div style="background:#fff8e1;border-left:4px solid #ffc107;padding:12px 16px;border-radius:0 8px 8px 0;">
+        <p style="color:#f57f17;font-size:12px;font-weight:bold;margin:0 0 5px;">📝 SR-এর নোট</p>
+        <p style="color:#555;font-size:13px;margin:0;">${note}</p>
+      </div>
+    </td>
+  </tr>` : ''}
+
+  <!-- Footer -->
+  <tr>
+    <td style="background:#fbe9e7;padding:14px 35px;text-align:center;border-top:2px solid #ffccbc;">
+      <p style="color:#bf360c;font-size:13px;font-weight:bold;margin:0;">অনুগ্রহ করে সিস্টেমে লগইন করে অর্ডারটি অনুমোদন বা বাতিল করুন।</p>
+    </td>
+  </tr>
+  <tr>
+    <td style="background:#f8f9fa;padding:12px 35px;text-align:center;border-top:1px solid #e0e0e0;">
+      <p style="color:#999;font-size:11px;margin:0;">NovaTech BD (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+    const text = `নতুন অর্ডার #${orderId}\nকর্মি: ${workerName} (${workerCode})\nমোট: ৳${totalAmount}\nসময়: ${dateStr}\nঅনুগ্রহ করে সিস্টেমে লগইন করে অর্ডারটি অনুমোদন করুন।`;
+
+    // একাধিক email এ পাঠানো (Admin + Manager)
+    const results = [];
+    for (const email of (Array.isArray(toEmails) ? toEmails : [toEmails])) {
+        if (email) {
+            const result = await sendEmail(email, subject, html, text);
+            results.push({ email, ...result });
+        }
+    }
+    return results;
+};
+
+module.exports = {
+    sendEmail,
+    sendOTPEmail,
+    sendInvoiceEmail,
+    sendOrderNotificationEmail,
+    clearEmailConfigCache,
+};
