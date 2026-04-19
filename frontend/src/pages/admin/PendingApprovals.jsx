@@ -296,44 +296,75 @@ export default function PendingApprovals() {
           {orders.length === 0 ? (
             <Card><p className="text-center text-gray-400 py-8">কোনো পেন্ডিং অর্ডার নেই।</p></Card>
           ) : orders.map(order => (
-            <Card key={order.id}>
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+            <div key={order.id} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              {/* Card Header */}
+              <div className="flex items-center gap-3 p-4 border-b border-gray-100">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
                   <FiShoppingCart className="text-blue-600" />
                 </div>
                 <div className="flex-1">
-                  <p className="font-semibold text-gray-800">{order.worker_name}</p>
-                  <p className="text-xs text-gray-400">{order.employee_code}</p>
-                  <p className="text-sm text-gray-600 mt-1">
-                    মোট: <span className="font-bold text-primary">৳{Number(order.total_amount || 0).toLocaleString('bn-BD')}</span>
-                  </p>
-                  <p className="text-xs text-gray-400">
-                    সময়: {new Date(order.requested_at || order.created_at).toLocaleString('bn-BD')}
-                  </p>
+                  <p className="font-bold text-gray-800">{order.worker_name}</p>
+                  <p className="text-xs text-gray-400 font-mono">{order.employee_code}</p>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => rejectOrder(order.id)}
-                    disabled={processing[order.id]}
-                    className="p-2 rounded-lg bg-red-50 hover:bg-red-100 text-red-600 disabled:opacity-50"
-                  >
-                    {processing[order.id]
-                      ? <span className="w-4 h-4 border-2 border-red-300 border-t-red-600 rounded-full animate-spin block" />
-                      : <FiX />}
-                  </button>
-                  <button
-                    onClick={() => approveOrder(order.id)}
-                    disabled={processing[order.id]}
-                    className="px-4 py-2 rounded-lg bg-secondary text-white text-sm font-semibold flex items-center gap-1 disabled:opacity-50"
-                  >
-                    {processing[order.id]
-                      ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      : <FiCheck />}
-                    অনুমোদন
-                  </button>
+                <div className="text-right">
+                  <p className="font-bold text-primary text-sm">৳{Number(order.total_amount || 0).toLocaleString('bn-BD')}</p>
+                  <p className="text-xs text-gray-400">{new Date(order.requested_at || order.created_at).toLocaleString('bn-BD')}</p>
                 </div>
               </div>
-            </Card>
+
+              {/* Items Table */}
+              <div className="px-0">
+                {/* Table Header */}
+                <div className="grid grid-cols-12 px-4 py-2 bg-gray-50 border-b border-gray-100">
+                  <p className="col-span-5 text-xs font-semibold text-gray-500">পণ্য</p>
+                  <p className="col-span-2 text-xs font-semibold text-gray-500 text-center">দাম</p>
+                  <p className="col-span-2 text-xs font-semibold text-gray-500 text-center">পরিমাণ</p>
+                  <p className="col-span-3 text-xs font-semibold text-gray-500 text-right">মোট</p>
+                </div>
+                {/* Table Rows */}
+                {(Array.isArray(order.items) ? order.items : []).map((item, i) => (
+                  <div key={i} className={`grid grid-cols-12 px-4 py-2.5 items-center ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
+                    <div className="col-span-5">
+                      <p className="text-xs font-medium text-gray-800 leading-tight">{item.product_name}</p>
+                    </div>
+                    <p className="col-span-2 text-xs text-gray-500 text-center">৳{parseFloat(item.price || 0).toLocaleString()}</p>
+                    <p className="col-span-2 text-xs font-bold text-amber-600 text-center">{item.requested_qty || 0} পিস</p>
+                    <p className="col-span-3 text-xs font-bold text-primary text-right">
+                      ৳{(parseFloat(item.price || 0) * (item.requested_qty || 0)).toLocaleString()}
+                    </p>
+                  </div>
+                ))}
+                {/* Total Row */}
+                <div className="grid grid-cols-12 px-4 py-2.5 bg-primary/5 border-t border-primary/10">
+                  <p className="col-span-9 text-xs font-bold text-gray-700">সর্বমোট ({(Array.isArray(order.items) ? order.items : []).length} পণ্য)</p>
+                  <p className="col-span-3 text-xs font-bold text-primary text-right">৳{Number(order.total_amount || 0).toLocaleString('bn-BD')}</p>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 p-3 bg-gray-50 border-t border-gray-100">
+                <button
+                  onClick={() => rejectOrder(order.id)}
+                  disabled={processing[order.id]}
+                  className="flex-1 py-2 rounded-xl bg-red-50 text-red-600 text-sm font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  {processing[order.id]
+                    ? <span className="w-4 h-4 border-2 border-red-300 border-t-red-600 rounded-full animate-spin block" />
+                    : <FiX size={14} />}
+                  বাতিল
+                </button>
+                <button
+                  onClick={() => approveOrder(order.id)}
+                  disabled={processing[order.id]}
+                  className="flex-2 px-6 py-2 rounded-xl bg-secondary text-white text-sm font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
+                >
+                  {processing[order.id]
+                    ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    : <FiCheck size={14} />}
+                  অনুমোদন দিন
+                </button>
+              </div>
+            </div>
           ))}
         </div>
 
