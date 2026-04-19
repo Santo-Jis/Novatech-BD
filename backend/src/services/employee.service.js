@@ -33,7 +33,7 @@ const generateCustomerCode = async (date) => {
 // Cloudinary তে ছবি আপলোড
 // ============================================================
 
-const uploadToCloudinary = async (fileBuffer, folder, filename) => {
+const uploadToCloudinary = async (fileBuffer, folder, filename, mimetype = 'image/jpeg') => {
     try {
         const cloudName   = process.env.CLOUDINARY_CLOUD_NAME;
         const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET;
@@ -45,7 +45,9 @@ const uploadToCloudinary = async (fileBuffer, folder, filename) => {
 
         // Buffer থেকে base64
         const base64 = fileBuffer.toString('base64');
-        const dataUri = `data:image/jpeg;base64,${base64}`;
+        // সঠিক mimetype ব্যবহার করো (jpeg/png/webp সব সাপোর্ট)
+        const safeType = (mimetype && mimetype.startsWith('image/')) ? mimetype : 'image/jpeg';
+        const dataUri = `data:${safeType};base64,${base64}`;
 
         const formData = new FormData();
         formData.append('file',           dataUri);
