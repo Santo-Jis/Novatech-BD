@@ -155,19 +155,26 @@ const createSale = async (req, res) => {
 
         for (const item of items) {
             const product = await query(
-                'SELECT id, name, price FROM products WHERE id = $1',
+                'SELECT id, name, price, vat FROM products WHERE id = $1',
                 [item.product_id]
             );
             if (product.rows.length === 0) continue;
 
-            const subtotal = product.rows[0].price * item.qty;
-            totalAmount   += subtotal;
+            const unitPrice  = parseFloat(product.rows[0].price);
+            const vatRate    = parseFloat(product.rows[0].vat || 0);
+            const vatAmount  = parseFloat((unitPrice * vatRate / 100).toFixed(2));
+            const finalPrice = unitPrice + vatAmount;
+            const subtotal   = parseFloat((finalPrice * item.qty).toFixed(2));
+            totalAmount     += subtotal;
 
             processedItems.push({
                 product_id:   item.product_id,
                 product_name: product.rows[0].name,
                 qty:          item.qty,
-                price:        product.rows[0].price,
+                price:        unitPrice,
+                vat_rate:     vatRate,
+                vat_amount:   vatAmount,
+                final_price:  finalPrice,
                 subtotal
             });
         }
@@ -177,19 +184,26 @@ const createSale = async (req, res) => {
         if (replacement_items?.length > 0) {
             for (const item of replacement_items) {
                 const product = await query(
-                    'SELECT id, name, price FROM products WHERE id = $1',
+                    'SELECT id, name, price, vat FROM products WHERE id = $1',
                     [item.product_id]
                 );
                 if (product.rows.length === 0) continue;
 
-                const total       = product.rows[0].price * item.qty;
+                const unitPrice  = parseFloat(product.rows[0].price);
+                const vatRate    = parseFloat(product.rows[0].vat || 0);
+                const vatAmount  = parseFloat((unitPrice * vatRate / 100).toFixed(2));
+                const finalPrice = unitPrice + vatAmount;
+                const total      = parseFloat((finalPrice * item.qty).toFixed(2));
                 replacementValue += total;
 
                 processedReplacement.push({
                     product_id:   item.product_id,
                     product_name: product.rows[0].name,
                     qty:          item.qty,
-                    unit_price:   product.rows[0].price,
+                    unit_price:   unitPrice,
+                    vat_rate:     vatRate,
+                    vat_amount:   vatAmount,
+                    final_price:  finalPrice,
                     total
                 });
             }
