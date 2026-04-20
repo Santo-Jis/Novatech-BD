@@ -91,7 +91,7 @@ const createSettlement = async (req, res) => {
             const soldQtyRes = await query(
                 `SELECT COALESCE(SUM((item->>'qty')::int), 0) AS qty
                  FROM sales_transactions,
-                      jsonb_array_elements(items) AS item
+                      jsonb_array_elements(COALESCE(items, '[]'::jsonb)) AS item
                  WHERE worker_id = $1
                    AND date = $2
                    AND item->>'product_id' = $3`,
@@ -102,7 +102,7 @@ const createSettlement = async (req, res) => {
             const replacedQtyRes = await query(
                 `SELECT COALESCE(SUM((item->>'qty')::int), 0) AS qty
                  FROM sales_transactions,
-                      jsonb_array_elements(replacement_items) AS item
+                      jsonb_array_elements(COALESCE(replacement_items, '[]'::jsonb)) AS item
                  WHERE worker_id = $1
                    AND date = $2
                    AND item->>'product_id' = $3`,
@@ -581,6 +581,74 @@ const getSettlementDetail = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET TODAY'S SETTLEMENT PREVIEW (product-wise sold qty)
+// GET /api/settlements/today-preview
+// ============================================================
+
+const getTodayPreview = async (req, res) => {
+    try {
+        const workerId = req.user.id;
+        const today    = new Date().toISOString().split('T')[0];
+
+        // আজকের অর্ডার
+        const order = await query(
+            `SELECT id, items FROM orders
+             WHERE worker_id = $1 AND DATE(requested_at) = $2 AND status = 'approved'
+             ORDER BY requested_at DESC LIMIT 1`,
+            [workerId, today]
+        );
+
+        const orderItems = order.rows[0]?.items || [];
+        if (orderItems.length === 0) {
+            return res.status(200).json({ success: true, data: { items: [] } });
+        }
+
+        // একটা query-তে সব পণ্যের sold_qty
+        const soldRes = await query(
+            `SELECT item->>'product_id' AS product_id,
+                    COALESCE(SUM((item->>'qty')::int), 0) AS qty
+             FROM sales_transactions,
+                  jsonb_array_elements(COALESCE(items, '[]'::jsonb)) AS item
+             WHERE worker_id = $1 AND date = $2
+             GROUP BY item->>'product_id'`,
+            [workerId, today]
+        );
+
+        // একটা query-তে সব পণ্যের replacement_qty
+        const replRes = await query(
+            `SELECT item->>'product_id' AS product_id,
+                    COALESCE(SUM((item->>'qty')::int), 0) AS qty
+             FROM sales_transactions,
+                  jsonb_array_elements(COALESCE(replacement_items, '[]'::jsonb)) AS item
+             WHERE worker_id = $1 AND date = $2
+             GROUP BY item->>'product_id'`,
+            [workerId, today]
+        );
+
+        const soldMap = {};
+        soldRes.rows.forEach(r => { soldMap[r.product_id] = parseInt(r.qty) || 0; });
+
+        const replMap = {};
+        replRes.rows.forEach(r => { replMap[r.product_id] = parseInt(r.qty) || 0; });
+
+        const itemsData = orderItems.map(orderItem => ({
+            product_id:      orderItem.product_id,
+            name:            orderItem.product_name,
+            taken_qty:       parseInt(orderItem.approved_qty || orderItem.requested_qty) || 0,
+            sold_qty:        soldMap[orderItem.product_id]  || 0,
+            replacement_qty: replMap[orderItem.product_id]  || 0,
+            price:           parseFloat(orderItem.price)    || 0,
+        }));
+
+        return res.status(200).json({ success: true, data: { items: itemsData } });
+
+    } catch (error) {
+        console.error('❌ Today Preview Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     createSettlement,
     getMySettlements,
@@ -589,5 +657,6 @@ module.exports = {
     disputeSettlement,
     payShortage,
     getAllSettlements,
-    getSettlementDetail
+    getSettlementDetail,
+    getTodayPreview
 };
