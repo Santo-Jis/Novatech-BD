@@ -53,6 +53,7 @@ export default function Settlement() {
   const [orderItems,       setOrderItems]       = useState([])
   const [returnedQtys,     setReturnedQtys]     = useState({})
   const [cashAmount,       setCashAmount]       = useState('')
+  const [todayCash,        setTodayCash]        = useState(0)
   const [shortageNote,     setShortageNote]     = useState('')
   const [loading,          setLoading]          = useState(true)
   const [submitting,       setSubmitting]       = useState(false)
@@ -82,12 +83,14 @@ export default function Settlement() {
           setData(Array.isArray(settlements) ? settlements[0] : settlements)
         }
 
-        // আজকের sale summary থেকে sold_qty আনা
+        // আজকের sale summary থেকে sold_qty এবং নগদ সংগ্রহ আনা
         let salesMap = {}
         try {
           const salesRes = await api.get('/sales/today-summary')
           const items = salesRes.data.data?.sales?.items_sold || []
           items.forEach(it => { salesMap[it.product_id] = it.qty })
+          const cashReceived = parseFloat(salesRes.data.data?.sales?.cash_received || 0)
+          setTodayCash(cashReceived)
         } catch {}
 
         const order = orderRes.data.data
@@ -128,7 +131,7 @@ export default function Settlement() {
       totalShortage  += sVal
       return { ...item, returned_qty: returned, shortage_qty: shortage, shortage_value: sVal }
     })
-    const systemCash   = parseFloat(data?.cash_collected || 0)
+    const systemCash   = alreadySubmitted ? parseFloat(data?.cash_collected || 0) : todayCash
     const enteredCash  = parseFloat(cashAmount || 0)
     const cashDiff     = Math.abs(enteredCash - systemCash)
     const cashMismatch = cashDiff > 1
