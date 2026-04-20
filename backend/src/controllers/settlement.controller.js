@@ -53,13 +53,35 @@ const createSettlement = async (req, res) => {
             });
         }
 
-        // ─── আজকের অর্ডার নাও ──────────────────────────────
-        const order = await query(
+        // ─── আজকের সব approved অর্ডার নাও (একটা নয়, সব) ─────
+        const ordersResult = await query(
             `SELECT id, items, total_amount FROM orders
              WHERE worker_id = $1 AND DATE(requested_at) = $2 AND status = 'approved'
-             ORDER BY requested_at DESC LIMIT 1`,
+             ORDER BY requested_at ASC`,
             [workerId, today]
         );
+
+        // সব অর্ডারের items একত্রিত করো — একই product_id হলে qty যোগ হবে
+        const mergedItemsMap = {};
+        const allOrderIds    = ordersResult.rows.map(o => o.id);
+
+        for (const ord of ordersResult.rows) {
+            const items = Array.isArray(ord.items) ? ord.items :
+                (typeof ord.items === 'string' ? JSON.parse(ord.items) : []);
+            for (const item of items) {
+                const pid = item.product_id;
+                if (!mergedItemsMap[pid]) {
+                    mergedItemsMap[pid] = { ...item, approved_qty: 0 };
+                }
+                mergedItemsMap[pid].approved_qty +=
+                    parseInt(item.approved_qty || item.requested_qty) || 0;
+                // final_price (VAT+Tax সহ) থাকলে সেটা ব্যবহার করো
+                if (item.final_price) {
+                    mergedItemsMap[pid].final_price = parseFloat(item.final_price);
+                }
+            }
+        }
+        const allOrderItems = Object.values(mergedItemsMap);
 
         // ─── আজকের বিক্রয় ডাটা (sales_transactions থেকে) ──
         const salesData = await query(
@@ -82,11 +104,10 @@ const createSettlement = async (req, res) => {
         const cashDifference = srCash - systemCash;   // + হলে বেশি জমা, - হলে কম জমা
 
         // ─── পণ্যভিত্তিক হিসাব ──────────────────────────────
-        const orderItems       = order.rows[0]?.items || [];
         const itemsReport      = [];
         let   totalShortageValue = 0;
 
-        for (const orderItem of orderItems) {
+        for (const orderItem of allOrderItems) {
             // এই পণ্যের মোট বিক্রয়
             const soldQtyRes = await query(
                 `SELECT COALESCE(SUM((item->>'qty')::int), 0) AS qty
@@ -122,7 +143,9 @@ const createSettlement = async (req, res) => {
             // ঘাটতি = নেওয়া - (বিক্রি + রিপ্লেস আউট + ফেরত)
             const accountedFor   = soldQty + replacedQty + returnedQty;
             const shortageQty    = Math.max(0, takenQty - accountedFor);
-            const shortageValue  = shortageQty * (parseFloat(orderItem.price) || 0);
+            // VAT+Tax সহ final_price ব্যবহার করো, না থাকলে base price
+            const effectivePrice = parseFloat(orderItem.final_price || orderItem.price) || 0;
+            const shortageValue  = shortageQty * effectivePrice;
             totalShortageValue  += shortageValue;
 
             itemsReport.push({
@@ -134,13 +157,18 @@ const createSettlement = async (req, res) => {
                 returned_qty:    returnedQty,
                 shortage_qty:    shortageQty,
                 shortage_value:  shortageValue,
-                price:           parseFloat(orderItem.price) || 0
+                price:           effectivePrice   // VAT+Tax সহ final price
             });
         }
 
         // ─── Settlement সেভ ──────────────────────────────────
         //   cash_collected = SR-এর দেওয়া নগদ (sr input)
         //   cash_difference = পার্থক্য (audit এর জন্য)
+        //   order_id = শেষ অর্ডারের id (reference হিসেবে)
+        const lastOrderId = ordersResult.rows.length > 0
+            ? ordersResult.rows[ordersResult.rows.length - 1].id
+            : null;
+
         const result = await query(
             `INSERT INTO daily_settlements
              (worker_id, order_id, settlement_date,
@@ -153,7 +181,7 @@ const createSettlement = async (req, res) => {
              RETURNING id`,
             [
                 workerId,
-                order.rows[0]?.id || null,
+                lastOrderId,
                 today,
                 JSON.stringify(itemsReport),
                 sales.total_sales,
@@ -591,16 +619,29 @@ const getTodayPreview = async (req, res) => {
         const workerId = req.user.id;
         const today    = new Date().toISOString().split('T')[0];
 
-        // আজকের অর্ডার
-        const order = await query(
+        // আজকের সব approved অর্ডার (একটা নয়, সব)
+        const ordersResult2 = await query(
             `SELECT id, items FROM orders
              WHERE worker_id = $1 AND DATE(requested_at) = $2 AND status = 'approved'
-             ORDER BY requested_at DESC LIMIT 1`,
+             ORDER BY requested_at ASC`,
             [workerId, today]
         );
 
-        const orderItems = order.rows[0]?.items || [];
-        if (orderItems.length === 0) {
+        // সব অর্ডারের items মার্জ করো
+        const mergedMap2 = {};
+        for (const ord of ordersResult2.rows) {
+            const oi = Array.isArray(ord.items) ? ord.items :
+                (typeof ord.items === 'string' ? JSON.parse(ord.items) : []);
+            for (const item of oi) {
+                const pid = item.product_id;
+                if (!mergedMap2[pid]) mergedMap2[pid] = { ...item, approved_qty: 0 };
+                mergedMap2[pid].approved_qty += parseInt(item.approved_qty || item.requested_qty) || 0;
+                if (item.final_price) mergedMap2[pid].final_price = parseFloat(item.final_price);
+            }
+        }
+        const allOrderItems = Object.values(mergedMap2);
+
+        if (allOrderItems.length === 0) {
             return res.status(200).json({ success: true, data: { items: [] } });
         }
 
@@ -632,13 +673,13 @@ const getTodayPreview = async (req, res) => {
         const replMap = {};
         replRes.rows.forEach(r => { replMap[r.product_id] = parseInt(r.qty) || 0; });
 
-        const itemsData = orderItems.map(orderItem => ({
+        const itemsData = allOrderItems.map(orderItem => ({
             product_id:      orderItem.product_id,
             name:            orderItem.product_name,
             taken_qty:       parseInt(orderItem.approved_qty || orderItem.requested_qty) || 0,
             sold_qty:        soldMap[orderItem.product_id]  || 0,
             replacement_qty: replMap[orderItem.product_id]  || 0,
-            price:           parseFloat(orderItem.price)    || 0,
+            price:           parseFloat(orderItem.final_price || orderItem.price) || 0,
         }));
 
         return res.status(200).json({ success: true, data: { items: itemsData } });
