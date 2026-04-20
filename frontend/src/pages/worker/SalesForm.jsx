@@ -137,7 +137,7 @@ export default function SalesForm() {
   const [replacements, setReplacements] = useState({})
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [useCreditBalance, setUseCreditBalance] = useState(false)
-  const [vatRate,      setVatRate]      = useState(0)
+
   const [receiptPhoto, setReceiptPhoto] = useState(null)
   const [receiptPreview, setReceiptPreview] = useState(null)
   const [loading,      setLoading]      = useState(true)
@@ -176,7 +176,13 @@ export default function SalesForm() {
   const creditBalance      = parseFloat(customer?.credit_balance || 0)
   const discountAmount     = useCreditBalance ? Math.min(creditBalance, totalAmount) : 0
   const netAfterDiscount   = totalAmount - discountAmount
-  const vatAmount          = parseFloat(((netAfterDiscount - replacementValue) * vatRate / 100).toFixed(2))
+  const vatAmount          = products
+    .filter(p => selected[p.id])
+    .reduce((sum, p) => {
+      const vat  = parseFloat(p.vat) || 0
+      const base = calcFinalPrice(p) * selected[p.id]
+      return sum + parseFloat((base * vat / 100).toFixed(2))
+    }, 0)
   const netAmount          = Math.max(0, netAfterDiscount - replacementValue + vatAmount)
   const creditBalanceAdded = Math.max(0, replacementValue - netAfterDiscount)
 
@@ -218,7 +224,6 @@ export default function SalesForm() {
         payment_method:     paymentMethod,
         replacement_items:  replacementItems,
         use_credit_balance: useCreditBalance,
-        vat_rate:           vatRate,
         receipt_photo:      receiptPhotoUrl || undefined,
       }
 
@@ -320,25 +325,14 @@ export default function SalesForm() {
             <div className="flex justify-between"><span className="text-gray-500">পণ্যের মোট</span><span className="font-semibold">৳{totalAmount.toLocaleString('en', { maximumFractionDigits: 2 })}</span></div>
             {discountAmount > 0 && <div className="flex justify-between text-emerald-600"><span>ব্যালেন্স ছাড়</span><span>-৳{discountAmount.toFixed(2)}</span></div>}
             {replacementValue > 0 && <div className="flex justify-between text-orange-600"><span>রিপ্লেসমেন্ট</span><span>-৳{replacementValue.toFixed(2)}</span></div>}
-            {vatAmount > 0 && <div className="flex justify-between text-amber-600"><span>ভ্যাট ({vatRate}%)</span><span>+৳{vatAmount}</span></div>}
+            {vatAmount > 0 && <div className="flex justify-between text-amber-600"><span>ভ্যাট</span><span>+৳{vatAmount.toFixed(2)}</span></div>}
             <div className="flex justify-between font-bold text-base pt-2 border-t border-gray-100">
               <span>পরিশোধযোগ্য</span>
               <span className="text-secondary">৳{netAmount.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
             </div>
           </div>
 
-          {/* VAT */}
-          <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-            <p className="text-sm font-semibold text-gray-700 mb-2">ভ্যাট হার (%) — ঐচ্ছিক</p>
-            <div className="flex gap-2 flex-wrap">
-              {[0, 5, 7.5, 10, 15].map(r => (
-                <button key={r} onClick={() => setVatRate(r)}
-                  className={`px-3 py-1.5 rounded-xl text-sm border transition-colors ${vatRate === r ? 'bg-amber-100 border-amber-400 text-amber-700 font-bold' : 'border-gray-200 text-gray-600'}`}>
-                  {r}%
-                </button>
-              ))}
-            </div>
-          </div>
+
 
           {/* Receipt Photo */}
           <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
