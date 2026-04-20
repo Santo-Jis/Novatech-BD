@@ -294,6 +294,160 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items) => {
 };
 
 // ============================================================
+// OTP + INVOICE একসাথে — একটাই Email
+// ============================================================
+
+const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, customer, worker, items) => {
+    const subject = `NovaTechBD - OTP: ${otp} | Invoice ${sale.invoice_number}`;
+
+    const paymentLabels = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
+
+    const itemsHTML = (items || []).map(i => {
+        const subtotal = (i.qty || 0) * (i.price || 0);
+        return `<tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;">${i.product_name}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#555;font-size:13px;text-align:center;">${i.qty} × ৳${(i.price || 0).toLocaleString('bn-BD')}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;text-align:right;font-weight:bold;">৳${subtotal.toLocaleString('bn-BD')}</td>
+        </tr>`;
+    }).join('');
+
+    const replacementHTML = (sale.replacement_items || []).length > 0
+        ? (sale.replacement_items || []).map(i => `<tr>
+          <td style="padding:8px 12px;border-bottom:1px solid #fce4ec;color:#e53935;font-size:13px;">↩️ ${i.product_name} (রিপ্লেসমেন্ট)</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #fce4ec;color:#e53935;font-size:13px;text-align:center;">${i.qty} পিস</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #fce4ec;color:#e53935;font-size:13px;text-align:right;">-৳${(i.total || 0).toLocaleString('bn-BD')}</td>
+        </tr>`).join('')
+        : '';
+
+    const html = `<!DOCTYPE html>
+<html lang="bn">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:30px 0;">
+<tr><td align="center">
+<table width="560" cellpadding="0" cellspacing="0"
+       style="background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.1);">
+
+  <!-- Header -->
+  <tr>
+    <td style="background:linear-gradient(135deg,#1a73e8,#0d47a1);padding:25px 35px;">
+      <table width="100%"><tr>
+        <td>
+          <h1 style="color:#fff;margin:0;font-size:20px;">NovaTech BD</h1>
+          <p style="color:#bbdefb;margin:3px 0 0;font-size:11px;">জানকি সিংহ রোড, বরিশাল সদর – ১২০০</p>
+        </td>
+        <td style="text-align:right;">
+          <p style="color:#fff;margin:0;font-size:12px;">🧾 Invoice</p>
+          <p style="color:#e3f2fd;margin:3px 0 0;font-size:17px;font-weight:bold;font-family:monospace;">${sale.invoice_number}</p>
+        </td>
+      </tr></table>
+    </td>
+  </tr>
+
+  <!-- OTP Section -->
+  <tr>
+    <td style="background:#e8f0fe;border-bottom:2px dashed #1a73e8;padding:22px 35px;">
+      <p style="color:#333;font-size:14px;font-weight:bold;margin:0 0 5px;">🔐 বিক্রয় যাচাইয়ের OTP কোড</p>
+      <p style="color:#555;font-size:12px;margin:0 0 15px;"><strong>${customer.shop_name}</strong>-এর বিক্রয় নিশ্চিত করতে SR-কে এই কোড দিন:</p>
+      <div style="display:inline-block;background:#fff;border:2px solid #1a73e8;border-radius:10px;padding:14px 30px;text-align:center;">
+        <p style="color:#888;font-size:11px;margin:0 0 5px;">OTP কোড</p>
+        <h2 style="color:#1a73e8;font-size:40px;letter-spacing:12px;margin:0;font-family:'Courier New',monospace;font-weight:bold;">${otp}</h2>
+        <p style="color:#e53935;font-size:11px;margin:8px 0 0;">⏱️ মেয়াদ: ${expiryMinutes} মিনিট</p>
+      </div>
+      <p style="color:#e53935;font-size:12px;margin:12px 0 0;">⚠️ <strong>এই কোড কাউকে দেবেন না।</strong> NovaTechBD কর্তৃপক্ষ কখনো OTP জিজ্ঞেস করে না।</p>
+    </td>
+  </tr>
+
+  <!-- Customer & Sale Info -->
+  <tr>
+    <td style="padding:18px 35px 0;">
+      <table width="100%"><tr>
+        <td width="50%" style="vertical-align:top;">
+          <p style="color:#888;font-size:10px;text-transform:uppercase;margin:0 0 5px;letter-spacing:1px;">দোকানের তথ্য</p>
+          <p style="color:#222;font-size:14px;font-weight:bold;margin:0;">${customer.shop_name}</p>
+          <p style="color:#555;font-size:13px;margin:3px 0 0;">${customer.owner_name}</p>
+          ${customer.sms_phone ? `<p style="color:#777;font-size:12px;margin:3px 0 0;">📱 ${customer.sms_phone}</p>` : ''}
+        </td>
+        <td width="50%" style="vertical-align:top;text-align:right;">
+          <p style="color:#888;font-size:10px;text-transform:uppercase;margin:0 0 5px;letter-spacing:1px;">বিক্রয় তথ্য</p>
+          <p style="color:#555;font-size:12px;margin:0;">📅 ${new Date(sale.created_at || Date.now()).toLocaleDateString('bn-BD')}</p>
+          <p style="color:#555;font-size:12px;margin:3px 0 0;">👤 SR: ${worker.name_bn || worker.name_en} (${worker.employee_code})</p>
+        </td>
+      </tr></table>
+    </td>
+  </tr>
+
+  <!-- Items Table -->
+  <tr>
+    <td style="padding:18px 35px;">
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="border:1px solid #e0e0e0;border-radius:8px;overflow:hidden;">
+        <thead>
+          <tr style="background:#f5f5f5;">
+            <th style="padding:9px 12px;text-align:left;color:#555;font-size:11px;">পণ্যের নাম</th>
+            <th style="padding:9px 12px;text-align:center;color:#555;font-size:11px;">পরিমাণ × মূল্য</th>
+            <th style="padding:9px 12px;text-align:right;color:#555;font-size:11px;">মোট</th>
+          </tr>
+        </thead>
+        <tbody>${itemsHTML}${replacementHTML}</tbody>
+      </table>
+    </td>
+  </tr>
+
+  <!-- Summary -->
+  <tr>
+    <td style="padding:0 35px 22px;">
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="background:#f8f9fa;border-radius:8px;padding:15px;">
+        <tr><td style="padding:0 10px;">
+          <table width="100%">
+            <tr>
+              <td style="color:#555;font-size:13px;padding:4px 0;">মোট পরিমাণ</td>
+              <td style="color:#333;font-size:13px;text-align:right;padding:4px 0;">৳${(sale.total_amount || 0).toLocaleString('bn-BD')}</td>
+            </tr>
+            ${(sale.discount_amount > 0) ? `<tr>
+              <td style="color:#555;font-size:13px;padding:4px 0;">ক্রেডিট ব্যালেন্স ছাড়</td>
+              <td style="color:#e53935;font-size:13px;text-align:right;padding:4px 0;">-৳${(sale.discount_amount || 0).toLocaleString('bn-BD')}</td>
+            </tr>` : ''}
+            <tr><td colspan="2"><hr style="border:none;border-top:1px solid #ddd;margin:8px 0;"></td></tr>
+            <tr>
+              <td style="color:#1a73e8;font-size:15px;font-weight:bold;padding:4px 0;">পরিশোধযোগ্য মোট</td>
+              <td style="color:#1a73e8;font-size:18px;font-weight:bold;text-align:right;padding:4px 0;">৳${(sale.net_amount || 0).toLocaleString('bn-BD')}</td>
+            </tr>
+            <tr>
+              <td style="color:#777;font-size:12px;padding:8px 0 0;">পেমেন্ট পদ্ধতি</td>
+              <td style="color:#333;font-size:12px;text-align:right;padding:8px 0 0;font-weight:bold;">${paymentLabels[sale.payment_method] || sale.payment_method}</td>
+            </tr>
+            ${sale.cash_received > 0 ? `<tr><td style="color:#777;font-size:12px;padding:3px 0;">নগদ প্রাপ্ত</td><td style="color:#2e7d32;font-size:12px;text-align:right;padding:3px 0;">৳${sale.cash_received}</td></tr>` : ''}
+            ${sale.credit_used > 0 ? `<tr><td style="color:#777;font-size:12px;padding:3px 0;">বাকি দেওয়া হয়েছে</td><td style="color:#e65100;font-size:12px;text-align:right;padding:3px 0;">৳${sale.credit_used}</td></tr>` : ''}
+          </table>
+        </td></tr>
+      </table>
+    </td>
+  </tr>
+
+  <tr>
+    <td style="background:#e8f5e9;padding:15px 35px;text-align:center;border-top:2px solid #4caf50;">
+      <p style="color:#2e7d32;font-size:14px;font-weight:bold;margin:0;">🙏 আমাদের সাথে কেনাকাটার জন্য ধন্যবাদ!</p>
+    </td>
+  </tr>
+  <tr>
+    <td style="background:#f8f9fa;padding:12px 35px;text-align:center;border-top:1px solid #e0e0e0;">
+      <p style="color:#999;font-size:11px;margin:0;">NovaTech BD (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
+
+    const text = `NovaTechBD - OTP: ${otp} (মেয়াদ: ${expiryMinutes} মিনিট)\nInvoice: ${sale.invoice_number}\nদোকান: ${customer.shop_name}\nমোট: ৳${sale.net_amount}\nপেমেন্ট: ${paymentLabels[sale.payment_method] || sale.payment_method}\nএই কোড কাউকে দেবেন না।`;
+    return sendEmail(email, subject, html, text);
+};
+
+// ============================================================
 // ORDER NOTIFICATION EMAIL — Admin ও Manager কে নোটিফাই করা
 // SR/কর্মি নতুন অর্ডার দিলে সাথে সাথে Email যাবে
 // ============================================================
@@ -1026,6 +1180,7 @@ const sendSRApplicationAdminNotifyEmail = async (toEmails, applicantData) => {
 module.exports = {
     sendEmail,
     sendOTPEmail,
+    sendOTPWithInvoiceEmail,
     sendSRApplicationOTPEmail,
     sendSRApplicationConfirmEmail,
     sendSRApplicationAdminNotifyEmail,
