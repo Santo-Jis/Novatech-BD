@@ -4,8 +4,9 @@ import api from '../../api/axios'
 import { useAuthStore } from '../../store/auth.store'
 import { useAppStore }  from '../../store/app.store'
 import InvoiceCard from '../../components/InvoiceCard'
+import Camera from '../../components/Camera'
 import toast from 'react-hot-toast'
-import { FiCheck, FiAlertCircle } from 'react-icons/fi'
+import { FiCheck, FiAlertCircle, FiCamera, FiTrash2 } from 'react-icons/fi'
 
 export default function OTPVerify() {
   const { id: saleId }  = useParams()
@@ -13,23 +14,30 @@ export default function OTPVerify() {
   const { currentSale } = useAppStore()
   const { user }         = useAuthStore()
 
-  const [otp,      setOtp]      = useState(['', '', '', '', '', ''])
-  const [loading,  setLoading]  = useState(false)
-  const [verified, setVerified] = useState(false)
-  const [skipModal, setSkipModal] = useState(false)  // skip confirmation
+  const [otp,       setOtp]       = useState(['', '', '', '', '', ''])
+  const [loading,   setLoading]   = useState(false)
+  const [verified,  setVerified]  = useState(false)
+
+  // Skip flow state
+  // step: null → 'confirm' → 'camera' → 'uploading'
+  const [skipStep,   setSkipStep]   = useState(null)
+  const [memoPhoto,  setMemoPhoto]  = useState(null)  // { blob, url }
+  const [uploading,  setUploading]  = useState(false)
+
   const inputs = useRef([])
 
-  // SMS configure না থাকলে (otp_required=false) সরাসরি success দেখাও
+  // OTP required না হলে সরাসরি success
   useEffect(() => {
     if (currentSale && currentSale.otp_required === false) {
       setVerified(true)
     }
   }, [currentSale])
 
+  // ── OTP input handlers ──────────────────────────────────────
   const handleChange = (val, idx) => {
     if (!/^\d*$/.test(val)) return
-    const newOtp = [...otp]
-    newOtp[idx]  = val.slice(-1)
+    const newOtp  = [...otp]
+    newOtp[idx]   = val.slice(-1)
     setOtp(newOtp)
     if (val && idx < 5) inputs.current[idx + 1]?.focus()
   }
@@ -57,11 +65,42 @@ export default function OTPVerify() {
     }
   }
 
-  const confirmSkip = () => {
-    // OTP ছাড়াই বিক্রয় সম্পন্ন — success পেইজ দেখাও
-    setSkipModal(false)
-    setVerified(true)
-    toast('OTP ছাড়া বিক্রয় সম্পন্ন হয়েছে।', { icon: '⚠️' })
+  // ── Skip flow ───────────────────────────────────────────────
+
+  // Step 1: confirm modal খুলো
+  const handleSkipClick = () => setSkipStep('confirm')
+
+  // Step 2: confirm → camera
+  const handleConfirmSkip = () => setSkipStep('camera')
+
+  // Step 3: camera থেকে ছবি পেলে preview দেখাও
+  const handlePhotoCaptured = (blob, url) => {
+    setMemoPhoto({ blob, url })
+    setSkipStep('preview')
+  }
+
+  // Step 4: preview confirm → upload → done
+  const handleSubmitWithPhoto = async () => {
+    if (!memoPhoto?.blob) { toast.error('মেমোর ছবি তুলুন'); return }
+
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('memo_photo', memoPhoto.blob, 'memo.jpg')
+      formData.append('sale_id', saleId)
+
+      await api.post('/sales/skip-otp', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+
+      toast('মেমো ছবিসহ বিক্রয় সম্পন্ন।', { icon: '⚠️' })
+      setSkipStep(null)
+      setVerified(true)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'আপলোড হয়নি, আবার চেষ্টা করুন।')
+    } finally {
+      setUploading(false)
+    }
   }
 
   const shareWhatsApp = () => {
@@ -79,7 +118,8 @@ export default function OTPVerify() {
           </div>
           <p className="font-bold text-xl text-gray-800">বিক্রয় সম্পন্ন!</p>
           <p className="text-sm text-gray-500 mt-1">
-            Invoice: <span className="font-mono font-semibold text-primary">
+            Invoice:{' '}
+            <span className="font-mono font-semibold text-primary">
               {currentSale?.invoice_number || '—'}
             </span>
           </p>
@@ -103,7 +143,6 @@ export default function OTPVerify() {
         >
           পরের কাস্টমারে যান →
         </button>
-
         <button
           onClick={() => navigate('/worker/dashboard')}
           className="w-full py-3 border border-gray-200 rounded-2xl text-gray-600 font-medium text-sm"
@@ -155,44 +194,128 @@ export default function OTPVerify() {
 
       {/* Skip button */}
       <button
-        onClick={() => setSkipModal(true)}
+        onClick={handleSkipClick}
         className="w-full text-center text-sm text-gray-400 py-2"
       >
         OTP ছাড়া এগিয়ে যান
       </button>
 
-      {/* Skip Confirmation Modal */}
-      {skipModal && (
+      {/* ══════════════════════════════════════════
+          STEP 1 — Confirm Modal
+      ══════════════════════════════════════════ */}
+      {skipStep === 'confirm' && (
         <div className="fixed inset-0 z-50 flex items-end justify-center">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setSkipModal(false)}
-          />
+          <div className="absolute inset-0 bg-black/50" onClick={() => setSkipStep(null)} />
           <div className="relative w-full max-w-md bg-white rounded-t-3xl p-6 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                 <FiAlertCircle className="text-amber-600 text-xl" />
               </div>
               <div>
-                <p className="font-bold text-gray-800">OTP ছাড়া নিশ্চিত করবেন?</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  কাস্টমারের যাচাই ছাড়াই বিক্রয় সম্পন্ন হবে।
+                <p className="font-bold text-gray-800">OTP ছাড়া এগোতে চান?</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  OTP skip করলে <span className="font-semibold text-amber-600">মেমোর ছবি তোলা বাধ্যতামূলক।</span>{' '}
+                  ছবি manager-এর কাছে রেকর্ড হবে।
                 </p>
               </div>
             </div>
 
+            <div className="bg-amber-50 rounded-xl p-3 flex items-center gap-2">
+              <FiCamera className="text-amber-500 flex-shrink-0" />
+              <p className="text-xs text-amber-700">পরের ধাপে ক্যামেরা দিয়ে মেমোর ছবি তুলতে হবে</p>
+            </div>
+
             <div className="flex gap-3">
               <button
-                onClick={() => setSkipModal(false)}
+                onClick={() => setSkipStep(null)}
                 className="flex-1 py-3 border border-gray-200 rounded-2xl text-gray-600 font-semibold"
               >
                 বাতিল
               </button>
               <button
-                onClick={confirmSkip}
-                className="flex-1 py-3 bg-amber-500 text-white rounded-2xl font-semibold"
+                onClick={handleConfirmSkip}
+                className="flex-1 py-3 bg-amber-500 text-white rounded-2xl font-semibold flex items-center justify-center gap-2"
               >
-                হ্যাঁ, এগিয়ে যান
+                <FiCamera size={16} />
+                ছবি তুলুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════
+          STEP 2 — Camera
+      ══════════════════════════════════════════ */}
+      {skipStep === 'camera' && (
+        <div className="fixed inset-0 z-50 bg-white flex flex-col">
+          {/* Header */}
+          <div className="bg-amber-500 text-white px-4 py-4 flex items-center gap-3">
+            <FiCamera className="text-xl flex-shrink-0" />
+            <div>
+              <p className="font-bold">মেমোর ছবি তুলুন</p>
+              <p className="text-xs text-white/80">মেমো বা রশিদ ফ্রেমে রেখে ছবি তুলুন</p>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-auto p-4">
+            <Camera
+              facingMode="environment"
+              onCapture={handlePhotoCaptured}
+              onClose={() => setSkipStep('confirm')}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════
+          STEP 3 — Preview & Submit
+      ══════════════════════════════════════════ */}
+      {skipStep === 'preview' && memoPhoto && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div className="absolute inset-0 bg-black/60" />
+          <div className="relative w-full max-w-md bg-white rounded-t-3xl p-6 space-y-4">
+            <p className="font-bold text-gray-800 text-center">মেমোর ছবি নিশ্চিত করুন</p>
+
+            {/* Photo preview */}
+            <div className="relative rounded-2xl overflow-hidden border border-gray-200">
+              <img
+                src={memoPhoto.url}
+                alt="memo"
+                className="w-full max-h-60 object-contain bg-gray-50"
+              />
+              {/* Retake button */}
+              <button
+                onClick={() => { setMemoPhoto(null); setSkipStep('camera') }}
+                className="absolute top-2 right-2 bg-black/50 text-white rounded-full p-2"
+              >
+                <FiTrash2 size={14} />
+              </button>
+            </div>
+
+            <div className="bg-amber-50 rounded-xl p-3">
+              <p className="text-xs text-amber-700 text-center">
+                ⚠️ এই ছবি OTP-এর বিকল্প হিসেবে রেকর্ড থাকবে
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setMemoPhoto(null); setSkipStep('camera') }}
+                className="flex-1 py-3 border border-gray-200 rounded-2xl text-gray-600 font-semibold"
+              >
+                আবার তুলুন
+              </button>
+              <button
+                onClick={handleSubmitWithPhoto}
+                disabled={uploading}
+                className="flex-1 py-3 bg-amber-500 text-white rounded-2xl font-bold flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {uploading
+                  ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  : <FiCheck />
+                }
+                {uploading ? 'আপলোড হচ্ছে...' : 'নিশ্চিত করুন'}
               </button>
             </div>
           </div>
