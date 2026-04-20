@@ -27,6 +27,9 @@ export const useAuthStore = create((set, get) => ({
 
       set({ user, token: accessToken, refreshToken, loading: false })
 
+      // লগইনের পর Eruda দেখাও
+      if (typeof window.__showEruda === 'function') window.__showEruda()
+
       toast.success(`স্বাগতম, ${user.name_bn}!`)
       return { success: true, user }
 
@@ -46,6 +49,10 @@ export const useAuthStore = create((set, get) => ({
     } catch { /* silent */ } finally {
       localStorage.clear()
       set({ user: null, token: null, refreshToken: null })
+
+      // লগআউটে Eruda লুকাও
+      if (typeof window.__hideEruda === 'function') window.__hideEruda()
+
       window.location.href = '/login'
     }
   },
