@@ -1,4 +1,5 @@
 const { query, withTransaction } = require('../config/db');
+const { calcFromProduct }        = require('../services/price.utils');
 const { generateOTP }            = require('../config/encryption');
 const {
     generateInvoiceNumber,
@@ -160,14 +161,10 @@ const createSale = async (req, res) => {
             );
             if (product.rows.length === 0) continue;
 
-            const unitPrice  = parseFloat(product.rows[0].price);
-            const vatRate    = parseFloat(product.rows[0].vat  || 0);
-            const taxRate    = parseFloat(product.rows[0].tax  || 0);
-            const vatAmount  = parseFloat((unitPrice * vatRate / 100).toFixed(2));
-            const taxAmount  = parseFloat((unitPrice * taxRate / 100).toFixed(2));
-            const finalPrice = unitPrice + vatAmount + taxAmount;
-            const subtotal   = parseFloat((finalPrice * item.qty).toFixed(2));
-            totalAmount     += subtotal;
+            const { unitPrice, vatRate, taxRate,
+                    vatAmount, taxAmount, finalPrice, subtotal } =
+                calcFromProduct(product.rows[0], item.qty);
+            totalAmount += subtotal;
 
             processedItems.push({
                 product_id:   item.product_id,
@@ -193,13 +190,10 @@ const createSale = async (req, res) => {
                 );
                 if (product.rows.length === 0) continue;
 
-                const unitPrice  = parseFloat(product.rows[0].price);
-                const vatRate    = parseFloat(product.rows[0].vat  || 0);
-                const taxRate    = parseFloat(product.rows[0].tax  || 0);
-                const vatAmount  = parseFloat((unitPrice * vatRate / 100).toFixed(2));
-                const taxAmount  = parseFloat((unitPrice * taxRate / 100).toFixed(2));
-                const finalPrice = unitPrice + vatAmount + taxAmount;
-                const total      = parseFloat((finalPrice * item.qty).toFixed(2));
+                const { unitPrice, vatRate, taxRate,
+                        vatAmount, taxAmount, finalPrice,
+                        subtotal: total } =
+                    calcFromProduct(product.rows[0], item.qty);
                 replacementValue += total;
 
                 processedReplacement.push({
