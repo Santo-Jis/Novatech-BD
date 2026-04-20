@@ -13,37 +13,28 @@
       href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <style>
+      /* লগইনের আগে Eruda বাটন সম্পূর্ণ লুকিয়ে রাখো */
+      #eruda { display: none !important; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
     <script src="//cdn.jsdelivr.net/npm/eruda"></script>
     <script>
-      // লগইনের আগে Eruda লুকিয়ে রাখো
       eruda.init();
-      eruda.hide();
 
-      // লগইন হয়েছে কিনা চেক করো
-      (function checkLoginAndShowEruda() {
-        var token = localStorage.getItem('accessToken');
-        if (token) {
-          eruda.show();
-        }
-      })();
+      // লগইন থাকলে দেখাও
+      if (localStorage.getItem('accessToken')) {
+        document.getElementById('eruda').style.display = 'block';
+      }
 
-      // localStorage পরিবর্তন হলে (লগইন/লগআউট) আবার চেক করো
-      window.addEventListener('storage', function(e) {
-        if (e.key === 'accessToken') {
-          if (e.newValue) {
-            eruda.show();
-          } else {
-            eruda.hide();
-          }
-        }
-      });
-
-      // React login সফল হলে Eruda দেখানোর জন্য global function
-      window.__showEruda = function() { eruda.show(); };
-      window.__hideEruda = function() { eruda.hide(); };
+      window.__showEruda = function() {
+        document.getElementById('eruda').style.display = 'block';
+      };
+      window.__hideEruda = function() {
+        document.getElementById('eruda').style.display = 'none';
+      };
     </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
