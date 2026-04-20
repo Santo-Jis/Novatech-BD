@@ -39,7 +39,21 @@ const createSettlement = async (req, res) => {
             });
         }
 
-        // আজকের অর্ডার নাও
+        // ─── Body থেকে SR-এর ইনপুট ─────────────────────────
+        const {
+            cash_collected: srCashInput,   // SR নিজে দেওয়া নগদ
+            returned_items,                 // [{ product_id, qty }]
+            shortage_note
+        } = req.body;
+
+        if (srCashInput === undefined || srCashInput === null) {
+            return res.status(400).json({
+                success: false,
+                message: 'নগদ জমার পরিমাণ দিন।'
+            });
+        }
+
+        // ─── আজকের অর্ডার নাও ──────────────────────────────
         const order = await query(
             `SELECT id, items, total_amount FROM orders
              WHERE worker_id = $1 AND DATE(requested_at) = $2 AND status = 'approved'
@@ -47,36 +61,35 @@ const createSettlement = async (req, res) => {
             [workerId, today]
         );
 
-        // আজকের বিক্রয় ডাটা
+        // ─── আজকের বিক্রয় ডাটা (sales_transactions থেকে) ──
         const salesData = await query(
             `SELECT
                 COALESCE(SUM(total_amount), 0)        AS total_sales,
                 COALESCE(SUM(cash_received), 0)       AS cash_collected,
                 COALESCE(SUM(credit_used), 0)         AS credit_given,
                 COALESCE(SUM(replacement_value), 0)   AS replacement_value,
-                COALESCE(SUM(credit_balance_used), 0) AS old_credit_collected,
-                json_agg(items)                        AS all_items
+                COALESCE(SUM(credit_balance_used), 0) AS old_credit_collected
              FROM sales_transactions
              WHERE worker_id = $1 AND date = $2`,
             [workerId, today]
         );
 
-        const sales = salesData.rows[0];
+        const sales         = salesData.rows[0];
+        const systemCash    = parseFloat(sales.cash_collected) || 0;
+        const srCash        = parseFloat(srCashInput)          || 0;
 
-        // SR এর submitted items (ফেরত পরিমাণ)
-        const { returned_items, shortage_note } = req.body;
+        // ─── নগদ মিলানো — পার্থক্য রেকর্ড করা হবে ─────────
+        const cashDifference = srCash - systemCash;   // + হলে বেশি জমা, - হলে কম জমা
 
-        // অর্ডারের পণ্য অনুযায়ী হিসাব
-        const orderItems  = order.rows[0]?.items || [];
-        const itemsReport = [];
+        // ─── পণ্যভিত্তিক হিসাব ──────────────────────────────
+        const orderItems       = order.rows[0]?.items || [];
+        const itemsReport      = [];
         let   totalShortageValue = 0;
 
         for (const orderItem of orderItems) {
             // এই পণ্যের মোট বিক্রয়
-            const soldQty = await query(
-                `SELECT COALESCE(SUM(
-                    (item->>'qty')::int
-                ), 0) AS qty
+            const soldQtyRes = await query(
+                `SELECT COALESCE(SUM((item->>'qty')::int), 0) AS qty
                  FROM sales_transactions,
                       jsonb_array_elements(items) AS item
                  WHERE worker_id = $1
@@ -85,11 +98,9 @@ const createSettlement = async (req, res) => {
                 [workerId, today, orderItem.product_id]
             );
 
-            // রিপ্লেসমেন্টে ফেরত আসা
-            const replacedQty = await query(
-                `SELECT COALESCE(SUM(
-                    (item->>'qty')::int
-                ), 0) AS qty
+            // রিপ্লেসমেন্টে ফেরত আসা পণ্য
+            const replacedQtyRes = await query(
+                `SELECT COALESCE(SUM((item->>'qty')::int), 0) AS qty
                  FROM sales_transactions,
                       jsonb_array_elements(replacement_items) AS item
                  WHERE worker_id = $1
@@ -98,43 +109,47 @@ const createSettlement = async (req, res) => {
                 [workerId, today, orderItem.product_id]
             );
 
-            const takenQty       = orderItem.approved_qty || orderItem.requested_qty;
-            const soldQtyVal     = parseInt(soldQty.rows[0].qty);
-            const replacedQtyVal = parseInt(replacedQty.rows[0].qty);
+            const takenQty       = parseInt(orderItem.approved_qty || orderItem.requested_qty) || 0;
+            const soldQty        = parseInt(soldQtyRes.rows[0].qty)    || 0;
+            const replacedQty    = parseInt(replacedQtyRes.rows[0].qty) || 0;
 
-            // SR জানাচ্ছে কত ফেরত দিচ্ছে
-            const returnedItem  = returned_items?.find(r => r.product_id === orderItem.product_id);
-            const returnedQty   = returnedItem?.qty || 0;
+            // SR-এর জানানো ফেরত পরিমাণ (frontend থেকে পাঠানো)
+            const returnedItem   = Array.isArray(returned_items)
+                ? returned_items.find(r => r.product_id === orderItem.product_id)
+                : null;
+            const returnedQty    = parseInt(returnedItem?.qty) || 0;
 
-            // ঘাটতি হিসাব
-            // নেওয়া = বিক্রি + রিপ্লেসমেন্ট আউট + ফেরত + ঘাটতি
-            const accountedFor  = soldQtyVal + returnedQty;
-            const shortageQty   = Math.max(0, takenQty - accountedFor - replacedQtyVal);
-            const shortageValue = shortageQty * orderItem.price;
-            totalShortageValue += shortageValue;
+            // ঘাটতি = নেওয়া - (বিক্রি + রিপ্লেস আউট + ফেরত)
+            const accountedFor   = soldQty + replacedQty + returnedQty;
+            const shortageQty    = Math.max(0, takenQty - accountedFor);
+            const shortageValue  = shortageQty * (parseFloat(orderItem.price) || 0);
+            totalShortageValue  += shortageValue;
 
             itemsReport.push({
-                product_id:       orderItem.product_id,
-                name:             orderItem.product_name,
-                taken_qty:        takenQty,
-                sold_qty:         soldQtyVal,
-                replacement_qty:  replacedQtyVal,
-                returned_qty:     returnedQty,
-                shortage_qty:     shortageQty,
-                shortage_value:   shortageValue,
-                price:            orderItem.price
+                product_id:      orderItem.product_id,
+                name:            orderItem.product_name,
+                taken_qty:       takenQty,
+                sold_qty:        soldQty,
+                replacement_qty: replacedQty,
+                returned_qty:    returnedQty,
+                shortage_qty:    shortageQty,
+                shortage_value:  shortageValue,
+                price:           parseFloat(orderItem.price) || 0
             });
         }
 
-        // Settlement সেভ
+        // ─── Settlement সেভ ──────────────────────────────────
+        //   cash_collected = SR-এর দেওয়া নগদ (sr input)
+        //   cash_difference = পার্থক্য (audit এর জন্য)
         const result = await query(
             `INSERT INTO daily_settlements
              (worker_id, order_id, settlement_date,
               items_taken, total_sales_amount,
-              cash_collected, credit_given,
+              cash_collected, cash_difference,
+              credit_given,
               old_credit_collected, replacement_value,
               shortage_qty_value, shortage_note)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              RETURNING id`,
             [
                 workerId,
@@ -142,7 +157,8 @@ const createSettlement = async (req, res) => {
                 today,
                 JSON.stringify(itemsReport),
                 sales.total_sales,
-                sales.cash_collected,
+                srCash,                          // SR-এর জমা দেওয়া নগদ
+                cashDifference,                  // পার্থক্য (audit trail)
                 sales.credit_given,
                 sales.old_credit_collected,
                 sales.replacement_value,
@@ -151,19 +167,29 @@ const createSettlement = async (req, res) => {
             ]
         );
 
-        // Manager কে Firebase নোটিফিকেশন
+        // ─── Manager কে Firebase নোটিফিকেশন ────────────────
         if (req.user.manager_id) {
+            const hasCashMismatch = Math.abs(cashDifference) > 1;
+            let message = `✅ ${req.user.name_bn} হিসাব জমা দিয়েছে।`;
+            if (totalShortageValue > 0 && hasCashMismatch) {
+                message = `⚠️ ${req.user.name_bn} — ৳${totalShortageValue} পণ্য ঘাটতি + ৳${Math.abs(cashDifference).toFixed(0)} নগদ পার্থক্য।`;
+            } else if (totalShortageValue > 0) {
+                message = `⚠️ ${req.user.name_bn} এর হিসাবে ৳${totalShortageValue} পণ্য ঘাটতি আছে।`;
+            } else if (hasCashMismatch) {
+                message = `⚠️ ${req.user.name_bn} এর নগদে ৳${Math.abs(cashDifference).toFixed(0)} পার্থক্য আছে।`;
+            }
+
             await firebaseNotify(
                 `notifications/${req.user.manager_id}/settlements`,
                 {
-                    settlementId:   result.rows[0].id,
-                    workerName:     req.user.name_bn,
-                    totalSales:     sales.total_sales,
-                    shortageValue:  totalShortageValue,
-                    hasShortage:    totalShortageValue > 0,
-                    message: totalShortageValue > 0
-                        ? `⚠️ ${req.user.name_bn} এর হিসাবে ৳${totalShortageValue} ঘাটতি আছে।`
-                        : `✅ ${req.user.name_bn} হিসাব জমা দিয়েছে।`
+                    settlementId:    result.rows[0].id,
+                    workerName:      req.user.name_bn,
+                    totalSales:      sales.total_sales,
+                    shortageValue:   totalShortageValue,
+                    cashDifference:  cashDifference,
+                    hasShortage:     totalShortageValue > 0,
+                    hasCashMismatch: hasCashMismatch,
+                    message
                 }
             );
         }
@@ -172,11 +198,13 @@ const createSettlement = async (req, res) => {
             success: true,
             message: 'হিসাব জমা দেওয়া হয়েছে। Manager এর অনুমোদনের অপেক্ষায়।',
             data: {
-                settlement_id:      result.rows[0].id,
-                items:              itemsReport,
-                total_shortage:     totalShortageValue,
-                total_sales:        sales.total_sales,
-                cash_collected:     sales.cash_collected
+                settlement_id:   result.rows[0].id,
+                items:           itemsReport,
+                total_shortage:  totalShortageValue,
+                total_sales:     sales.total_sales,
+                cash_collected:  srCash,
+                cash_difference: cashDifference,
+                system_cash:     systemCash
             }
         });
 
@@ -228,7 +256,6 @@ const getPendingSettlements = async (req, res) => {
         let params     = [];
         let paramCount = 0;
 
-        // Manager শুধু নিজের টিম
         if (req.user.role !== 'admin') {
             paramCount++;
             conditions.push(`u.manager_id = $${paramCount}`);
@@ -257,13 +284,12 @@ const getPendingSettlements = async (req, res) => {
 // ============================================================
 // APPROVE SETTLEMENT
 // PUT /api/settlements/:id/approve
-// Manager "হিসাব বুঝে পেয়েছি" দেবে
 // ============================================================
 
 const approveSettlement = async (req, res) => {
     try {
-        const { id }         = req.params;
-        const { note }       = req.body;
+        const { id }   = req.params;
+        const { note } = req.body;
 
         const settlement = await query(
             "SELECT * FROM daily_settlements WHERE id = $1 AND status = 'pending'",
@@ -278,7 +304,6 @@ const approveSettlement = async (req, res) => {
         }
 
         await withTransaction(async (client) => {
-            // Settlement অনুমোদন
             await client.query(
                 `UPDATE daily_settlements
                  SET status       = 'approved',
@@ -290,7 +315,6 @@ const approveSettlement = async (req, res) => {
                 [req.user.id, note || null, id]
             );
 
-            // Attendance এ settlement_approved = true
             await client.query(
                 `UPDATE attendance
                  SET settlement_approved = true, updated_at = NOW()
@@ -299,7 +323,6 @@ const approveSettlement = async (req, res) => {
             );
         });
 
-        // SR কে Firebase নোটিফিকেশন
         await firebaseNotify(
             `notifications/${settlement.rows[0].worker_id}/settlement`,
             {
@@ -323,12 +346,11 @@ const approveSettlement = async (req, res) => {
 // ============================================================
 // DISPUTE SETTLEMENT
 // PUT /api/settlements/:id/dispute
-// ঘাটতি চিহ্নিত করা
 // ============================================================
 
 const disputeSettlement = async (req, res) => {
     try {
-        const { id }              = req.params;
+        const { id }                   = req.params;
         const { shortage_value, note } = req.body;
 
         const settlement = await query(
@@ -343,19 +365,17 @@ const disputeSettlement = async (req, res) => {
         const finalShortage = shortage_value || settlement.rows[0].shortage_qty_value;
 
         await withTransaction(async (client) => {
-            // Settlement disputed করো
             await client.query(
                 `UPDATE daily_settlements
-                 SET status           = 'disputed',
-                     manager_id       = $1,
-                     manager_note     = $2,
+                 SET status             = 'disputed',
+                     manager_id         = $1,
+                     manager_note       = $2,
                      shortage_qty_value = $3,
-                     updated_at       = NOW()
+                     updated_at         = NOW()
                  WHERE id = $4`,
                 [req.user.id, note || null, finalShortage, id]
             );
 
-            // SR এর outstanding_dues বাড়াও (trigger করবে কিন্তু নিজেও করি)
             await client.query(
                 `UPDATE users
                  SET outstanding_dues = outstanding_dues + $1, updated_at = NOW()
@@ -364,7 +384,6 @@ const disputeSettlement = async (req, res) => {
             );
         });
 
-        // SR কে Firebase নোটিফিকেশন
         await firebaseNotify(
             `notifications/${settlement.rows[0].worker_id}/settlement`,
             {
@@ -389,19 +408,15 @@ const disputeSettlement = async (req, res) => {
 // ============================================================
 // PAY SHORTAGE
 // POST /api/settlements/:id/pay-shortage
-// ঘাটতি পরিশোধ রেকর্ড
 // ============================================================
 
 const payShortage = async (req, res) => {
     try {
-        const { id }             = req.params;
+        const { id }                         = req.params;
         const { amount, payment_method, note } = req.body;
 
         if (!amount || amount <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'সঠিক পরিমাণ দিন।'
-            });
+            return res.status(400).json({ success: false, message: 'সঠিক পরিমাণ দিন।' });
         }
 
         const settlement = await query(
@@ -413,7 +428,6 @@ const payShortage = async (req, res) => {
             return res.status(404).json({ success: false, message: 'হিসাব পাওয়া যায়নি।' });
         }
 
-        // shortage_payments এ সেভ (trigger অটো outstanding_dues কমাবে)
         await query(
             `INSERT INTO shortage_payments
              (worker_id, settlement_id, amount, payment_method, note, created_by)
@@ -427,34 +441,32 @@ const payShortage = async (req, res) => {
             ]
         );
 
-        // বকেয়া শেষ হলে settlement approved করো
         const worker = await query(
             'SELECT outstanding_dues FROM users WHERE id = $1',
             [settlement.rows[0].worker_id]
         );
 
         if (parseFloat(worker.rows[0].outstanding_dues) <= 0) {
-            await query(
-                `UPDATE daily_settlements
-                 SET status = 'approved', approved_at = NOW(), updated_at = NOW()
-                 WHERE id = $1`,
-                [id]
-            );
-
-            // Attendance settlement_approved = true
             const settlementData = await query(
                 'SELECT settlement_date FROM daily_settlements WHERE id = $1',
                 [id]
             );
 
-            await query(
-                `UPDATE attendance
-                 SET settlement_approved = true, updated_at = NOW()
-                 WHERE user_id = $1 AND date = $2`,
-                [settlement.rows[0].worker_id, settlementData.rows[0].settlement_date]
-            );
+            await withTransaction(async (client) => {
+                await client.query(
+                    `UPDATE daily_settlements
+                     SET status = 'approved', approved_at = NOW(), updated_at = NOW()
+                     WHERE id = $1`,
+                    [id]
+                );
+                await client.query(
+                    `UPDATE attendance
+                     SET settlement_approved = true, updated_at = NOW()
+                     WHERE user_id = $1 AND date = $2`,
+                    [settlement.rows[0].worker_id, settlementData.rows[0].settlement_date]
+                );
+            });
 
-            // SR কে নোটিফিকেশন
             await firebaseNotify(
                 `notifications/${settlement.rows[0].worker_id}/settlement`,
                 {
@@ -546,7 +558,6 @@ const getSettlementDetail = async (req, res) => {
             return res.status(404).json({ success: false, message: 'হিসাব পাওয়া যায়নি।' });
         }
 
-        // ঘাটতি পরিশোধের ইতিহাস
         const shortagePayments = await query(
             `SELECT sp.*, u.name_bn AS created_by_name
              FROM shortage_payments sp
@@ -559,7 +570,7 @@ const getSettlementDetail = async (req, res) => {
         return res.status(200).json({
             success: true,
             data: {
-                settlement:       result.rows[0],
+                settlement:        result.rows[0],
                 shortage_payments: shortagePayments.rows
             }
         });
