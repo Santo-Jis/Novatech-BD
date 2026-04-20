@@ -2,12 +2,16 @@ const express  = require('express');
 const router   = express.Router();
 const { auth } = require('../middlewares/auth');
 const { allowRoles, checkTeamAccess } = require('../middlewares/roleCheck');
+const multer   = require('multer');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const {
     createVisit,
     createSale,
     sendInvoice,
     verifyOTP,
+    skipOTPWithPhoto,
     getMySales,
     getTeamSales,
     getTodaySummary,
@@ -30,6 +34,14 @@ router.post('/invoice/send',  auth, allowRoles('worker'), sendInvoice);
 
 // OTP যাচাই
 router.post('/verify-otp',    auth, allowRoles('worker'), verifyOTP);
+
+// OTP skip — মেমো ছবি আপলোড বাধ্যতামূলক
+router.post('/skip-otp',
+    auth,
+    allowRoles('worker'),
+    upload.single('memo_photo'),
+    skipOTPWithPhoto
+);
 
 // SR এর নিজের বিক্রয়
 router.get('/my',       auth, allowRoles('worker'), getMySales);
