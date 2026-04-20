@@ -122,6 +122,8 @@ api.interceptors.response.use(
       toast.error('এই কাজের অনুমতি নেই।')
     } else if (error.response?.status === 404) {
       // 404 শান্তভাবে handle করো
+    } else if (error.response?.status === 400) {
+      // 400 — আসল message component নিজে দেখাবে, interceptor চুপ থাকবে
     } else if (error.response?.status >= 500) {
       toast.error('সার্ভারে সমস্যা হয়েছে। পরে চেষ্টা করুন।')
     }
