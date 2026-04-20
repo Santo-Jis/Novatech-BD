@@ -237,11 +237,21 @@ export default function VisitPage() {
           </button>
 
           {/* ভিজিট (বিক্রি হয়নি) */}
+          {/* GPS না থাকলে warning বার */}
+          {(gpsState === 'error' || gpsState === 'idle' || (!location && gpsState !== 'loading')) && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <FiMapPin className="text-red-500 flex-shrink-0" />
+              <p className="text-sm text-red-600 font-medium">
+                📍 লোকেশন পাওয়া যাচ্ছে না — ভিজিট বা রাখেনি করা যাবে না।
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => submitVisit({ will_sell: true })}
-              disabled={visiting}
-              className="bg-white border-2 border-gray-200 text-gray-700 rounded-2xl p-4 flex flex-col items-center gap-2 active:scale-95 transition-transform disabled:opacity-60"
+              disabled={visiting || gpsState !== 'done' || !location}
+              className="bg-white border-2 border-gray-200 text-gray-700 rounded-2xl p-4 flex flex-col items-center gap-2 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {visiting
                 ? <span className="w-5 h-5 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
@@ -252,8 +262,8 @@ export default function VisitPage() {
 
             <button
               onClick={() => setShowNoSell(true)}
-              disabled={visiting}
-              className="bg-amber-50 border-2 border-amber-200 text-amber-700 rounded-2xl p-4 flex flex-col items-center gap-2 active:scale-95 transition-transform disabled:opacity-60"
+              disabled={visiting || gpsState !== 'done' || !location}
+              className="bg-amber-50 border-2 border-amber-200 text-amber-700 rounded-2xl p-4 flex flex-col items-center gap-2 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FiAlertTriangle className="text-2xl" />
               <span className="text-sm font-semibold">রাখেনি</span>
