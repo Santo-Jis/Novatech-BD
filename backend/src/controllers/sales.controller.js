@@ -238,7 +238,23 @@ const createSale = async (req, res) => {
             cashReceived = netAmount;
         }
 
-        // Invoice নম্বর
+        // ✅ Stock যাচাই — Transaction এর আগে (400 দিলে interceptor আসল message দেখাবে)
+        for (const item of processedItems) {
+            const stockCheck = await query(
+                'SELECT name, stock FROM products WHERE id = $1',
+                [item.product_id]
+            );
+            if (stockCheck.rows.length === 0) continue;
+            const available = parseInt(stockCheck.rows[0].stock) || 0;
+            if (available < item.qty) {
+                return res.status(400).json({
+                    success: false,
+                    message: `পণ্য "${item.product_name}" এর পর্যাপ্ত স্টক নেই। বর্তমান স্টক: ${available}, প্রয়োজন: ${item.qty}`
+                });
+            }
+        }
+
+                // Invoice নম্বর
         const invoiceNumber = await generateInvoiceNumber();
 
         // OTP তৈরি
