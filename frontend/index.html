@@ -17,7 +17,34 @@
   <body>
     <div id="root"></div>
     <script src="//cdn.jsdelivr.net/npm/eruda"></script>
-    <script>eruda.init();</script>
+    <script>
+      // লগইনের আগে Eruda লুকিয়ে রাখো
+      eruda.init();
+      eruda.hide();
+
+      // লগইন হয়েছে কিনা চেক করো
+      (function checkLoginAndShowEruda() {
+        var token = localStorage.getItem('accessToken');
+        if (token) {
+          eruda.show();
+        }
+      })();
+
+      // localStorage পরিবর্তন হলে (লগইন/লগআউট) আবার চেক করো
+      window.addEventListener('storage', function(e) {
+        if (e.key === 'accessToken') {
+          if (e.newValue) {
+            eruda.show();
+          } else {
+            eruda.hide();
+          }
+        }
+      });
+
+      // React login সফল হলে Eruda দেখানোর জন্য global function
+      window.__showEruda = function() { eruda.show(); };
+      window.__hideEruda = function() { eruda.hide(); };
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
