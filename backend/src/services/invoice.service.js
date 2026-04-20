@@ -1,7 +1,7 @@
 const PDFDocument = require('pdfkit');
 const { generateOTP } = require('../config/encryption');
 const { sendOTP, sendInvoice: sendInvoiceSMS, getWhatsAppInvoiceLink } = require('./sms.service');
-const { sendOTPEmail, sendInvoiceEmail } = require('./email.service');
+const { sendOTPEmail, sendOTPWithInvoiceEmail, sendInvoiceEmail } = require('./email.service');
 
 // ============================================================
 // Invoice Number জেনারেশন
@@ -22,23 +22,36 @@ const generateInvoiceNumber = async () => {
 //   3. দুটোই পাঠানো হলে সেটাও OK
 // ============================================================
 
-const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10) => {
+// ============================================================
+// OTP + Invoice একসাথে পাঠানো — একটাই Email/SMS
+// ============================================================
+// লজিক:
+//   1. কাস্টমারের email থাকলে → OTP+Invoice একটাই Email পাঠাও
+//   2. Email না থাকলে বা fail হলে → SMS দিয়ে OTP পাঠাও
+// ============================================================
+
+const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10, sale = null, worker = null, items = null) => {
     const phone = customer.whatsapp || customer.sms_phone;
     const email = customer.email;
 
     const results = { email: null, sms: null };
     let anySent   = false;
 
-    // ── Email চেষ্টা ──
+    // ── Email চেষ্টা — OTP + Invoice একসাথে ──
     if (email) {
         try {
-            results.email = await sendOTPEmail(email, otp, customer.shop_name, expiryMinutes);
+            // sale তথ্য থাকলে combined email, না থাকলে শুধু OTP email
+            if (sale && worker && items) {
+                results.email = await sendOTPWithInvoiceEmail(email, otp, expiryMinutes, sale, customer, worker, items);
+            } else {
+                results.email = await sendOTPEmail(email, otp, customer.shop_name, expiryMinutes);
+            }
             if (results.email?.success && !results.email?.dev && !results.email?.disabled) {
                 anySent = true;
-                console.log(`📧 OTP Email সফল → ${email}`);
+                console.log(`📧 OTP+Invoice Email সফল → ${email}`);
             }
         } catch (err) {
-            console.error(`❌ OTP Email ব্যর্থ → ${email}:`, err.message);
+            console.error(`❌ OTP+Invoice Email ব্যর্থ → ${email}:`, err.message);
             results.email = { success: false, error: err.message };
         }
     }
@@ -65,32 +78,20 @@ const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10) => {
 };
 
 // ============================================================
-// Invoice পাঠানো — Email + SMS Fallback
+// Invoice নোটিফিকেশন — শুধু SMS Fallback
+// (Email আগেই OTP-এর সাথে পাঠানো হয়েছে)
 // ============================================================
 
 const sendInvoiceNotification = async (customer, sale, worker, items) => {
     const phone = customer.whatsapp || customer.sms_phone;
-    const email = customer.email;
 
     const results = { email: null, sms: null };
     let anySent   = false;
 
-    // ── Email চেষ্টা ──
-    if (email) {
-        try {
-            results.email = await sendInvoiceEmail(email, sale, customer, worker, items);
-            if (results.email?.success && !results.email?.dev && !results.email?.disabled) {
-                anySent = true;
-                console.log(`📧 Invoice Email সফল → ${email}`);
-            }
-        } catch (err) {
-            console.error(`❌ Invoice Email ব্যর্থ → ${email}:`, err.message);
-            results.email = { success: false, error: err.message };
-        }
-    }
+    // ── Email skip — OTP-এর সাথেই combined email চলে গেছে ──
 
-    // ── SMS Fallback ──
-    if (phone && (!anySent)) {
+    // ── SMS Fallback (email না থাকলে) ──
+    if (phone && !customer.email) {
         try {
             results.sms = await sendInvoiceSMS(
                 phone,
