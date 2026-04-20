@@ -54,6 +54,8 @@ export default function Settlement() {
   const [returnedQtys,     setReturnedQtys]     = useState({})
   const [cashAmount,       setCashAmount]       = useState('')
   const [todayCash,        setTodayCash]        = useState(0)
+  const [todaySales,       setTodaySales]       = useState(0)
+  const [todayCredit,      setTodayCredit]      = useState(0)
   const [shortageNote,     setShortageNote]     = useState('')
   const [loading,          setLoading]          = useState(true)
   const [submitting,       setSubmitting]       = useState(false)
@@ -90,7 +92,11 @@ export default function Settlement() {
           const items = salesRes.data.data?.sales?.items_sold || []
           items.forEach(it => { salesMap[it.product_id] = it.qty })
           const cashReceived = parseFloat(salesRes.data.data?.sales?.cash_received || 0)
+          const totalAmount  = parseFloat(salesRes.data.data?.sales?.total_amount   || 0)
+          const creditGiven  = parseFloat(salesRes.data.data?.sales?.credit_given   || 0)
           setTodayCash(cashReceived)
+          setTodaySales(totalAmount)
+          setTodayCredit(creditGiven)
         } catch {}
 
         const order = orderRes.data.data
@@ -209,9 +215,9 @@ export default function Settlement() {
     )
   }
 
-  const systemCash  = parseFloat(data?.cash_collected || 0)
-  const totalSales  = parseFloat(data?.total_sales || data?.total_sales_amount || 0)
-  const creditGiven = parseFloat(data?.credit_given || 0)
+  const systemCash  = alreadySubmitted ? parseFloat(data?.cash_collected || 0) : todayCash
+  const totalSales  = alreadySubmitted ? parseFloat(data?.total_sales || data?.total_sales_amount || 0) : todaySales
+  const creditGiven = alreadySubmitted ? parseFloat(data?.credit_given || 0) : todayCredit
 
   return (
     <div className="p-4 space-y-4">
