@@ -145,10 +145,11 @@ export default function Settlement() {
       return { ...item, returned_qty: returned, shortage_qty: shortage, shortage_value: sVal }
     })
     const systemCash   = alreadySubmitted ? parseFloat(data?.cash_collected || 0) : todayCash
+    const creditGivenVal = alreadySubmitted ? parseFloat(data?.credit_given || 0) : todayCredit
     const enteredCash  = parseFloat(cashAmount || 0)
     const cashDiff     = Math.abs(enteredCash - systemCash)
     const cashMismatch = cashDiff > 1
-    return { items, totalShortage, systemCash, enteredCash, cashDiff, cashMismatch }
+    return { items, totalShortage, systemCash, enteredCash, cashDiff, cashMismatch, creditGiven: creditGivenVal }
   }
 
   const handleReview = () => {
@@ -367,8 +368,9 @@ export default function Settlement() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <SummaryCard label="নগদ জমা"   value={`৳${parseInt(preview.enteredCash).toLocaleString()}`} color="text-primary" />
+              <SummaryCard label="বাকি দেওয়া" value={`৳${parseInt(preview.creditGiven).toLocaleString()}`} color="text-amber-600" />
               <SummaryCard label="মোট ঘাটতি" value={`৳${parseInt(preview.totalShortage).toLocaleString()}`}
                 color={preview.totalShortage > 0 ? 'text-red-600' : 'text-emerald-600'} />
             </div>
