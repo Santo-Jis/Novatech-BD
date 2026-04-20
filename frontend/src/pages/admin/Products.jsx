@@ -7,7 +7,7 @@ import Modal from '../../components/ui/Modal'
 import toast from 'react-hot-toast'
 import {
   FiPlus, FiEdit, FiPackage, FiTrendingUp,
-  FiImage, FiPercent, FiTag, FiInfo, FiDollarSign, FiX
+  FiImage, FiPercent, FiTag, FiInfo, FiDollarSign, FiX, FiPlusCircle
 } from 'react-icons/fi'
 
 // ─── ছবি আপলোড প্রিভিউ কম্পোনেন্ট ──────────────────────────
@@ -445,6 +445,42 @@ export default function AdminProducts() {
                 hint="পণ্য তৈরির সময় কতটি স্টকে থাকবে"
               />
             )}
+
+            {modal === 'edit' && selected && (
+              <div className="p-4 border border-gray-200 dark:border-slate-600 rounded-xl space-y-3">
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <FiPackage className="text-primary" /> স্টক তথ্য
+                </p>
+                <div className="grid grid-cols-3 gap-2 text-center text-sm">
+                  <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <p className="text-xs text-gray-400 mb-0.5">মোট স্টক</p>
+                    <p className="font-bold text-gray-800 dark:text-gray-100">{selected.stock}</p>
+                  </div>
+                  <div className="p-2 bg-amber-50 dark:bg-amber-900/20 rounded-lg">
+                    <p className="text-xs text-gray-400 mb-0.5">রিজার্ভ</p>
+                    <p className="font-bold text-amber-600">{selected.reserved_stock || 0}</p>
+                  </div>
+                  <div className="p-2 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                    <p className="text-xs text-gray-400 mb-0.5">উপলব্ধ</p>
+                    <p className="font-bold text-green-600">{selected.available_stock}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModal(null)
+                    setTimeout(() => {
+                      setAdjustForm({ quantity: '', note: '' })
+                      setModal('adjust')
+                    }, 150)
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border-2 border-dashed border-primary/40 text-primary text-sm font-medium hover:bg-primary/5 transition-colors"
+                >
+                  <FiPlusCircle size={16} />
+                  স্টক যোগ / এডজাস্ট করুন
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -557,30 +593,71 @@ export default function AdminProducts() {
       <Modal
         isOpen={modal === 'adjust'}
         onClose={() => setModal(null)}
-        title={`স্টক এডজাস্ট — ${selected?.name}`}
+        title={`📦 স্টক এডজাস্ট — ${selected?.name}`}
         footer={
           <>
             <Button variant="ghost" onClick={() => setModal(null)}>বাতিল</Button>
-            <Button onClick={saveAdjust} loading={saving}>আপডেট করুন</Button>
+            <Button onClick={saveAdjust} loading={saving} icon={<FiTrendingUp />}>স্টক আপডেট করুন</Button>
           </>
         }
       >
-        <div className="space-y-3">
-          <div className="p-3 bg-gray-50 dark:bg-slate-700 rounded-xl text-sm">
-            বর্তমান স্টক: <strong>{selected?.stock} {selected?.unit}</strong>
+        <div className="space-y-4">
+          {/* বর্তমান স্টক সারাংশ */}
+          <div className="grid grid-cols-3 gap-2 text-center text-sm">
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
+              <p className="text-xs text-gray-400 mb-0.5">মোট স্টক</p>
+              <p className="font-bold text-lg text-gray-800 dark:text-gray-100">{selected?.stock}</p>
+            </div>
+            <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded-xl">
+              <p className="text-xs text-gray-400 mb-0.5">রিজার্ভ</p>
+              <p className="font-bold text-lg text-amber-600">{selected?.reserved_stock || 0}</p>
+            </div>
+            <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
+              <p className="text-xs text-gray-400 mb-0.5">উপলব্ধ</p>
+              <p className="font-bold text-lg text-green-600">{selected?.available_stock}</p>
+            </div>
           </div>
+
+          {/* দ্রুত যোগ বাটন */}
+          <div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-medium">দ্রুত যোগ করুন</p>
+            <div className="flex gap-2 flex-wrap">
+              {[1, 5, 10, 25, 50, 100].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setAdjustForm(p => ({ ...p, quantity: String((parseInt(p.quantity) || 0) + n) }))}
+                  className="px-3 py-1.5 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm font-semibold border border-green-200 dark:border-green-800 hover:bg-green-100 transition-colors"
+                >
+                  +{n}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <Input
             label="পরিমাণ (+ বা - সংখ্যা)"
             type="number"
             value={adjustForm.quantity}
             onChange={e => setAdjustForm(p => ({ ...p, quantity: e.target.value }))}
-            hint="বাড়াতে ধনাত্মক, কমাতে ঋণাত্মক সংখ্যা দিন"
+            hint="বাড়াতে ধনাত্মক (+), কমাতে ঋণাত্মক (-) সংখ্যা দিন"
           />
+
+          {/* নতুন স্টক প্রিভিউ */}
+          {adjustForm.quantity !== '' && !isNaN(parseInt(adjustForm.quantity)) && (
+            <div className="p-3 bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-xl text-sm flex items-center justify-between">
+              <span className="text-gray-600 dark:text-gray-300">আপডেটের পর স্টক হবে:</span>
+              <span className="font-bold text-primary text-base">
+                {Math.max(0, (parseInt(selected?.stock) || 0) + (parseInt(adjustForm.quantity) || 0))} {selected?.unit}
+              </span>
+            </div>
+          )}
+
           <Input
-            label="কারণ"
+            label="কারণ / নোট"
             value={adjustForm.note}
             onChange={e => setAdjustForm(p => ({ ...p, note: e.target.value }))}
-            placeholder="স্টক এডজাস্টমেন্টের কারণ"
+            placeholder="যেমন: নতুন মাল আসা, ক্ষতিগ্রস্ত পণ্য বাদ দেওয়া..."
           />
         </div>
       </Modal>
