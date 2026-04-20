@@ -84,14 +84,24 @@ const createOrder = async (req, res) => {
             }
 
             // frontend থেকে আসা final price (discount/VAT/tax সহ), না থাকলে DB price
-            const finalPrice = Number(item.price) || Number(p.price) || 0;
+            const basePrice  = Number(item.price) || Number(p.price) || 0;
+            const vatRate    = parseFloat(p.vat  || 0);
+            const taxRate    = parseFloat(p.tax  || 0);
+            const vatAmount  = parseFloat((basePrice * vatRate / 100).toFixed(2));
+            const taxAmount  = parseFloat((basePrice * taxRate / 100).toFixed(2));
+            const finalPrice = parseFloat((basePrice + vatAmount + taxAmount).toFixed(2));
 
             orderItems.push({
                 product_id:   p.id,
                 product_name: p.name,
                 requested_qty: itemQty,
                 approved_qty:  itemQty,
-                price:         finalPrice
+                price:         basePrice,
+                vat_rate:      vatRate,
+                tax_rate:      taxRate,
+                vat_amount:    vatAmount,
+                tax_amount:    taxAmount,
+                final_price:   finalPrice   // VAT+Tax সহ দাম — settlement-এ ব্যবহার হবে
             });
 
             totalAmount += finalPrice * itemQty;
