@@ -85,12 +85,9 @@ export default function Settlement() {
           setData(Array.isArray(settlements) ? settlements[0] : settlements)
         }
 
-        // আজকের sale summary থেকে sold_qty এবং নগদ সংগ্রহ আনা
-        let salesMap = {}
+        // আজকের sale summary থেকে নগদ সংগ্রহ আনা
         try {
           const salesRes = await api.get('/sales/today-summary')
-          const items = salesRes.data.data?.sales?.items_sold || []
-          items.forEach(it => { salesMap[it.product_id] = it.qty })
           const cashReceived = parseFloat(salesRes.data.data?.sales?.cash_received || 0)
           const totalAmount  = parseFloat(salesRes.data.data?.sales?.total_amount   || 0)
           const creditGiven  = parseFloat(salesRes.data.data?.sales?.credit_given   || 0)
@@ -99,16 +96,26 @@ export default function Settlement() {
           setTodayCredit(creditGiven)
         } catch {}
 
+        // product-wise sold qty আনা
+        let previewItems = []
+        try {
+          const previewRes = await api.get('/settlements/today-preview')
+          previewItems = previewRes.data.data?.items || []
+        } catch {}
+
         const order = orderRes.data.data
         if (order?.items) {
-          const mapped = order.items.map(i => ({
-            product_id:      i.product_id,
-            name:            i.product_name || i.name,
-            taken_qty:       i.approved_qty || i.requested_qty || 0,
-            sold_qty:        salesMap[i.product_id] || 0,
-            replacement_qty: 0,
-            price:           parseFloat(i.price) || 0,
-          }))
+          const mapped = order.items.map(i => {
+            const pi = previewItems.find(p => p.product_id === i.product_id) || {}
+            return {
+              product_id:      i.product_id,
+              name:            i.product_name || i.name,
+              taken_qty:       i.approved_qty || i.requested_qty || 0,
+              sold_qty:        pi.sold_qty        || 0,
+              replacement_qty: pi.replacement_qty || 0,
+              price:           Math.round((parseFloat(i.price) || 0) * 100) / 100,
+            }
+          })
           setOrderItems(mapped)
           const initQtys = {}
           mapped.forEach(it => { initQtys[it.product_id] = 0 })
@@ -133,7 +140,7 @@ export default function Settlement() {
       const returned  = returnedQtys[item.product_id] || 0
       const accounted = item.sold_qty + item.replacement_qty + returned
       const shortage  = Math.max(0, item.taken_qty - accounted)
-      const sVal      = shortage * item.price
+      const sVal      = Math.round(shortage * item.price * 100) / 100
       totalShortage  += sVal
       return { ...item, returned_qty: returned, shortage_qty: shortage, shortage_value: sVal }
     })
@@ -347,7 +354,10 @@ export default function Settlement() {
                         <td className="px-2 py-2 text-blue-600">{item.returned_qty}</td>
                         <td className="px-2 py-2">
                           {item.shortage_qty > 0
-                            ? <span className="text-red-600 font-bold">{item.shortage_qty} (৳{item.shortage_value})</span>
+                            ? <span className="text-red-600 font-bold leading-tight">
+                                {item.shortage_qty}pcs<br/>
+                                <span className="text-xs">৳{Math.round(item.shortage_value).toLocaleString()}</span>
+                              </span>
                             : <span className="text-emerald-600">✅</span>}
                         </td>
                       </tr>
