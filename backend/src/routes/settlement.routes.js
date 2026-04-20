@@ -15,7 +15,8 @@ const {
     disputeSettlement,
     payShortage,
     getAllSettlements,
-    getSettlementDetail
+    getSettlementDetail,
+    getTodayPreview
 } = require('../controllers/settlement.controller');
 
 // ============================================================
@@ -49,6 +50,13 @@ router.get('/all',
     auth,
     allowRoles('admin', 'accountant'),
     getAllSettlements
+);
+
+// আজকের preview (product-wise sold qty) — /:id এর আগে রাখতে হবে
+router.get('/today-preview',
+    auth,
+    allowRoles('worker'),
+    getTodayPreview
 );
 
 // একটি settlement এর বিস্তারিত
