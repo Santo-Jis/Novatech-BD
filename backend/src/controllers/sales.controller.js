@@ -57,9 +57,9 @@ const createVisit = async (req, res) => {
             const distResult = await query(
                 `SELECT ROUND(ST_Distance(
                     $1::geography,
-                    ST_GeogFromText('POINT($2 $3)')
+                    ST_GeogFromText('POINT(${parseFloat(longitude)} ${parseFloat(latitude)})')
                 )::numeric, 0) AS distance`,
-                [customer.rows[0].location, longitude, latitude]
+                [customer.rows[0].location]
             );
             distance        = distResult.rows[0]?.distance;
             locationMatched = distance <= 5; // ৫ মিটার
@@ -279,12 +279,20 @@ const createSale = async (req, res) => {
 
             // স্টক কমাও
             for (const item of processedItems) {
+                const stockCheck = await client.query(
+                    'SELECT stock FROM products WHERE id = $1',
+                    [item.product_id]
+                );
+                if (stockCheck.rows.length === 0 || stockCheck.rows[0].stock < item.qty) {
+                    throw new Error(`পণ্য "${item.product_name}" এর পর্যাপ্ত স্টক নেই। বর্তমান স্টক: ${stockCheck.rows[0]?.stock || 0}`);
+                }
+
                 await client.query(
                     `UPDATE products
                      SET stock          = stock - $1,
                          reserved_stock = GREATEST(0, reserved_stock - $1),
                          updated_at     = NOW()
-                     WHERE id = $2`,
+                     WHERE id = $2 AND stock >= $1`,
                     [item.qty, item.product_id]
                 );
 
