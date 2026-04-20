@@ -57,9 +57,9 @@ const createVisit = async (req, res) => {
             const distResult = await query(
                 `SELECT ROUND(ST_Distance(
                     $1::geography,
-                    ST_GeogFromText('POINT(${parseFloat(longitude)} ${parseFloat(latitude)})')
+                    ST_GeogFromText('POINT($2 $3)')
                 )::numeric, 0) AS distance`,
-                [customer.rows[0].location]
+                [customer.rows[0].location, longitude, latitude]
             );
             distance        = distResult.rows[0]?.distance;
             locationMatched = distance <= 5; // ৫ মিটার
@@ -238,23 +238,7 @@ const createSale = async (req, res) => {
             cashReceived = netAmount;
         }
 
-        // ✅ Stock যাচাই — Transaction এর আগে (400 দিলে interceptor আসল message দেখাবে)
-        for (const item of processedItems) {
-            const stockCheck = await query(
-                'SELECT name, stock FROM products WHERE id = $1',
-                [item.product_id]
-            );
-            if (stockCheck.rows.length === 0) continue;
-            const available = parseInt(stockCheck.rows[0].stock) || 0;
-            if (available < item.qty) {
-                return res.status(400).json({
-                    success: false,
-                    message: `পণ্য "${item.product_name}" এর পর্যাপ্ত স্টক নেই। বর্তমান স্টক: ${available}, প্রয়োজন: ${item.qty}`
-                });
-            }
-        }
-
-                // Invoice নম্বর
+        // Invoice নম্বর
         const invoiceNumber = await generateInvoiceNumber();
 
         // OTP তৈরি
@@ -295,20 +279,12 @@ const createSale = async (req, res) => {
 
             // স্টক কমাও
             for (const item of processedItems) {
-                const stockCheck = await client.query(
-                    'SELECT stock FROM products WHERE id = $1',
-                    [item.product_id]
-                );
-                if (stockCheck.rows.length === 0 || stockCheck.rows[0].stock < item.qty) {
-                    throw new Error(`পণ্য "${item.product_name}" এর পর্যাপ্ত স্টক নেই। বর্তমান স্টক: ${stockCheck.rows[0]?.stock || 0}`);
-                }
-
                 await client.query(
                     `UPDATE products
                      SET stock          = stock - $1,
                          reserved_stock = GREATEST(0, reserved_stock - $1),
                          updated_at     = NOW()
-                     WHERE id = $2 AND stock >= $1`,
+                     WHERE id = $2`,
                     [item.qty, item.product_id]
                 );
 
@@ -701,11 +677,83 @@ const getSaleDetail = async (req, res) => {
     }
 };
 
+// ============================================================
+// SKIP OTP — মেমো ছবি আপলোড বাধ্যতামূলক
+// POST /api/sales/skip-otp
+// ============================================================
+
+const skipOTPWithPhoto = async (req, res) => {
+    try {
+        const { sale_id } = req.body;
+
+        if (!sale_id) {
+            return res.status(400).json({ success: false, message: 'sale_id দিন।' });
+        }
+
+        // ছবি আপলোড না করলে reject
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'মেমোর ছবি আপলোড করা বাধ্যতামূলক।'
+            });
+        }
+
+        // বিক্রয় খোঁজো
+        const sale = await query(
+            'SELECT id, otp_verified, worker_id FROM sales_transactions WHERE id = $1',
+            [sale_id]
+        );
+
+        if (sale.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'বিক্রয় পাওয়া যায়নি।' });
+        }
+
+        // অন্য SR-এর sale হলে block
+        if (sale.rows[0].worker_id !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'অনুমতি নেই।' });
+        }
+
+        if (sale.rows[0].otp_verified) {
+            return res.status(400).json({ success: false, message: 'এই বিক্রয় আগেই verify হয়েছে।' });
+        }
+
+        // Cloudinary-তে মেমো ছবি আপলোড
+        const memoPhotoUrl = await uploadToCloudinary(
+            req.file.buffer,
+            'memo_photos',
+            `memo_${sale_id}_${Date.now()}`
+        );
+
+        // DB update — otp_skipped = true, memo_photo সংরক্ষণ
+        await query(
+            `UPDATE sales_transactions
+             SET otp_skipped    = true,
+                 otp_skip_photo = $1,
+                 updated_at     = NOW()
+             WHERE id = $2`,
+            [memoPhotoUrl, sale_id]
+        );
+
+        console.log(`⚠️ OTP Skip — Sale ${sale_id} by Worker ${req.user.id}, Photo: ${memoPhotoUrl}`);
+
+        return res.status(200).json({
+            success: true,
+            message: 'মেমো ছবিসহ বিক্রয় সম্পন্ন।',
+            data: { memo_photo_url: memoPhotoUrl }
+        });
+
+    } catch (error) {
+        console.error('❌ Skip OTP Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     createVisit,
     createSale,
     sendInvoice,
     verifyOTP,
+    skipOTPWithPhoto,
     getMySales,
     getTeamSales,
     getTodaySummary,
