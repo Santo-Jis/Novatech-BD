@@ -327,15 +327,15 @@ const createSale = async (req, res) => {
             return result.rows[0];
         });
 
-        // OTP পাঠাও — Email (প্রথম চেষ্টা) + SMS (Fallback)
+        // OTP + Invoice একসাথে একটাই Email/SMS
         if (otp) {
-            const otpResult = await sendInvoiceOTP(cust, saleResult.id, otp, expiryMinutes);
-            console.log('📤 OTP পাঠানো:', JSON.stringify(otpResult.results));
+            const otpResult = await sendInvoiceOTP(cust, saleResult.id, otp, expiryMinutes, saleResult, req.user, processedItems);
+            console.log('📤 OTP+Invoice পাঠানো:', JSON.stringify(otpResult.results));
         }
 
-        // Invoice নোটিফিকেশন — Email (প্রথম চেষ্টা) + SMS (Fallback)
+        // Invoice SMS Fallback (email না থাকলে)
         sendInvoiceNotification(cust, saleResult, req.user, processedItems)
-            .then(r => console.log('📄 Invoice নোটিফিকেশন:', JSON.stringify(r.results)))
+            .then(r => console.log('📄 Invoice SMS Fallback:', JSON.stringify(r.results)))
             .catch(e => console.error('⚠️ Invoice নোটিফিকেশন Error:', e.message));
 
         // WhatsApp লিংক তৈরি
