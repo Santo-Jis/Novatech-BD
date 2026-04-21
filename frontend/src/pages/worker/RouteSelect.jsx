@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/app.store'
 import api from '../../api/axios'
-import { FiMapPin, FiPlus, FiX, FiCheck } from 'react-icons/fi'
+import { FiMapPin, FiPlus, FiX, FiCheck, FiClock, FiUser } from 'react-icons/fi'
 import toast from 'react-hot-toast'
 
 export default function RouteSelect() {
   const navigate = useNavigate()
-  const { setSelectedRoute } = useAppStore()
+  const { setSelectedRoute, selectedRoute } = useAppStore()
   const [routes, setRoutes] = useState([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
@@ -48,7 +48,10 @@ export default function RouteSelect() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="font-bold text-gray-800 text-lg">রুট সিলেক্ট করুন</h2>
-          <p className="text-xs text-gray-500">আজকের রুট বেছে নিন</p>
+          {selectedRoute
+            ? <p className="text-xs text-green-600 font-medium">✅ আজকের রুট: {selectedRoute.name}</p>
+            : <p className="text-xs text-gray-500">আজকের রুট বেছে নিন</p>
+          }
         </div>
         <button onClick={() => setShowModal(true)}
           className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-semibold">
@@ -64,21 +67,79 @@ export default function RouteSelect() {
             <p className="text-xs mt-1">নতুন রুট request করুন</p>
           </div>
         )}
-        {routes.map(route => (
+        {routes.map(route => {
+          const isActive = selectedRoute?.id === route.id
+
+          // last visit তারিখ format
+          const lastVisit = route.last_visited_at
+            ? new Date(route.last_visited_at).toLocaleDateString('bn-BD', {
+                day: 'numeric', month: 'short', year: 'numeric'
+              })
+            : null
+
+          // কতদিন আগে
+          const daysSince = route.last_visited_at
+            ? Math.floor((Date.now() - new Date(route.last_visited_at)) / 86400000)
+            : null
+
+          const visitBadgeColor = daysSince === null
+            ? 'text-gray-400'
+            : daysSince === 0
+              ? 'text-green-600'
+              : daysSince <= 3
+                ? 'text-blue-500'
+                : daysSince <= 7
+                  ? 'text-yellow-600'
+                  : 'text-red-500'
+
+          return (
           <div key={route.id} onClick={() => handleSelect(route)}
-            className="bg-white rounded-2xl p-4 shadow-sm flex items-center justify-between cursor-pointer active:scale-95 transition-transform">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-                <FiMapPin className="text-primary" />
+            className={`rounded-2xl p-4 shadow-sm flex flex-col gap-3 cursor-pointer active:scale-95 transition-transform
+              ${isActive ? 'bg-primary/10 border-2 border-primary' : 'bg-white'}`}>
+
+            {/* উপরের অংশ — নাম ও চেক */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center
+                  ${isActive ? 'bg-primary' : 'bg-primary/10'}`}>
+                  <FiMapPin className={isActive ? 'text-white' : 'text-primary'} />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-gray-800">{route.name}</h3>
+                  <p className="text-xs text-gray-500">{route.customer_count || 0} কাস্টমার</p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-semibold text-gray-800">{route.name}</h3>
-                <p className="text-xs text-gray-500">{route.customer_count || 0} কাস্টমার</p>
-              </div>
+              <FiCheck className={`text-xl ${isActive ? 'text-primary' : 'text-gray-300'}`} />
             </div>
-            <FiCheck className="text-gray-300 text-xl" />
+
+            {/* নিচের অংশ — last visit তথ্য */}
+            <div className={`flex items-center gap-4 pt-2 border-t ${isActive ? 'border-primary/20' : 'border-gray-100'}`}>
+              {lastVisit ? (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <FiClock className={`text-xs ${visitBadgeColor}`} />
+                    <span className={`text-xs font-medium ${visitBadgeColor}`}>
+                      {daysSince === 0 ? 'আজ' : daysSince === 1 ? 'গতকাল' : `${daysSince} দিন আগে`}
+                    </span>
+                    <span className="text-xs text-gray-400">({lastVisit})</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <FiUser className="text-xs text-gray-400" />
+                    <span className="text-xs text-gray-500 truncate max-w-[120px]">
+                      {route.last_visited_by_name}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <FiClock className="text-xs text-gray-300" />
+                  <span className="text-xs text-gray-400">এখনো কোনো ভিজিট নেই</span>
+                </div>
+              )}
+            </div>
           </div>
-        ))}
+          )
+        })}
       </div>
 
       {showModal && (
