@@ -23,8 +23,13 @@ const {
 // Base: /api/sales
 // ============================================================
 
-// দোকান ভিজিট রেকর্ড
-router.post('/visit',   auth, allowRoles('worker'), createVisit);
+// দোকান ভিজিট রেকর্ড (বন্ধ দোকানের ছবি optional)
+router.post('/visit',
+    auth,
+    allowRoles('worker'),
+    upload.single('closed_shop_photo'),
+    createVisit
+);
 
 // বিক্রয় তৈরি
 router.post('/',        auth, allowRoles('worker'), createSale);
