@@ -89,10 +89,13 @@ const getCustomers = async (req, res) => {
         const result = await query(
             `SELECT c.id, c.customer_code, c.shop_name, c.owner_name,
                     c.shop_photo, c.business_type,
-                    c.whatsapp, c.sms_phone,
+                    c.whatsapp, c.sms_phone, c.email,
                     c.credit_limit, c.current_credit, c.credit_balance,
+                    c.has_pending_edit,
                     r.name AS route_name,
-                    ca.visit_order
+                    ca.visit_order,
+                    ST_Y(c.location::geometry) AS latitude,
+                    ST_X(c.location::geometry) AS longitude
                     ${distanceSelect}
              FROM customers c
              LEFT JOIN routes r ON c.route_id = r.id
