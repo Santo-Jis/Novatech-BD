@@ -22,7 +22,8 @@ const {
     approveCustomerEdit,
     rejectCustomerEdit,
     sendEmailVerifyOTP,
-    confirmEmailVerifyOTP
+    confirmEmailVerifyOTP,
+    updateVisitOrder
 } = require('../controllers/customer.controller');
 
 // ============================================================
@@ -47,6 +48,9 @@ const upload = multer({
 
 // কাস্টমার তালিকা (দূরত্ব সহ)
 router.get('/',          auth, checkTeamAccess, getCustomers);
+
+// Visit ক্রম সেট করা (Manager/Admin)
+router.put('/visit-order', auth, allowRoles('admin', 'manager'), updateVisitOrder);
 
 // Worker এর মোট কাস্টমার সংখ্যা
 router.get('/my-count',  auth, getMyCustomerCount);
