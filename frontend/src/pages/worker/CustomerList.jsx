@@ -1,7 +1,7 @@
 // frontend/src/pages/worker/CustomerList.jsx
 // Worker: কাস্টমার তালিকা + নতুন কাস্টমার (Email OTP যাচাই সহ)
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/app.store'
 import api from '../../api/axios'
@@ -52,6 +52,25 @@ export default function CustomerList() {
   const [step,         setStep]         = useState('form') // 'form' | 'email_otp'
   const [emailVerified, setEmailVerified] = useState(false)
   const fileRef = useRef()
+  const [userLocation, setUserLocation] = useState(null)
+
+  // ── Haversine: দুই পয়েন্টের মধ্যে দূরত্ব (মিটার) ────────────
+  const calcDistance = (lat1, lng1, lat2, lng2) => {
+    if (!lat1 || !lng1 || !lat2 || !lng2) return null
+    const R = 6371000
+    const dLat = (lat2 - lat1) * Math.PI / 180
+    const dLng = (lng2 - lng1) * Math.PI / 180
+    const a = Math.sin(dLat/2)**2 +
+              Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+              Math.sin(dLng/2)**2
+    return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)))
+  }
+
+  const formatDistance = (meters) => {
+    if (meters == null) return null
+    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} কিমি`
+    return `${meters} মি`
+  }
 
   const emptyForm = {
     shop_name: '', owner_name: '', business_type: '',
@@ -99,6 +118,17 @@ export default function CustomerList() {
   useEffect(() => {
     loadCustomers()
     api.get('/routes').then(res => setRoutes(res.data.data || []))
+
+    // ── Live GPS watch — প্রতি মুভমেন্টে distance আপডেট ──────
+    let watchId = null
+    if (navigator.geolocation) {
+      watchId = navigator.geolocation.watchPosition(
+        pos => setUserLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        () => {},
+        { enableHighAccuracy: true, maximumAge: 5000 }
+      )
+    }
+    return () => { if (watchId != null) navigator.geolocation.clearWatch(watchId) }
   }, [selectedRoute])
 
   // ── GPS ──────────────────────────────────────────────────────
@@ -177,6 +207,19 @@ export default function CustomerList() {
     submitCustomer()
   }
 
+  // ── একবারেই সব কাস্টমারের দূরত্ব হিসাব — userLocation বা customers বদলালেই আপডেট ──
+  const distanceMap = useMemo(() => {
+    const map = {}
+    if (!userLocation) return map
+    customers.forEach(c => {
+      map[c.id] = calcDistance(
+        userLocation.lat, userLocation.lng,
+        parseFloat(c.latitude), parseFloat(c.longitude)
+      )
+    })
+    return map
+  }, [userLocation, customers])
+
   const filtered = customers.filter(c =>
     c.shop_name?.includes(search) || c.owner_name?.includes(search)
   )
@@ -245,15 +288,37 @@ export default function CustomerList() {
                   )}
                 </div>
                 <p className="text-sm text-gray-500">{c.owner_name}</p>
-                {c.address && <p className="text-xs text-gray-400 mt-0.5 truncate">{c.address}</p>}
+
+                {/* ── ফোন নম্বর ── */}
+                {(c.whatsapp || c.sms_phone) && (
+                  <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">
+                    📞 {c.whatsapp || c.sms_phone}
+                  </p>
+                )}
+
+                {/* ── রুট ── */}
+                {c.route_name && (
+                  <p className="text-xs text-gray-400 mt-0.5">🗺 {c.route_name}</p>
+                )}
+
+                {/* ── Email ── */}
                 {c.email && (
                   <p className="text-xs text-blue-400 mt-0.5 flex items-center gap-1">
                     <FiMail size={10} /> {c.email}
                   </p>
                 )}
+
+                {/* ── দূরত্ব ── */}
+                {formatDistance(distanceMap[c.id]) && (
+                  <p className="text-xs text-blue-500 font-medium mt-0.5 flex items-center gap-1">
+                    <FiNavigation size={10} /> {formatDistance(distanceMap[c.id])} দূরে
+                  </p>
+                )}
+
+                {/* ── বকেয়া ── */}
                 {parseFloat(c.current_credit || 0) > 0 && (
-                  <p className="text-xs text-red-500 mt-1 font-medium">
-                    বকেয়া: ৳{parseInt(c.current_credit).toLocaleString()}
+                  <p className="text-xs text-red-500 mt-1 font-semibold">
+                    💰 বকেয়া: ৳{parseInt(c.current_credit).toLocaleString()}
                   </p>
                 )}
               </div>
