@@ -37,8 +37,8 @@ const menuItems = [
 ]
 
 export default function WorkerLayout() {
-  const { user, logout }                            = useAuthStore()
-  const { notifications, darkMode, toggleDarkMode } = useAppStore()
+  const { user, logout }                                        = useAuthStore()
+  const { notifications, darkMode, toggleDarkMode, selectedRoute, clearSelectedRoute } = useAppStore()
   const unread    = notifications.filter(n => !n.read).length
   const [menuOpen, setMenuOpen] = useState(false)
   const navigate  = useNavigate()
@@ -71,6 +71,27 @@ export default function WorkerLayout() {
           <div>
             <p className="font-bold text-sm leading-tight">{user?.name_bn}</p>
             <p className="text-white/60 text-xs">{user?.employee_code}</p>
+            {selectedRoute && (
+              <button
+                onClick={() => { clearSelectedRoute(); navigate('/worker/route') }}
+                className="flex items-center gap-1 mt-0.5"
+              >
+                <FiMapPin className="text-[10px] text-green-300" />
+                <span className="text-[11px] text-green-300 font-medium leading-tight">
+                  {selectedRoute.name}
+                </span>
+                <FiX className="text-[10px] text-white/40 hover:text-white transition-colors" />
+              </button>
+            )}
+            {!selectedRoute && (
+              <button
+                onClick={() => navigate('/worker/route')}
+                className="flex items-center gap-1 mt-0.5"
+              >
+                <FiMapPin className="text-[10px] text-yellow-300" />
+                <span className="text-[11px] text-yellow-300 font-medium">রুট সিলেক্ট করুন</span>
+              </button>
+            )}
           </div>
         </div>
 
