@@ -58,7 +58,7 @@ const createVisit = async (req, res) => {
             const distResult = await query(
                 `SELECT ROUND(ST_Distance(
                     $1::geography,
-                    ST_GeogFromText('POINT($2 $3)')
+                    ST_MakePoint($2::float, $3::float)::geography
                 )::numeric, 0) AS distance`,
                 [customer.rows[0].location, longitude, latitude]
             );
