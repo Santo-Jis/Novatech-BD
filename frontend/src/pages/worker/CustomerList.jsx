@@ -70,11 +70,29 @@ export default function CustomerList() {
   const loadCustomers = async () => {
     const params = new URLSearchParams()
     if (selectedRoute) params.append('route_id', selectedRoute.id)
-    try {
-      const res = await api.get(`/customers?${params}`)
-      setCustomers(res.data.data || [])
-    } finally {
-      setLoading(false)
+
+    const fetchWithParams = async (extraParams = '') => {
+      try {
+        const res = await api.get(`/customers?${params}${extraParams}`)
+        setCustomers(res.data.data || [])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    // GPS পাঠাই — visit_order না থাকলে কাছের দোকান আগে দেখাবে
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          fetchWithParams(
+            `&lat=${pos.coords.latitude}&lng=${pos.coords.longitude}`
+          )
+        },
+        () => fetchWithParams(), // GPS ব্যর্থ হলে শুধু route filter
+        { enableHighAccuracy: true, timeout: 8000 }
+      )
+    } else {
+      fetchWithParams()
     }
   }
 
@@ -214,6 +232,13 @@ export default function CustomerList() {
             <div className="flex justify-between items-start">
               <div className="flex-1 min-w-0" onClick={() => navigate(`/worker/visit/${c._id || c.id}`)}>
                 <div className="flex items-center gap-2 flex-wrap">
+                  {/* Visit ক্রম নম্বর */}
+                  {c.visit_order != null && (
+                    <span className="w-6 h-6 rounded-full bg-primary/10 text-primary
+                                     text-xs font-bold flex items-center justify-center flex-shrink-0">
+                      {c.visit_order}
+                    </span>
+                  )}
                   <h3 className="font-semibold text-gray-800">{c.shop_name}</h3>
                   {c.has_pending_edit && (
                     <span className="text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">⏳ pending</span>
