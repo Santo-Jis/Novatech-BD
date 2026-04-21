@@ -3,9 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
 import {
   FiUser, FiPhone, FiMapPin, FiShoppingCart,
-  FiNavigation, FiAlertTriangle, FiCheckCircle, FiLoader
+  FiNavigation, FiAlertTriangle, FiCheckCircle, FiLoader, FiCamera, FiX
 } from 'react-icons/fi'
 import toast from 'react-hot-toast'
+import Camera from '../../components/Camera'
 
 // GPS নেওয়ার helper
 function getGPS() {
@@ -67,6 +68,10 @@ export default function VisitPage() {
   const [showNoSell,  setShowNoSell]  = useState(false)
   const [noSellReason, setNoSellReason] = useState('')
 
+  // Closed shop photo state
+  const [showCamera,       setShowCamera]       = useState(false)
+  const [closedShopPhoto,  setClosedShopPhoto]  = useState(null)  // { blob, url }
+
   useEffect(() => {
     api.get(`/customers/${id}`)
       .then(res => setCustomer(res.data.data))
@@ -97,33 +102,32 @@ export default function VisitPage() {
       toast.error('কারণ লিখুন')
       return
     }
-    await submitVisit({ will_sell: false, no_sell_reason: noSellReason })
+    await submitVisit({ will_sell: false, no_sell_reason: noSellReason, photo: closedShopPhoto?.blob })
     setShowNoSell(false)
   }
 
   // মূল submit function
-  const submitVisit = async ({ will_sell = true, no_sell_reason = null } = {}) => {
+  const submitVisit = async ({ will_sell = true, no_sell_reason = null, photo = null } = {}) => {
     setVisiting(true)
     try {
-      const payload = {
-        customer_id:    id,
-        will_sell,
-        no_sell_reason: no_sell_reason || undefined,
-      }
-
-      // GPS থাকলে পাঠাও
+      const formData = new FormData()
+      formData.append('customer_id', id)
+      formData.append('will_sell', will_sell)
+      if (no_sell_reason) formData.append('no_sell_reason', no_sell_reason)
       if (location) {
-        payload.latitude  = location.latitude
-        payload.longitude = location.longitude
+        formData.append('latitude',  location.latitude)
+        formData.append('longitude', location.longitude)
+      }
+      if (photo) {
+        formData.append('closed_shop_photo', photo, 'closed_shop.jpg')
       }
 
-      const res = await api.post('/sales/visit', payload)
+      const res = await api.post('/sales/visit', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
       const data = res.data.data
 
-      // Backend থেকে distance আসলে দেখাও
-      if (data?.distance !== undefined) {
-        setDistance(data.distance)
-      }
+      if (data?.distance !== undefined) setDistance(data.distance)
 
       if (data?.warning) {
         toast(data.warning, { icon: '⚠️', duration: 4000 })
@@ -287,7 +291,7 @@ export default function VisitPage() {
       {/* ── No Sell Modal ── */}
       {showNoSell && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end">
-          <div className="bg-white w-full rounded-t-3xl p-6 space-y-4">
+          <div className="bg-white w-full rounded-t-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <h3 className="font-bold text-lg text-gray-800">রাখেনি — কারণ লিখুন</h3>
             <p className="text-xs text-gray-500">কেন বিক্রি হলো না সেটা জানান</p>
 
@@ -316,9 +320,41 @@ export default function VisitPage() {
               className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-amber-400 resize-none"
             />
 
+            {/* ── Closed Shop Photo ── */}
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-600">বন্ধ দোকানের ছবি <span className="text-gray-400">(ঐচ্ছিক)</span></p>
+
+              {closedShopPhoto ? (
+                <div className="relative w-full rounded-xl overflow-hidden border border-amber-200">
+                  <img
+                    src={closedShopPhoto.url}
+                    alt="বন্ধ দোকান"
+                    className="w-full h-40 object-cover"
+                  />
+                  <button
+                    onClick={() => setClosedShopPhoto(null)}
+                    className="absolute top-2 right-2 p-1.5 bg-black/50 rounded-full text-white"
+                  >
+                    <FiX size={14} />
+                  </button>
+                  <div className="absolute bottom-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded-lg flex items-center gap-1">
+                    <FiCheckCircle size={11} /> ছবি যুক্ত হয়েছে
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowCamera(true)}
+                  className="w-full border-2 border-dashed border-amber-300 rounded-xl py-4 flex flex-col items-center gap-2 text-amber-600 bg-amber-50 active:scale-95 transition-transform"
+                >
+                  <FiCamera className="text-2xl" />
+                  <span className="text-sm font-medium">ছবি তুলুন</span>
+                </button>
+              )}
+            </div>
+
             <div className="flex gap-3">
               <button
-                onClick={() => { setShowNoSell(false); setNoSellReason('') }}
+                onClick={() => { setShowNoSell(false); setNoSellReason(''); setClosedShopPhoto(null) }}
                 className="flex-1 py-3 border border-gray-200 rounded-xl text-gray-600 font-semibold"
               >
                 বাতিল
@@ -334,6 +370,32 @@ export default function VisitPage() {
                 }
                 রেকর্ড করুন
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Camera Modal ── */}
+      {showCamera && (
+        <div className="fixed inset-0 bg-black/80 z-[60] flex flex-col">
+          <div className="flex items-center justify-between px-4 py-3">
+            <p className="text-white font-semibold">বন্ধ দোকানের ছবি তুলুন</p>
+            <button
+              onClick={() => setShowCamera(false)}
+              className="p-2 text-white/80"
+            >
+              <FiX size={22} />
+            </button>
+          </div>
+          <div className="flex-1 flex items-center justify-center px-4">
+            <div className="w-full max-w-sm">
+              <Camera
+                onCapture={(blob, url) => {
+                  setClosedShopPhoto({ blob, url })
+                  setShowCamera(false)
+                }}
+                onClose={() => setShowCamera(false)}
+              />
             </div>
           </div>
         </div>
