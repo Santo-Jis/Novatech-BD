@@ -22,13 +22,24 @@ const getRoutes = async (req, res) => {
             `SELECT r.*,
                     m.name_bn AS manager_name,
                     COUNT(DISTINCT ca.worker_id)   AS worker_count,
-                    COUNT(DISTINCT c.id)            AS customer_count
+                    COUNT(DISTINCT c.id)            AS customer_count,
+                    lv.last_visited_at,
+                    lv.last_visited_by_name
              FROM routes r
-             LEFT JOIN users m               ON r.manager_id = m.id
-             LEFT JOIN customer_assignments ca ON r.id = ca.route_id AND ca.is_active = true
-             LEFT JOIN customers c            ON c.route_id = r.id AND c.is_active = true
+             LEFT JOIN users m                  ON r.manager_id = m.id
+             LEFT JOIN customer_assignments ca  ON r.id = ca.route_id AND ca.is_active = true
+             LEFT JOIN customers c              ON c.route_id = r.id AND c.is_active = true
+             LEFT JOIN LATERAL (
+                 SELECT v.created_at AS last_visited_at,
+                        u.name_bn   AS last_visited_by_name
+                 FROM visits v
+                 JOIN users u ON v.worker_id = u.id
+                 WHERE v.route_id = r.id
+                 ORDER BY v.created_at DESC
+                 LIMIT 1
+             ) lv ON true
              WHERE ${conditions.join(' AND ')}
-             GROUP BY r.id, m.name_bn
+             GROUP BY r.id, m.name_bn, lv.last_visited_at, lv.last_visited_by_name
              ORDER BY r.created_at DESC`,
             params
         );
