@@ -62,7 +62,8 @@ const getCustomers = async (req, res) => {
 
         // দূরত্ব হিসাব (SR এর অবস্থান থেকে)
         let distanceSelect = '';
-        let orderBy        = 'c.shop_name ASC';
+        // ক্রম: visit_order → GPS দূরত্ব → নাম
+        let orderBy = 'ca.visit_order ASC NULLS LAST, c.shop_name ASC';
 
         if (lat && lng) {
             distanceSelect = `,
@@ -72,7 +73,7 @@ const getCustomers = async (req, res) => {
                         ST_GeogFromText('POINT(${lng} ${lat})')
                     )::numeric, 0
                 ) AS distance_meters`;
-            orderBy = 'distance_meters ASC NULLS LAST';
+            orderBy = 'ca.visit_order ASC NULLS LAST, distance_meters ASC NULLS LAST';
         }
 
         const whereClause = conditions.join(' AND ');
@@ -82,15 +83,23 @@ const getCustomers = async (req, res) => {
         paramCount++;
         params.push(offset);
 
+        // Worker হলে ca JOIN-এ worker_id filter (param $1 সবসময় req.user.id worker-এর জন্য)
+        const caWorkerCondition = req.user.role === 'worker' ? 'AND ca.worker_id = $1' : '';
+
         const result = await query(
             `SELECT c.id, c.customer_code, c.shop_name, c.owner_name,
                     c.shop_photo, c.business_type,
                     c.whatsapp, c.sms_phone,
                     c.credit_limit, c.current_credit, c.credit_balance,
-                    r.name AS route_name
+                    r.name AS route_name,
+                    ca.visit_order
                     ${distanceSelect}
              FROM customers c
              LEFT JOIN routes r ON c.route_id = r.id
+             LEFT JOIN customer_assignments ca
+               ON ca.customer_id = c.id
+               AND ca.is_active = true
+               ${caWorkerCondition}
              WHERE ${whereClause}
              ORDER BY ${orderBy}
              LIMIT $${paramCount - 1} OFFSET $${paramCount}`,
@@ -772,6 +781,41 @@ const confirmEmailVerifyOTP = async (req, res) => {
     }
 };
 
+// ============================================================
+// UPDATE VISIT ORDER
+// PUT /api/customers/visit-order
+// Manager/Admin → route-র কাস্টমারদের visit ক্রম সেট করবেন
+// Body: { route_id, orders: [{ customer_id, visit_order }] }
+// ============================================================
+
+const updateVisitOrder = async (req, res) => {
+    try {
+        const { route_id, orders } = req.body;
+
+        if (!route_id || !Array.isArray(orders) || orders.length === 0) {
+            return res.status(400).json({ success: false, message: 'route_id এবং orders দরকার।' });
+        }
+
+        // প্রতিটা কাস্টমারের visit_order আপডেট করো
+        for (const { customer_id, visit_order } of orders) {
+            await query(
+                `UPDATE customer_assignments
+                 SET visit_order = $1
+                 WHERE customer_id = $2
+                   AND route_id = $3
+                   AND is_active = true`,
+                [visit_order ?? null, customer_id, route_id]
+            );
+        }
+
+        return res.status(200).json({ success: true, message: 'Visit ক্রম সেভ হয়েছে ✅' });
+
+    } catch (error) {
+        console.error('❌ updateVisitOrder Error:', error.message);
+        return res.status(500).json({ success: false, message: 'ক্রম সেভ করতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getCustomers,
     getCustomer,
@@ -786,5 +830,6 @@ module.exports = {
     approveCustomerEdit,
     rejectCustomerEdit,
     sendEmailVerifyOTP,
-    confirmEmailVerifyOTP
+    confirmEmailVerifyOTP,
+    updateVisitOrder
 };
