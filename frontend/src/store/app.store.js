@@ -7,6 +7,24 @@ import { create } from 'zustand'
 const savedDark = localStorage.getItem('darkMode') === 'true'
 if (savedDark) document.documentElement.classList.add('dark')
 
+// Date-based route persistence — প্রতিদিন নতুন করে সিলেক্ট করতে হবে
+const savedRoute = (() => {
+  try {
+    const raw = localStorage.getItem('selectedRoute')
+    if (!raw) return null
+    const { route, date } = JSON.parse(raw)
+    const today = new Date().toISOString().slice(0, 10) // "2024-01-15"
+    if (date !== today) {
+      localStorage.removeItem('selectedRoute') // নতুন দিন, পুরনো রুট clear
+      return null
+    }
+    return route
+  } catch {
+    localStorage.removeItem('selectedRoute')
+    return null
+  }
+})()
+
 export const useAppStore = create((set, get) => ({
   // Sidebar
   sidebarOpen:   true,
@@ -49,9 +67,21 @@ export const useAppStore = create((set, get) => ({
   todaySummary:    null,
   setTodaySummary: (data) => set({ todaySummary: data }),
 
-  // Current Route (Worker)
-  selectedRoute:    null,
-  setSelectedRoute: (route) => set({ selectedRoute: route }),
+  // Current Route (Worker) — date সহ localStorage-এ save হয়
+  selectedRoute:    savedRoute,
+  setSelectedRoute: (route) => {
+    if (route) {
+      const today = new Date().toISOString().slice(0, 10)
+      localStorage.setItem('selectedRoute', JSON.stringify({ route, date: today }))
+    } else {
+      localStorage.removeItem('selectedRoute')
+    }
+    set({ selectedRoute: route })
+  },
+  clearSelectedRoute: () => {
+    localStorage.removeItem('selectedRoute')
+    set({ selectedRoute: null })
+  },
 
   // Current Sale (OTP flow)
   currentSale:    null,
