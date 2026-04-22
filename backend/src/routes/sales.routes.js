@@ -15,7 +15,9 @@ const {
     getMySales,
     getTeamSales,
     getTodaySummary,
-    getSaleDetail
+    getSaleDetail,
+    getMyMonthlySales,
+    getMyVisitStats
 } = require('../controllers/sales.controller');
 
 // ============================================================
@@ -61,6 +63,12 @@ router.get('/team',
     checkTeamAccess,
     getTeamSales
 );
+
+// SR-এর মাসিক দৈনিক বিক্রয় সারসংক্ষেপ
+router.get('/my-monthly',     auth, allowRoles('worker'), getMyMonthlySales);
+
+// SR-এর মাসিক ভিজিট স্ট্যাটস
+router.get('/my-visit-stats', auth, allowRoles('worker'), getMyVisitStats);
 
 // একটি বিক্রয়ের বিস্তারিত
 router.get('/:id',      auth, getSaleDetail);
