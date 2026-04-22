@@ -77,7 +77,7 @@ export default function VisitPage() {
     const loadCustomer = async () => {
       // Cache থেকে দেখাও
       const cached = await getCache(`customer_${id}`)
-      if (cached) { setCustomer(cached); setLoading(false) }
+      if (cached?.isToday) { setCustomer(cached.data); setLoading(false) }
 
       if (navigator.onLine) {
         try {
