@@ -6,6 +6,35 @@ import toast from 'react-hot-toast'
 import { FiMinus, FiPlus, FiCheck, FiPackage, FiChevronDown, FiChevronUp, FiWifiOff } from 'react-icons/fi'
 import { enqueue, saveCache, getCache } from '../../api/offlineQueue'
 
+// ─── ছবি compress helper (max 1280px, max 8MB) ────────────
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const MAX_PX   = 1280
+    const MAX_BYTES = 8 * 1024 * 1024
+    const img      = new Image()
+    const url      = URL.createObjectURL(file)
+
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      let w = img.width, h = img.height
+      if (w > MAX_PX || h > MAX_PX) {
+        if (w >= h) { h = Math.round(h * MAX_PX / w); w = MAX_PX }
+        else        { w = Math.round(w * MAX_PX / h); h = MAX_PX }
+      }
+      const canvas = document.createElement('canvas')
+      canvas.width = w; canvas.height = h
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+      canvas.toBlob(blob => {
+        if (!blob) return reject(new Error('compress ব্যর্থ'))
+        if (blob.size > MAX_BYTES) return reject(new Error('TOO_LARGE'))
+        resolve(blob)
+      }, 'image/jpeg', 0.82)
+    }
+    img.onerror = () => reject(new Error('ছবি লোড ব্যর্থ'))
+    img.src = url
+  })
+}
+
 // ─── চূড়ান্ত মূল্য গণনা ───────────────────────────────────
 function calcFinalPrice(p) {
   const price    = parseFloat(p.price)    || 0
@@ -223,6 +252,7 @@ export default function SalesForm() {
         const replacementItems = Object.entries(replacements).map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
 
         // receipt photo → base64 (IndexedDB তে store করার জন্য)
+        // file input থেকে ইতিমধ্যে compressed blob আসে
         let receiptPhotoBase64 = null
         if (receiptPhoto) {
           receiptPhotoBase64 = await new Promise((resolve) => {
@@ -411,11 +441,21 @@ export default function SalesForm() {
                 }
               </div>
               <input type="file" accept="image/*" capture="environment" className="hidden"
-                onChange={e => {
+                onChange={async e => {
                   const file = e.target.files[0]
                   if (!file) return
-                  setReceiptPhoto(file)
-                  setReceiptPreview(URL.createObjectURL(file))
+                  try {
+                    const compressed = await compressImage(file)
+                    setReceiptPhoto(compressed)
+                    setReceiptPreview(URL.createObjectURL(compressed))
+                  } catch (err) {
+                    if (err.message === 'TOO_LARGE') {
+                      toast.error('ছবি ৮ MB এর বেশি। ছোট ছবি তুলুন।')
+                    } else {
+                      toast.error('ছবি প্রসেস করা যায়নি।')
+                    }
+                    e.target.value = ''
+                  }
                 }} />
             </label>
           </div>
