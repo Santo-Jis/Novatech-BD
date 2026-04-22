@@ -11,6 +11,11 @@ const STORE_CACHE = 'cache'
 // Cache ২৪ ঘণ্টার বেশি পুরনো হলে stale ধরা হবে
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000
 
+// আজকের তারিখ YYYY-MM-DD ফরম্যাটে
+function todayStr() {
+  return new Date().toISOString().slice(0, 10)
+}
+
 let db = null
 
 // ── IndexedDB খোলা ──────────────────────────────────────────
@@ -114,14 +119,15 @@ export async function saveCache(key, data) {
   return new Promise((resolve, reject) => {
     const tx = database.transaction(STORE_CACHE, 'readwrite')
     const store = tx.objectStore(STORE_CACHE)
-    const req = store.put({ key, data, saved_at: Date.now() })
+    const req = store.put({ key, data, saved_at: Date.now(), saved_date: todayStr() })
     req.onsuccess = () => resolve()
     req.onerror = () => reject(req.error)
   })
 }
 
 // ── Cache পড়া ───────────────────────────────────────────────
-// ২৪ ঘণ্টার বেশি পুরনো হলে null ফেরত দেবে (stale)
+// return: { data, isToday } | null
+// isToday = false হলে আজকের ডেটা নয় — UI তে সতর্কতা দেখাবে
 export async function getCache(key) {
   const database = await openDB()
   return new Promise((resolve, reject) => {
@@ -132,7 +138,11 @@ export async function getCache(key) {
       const record = req.result
       if (!record) return resolve(null)
       const isExpired = Date.now() - record.saved_at > CACHE_TTL_MS
-      resolve(isExpired ? null : record.data)
+      if (isExpired) return resolve(null)
+      resolve({
+        data:    record.data,
+        isToday: record.saved_date === todayStr(),
+      })
     }
     req.onerror = () => reject(req.error)
   })
