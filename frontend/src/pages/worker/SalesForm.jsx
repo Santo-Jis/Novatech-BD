@@ -179,9 +179,9 @@ export default function SalesForm() {
       // প্রথমে cache থেকে দেখাও (offline fast load)
       const cachedCustomer = await getCache(`customer_${customerId}`)
       const cachedProducts = await getCache('products_active')
-      if (cachedCustomer) setCustomer(cachedCustomer)
-      if (cachedProducts)  setProducts(cachedProducts)
-      if (cachedCustomer && cachedProducts) setLoading(false)
+      if (cachedCustomer?.isToday) setCustomer(cachedCustomer.data)
+      if (cachedProducts?.isToday)  setProducts(cachedProducts.data)
+      if (cachedCustomer?.isToday && cachedProducts?.isToday) setLoading(false)
 
       // Online হলে fresh data নাও + cache আপডেট করো
       if (navigator.onLine) {
