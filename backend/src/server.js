@@ -85,6 +85,7 @@ const aiRoutes          = require('./routes/ai.routes');
 const adminRoutes       = require('./routes/admin.routes');
 const noticeRoutes      = require('./routes/notice.routes');
 const recruitmentRoutes = require('./routes/recruitment.routes');
+const teamRoutes        = require('./routes/team.routes');
 
 app.use('/api/auth',        loginLimiter, authRoutes);
 app.use('/api/employees',   employeeRoutes);
@@ -101,6 +102,7 @@ app.use('/api/ai',          aiRoutes);
 app.use('/api/admin',       adminRoutes);
 app.use('/api/notices',     noticeRoutes);
 app.use('/api/recruitment', recruitmentRoutes);
+app.use('/api/teams',      teamRoutes);
 
 // ============================================================
 // HEALTH CHECK
