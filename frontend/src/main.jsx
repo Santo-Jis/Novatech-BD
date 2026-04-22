@@ -4,7 +4,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
 import App from './App'
 import './index.css'
-import { initAutoSync } from './services/syncService'
+import { initAutoSync } from './api/syncService'
 
 // App চালু হলেই offline queue auto-sync শুরু
 initAutoSync()
