@@ -3,7 +3,7 @@
 // Worker layout এর উপরে দেখায় — offline/syncing/done
 // ============================================================
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { FiWifiOff, FiRefreshCw, FiClock } from 'react-icons/fi'
 import { useOffline } from '../store/useOffline'
 
@@ -63,10 +63,12 @@ export default function OfflineStatusBar() {
 }
 
 // ── usePrevious helper ───────────────────────────────────────
+// useRef ব্যবহার করা হয়েছে — render-এর পরে update হয়,
+// তাই current render-এ আগের value পাওয়া যায়
 function usePrevious(value) {
-  const [prev, setPrev] = useState(value)
-  useEffect(() => { setPrev(value) }, [value])
-  return prev
+  const ref = useRef(value)
+  useEffect(() => { ref.current = value })
+  return ref.current
 }
 
 // ── OfflineSaveBadge (বাটনে ব্যবহার) ────────────────────────
