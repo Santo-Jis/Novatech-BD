@@ -2,22 +2,40 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/app.store'
 import api from '../../api/axios'
-import { FiMapPin, FiPlus, FiX, FiCheck, FiClock, FiUser } from 'react-icons/fi'
+import { saveCache, getCache } from '../../api/offlineQueue'
+import { FiMapPin, FiPlus, FiX, FiCheck, FiClock, FiUser, FiWifiOff } from 'react-icons/fi'
 import toast from 'react-hot-toast'
 
 export default function RouteSelect() {
   const navigate = useNavigate()
   const { setSelectedRoute, selectedRoute } = useAppStore()
-  const [routes, setRoutes] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [routes,    setRoutes]    = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [isOffline, setIsOffline] = useState(!navigator.onLine)
   const [showModal, setShowModal] = useState(false)
-  const [saving, setSaving] = useState(false)
+  const [saving,    setSaving]    = useState(false)
   const [form, setForm] = useState({ route_name: '', description: '' })
 
   useEffect(() => {
-    api.get('/routes')
-      .then(res => setRoutes(res.data.data || []))
-      .finally(() => setLoading(false))
+    const loadRoutes = async () => {
+      if (!navigator.onLine) {
+        // অফলাইনে cache থেকে দেখাও
+        const cached = await getCache('routes_list')
+        if (cached) setRoutes(cached)
+        setIsOffline(true)
+        setLoading(false)
+        return
+      }
+      try {
+        const res = await api.get('/routes')
+        const data = res.data.data || []
+        setRoutes(data)
+        saveCache('routes_list', data)  // পরের অফলাইনের জন্য cache
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadRoutes()
   }, [])
 
   const handleSelect = (route) => {
@@ -53,11 +71,23 @@ export default function RouteSelect() {
             : <p className="text-xs text-gray-500">আজকের রুট বেছে নিন</p>
           }
         </div>
-        <button onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-semibold">
+        <button onClick={() => {
+            if (isOffline) { toast.error('অফলাইনে নতুন রুট request করা যাবে না'); return }
+            setShowModal(true)
+          }}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
+            ${isOffline ? 'bg-gray-200 text-gray-400 cursor-not-allowed' : 'bg-primary text-white'}`}>
           <FiPlus /> নতুন রুট
         </button>
       </div>
+
+      {/* অফলাইন notice */}
+      {isOffline && routes.length > 0 && (
+        <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-xl px-3 py-2 text-xs text-yellow-700">
+          <FiWifiOff size={12} />
+          <span>অফলাইন — সর্বশেষ সংরক্ষিত রুট দেখানো হচ্ছে</span>
+        </div>
+      )}
 
       <div className="space-y-3">
         {routes.length === 0 && (
