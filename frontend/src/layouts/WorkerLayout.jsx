@@ -1,13 +1,16 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore }  from '../store/app.store'
 import {
   FiHome, FiMapPin, FiShoppingBag, FiDollarSign, FiUser,
   FiBell, FiMoon, FiSun, FiUsers, FiMenu, FiX, FiLogOut,
-  FiClipboard
+  FiClipboard, FiAlertTriangle, FiRefreshCw
 } from 'react-icons/fi'
 import OfflineStatusBar from '../components/OfflineStatusBar'
+import { useOffline } from '../store/useOffline'
+import { retryFailed } from '../api/syncService'
+import { getPendingQueue } from '../api/offlineQueue'
 
 // ─── Bottom Navigation (সবসময় দেখা যাবে) ───────────────────
 const bottomNav = [
@@ -43,6 +46,28 @@ export default function WorkerLayout() {
   const unread    = notifications.filter(n => !n.read).length
   const [menuOpen, setMenuOpen] = useState(false)
   const navigate  = useNavigate()
+
+  // Failed sync items ট্র্যাক করা
+  const { isOnline } = useOffline()
+  const [failedCount,  setFailedCount]  = useState(0)
+  const [retrying,     setRetrying]     = useState(false)
+
+  // Failed count লোড করো (online হলে বা mount হলে)
+  useEffect(() => {
+    const checkFailed = async () => {
+      const items = await getPendingQueue()
+      setFailedCount(items.filter(i => i.status === 'failed').length)
+    }
+    checkFailed()
+  }, [isOnline])
+
+  const handleRetry = async () => {
+    setRetrying(true)
+    await retryFailed()
+    const items = await getPendingQueue()
+    setFailedCount(items.filter(i => i.status === 'failed').length)
+    setRetrying(false)
+  }
 
   const handleNavigate = (path) => {
     navigate(path)
@@ -191,6 +216,24 @@ export default function WorkerLayout() {
 
       {/* ── Offline Status Bar ─────────────────────────────── */}
       <OfflineStatusBar />
+
+      {/* ── Failed Sync Banner ─────────────────────────────── */}
+      {failedCount > 0 && isOnline && (
+        <div className="bg-red-50 border-b border-red-200 px-4 py-2 flex items-center gap-2 text-xs">
+          <FiAlertTriangle size={13} className="text-red-500 flex-shrink-0" />
+          <span className="flex-1 text-red-700 font-medium">
+            {failedCount}টি ডেটা পাঠানো যায়নি
+          </span>
+          <button
+            onClick={handleRetry}
+            disabled={retrying}
+            className="flex items-center gap-1 bg-red-500 text-white px-3 py-1 rounded-lg font-semibold disabled:opacity-60"
+          >
+            <FiRefreshCw size={11} className={retrying ? 'animate-spin' : ''} />
+            {retrying ? 'চেষ্টা হচ্ছে...' : 'আবার পাঠান'}
+          </button>
+        </div>
+      )}
 
       {/* ── Main Content ───────────────────────────────────── */}
       <main className="flex-1 overflow-auto pb-20">
