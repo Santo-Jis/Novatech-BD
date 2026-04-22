@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/app.store'
-import api from '../../api/axios'
+import api, { isNetworkError } from '../../api/axios'
 import { saveCache, getCache } from '../../api/offlineQueue'
 import { FiMapPin, FiPlus, FiX, FiCheck, FiClock, FiUser, FiWifiOff } from 'react-icons/fi'
 import toast from 'react-hot-toast'
@@ -19,9 +19,12 @@ export default function RouteSelect() {
   useEffect(() => {
     const loadRoutes = async () => {
       if (!navigator.onLine) {
-        // অফলাইনে cache থেকে দেখাও
         const cached = await getCache('routes_list')
-        if (cached) setRoutes(cached)
+        if (cached?.isToday) {
+          setRoutes(cached.data)
+        } else {
+          toast.error('আজকের ডেটা নেই। WiFi বা ইন্টারনেটে গিয়ে sync করুন।', { duration: 5000 })
+        }
         setIsOffline(true)
         setLoading(false)
         return
@@ -30,7 +33,21 @@ export default function RouteSelect() {
         const res = await api.get('/routes')
         const data = res.data.data || []
         setRoutes(data)
-        saveCache('routes_list', data)  // পরের অফলাইনের জন্য cache
+        saveCache('routes_list', data)
+      } catch (err) {
+        if (isNetworkError(err)) {
+          const cached = await getCache('routes_list')
+          if (cached?.isToday) {
+            setRoutes(cached.data)
+            setIsOffline(true)
+            toast('নেটওয়ার্ক ধীর — আজকের সংরক্ষিত রুট দেখানো হচ্ছে', {
+              icon: '📶', duration: 3000
+            })
+          } else {
+            setIsOffline(true)
+            toast.error('আজকের ডেটা নেই। WiFi বা ইন্টারনেটে গিয়ে sync করুন।', { duration: 5000 })
+          }
+        }
       } finally {
         setLoading(false)
       }
