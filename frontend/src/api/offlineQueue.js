@@ -8,6 +8,9 @@ const DB_VERSION = 1
 const STORE_QUEUE = 'queue'
 const STORE_CACHE = 'cache'
 
+// Cache ২৪ ঘণ্টার বেশি পুরনো হলে stale ধরা হবে
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000
+
 let db = null
 
 // ── IndexedDB খোলা ──────────────────────────────────────────
@@ -118,13 +121,19 @@ export async function saveCache(key, data) {
 }
 
 // ── Cache পড়া ───────────────────────────────────────────────
+// ২৪ ঘণ্টার বেশি পুরনো হলে null ফেরত দেবে (stale)
 export async function getCache(key) {
   const database = await openDB()
   return new Promise((resolve, reject) => {
     const tx = database.transaction(STORE_CACHE, 'readonly')
     const store = tx.objectStore(STORE_CACHE)
     const req = store.get(key)
-    req.onsuccess = () => resolve(req.result?.data || null)
+    req.onsuccess = () => {
+      const record = req.result
+      if (!record) return resolve(null)
+      const isExpired = Date.now() - record.saved_at > CACHE_TTL_MS
+      resolve(isExpired ? null : record.data)
+    }
     req.onerror = () => reject(req.error)
   })
 }
