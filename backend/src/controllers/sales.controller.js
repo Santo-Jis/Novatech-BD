@@ -764,6 +764,154 @@ const skipOTPWithPhoto = async (req, res) => {
     }
 };
 
+// ============================================================
+// MY MONTHLY SALES SUMMARY
+// GET /api/sales/my-monthly?month=6&year=2025
+// SR-এর মাসিক দৈনিক বিক্রয় সারসংক্ষেপ
+// ============================================================
+
+const getMyMonthlySales = async (req, res) => {
+    try {
+        const { month, year } = req.query;
+        const workerId = req.user.id;
+
+        const targetMonth = parseInt(month) || new Date().getMonth() + 1;
+        const targetYear  = parseInt(year)  || new Date().getFullYear();
+
+        const from    = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
+        const lastDay = new Date(targetYear, targetMonth, 0).getDate();
+        const to      = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${lastDay}`;
+
+        // দৈনিক বিক্রয়
+        const dailyResult = await query(
+            `SELECT
+                st.date,
+                COUNT(*)                             AS sale_count,
+                COALESCE(SUM(st.total_amount), 0)    AS total_amount,
+                COALESCE(SUM(st.cash_received), 0)   AS cash_received,
+                COALESCE(SUM(st.credit_used), 0)     AS credit_given,
+                COALESCE(SUM(st.replacement_value),0) AS replacement_value
+             FROM sales_transactions st
+             WHERE st.worker_id = $1
+               AND st.date BETWEEN $2 AND $3
+             GROUP BY st.date
+             ORDER BY st.date DESC`,
+            [workerId, from, to]
+        );
+
+        // মাসিক মোট
+        const totalResult = await query(
+            `SELECT
+                COUNT(*)                             AS sale_count,
+                COALESCE(SUM(total_amount), 0)       AS total_amount,
+                COALESCE(SUM(cash_received), 0)      AS cash_received,
+                COALESCE(SUM(credit_used), 0)        AS credit_given,
+                COALESCE(SUM(replacement_value), 0)  AS replacement_value
+             FROM sales_transactions
+             WHERE worker_id = $1
+               AND date BETWEEN $2 AND $3`,
+            [workerId, from, to]
+        );
+
+        // টার্গেট (যদি থাকে)
+        const targetResult = await query(
+            `SELECT monthly_target, target_visit_rate
+             FROM users WHERE id = $1`,
+            [workerId]
+        );
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                month: targetMonth,
+                year:  targetYear,
+                from,
+                to,
+                daily:             dailyResult.rows,
+                ...totalResult.rows[0],
+                monthly_target:    targetResult.rows[0]?.monthly_target    || 0,
+                target_visit_rate: targetResult.rows[0]?.target_visit_rate || 80,
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Monthly Sales Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// MY VISIT STATS (মাসিক)
+// GET /api/sales/my-visit-stats?month=6&year=2025
+// ============================================================
+
+const getMyVisitStats = async (req, res) => {
+    try {
+        const { month, year } = req.query;
+        const workerId = req.user.id;
+
+        const targetMonth = parseInt(month) || new Date().getMonth() + 1;
+        const targetYear  = parseInt(year)  || new Date().getFullYear();
+
+        const from    = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
+        const lastDay = new Date(targetYear, targetMonth, 0).getDate();
+        const to      = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${lastDay}`;
+
+        // মাসিক ভিজিট সারসংক্ষেপ
+        const visitResult = await query(
+            `SELECT
+                COUNT(*)                                       AS total_visits,
+                COUNT(CASE WHEN will_sell = true  THEN 1 END) AS sold_visits,
+                COUNT(CASE WHEN will_sell = false THEN 1 END) AS no_sell_visits
+             FROM visits
+             WHERE worker_id = $1
+               AND visit_date BETWEEN $2 AND $3`,
+            [workerId, from, to]
+        );
+
+        // দৈনিক ভিজিট
+        const dailyVisit = await query(
+            `SELECT
+                visit_date AS date,
+                COUNT(*)                                       AS total_visits,
+                COUNT(CASE WHEN will_sell = true  THEN 1 END) AS sold_visits,
+                COUNT(CASE WHEN will_sell = false THEN 1 END) AS no_sell_visits
+             FROM visits
+             WHERE worker_id = $1
+               AND visit_date BETWEEN $2 AND $3
+             GROUP BY visit_date
+             ORDER BY visit_date DESC`,
+            [workerId, from, to]
+        );
+
+        // মোট কাস্টমার
+        const custResult = await query(
+            `SELECT COUNT(*) AS total
+             FROM customer_assignments
+             WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL`,
+            [workerId]
+        );
+
+        const totalCustomers = parseInt(custResult.rows[0]?.total || 0);
+        const totalVisits    = parseInt(visitResult.rows[0]?.total_visits || 0);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                ...visitResult.rows[0],
+                total_customers: totalCustomers,
+                visit_rate: totalCustomers > 0
+                    ? Math.round((totalVisits / totalCustomers) * 100) : 0,
+                daily: dailyVisit.rows
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Visit Stats Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     createVisit,
     createSale,
@@ -773,5 +921,7 @@ module.exports = {
     getMySales,
     getTeamSales,
     getTodaySummary,
-    getSaleDetail
+    getSaleDetail,
+    getMyMonthlySales,
+    getMyVisitStats
 };
