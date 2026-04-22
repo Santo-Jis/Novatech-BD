@@ -1,30 +1,72 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
-import { Card } from '../../components/ui/Badge'
-import Badge from '../../components/ui/Badge'
+import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
-import { FiSearch, FiUser, FiPhone, FiDollarSign, FiDownload } from 'react-icons/fi'
+import Modal from '../../components/ui/Modal'
+import Badge from '../../components/ui/Badge'
 import toast from 'react-hot-toast'
+import {
+  FiSearch, FiUser, FiPhone, FiDollarSign, FiDownload,
+  FiTarget, FiTrendingUp, FiUsers, FiCheck, FiEdit2
+} from 'react-icons/fi'
+
+const fmt = n => Number(n || 0).toLocaleString('bn-BD')
 
 export default function ManagerTeam() {
-  const navigate         = useNavigate()
-  const [workers,  setWorkers]  = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [search,   setSearch]   = useState('')
+  const navigate = useNavigate()
+  const [team,    setTeam]    = useState(null)
+  const [members, setMembers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [search,  setSearch]  = useState('')
 
-  useEffect(() => {
-    api.get('/employees?role=worker&status=active')
-      .then(res => setWorkers(res.data.data.employees))
-      .catch(() => toast.error('তথ্য আনতে সমস্যা হয়েছে।'))
-      .finally(() => setLoading(false))
+  // Target modal
+  const [targetModal, setTargetModal] = useState(null) // sr object
+  const [targetVal,   setTargetVal]   = useState('')
+  const [saving,      setSaving]      = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await api.get('/teams/manager/my')
+      setTeam(res.data.data.team)
+      setMembers(res.data.data.members)
+    } catch {
+      toast.error('তথ্য আনতে সমস্যা হয়েছে।')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  const filtered = workers.filter(w =>
-    w.name_bn.includes(search) ||
-    w.employee_code?.includes(search) ||
-    w.phone?.includes(search)
-  )
+  useEffect(() => { load() }, [load])
+
+  const openTarget = (sr) => {
+    setTargetVal(sr.monthly_target || '')
+    setTargetModal(sr)
+  }
+
+  const handleSetTarget = async () => {
+    if (!targetVal || isNaN(targetVal) || parseFloat(targetVal) < 0) {
+      toast.error('বৈধ টার্গেট পরিমাণ দিন।')
+      return
+    }
+    setSaving(true)
+    try {
+      await api.patch(`/teams/sr/${targetModal.id}/target`, {
+        monthly_target: parseFloat(targetVal)
+      })
+      toast.success(`${targetModal.name_bn}-এর টার্গেট সেট হয়েছে!`)
+      setTargetModal(null)
+      // local state আপডেট
+      setMembers(prev => prev.map(m =>
+        m.id === targetModal.id ? { ...m, monthly_target: parseFloat(targetVal) } : m
+      ))
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'সমস্যা হয়েছে।')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const downloadPDF = async (id, code) => {
     try {
@@ -34,98 +76,220 @@ export default function ManagerTeam() {
       a.href     = url
       a.download = `employee_${code}.pdf`
       a.click()
-    } catch { toast.error('PDF ডাউনলোডে সমস্যা।') }
+    } catch {
+      toast.error('PDF ডাউনলোডে সমস্যা।')
+    }
   }
 
-  if (loading) {
-    return (
+  const filtered = members.filter(w =>
+    w.name_bn.includes(search) ||
+    w.employee_code?.includes(search) ||
+    w.phone?.includes(search)
+  )
+
+  // ─── Loading skeleton ─────────────────────────────────
+  if (loading) return (
+    <div className="space-y-5">
+      <div className="h-28 bg-white rounded-2xl animate-pulse" />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {[...Array(6)].map((_, i) => (
-          <div key={i} className="h-40 bg-white rounded-2xl animate-pulse" />
+          <div key={i} className="h-44 bg-white rounded-2xl animate-pulse" />
         ))}
       </div>
-    )
-  }
+    </div>
+  )
+
+  // ─── টিম নেই ──────────────────────────────────────────
+  if (!team) return (
+    <div className="bg-white rounded-2xl p-12 text-center border border-gray-100 shadow-sm">
+      <FiUsers className="text-5xl text-gray-300 mx-auto mb-3" />
+      <h2 className="text-lg font-semibold text-gray-600 mb-2">আপনার কোনো টিম নেই</h2>
+      <p className="text-sm text-gray-400">Admin-এর সাথে যোগাযোগ করুন টিম নিয়োগের জন্য।</p>
+    </div>
+  )
+
+  // ─── টিম সারাংশ ───────────────────────────────────────
+  const totalTarget = members.reduce((s, m) => s + parseFloat(m.monthly_target || 0), 0)
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">আমার টিম</h1>
-          <p className="text-sm text-gray-500">মোট SR: {workers.length} জন</p>
+      {/* ─── টিম ব্যানার ────────────────────────────────── */}
+      <div className="bg-gradient-to-r from-primary to-blue-600 rounded-2xl p-5 text-white">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <p className="text-white/70 text-sm">আমার টিম</p>
+            <h1 className="text-2xl font-bold mt-0.5">{team.name}</h1>
+            {team.description && (
+              <p className="text-white/60 text-xs mt-1">{team.description}</p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-white/70 text-xs">টিম মাসিক টার্গেট</p>
+            <p className="text-xl font-bold">৳{fmt(team.monthly_target)}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 gap-3 mt-4">
+          <div className="bg-white/10 rounded-xl p-3 text-center">
+            <p className="text-xl font-bold">{members.length}</p>
+            <p className="text-white/70 text-xs mt-0.5">মোট SR</p>
+          </div>
+          <div className="bg-white/10 rounded-xl p-3 text-center">
+            <p className="text-xl font-bold">{members.filter(m => m.status === 'active').length}</p>
+            <p className="text-white/70 text-xs mt-0.5">সক্রিয়</p>
+          </div>
+          <div className="bg-white/10 rounded-xl p-3 text-center">
+            <p className="text-sm font-bold leading-tight">৳{fmt(totalTarget)}</p>
+            <p className="text-white/70 text-xs mt-0.5">SR টার্গেট মোট</p>
+          </div>
         </div>
       </div>
 
-      {/* Search */}
-      <Input
-        placeholder="নাম, কোড বা ফোন দিয়ে খুঁজুন"
-        icon={<FiSearch />}
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        className="max-w-sm"
-      />
+      {/* ─── Header & Search ─────────────────────────────── */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <h2 className="text-lg font-bold text-gray-800">SR তালিকা ({members.length} জন)</h2>
+        <Input
+          placeholder="নাম, কোড বা ফোন"
+          icon={<FiSearch />}
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="max-w-xs"
+        />
+      </div>
 
-      {/* Worker Cards */}
+      {/* ─── SR Cards ─────────────────────────────────────── */}
       {filtered.length === 0 ? (
-        <Card><p className="text-center text-gray-400 py-8">কোনো SR পাওয়া যায়নি।</p></Card>
+        <div className="bg-white rounded-2xl p-10 text-center border border-gray-100">
+          <p className="text-gray-400">কোনো SR পাওয়া যায়নি।</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map(worker => (
-            <div key={worker.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
-
-              {/* Header */}
-              <div className="bg-gradient-to-r from-secondary to-secondary-light p-4 flex items-center gap-3">
-                <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center overflow-hidden flex-shrink-0">
-                  {worker.profile_photo
-                    ? <img src={worker.profile_photo} alt="" className="w-full h-full object-cover" />
-                    : <FiUser className="text-white text-xl" />
-                  }
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-white font-bold truncate">{worker.name_bn}</p>
-                  <p className="text-white/70 text-xs font-mono">{worker.employee_code}</p>
-                </div>
-                <Badge variant="active" />
-              </div>
-
-              {/* Info */}
-              <div className="p-4 space-y-2">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <FiPhone className="text-gray-400" />
-                  <span>{worker.phone}</span>
-                </div>
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <FiDollarSign className="text-gray-400" />
-                  <span>বেতন: ৳{parseInt(worker.basic_salary || 0).toLocaleString()}</span>
-                </div>
-                {parseFloat(worker.outstanding_dues || 0) > 0 && (
-                  <div className="flex items-center gap-2 text-sm text-red-600">
-                    <span className="w-2 h-2 bg-red-500 rounded-full" />
-                    <span>বকেয়া: ৳{parseFloat(worker.outstanding_dues).toLocaleString()}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Actions */}
-              <div className="px-4 pb-4 flex gap-2">
-                <button
-                  onClick={() => navigate(`/admin/employees/${worker.id}`)}
-                  className="flex-1 py-2 text-sm border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors"
-                >
-                  বিস্তারিত
-                </button>
-                <button
-                  onClick={() => downloadPDF(worker.id, worker.employee_code)}
-                  className="p-2 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50"
-                  title="PDF"
-                >
-                  <FiDownload />
-                </button>
-              </div>
-            </div>
+            <SRCard
+              key={worker.id}
+              worker={worker}
+              onTarget={openTarget}
+              onDownload={downloadPDF}
+              onDetails={() => navigate(`/admin/employees/${worker.id}`)}
+            />
           ))}
         </div>
       )}
+
+      {/* ════════════════════════════════════════════════════
+          MODAL: SR টার্গেট সেট
+      ════════════════════════════════════════════════════ */}
+      <Modal
+        isOpen={!!targetModal}
+        onClose={() => setTargetModal(null)}
+        title={`টার্গেট সেট — ${targetModal?.name_bn}`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setTargetModal(null)}>বাতিল</Button>
+            <Button onClick={handleSetTarget} loading={saving} icon={<FiCheck />}>সেট করুন</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="bg-blue-50 rounded-xl p-4 text-center">
+            <p className="text-xs text-blue-500">{targetModal?.employee_code}</p>
+            <p className="text-sm text-blue-600 mt-1">বর্তমান টার্গেট</p>
+            <p className="text-2xl font-bold text-blue-700 mt-1">
+              ৳{fmt(targetModal?.monthly_target)}
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              নতুন মাসিক টার্গেট (টাকা)
+            </label>
+            <Input
+              type="number"
+              placeholder="যেমন: 150000"
+              value={targetVal}
+              onChange={e => setTargetVal(e.target.value)}
+              icon={<span className="text-gray-400 text-xs font-bold">৳</span>}
+            />
+            <p className="text-xs text-gray-400 mt-1.5">
+              টিমের মোট টার্গেট: ৳{fmt(team.monthly_target)}
+            </p>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  )
+}
+
+// ─── SR Card Component ─────────────────────────────────────
+function SRCard({ worker, onTarget, onDownload, onDetails }) {
+  const hasTarget = parseFloat(worker.monthly_target || 0) > 0
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-secondary to-secondary-light p-4 flex items-center gap-3">
+        <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center overflow-hidden flex-shrink-0">
+          {worker.profile_photo
+            ? <img src={worker.profile_photo} alt="" className="w-full h-full object-cover" />
+            : <FiUser className="text-white text-xl" />
+          }
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-white font-bold truncate">{worker.name_bn}</p>
+          <p className="text-white/70 text-xs font-mono">{worker.employee_code}</p>
+        </div>
+        <Badge variant={worker.status === 'active' ? 'active' : 'inactive'} />
+      </div>
+
+      {/* Info */}
+      <div className="p-4 space-y-2">
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <FiPhone className="text-gray-400 flex-shrink-0" />
+          <span>{worker.phone}</span>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-gray-600">
+          <FiDollarSign className="text-gray-400 flex-shrink-0" />
+          <span>বেতন: ৳{fmt(worker.basic_salary)}</span>
+        </div>
+        {parseFloat(worker.outstanding_dues || 0) > 0 && (
+          <div className="flex items-center gap-2 text-sm text-red-600">
+            <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />
+            <span>বকেয়া: ৳{fmt(worker.outstanding_dues)}</span>
+          </div>
+        )}
+
+        {/* Target Badge */}
+        <div className={`flex items-center gap-2 text-sm rounded-lg px-2 py-1.5 mt-1 ${hasTarget ? 'bg-green-50 text-green-700' : 'bg-orange-50 text-orange-600'}`}>
+          <FiTarget className="flex-shrink-0" />
+          <span className="font-medium">
+            {hasTarget ? `টার্গেট: ৳${fmt(worker.monthly_target)}` : 'টার্গেট সেট হয়নি'}
+          </span>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="px-4 pb-4 flex gap-2">
+        <button
+          onClick={onDetails}
+          className="flex-1 py-2 text-sm border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          বিস্তারিত
+        </button>
+        <button
+          onClick={() => onTarget(worker)}
+          className="flex-1 py-2 text-sm border border-green-200 rounded-xl text-green-600 hover:bg-green-50 transition-colors flex items-center justify-center gap-1"
+        >
+          <FiEdit2 className="text-xs" />
+          টার্গেট
+        </button>
+        <button
+          onClick={() => onDownload(worker.id, worker.employee_code)}
+          className="p-2 border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50"
+          title="PDF"
+        >
+          <FiDownload />
+        </button>
+      </div>
     </div>
   )
 }
