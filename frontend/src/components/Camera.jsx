@@ -41,19 +41,35 @@ export default function Camera({ onCapture, onClose }) {
     setStarted(false)
   }
 
-  // ছবি তোলা
+  // ছবি তোলা + compress (max 8MB, max 1280px)
   const capturePhoto = () => {
     const video  = videoRef.current
     const canvas = canvasRef.current
-    canvas.width  = video.videoWidth
-    canvas.height = video.videoHeight
-    canvas.getContext('2d').drawImage(video, 0, 0)
 
+    // max 1280px রাখো, aspect ratio ঠিক রাখো
+    const MAX_PX = 1280
+    let w = video.videoWidth
+    let h = video.videoHeight
+    if (w > MAX_PX || h > MAX_PX) {
+      if (w >= h) { h = Math.round(h * MAX_PX / w); w = MAX_PX }
+      else        { w = Math.round(w * MAX_PX / h); h = MAX_PX }
+    }
+
+    canvas.width  = w
+    canvas.height = h
+    canvas.getContext('2d').drawImage(video, 0, 0, w, h)
+
+    // quality 0.82 → সাধারণত ১–২ MB হয়
     canvas.toBlob(blob => {
+      // 8MB limit চেক
+      if (blob.size > 8 * 1024 * 1024) {
+        setError('ছবি অনেক বড় (৮ MB এর বেশি)। আবার তুলুন।')
+        return
+      }
       const url = URL.createObjectURL(blob)
       setCaptured({ blob, url })
       stopCamera()
-    }, 'image/jpeg', 0.85)
+    }, 'image/jpeg', 0.82)
   }
 
   // ক্যামেরা পাল্টানো
