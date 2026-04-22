@@ -7,6 +7,7 @@ import {
   FiBell, FiMoon, FiSun, FiUsers, FiMenu, FiX, FiLogOut,
   FiClipboard
 } from 'react-icons/fi'
+import OfflineStatusBar from '../components/OfflineStatusBar'
 
 // ─── Bottom Navigation (সবসময় দেখা যাবে) ───────────────────
 const bottomNav = [
@@ -187,6 +188,9 @@ export default function WorkerLayout() {
           </div>
         </div>
       )}
+
+      {/* ── Offline Status Bar ─────────────────────────────── */}
+      <OfflineStatusBar />
 
       {/* ── Main Content ───────────────────────────────────── */}
       <main className="flex-1 overflow-auto pb-20">
