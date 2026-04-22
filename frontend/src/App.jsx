@@ -21,6 +21,7 @@ import AdminSettings    from './pages/admin/Settings'
 import AdminProducts    from './pages/admin/Products'
 import AdminNotices     from './pages/admin/Notices'
 import SRRecruitmentDashboard from './pages/admin/SRRecruitmentDashboard'
+import AdminTeams from './pages/admin/Teams'
 
 // Shared Pages
 import AIChat        from './pages/shared/AIChat'
@@ -135,6 +136,7 @@ export default function App() {
         <Route path="ai-chat"         element={<AIChat />} />
         <Route path="notices"         element={<AdminNotices />} />
         <Route path="recruitment"     element={<SRRecruitmentDashboard />} />
+        <Route path="teams"           element={<AdminTeams />} />
         <Route path="settings"        element={<AdminSettings />} />
         <Route path="products"        element={<AdminProducts />} />
       </Route>
