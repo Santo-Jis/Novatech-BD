@@ -5,6 +5,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/app.store'
 import api from '../../api/axios'
+import { saveCache, getCache } from '../../api/offlineQueue'
 import {
   FiSearch, FiPlus, FiX, FiUser,
   FiCamera, FiNavigation, FiCheck, FiEdit2, FiMail, FiChevronRight
@@ -90,10 +91,23 @@ export default function CustomerList() {
     const params = new URLSearchParams()
     if (selectedRoute) params.append('route_id', selectedRoute.id)
 
+    // অফলাইনে cache থেকে দেখাও
+    if (!navigator.onLine) {
+      const cacheKey = `customers_route_${selectedRoute?.id || 'all'}`
+      const cached = await getCache(cacheKey)
+      if (cached) setCustomers(cached)
+      setLoading(false)
+      return
+    }
+
     const fetchWithParams = async (extraParams = '') => {
       try {
         const res = await api.get(`/customers?${params}${extraParams}`)
-        setCustomers(res.data.data || [])
+        const data = res.data.data || []
+        setCustomers(data)
+        // online-এ সফল হলে cache-এ রাখো
+        const cacheKey = `customers_route_${selectedRoute?.id || 'all'}`
+        saveCache(cacheKey, data)
       } finally {
         setLoading(false)
       }
@@ -117,7 +131,17 @@ export default function CustomerList() {
 
   useEffect(() => {
     loadCustomers()
-    api.get('/routes').then(res => setRoutes(res.data.data || []))
+
+    // routes — online হলে fetch ও cache করো, offline হলে cache থেকে
+    if (navigator.onLine) {
+      api.get('/routes').then(res => {
+        const data = res.data.data || []
+        setRoutes(data)
+        saveCache('routes_list', data)
+      })
+    } else {
+      getCache('routes_list').then(cached => { if (cached) setRoutes(cached) })
+    }
 
     // ── Live GPS watch — প্রতি মুভমেন্টে distance আপডেট ──────
     let watchId = null
