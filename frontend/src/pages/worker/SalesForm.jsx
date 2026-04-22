@@ -3,7 +3,8 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../api/axios'
 import { useAppStore } from '../../store/app.store'
 import toast from 'react-hot-toast'
-import { FiMinus, FiPlus, FiCheck, FiPackage, FiChevronDown, FiChevronUp } from 'react-icons/fi'
+import { FiMinus, FiPlus, FiCheck, FiPackage, FiChevronDown, FiChevronUp, FiWifiOff } from 'react-icons/fi'
+import { enqueue, saveCache, getCache } from '../../api/offlineQueue'
 
 // ─── চূড়ান্ত মূল্য গণনা ───────────────────────────────────
 function calcFinalPrice(p) {
@@ -145,13 +146,30 @@ export default function SalesForm() {
   const [step,         setStep]         = useState('products')
 
   useEffect(() => {
-    Promise.all([
-      api.get(`/customers/${customerId}`),
-      api.get('/products?is_active=true')
-    ]).then(([custRes, prodRes]) => {
-      setCustomer(custRes.data.data)
-      setProducts(prodRes.data.data)
-    }).finally(() => setLoading(false))
+    const loadData = async () => {
+      // প্রথমে cache থেকে দেখাও (offline fast load)
+      const cachedCustomer = await getCache(`customer_${customerId}`)
+      const cachedProducts = await getCache('products_active')
+      if (cachedCustomer) setCustomer(cachedCustomer)
+      if (cachedProducts)  setProducts(cachedProducts)
+      if (cachedCustomer && cachedProducts) setLoading(false)
+
+      // Online হলে fresh data নাও + cache আপডেট করো
+      if (navigator.onLine) {
+        try {
+          const [custRes, prodRes] = await Promise.all([
+            api.get(`/customers/${customerId}`),
+            api.get('/products?is_active=true'),
+          ])
+          setCustomer(custRes.data.data)
+          setProducts(prodRes.data.data)
+          saveCache(`customer_${customerId}`, custRes.data.data)
+          saveCache('products_active', prodRes.data.data)
+        } catch { /* cache দিয়েই চলবে */ }
+      }
+      setLoading(false)
+    }
+    loadData()
   }, [customerId])
 
   const updateQty = (pid, delta, isReplacement = false) => {
@@ -197,6 +215,54 @@ export default function SalesForm() {
     }
 
     setSubmitting(true)
+
+    // ── OFFLINE MODE ─────────────────────────────────────────
+    if (!navigator.onLine) {
+      try {
+        const items = Object.entries(selected).map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
+        const replacementItems = Object.entries(replacements).map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
+
+        // receipt photo → base64 (IndexedDB তে store করার জন্য)
+        let receiptPhotoBase64 = null
+        if (receiptPhoto) {
+          receiptPhotoBase64 = await new Promise((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result)
+            reader.onerror = () => resolve(null)
+            reader.readAsDataURL(receiptPhoto)
+          })
+        }
+
+        await enqueue({
+          type: 'SALE',
+          payload: {
+            customer_id:        customerId,
+            visit_id:           visitId || undefined,
+            items,
+            payment_method:     paymentMethod,
+            replacement_items:  replacementItems,
+            use_credit_balance: useCreditBalance,
+            _receipt_photo_base64: receiptPhotoBase64 || undefined,
+            // offline summary (UI তে দেখানোর জন্য)
+            _customer_name: customer?.shop_name,
+            _total:         netAmount,
+          },
+        })
+
+        toast.success('✅ বিক্রয় offline এ সংরক্ষিত হয়েছে! নেটওয়ার্ক ফিরলে sync হবে।', {
+          duration: 5000,
+          icon: '📶',
+        })
+        navigate('/worker/customers')
+      } catch {
+        toast.error('Offline save ব্যর্থ হয়েছে।')
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
+
+    // ── ONLINE MODE ──────────────────────────────────────────
     try {
       const items = Object.entries(selected).map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
       const replacementItems = Object.entries(replacements).map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
@@ -390,12 +456,25 @@ export default function SalesForm() {
             ))}
           </div>
 
+          {/* Offline notice */}
+          {!navigator.onLine && (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <FiWifiOff size={14} className="text-amber-500 flex-shrink-0" />
+              <p className="text-xs text-amber-700 font-medium">
+                অফলাইন মোড — Save হবে, নেটওয়ার্ক ফিরলে auto sync হবে
+              </p>
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button onClick={() => setStep('replacement')} className="flex-1 py-3 border border-gray-200 rounded-2xl text-gray-600 font-semibold">← পিছনে</button>
             <button onClick={submit} disabled={submitting}
-              className="flex-1 py-3 bg-secondary text-white rounded-2xl font-bold disabled:opacity-60 flex items-center justify-center gap-2">
-              {submitting ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <FiCheck />}
-              {submitting ? 'সাবমিট...' : 'বিক্রয় সম্পন্ন'}
+              className={`flex-1 py-3 rounded-2xl font-bold disabled:opacity-60 flex items-center justify-center gap-2 text-white ${navigator.onLine ? 'bg-secondary' : 'bg-amber-500'}`}>
+              {submitting
+                ? <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                : navigator.onLine ? <FiCheck /> : <FiWifiOff size={16} />
+              }
+              {submitting ? 'সাবমিট...' : navigator.onLine ? 'বিক্রয় সম্পন্ন' : 'Offline এ Save করুন'}
             </button>
           </div>
         </div>
