@@ -49,6 +49,7 @@ import OTPVerify        from './pages/worker/OTPVerify'
 import WorkerSettlement from './pages/worker/Settlement'
 import Commission       from './pages/worker/Commission'
 import Profile          from './pages/worker/Profile'
+import SalesHistory     from './pages/worker/SalesHistory'
 
 // ============================================================
 // Protected Route Component
@@ -175,6 +176,7 @@ export default function App() {
         <Route path="settlement"   element={<WorkerSettlement />} />
         <Route path="commission"   element={<Commission />} />
         <Route path="profile"      element={<Profile />} />
+        <Route path="sales-history" element={<SalesHistory />} />
         <Route path="notices"      element={<NoticesView />} />
       </Route>
 
