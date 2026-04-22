@@ -524,6 +524,14 @@ const getMonthlyReport = async (req, res) => {
 const getAttendanceSettings = async (req, res) => {
     try {
         const settings = await getSettings();
+        // holidays পার্স করে array হিসেবে দাও
+        let holidays = [];
+        try {
+            holidays = JSON.parse(settings.holidays || '[]');
+        } catch {
+            holidays = [];
+        }
+
         return res.json({
             success: true,
             data: {
@@ -531,6 +539,8 @@ const getAttendanceSettings = async (req, res) => {
                 attendance_popup_cutoff:  settings.attendance_popup_cutoff  || '14:30',
                 attendance_checkin_end:   settings.attendance_checkin_end   || '10:00',
                 checkout_time:            settings.checkout_time            || '20:30',
+                weekly_off_day:           parseInt(settings.weekly_off_day  || '5'),
+                holidays,
             }
         });
     } catch (error) {
