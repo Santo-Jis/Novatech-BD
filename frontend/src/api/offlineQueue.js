@@ -1,0 +1,136 @@
+// ============================================================
+// Offline Queue Service
+// IndexedDB দিয়ে offline এ যা করা হয়, পরে sync হয়
+// ============================================================
+
+const DB_NAME = 'novatech_offline'
+const DB_VERSION = 1
+const STORE_QUEUE = 'queue'
+const STORE_CACHE = 'cache'
+
+let db = null
+
+// ── IndexedDB খোলা ──────────────────────────────────────────
+function openDB() {
+  return new Promise((resolve, reject) => {
+    if (db) return resolve(db)
+
+    const req = indexedDB.open(DB_NAME, DB_VERSION)
+
+    req.onupgradeneeded = (e) => {
+      const database = e.target.result
+
+      // Pending actions queue
+      if (!database.objectStoreNames.contains(STORE_QUEUE)) {
+        const store = database.createObjectStore(STORE_QUEUE, {
+          keyPath: 'id',
+          autoIncrement: true,
+        })
+        store.createIndex('type', 'type', { unique: false })
+        store.createIndex('created_at', 'created_at', { unique: false })
+      }
+
+      // Offline cache (products, customers)
+      if (!database.objectStoreNames.contains(STORE_CACHE)) {
+        database.createObjectStore(STORE_CACHE, { keyPath: 'key' })
+      }
+    }
+
+    req.onsuccess = (e) => {
+      db = e.target.result
+      resolve(db)
+    }
+
+    req.onerror = () => reject(req.error)
+  })
+}
+
+// ── Queue এ action যোগ করা ──────────────────────────────────
+export async function enqueue(action) {
+  const database = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(STORE_QUEUE, 'readwrite')
+    const store = tx.objectStore(STORE_QUEUE)
+    const item = {
+      ...action,
+      created_at: Date.now(),
+      status: 'pending', // pending | syncing | failed
+      retry_count: 0,
+    }
+    const req = store.add(item)
+    req.onsuccess = () => resolve(req.result) // returns id
+    req.onerror = () => reject(req.error)
+  })
+}
+
+// ── সব pending items পাওয়া ──────────────────────────────────
+export async function getPendingQueue() {
+  const database = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(STORE_QUEUE, 'readonly')
+    const store = tx.objectStore(STORE_QUEUE)
+    const req = store.getAll()
+    req.onsuccess = () =>
+      resolve(req.result.filter(i => i.status !== 'synced'))
+    req.onerror = () => reject(req.error)
+  })
+}
+
+// ── একটি item update করা ────────────────────────────────────
+export async function updateQueueItem(id, updates) {
+  const database = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(STORE_QUEUE, 'readwrite')
+    const store = tx.objectStore(STORE_QUEUE)
+    const getReq = store.get(id)
+    getReq.onsuccess = () => {
+      const item = { ...getReq.result, ...updates }
+      const putReq = store.put(item)
+      putReq.onsuccess = () => resolve()
+      putReq.onerror = () => reject(putReq.error)
+    }
+    getReq.onerror = () => reject(getReq.error)
+  })
+}
+
+// ── synced item মুছে ফেলা ───────────────────────────────────
+export async function removeQueueItem(id) {
+  const database = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(STORE_QUEUE, 'readwrite')
+    const store = tx.objectStore(STORE_QUEUE)
+    const req = store.delete(id)
+    req.onsuccess = () => resolve()
+    req.onerror = () => reject(req.error)
+  })
+}
+
+// ── Cache save ───────────────────────────────────────────────
+export async function saveCache(key, data) {
+  const database = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(STORE_CACHE, 'readwrite')
+    const store = tx.objectStore(STORE_CACHE)
+    const req = store.put({ key, data, saved_at: Date.now() })
+    req.onsuccess = () => resolve()
+    req.onerror = () => reject(req.error)
+  })
+}
+
+// ── Cache পড়া ───────────────────────────────────────────────
+export async function getCache(key) {
+  const database = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(STORE_CACHE, 'readonly')
+    const store = tx.objectStore(STORE_CACHE)
+    const req = store.get(key)
+    req.onsuccess = () => resolve(req.result?.data || null)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+// ── Queue count ──────────────────────────────────────────────
+export async function getPendingCount() {
+  const items = await getPendingQueue()
+  return items.filter(i => i.status === 'pending' || i.status === 'failed').length
+}
