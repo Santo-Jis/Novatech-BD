@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/app.store'
-import api from '../../api/axios'
+import api, { isNetworkError } from '../../api/axios'
 import { saveCache, getCache } from '../../api/offlineQueue'
 import {
   FiSearch, FiPlus, FiX, FiUser,
@@ -95,7 +95,12 @@ export default function CustomerList() {
     if (!navigator.onLine) {
       const cacheKey = `customers_route_${selectedRoute?.id || 'all'}`
       const cached = await getCache(cacheKey)
-      if (cached) setCustomers(cached)
+      if (cached?.isToday) {
+        setCustomers(cached.data)
+      } else {
+        // আজকের cache নেই
+        toast.error('আজকের ডেটা নেই। WiFi বা ইন্টারনেটে গিয়ে sync করুন।', { duration: 5000 })
+      }
       setLoading(false)
       return
     }
@@ -108,6 +113,20 @@ export default function CustomerList() {
         // online-এ সফল হলে cache-এ রাখো
         const cacheKey = `customers_route_${selectedRoute?.id || 'all'}`
         saveCache(cacheKey, data)
+      } catch (err) {
+        // Slow internet / timeout → cache থেকে দেখাও
+        if (isNetworkError(err)) {
+          const cacheKey = `customers_route_${selectedRoute?.id || 'all'}`
+          const cached = await getCache(cacheKey)
+          if (cached?.isToday) {
+            setCustomers(cached.data)
+            toast('নেটওয়ার্ক ধীর — আজকের সংরক্ষিত তালিকা দেখানো হচ্ছে', {
+              icon: '📶', duration: 3000
+            })
+          } else {
+            toast.error('আজকের ডেটা নেই। WiFi বা ইন্টারনেটে গিয়ে sync করুন।', { duration: 5000 })
+          }
+        }
       } finally {
         setLoading(false)
       }
@@ -132,15 +151,22 @@ export default function CustomerList() {
   useEffect(() => {
     loadCustomers()
 
-    // routes — online হলে fetch ও cache করো, offline হলে cache থেকে
+    // routes — online হলে fetch ও cache করো, offline বা slow হলে cache থেকে
     if (navigator.onLine) {
-      api.get('/routes').then(res => {
-        const data = res.data.data || []
-        setRoutes(data)
-        saveCache('routes_list', data)
-      })
+      api.get('/routes')
+        .then(res => {
+          const data = res.data.data || []
+          setRoutes(data)
+          saveCache('routes_list', data)
+        })
+        .catch(async err => {
+          if (isNetworkError(err)) {
+            const cached = await getCache('routes_list')
+            if (cached?.isToday) setRoutes(cached.data)
+          }
+        })
     } else {
-      getCache('routes_list').then(cached => { if (cached) setRoutes(cached) })
+      getCache('routes_list').then(cached => { if (cached?.isToday) setRoutes(cached.data) })
     }
 
     // ── Live GPS watch — প্রতি মুভমেন্টে distance আপডেট ──────
