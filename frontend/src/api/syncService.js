@@ -30,7 +30,6 @@ async function syncItem(item) {
     await updateQueueItem(item.id, { status: 'syncing' })
 
     if (item.type === 'SALE') {
-      // FormData বানাও (receipt photo থাকতে পারে)
       const payload = { ...item.payload }
 
       // receipt photo base64 থেকে blob বানাও
@@ -47,6 +46,16 @@ async function syncItem(item) {
           // ছবি upload ব্যর্থ হলেও sale চলবে
         }
         delete payload._receipt_photo_base64
+      }
+
+      // offline-এ order_id ছিল না — এখন fetch করো
+      if (!payload.order_id) {
+        try {
+          const orderRes = await api.get('/orders/today')
+          payload.order_id = orderRes.data.data?.id || undefined
+        } catch {
+          // order না পেলেও sale চলবে
+        }
       }
 
       await api.post('/sales', payload)
@@ -143,6 +152,13 @@ export async function syncAll() {
 
 // ── Online event এ auto sync ─────────────────────────────────
 export function initAutoSync() {
+  // App crash হলে 'syncing' status আটকে যেতে পারে —
+  // startup-এ এগুলো 'pending'-এ reset করো
+  getPendingQueue().then(items => {
+    const stuck = items.filter(i => i.status === 'syncing')
+    stuck.forEach(i => updateQueueItem(i.id, { status: 'pending' }))
+  })
+
   window.addEventListener('online', () => {
     setTimeout(() => syncAll(), 1500) // একটু দেরি করে sync শুরু
   })
