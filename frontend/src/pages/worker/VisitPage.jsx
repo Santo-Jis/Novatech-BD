@@ -3,10 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
 import {
   FiUser, FiPhone, FiMapPin, FiShoppingCart,
-  FiNavigation, FiAlertTriangle, FiCheckCircle, FiLoader, FiCamera, FiX
+  FiNavigation, FiAlertTriangle, FiCheckCircle, FiLoader, FiCamera, FiX, FiWifiOff
 } from 'react-icons/fi'
 import toast from 'react-hot-toast'
 import Camera from '../../components/Camera'
+import { enqueue, saveCache, getCache } from '../../api/offlineQueue'
 
 // GPS নেওয়ার helper
 function getGPS() {
@@ -73,9 +74,21 @@ export default function VisitPage() {
   const [closedShopPhoto,  setClosedShopPhoto]  = useState(null)  // { blob, url }
 
   useEffect(() => {
-    api.get(`/customers/${id}`)
-      .then(res => setCustomer(res.data.data))
-      .finally(() => setLoading(false))
+    const loadCustomer = async () => {
+      // Cache থেকে দেখাও
+      const cached = await getCache(`customer_${id}`)
+      if (cached) { setCustomer(cached); setLoading(false) }
+
+      if (navigator.onLine) {
+        try {
+          const res = await api.get(`/customers/${id}`)
+          setCustomer(res.data.data)
+          saveCache(`customer_${id}`, res.data.data)
+        } catch { /* cache দিয়েই চলবে */ }
+      }
+      setLoading(false)
+    }
+    loadCustomer()
   }, [id])
 
   // পেজ লোড হলেই GPS নেওয়া শুরু
@@ -109,6 +122,48 @@ export default function VisitPage() {
   // মূল submit function
   const submitVisit = async ({ will_sell = true, no_sell_reason = null, photo = null } = {}) => {
     setVisiting(true)
+
+    // ── OFFLINE MODE ────────────────────────────────────────
+    if (!navigator.onLine) {
+      try {
+        // photo → base64
+        let photoBase64 = null
+        if (photo) {
+          photoBase64 = await new Promise((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result)
+            reader.onerror = () => resolve(null)
+            reader.readAsDataURL(photo)
+          })
+        }
+
+        await enqueue({
+          type: 'VISIT',
+          payload: {
+            customer_id:          id,
+            will_sell,
+            no_sell_reason:       no_sell_reason || undefined,
+            latitude:             location?.latitude,
+            longitude:            location?.longitude,
+            _closed_photo_base64: photoBase64 || undefined,
+            _customer_name:       customer?.shop_name,
+          },
+        })
+
+        toast.success('✅ ভিজিট offline এ সংরক্ষিত! নেটওয়ার্ক ফিরলে sync হবে।', {
+          duration: 5000,
+          icon: '📶',
+        })
+        setVisited(true)
+      } catch {
+        toast.error('Offline save ব্যর্থ হয়েছে।')
+      } finally {
+        setVisiting(false)
+      }
+      return
+    }
+
+    // ── ONLINE MODE ──────────────────────────────────────────
     try {
       const formData = new FormData()
       formData.append('customer_id', id)
@@ -240,6 +295,16 @@ export default function VisitPage() {
             বিক্রয় করুন
           </button>
 
+          {/* Offline notice */}
+          {!navigator.onLine && (
+            <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+              <FiWifiOff size={14} className="text-amber-500 flex-shrink-0" />
+              <p className="text-xs text-amber-700 font-medium">
+                অফলাইন মোড — ভিজিট save হবে, নেটওয়ার্ক ফিরলে sync হবে
+              </p>
+            </div>
+          )}
+
           {/* ভিজিট (বিক্রি হয়নি) */}
           {/* GPS না থাকলে warning বার */}
           {(gpsState === 'error' || gpsState === 'idle' || (!location && gpsState !== 'loading')) && (
@@ -262,6 +327,7 @@ export default function VisitPage() {
                 : <FiUser className="text-2xl" />
               }
               <span className="text-sm font-semibold">ভিজিট (আসবে)</span>
+              {!navigator.onLine && <span className="text-[10px] text-amber-600">offline</span>}
             </button>
 
             <button
@@ -271,6 +337,7 @@ export default function VisitPage() {
             >
               <FiAlertTriangle className="text-2xl" />
               <span className="text-sm font-semibold">রাখেনি</span>
+              {!navigator.onLine && <span className="text-[10px] text-amber-600">offline</span>}
             </button>
           </div>
         </div>
