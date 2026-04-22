@@ -124,29 +124,79 @@ function HoldButton({ label, color = 'blue', onDone }) {
 }
 
 // ─────────────────────────────────────────────
+// Status Badge
+// ─────────────────────────────────────────────
+function StatusBadge({ status }) {
+  const map = {
+    present: { label: 'উপস্থিত', bg: '#d1fae5', color: '#065f46' },
+    late:    { label: 'দেরি',     bg: '#fef3c7', color: '#92400e' },
+    absent:  { label: 'অনুপস্থিত',bg: '#fee2e2', color: '#991b1b' },
+    leave:   { label: 'ছুটি',     bg: '#e0e7ff', color: '#3730a3' },
+  }
+  const s = map[status] || { label: status, bg: '#f3f4f6', color: '#374151' }
+  return (
+    <span style={{
+      background: s.bg, color: s.color,
+      fontSize: '0.72rem', fontWeight: 700,
+      padding: '2px 8px', borderRadius: 20,
+      whiteSpace: 'nowrap'
+    }}>{s.label}</span>
+  )
+}
+
+// ─────────────────────────────────────────────
 // Main Attendance Page
 // ─────────────────────────────────────────────
 export default function WorkerAttendance() {
   const navigate = useNavigate()
 
-  const [mode,      setMode]      = useState(null)   // 'checkin' | 'checkout'
-  const [step,      setStep]      = useState('hold') // 'hold' | 'selfie' | 'loading' | 'done'
-  const [todayAtt,  setTodayAtt]  = useState(null)
-  const [loading,   setLoading]   = useState(true)
-  const [lateInfo,  setLateInfo]  = useState(null)
-  const [settings,  setSettings]  = useState({ attendance_checkin_start:'09:00', attendance_popup_cutoff:'14:30' })
+  const [mode,        setMode]        = useState(null)   // 'checkin' | 'checkout'
+  const [step,        setStep]        = useState('hold') // 'hold' | 'selfie' | 'loading' | 'done'
+  const [todayAtt,    setTodayAtt]    = useState(null)
+  const [loading,     setLoading]     = useState(true)
+  const [lateInfo,    setLateInfo]    = useState(null)
+  const [settings,    setSettings]    = useState({ attendance_checkin_start:'09:00', attendance_popup_cutoff:'14:30', weekly_off_day:5, holidays:[] })
+  const [historyData, setHistoryData] = useState({ attendance: [], summary: null, bonus_progress: null })
+  const [histMonth,   setHistMonth]   = useState(new Date().getMonth() + 1)
+  const [histYear,    setHistYear]    = useState(new Date().getFullYear())
+  const [histLoading, setHistLoading] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
+
+  const fetchHistory = (month, year) => {
+    setHistLoading(true)
+    api.get(`/attendance/my?month=${month}&year=${year}`)
+      .then(r => {
+        const today = new Date().toISOString().split('T')[0]
+        const data  = r.data.data
+        setHistoryData(data)
+        if (month === new Date().getMonth() + 1 && year === new Date().getFullYear()) {
+          setTodayAtt(data.attendance.find(a => a.date?.startsWith(today)) || null)
+        }
+      })
+      .catch(() => {})
+      .finally(() => setHistLoading(false))
+  }
 
   useEffect(() => {
     api.get('/attendance/settings').then(r => { if (r.data?.data) setSettings(r.data.data) }).catch(()=>{})
+    setLoading(true)
     const m = new Date().getMonth() + 1
     const y = new Date().getFullYear()
     api.get(`/attendance/my?month=${m}&year=${y}`)
       .then(r => {
         const today = new Date().toISOString().split('T')[0]
-        setTodayAtt(r.data.data.attendance.find(a => a.date === today) || null)
+        const data  = r.data.data
+        setHistoryData(data)
+        setTodayAtt(data.attendance.find(a => a.date?.startsWith(today)) || null)
       })
       .finally(() => setLoading(false))
   }, [])
+
+  const handleMonthChange = (month, year) => {
+    setHistMonth(month)
+    setHistYear(year)
+    fetchHistory(month, year)
+  }
 
   // সময় হিসাব
   const now  = new Date()
@@ -155,6 +205,29 @@ export default function WorkerAttendance() {
   const [cH, cM] = (settings.attendance_popup_cutoff  || '14:30').split(':').map(Number)
   const canCheckIn  = !todayAtt?.check_in_time  && time >= sH*60+sM && time <= cH*60+cM
   const canCheckOut = !!todayAtt?.check_in_time && !todayAtt?.check_out_time
+
+  const MONTHS_BN = ['জানুয়ারি','ফেব্রুয়ারি','মার্চ','এপ্রিল','মে','জুন','জুলাই','আগস্ট','সেপ্টেম্বর','অক্টোবর','নভেম্বর','ডিসেম্বর']
+
+  // চেক-ইন থেকে চেক-আউট পর্যন্ত কাজের সময়
+  const getWorkDuration = (checkIn, checkOut) => {
+    if (!checkIn || !checkOut) return null
+    const diff = Math.floor((new Date(checkOut) - new Date(checkIn)) / 60000) // মিনিট
+    if (diff <= 0) return null
+    const h = Math.floor(diff / 60)
+    const m = diff % 60
+    if (h === 0) return `${m} মিনিট`
+    if (m === 0) return `${h} ঘণ্টা`
+    return `${h} ঘণ্টা ${m} মিনিট`
+  }
+
+  // ছুটির দিন কিনা যাচাই (admin-defined + সাপ্তাহিক)
+  const isOffDay = (dateStr) => {
+    const d = new Date(dateStr)
+    if (d.getDay() === (settings.weekly_off_day ?? 5)) return 'weekly'
+    const holidays = Array.isArray(settings.holidays) ? settings.holidays : []
+    if (holidays.some(h => h?.startsWith?.(dateStr) || h === dateStr)) return 'holiday'
+    return false
+  }
 
   // Selfie → Submit
   async function onSelfie(blob) {
@@ -203,7 +276,7 @@ export default function WorkerAttendance() {
 
   // ── হোম স্ক্রিন ──
   if (!mode) return (
-    <div style={{ padding:16 }}>
+    <div style={{ padding:16, paddingBottom:32 }}>
       {/* হেডার */}
       <h2 style={{ fontSize:'1.25rem', fontWeight:800, textAlign:'center', color:'#1f2937', marginBottom:16 }}>হাজিরা</h2>
 
@@ -233,7 +306,7 @@ export default function WorkerAttendance() {
       </div>
 
       {/* বাটন */}
-      <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+      <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:24 }}>
         {canCheckIn && (
           <button
             onClick={() => startMode('checkin')}
@@ -261,16 +334,192 @@ export default function WorkerAttendance() {
           </button>
         )}
         {todayAtt?.check_out_time && (
-          <div style={{ textAlign:'center', padding:'24px 0' }}>
+          <div style={{ textAlign:'center', padding:'16px 0' }}>
             <span style={{ fontSize:'3rem' }}>✅</span>
             <p style={{ color:'#374151', fontWeight:700, marginTop:8 }}>আজকের হাজিরা সম্পন্ন!</p>
           </div>
         )}
         {!canCheckIn && !canCheckOut && !todayAtt?.check_out_time && (
-          <div style={{ textAlign:'center', padding:'24px 0', color:'#9ca3af' }}>
+          <div style={{ textAlign:'center', padding:'16px 0', color:'#9ca3af' }}>
             <p style={{ fontSize:'0.88rem' }}>
               চেক-ইনের সময়: {settings.attendance_checkin_start} — {settings.attendance_popup_cutoff}
             </p>
+          </div>
+        )}
+      </div>
+
+      {/* ─── মাসিক ইতিহাস ─── */}
+      <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 1px 4px rgba(0,0,0,0.08)', overflow:'hidden' }}>
+        {/* Accordion Header */}
+        <button
+          onClick={() => setShowHistory(v => !v)}
+          style={{
+            width:'100%', padding:'14px 16px', border:'none', background:'none',
+            display:'flex', alignItems:'center', justifyContent:'space-between',
+            cursor:'pointer'
+          }}
+        >
+          <span style={{ fontWeight:700, color:'#1f2937', fontSize:'0.95rem' }}>📅 মাসিক হাজিরা ইতিহাস</span>
+          <span style={{ color:'#6b7280', fontSize:'1.1rem', transition:'transform 0.2s', transform: showHistory ? 'rotate(180deg)' : 'none' }}>▼</span>
+        </button>
+
+        {showHistory && (
+          <div style={{ borderTop:'1px solid #f3f4f6', padding:16 }}>
+
+            {/* মাস/বছর সিলেক্টর */}
+            <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+              <select
+                value={histMonth}
+                onChange={e => handleMonthChange(parseInt(e.target.value), histYear)}
+                style={{
+                  flex:1, padding:'8px 10px', borderRadius:10, border:'1px solid #e5e7eb',
+                  fontSize:'0.85rem', fontWeight:600, color:'#1f2937', background:'#f9fafb'
+                }}
+              >
+                {MONTHS_BN.map((m, i) => (
+                  <option key={i+1} value={i+1}>{m}</option>
+                ))}
+              </select>
+              <select
+                value={histYear}
+                onChange={e => handleMonthChange(histMonth, parseInt(e.target.value))}
+                style={{
+                  width:90, padding:'8px 10px', borderRadius:10, border:'1px solid #e5e7eb',
+                  fontSize:'0.85rem', fontWeight:600, color:'#1f2937', background:'#f9fafb'
+                }}
+              >
+                {[new Date().getFullYear()-1, new Date().getFullYear()].map(y => (
+                  <option key={y} value={y}>{y}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* সারসংক্ষেপ কার্ড */}
+            {historyData.summary && (
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16 }}>
+                {[
+                  { label:'উপস্থিত', val: historyData.summary.present, color:'#065f46', bg:'#d1fae5' },
+                  { label:'দেরি',     val: historyData.summary.late,    color:'#92400e', bg:'#fef3c7' },
+                  { label:'অনুপস্থিত',val: historyData.summary.absent,  color:'#991b1b', bg:'#fee2e2' },
+                  { label:'ছুটি',     val: historyData.summary.leave,   color:'#3730a3', bg:'#e0e7ff' },
+                ].map(s => (
+                  <div key={s.label} style={{ background: s.bg, borderRadius:10, padding:'8px 4px', textAlign:'center' }}>
+                    <p style={{ fontSize:'1.1rem', fontWeight:800, color: s.color }}>{s.val}</p>
+                    <p style={{ fontSize:'0.68rem', color: s.color, marginTop:2 }}>{s.label}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* মোট কর্তন */}
+            {historyData.summary?.totalDeduction > 0 && (
+              <div style={{ background:'#fffbeb', borderRadius:10, padding:'10px 14px', marginBottom:14, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ fontSize:'0.82rem', color:'#92400e', fontWeight:600 }}>💸 এই মাসে মোট কর্তন</span>
+                <span style={{ fontSize:'1rem', fontWeight:800, color:'#b45309' }}>
+                  ৳{parseFloat(historyData.summary.totalDeduction).toFixed(0)}
+                </span>
+              </div>
+            )}
+
+            {/* বোনাস প্রগ্রেস */}
+            {historyData.bonus_progress && (
+              <div style={{ background:'#f0fdf4', borderRadius:10, padding:'10px 14px', marginBottom:16 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                  <span style={{ fontSize:'0.82rem', color:'#065f46', fontWeight:600 }}>🏆 পূর্ণ বোনাসের অগ্রগতি</span>
+                  <span style={{ fontSize:'0.82rem', fontWeight:800, color:'#065f46' }}>
+                    {historyData.bonus_progress.present_days}/{historyData.bonus_progress.working_days} দিন
+                  </span>
+                </div>
+                <div style={{ background:'#d1fae5', borderRadius:20, height:8, overflow:'hidden' }}>
+                  <div style={{
+                    height:'100%', borderRadius:20, background:'#10b981',
+                    width:`${Math.min(100, historyData.bonus_progress.percentage)}%`,
+                    transition:'width 0.4s ease'
+                  }}/>
+                </div>
+                {historyData.bonus_progress.is_perfect && (
+                  <p style={{ fontSize:'0.75rem', color:'#059669', fontWeight:700, marginTop:6, textAlign:'center' }}>
+                    🎉 পূর্ণ উপস্থিতি বোনাস অর্জিত!
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* লোডিং */}
+            {histLoading && (
+              <div style={{ textAlign:'center', padding:'20px 0', color:'#9ca3af', fontSize:'0.85rem' }}>লোড হচ্ছে...</div>
+            )}
+
+            {/* দিনভিত্তিক তালিকা */}
+            {!histLoading && historyData.attendance.length === 0 && (
+              <p style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.85rem', padding:'16px 0' }}>
+                এই মাসে কোনো হাজিরা রেকর্ড নেই।
+              </p>
+            )}
+
+            {!histLoading && historyData.attendance.map((row, i) => {
+              const rawDate  = row.date?.split('T')[0] || row.date
+              const d        = new Date(rawDate)
+              const dateStr  = d.toLocaleDateString('bn-BD', { day:'numeric', month:'short', weekday:'short' })
+              const offDay   = isOffDay(rawDate)
+              const duration = getWorkDuration(row.check_in_time, row.check_out_time)
+
+              // ছুটির দিন — লাল ব্যাকগ্রাউন্ড
+              const rowBg = offDay === 'holiday' ? '#fff1f2'
+                          : offDay === 'weekly'  ? '#fef2f2'
+                          : 'transparent'
+
+              return (
+                <div key={i} style={{
+                  display:'flex', alignItems:'flex-start', justifyContent:'space-between',
+                  padding:'10px 8px', marginLeft:-8, marginRight:-8,
+                  borderRadius:10, background: rowBg,
+                  borderBottom: i < historyData.attendance.length-1 ? '1px solid #f3f4f6' : 'none'
+                }}>
+                  <div style={{ flex:1 }}>
+                    {/* তারিখ + ছুটির লেবেল */}
+                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <p style={{ fontSize:'0.82rem', fontWeight:700, color: offDay ? '#dc2626' : '#1f2937' }}>
+                        {dateStr}
+                      </p>
+                      {offDay === 'holiday' && (
+                        <span style={{ fontSize:'0.65rem', background:'#fee2e2', color:'#b91c1c', fontWeight:700, padding:'1px 6px', borderRadius:20 }}>
+                          🏖️ ছুটি
+                        </span>
+                      )}
+                      {offDay === 'weekly' && (
+                        <span style={{ fontSize:'0.65rem', background:'#fee2e2', color:'#b91c1c', fontWeight:700, padding:'1px 6px', borderRadius:20 }}>
+                          সাপ্তাহিক
+                        </span>
+                      )}
+                    </div>
+
+                    {/* চেক-ইন → চেক-আউট */}
+                    <p style={{ fontSize:'0.72rem', color:'#6b7280', marginTop:2 }}>
+                      {row.check_in_time  ? new Date(row.check_in_time ).toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit'}) : '—'}
+                      {' → '}
+                      {row.check_out_time ? new Date(row.check_out_time).toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit'}) : '—'}
+                    </p>
+
+                    {/* কাজের মোট সময় */}
+                    {duration && (
+                      <p style={{ fontSize:'0.72rem', color:'#059669', fontWeight:600, marginTop:2 }}>
+                        ⏱ {duration}
+                      </p>
+                    )}
+                  </div>
+
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4 }}>
+                    <StatusBadge status={row.status} />
+                    {row.late_minutes > 0 && (
+                      <span style={{ fontSize:'0.68rem', color:'#b45309' }}>
+                        দেরি {row.late_minutes}মি · কর্তন ৳{parseFloat(row.salary_deduction||0).toFixed(0)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </div>
