@@ -8,11 +8,22 @@ import toast from 'react-hot-toast'
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-  timeout: 60000,
+  timeout: 12000,   // 12s — slow internet-এ 60s অপেক্ষা করা যায় না
   headers: {
     'Content-Type': 'application/json'
   }
 })
+
+// ── Network বা Timeout error চেনার helper ───────────────────
+// এই error গুলোতে server response আসেনি — cache fallback উচিত
+export function isNetworkError(error) {
+  return (
+    !error.response &&
+    (error.code === 'ECONNABORTED' ||   // timeout
+     error.code === 'ERR_NETWORK' ||    // data off
+     error.message === 'Network Error') // axios generic
+  )
+}
 
 // ============================================================
 // Request Interceptor — Token যোগ করো
@@ -113,6 +124,15 @@ api.interceptors.response.use(
       } finally {
         isRefreshing = false
       }
+    }
+
+    // Network বা Timeout error — server-এ পৌঁছায়নি
+    if (isNetworkError(error)) {
+      // submit/mutation request (GET ছাড়া সব) — duplicate এড়াতে toast দেখাও
+      if (error.config?.method !== 'get') {
+        toast.error('নেটওয়ার্ক সমস্যা। ডেটা পাঠানো যায়নি।')
+      }
+      return Promise.reject(error)
     }
 
     // সাধারণ Error Handle
