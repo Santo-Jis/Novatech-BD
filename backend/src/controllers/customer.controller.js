@@ -162,7 +162,20 @@ const getCustomer = async (req, res) => {
             return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
         }
 
-        return res.status(200).json({ success: true, data: result.rows[0] });
+        const customer = result.rows[0];
+
+        // Manager শুধু নিজের রুটের customer দেখতে পারবে
+        if (req.user.role === 'manager') {
+            const routeCheck = await query(
+                `SELECT id FROM routes WHERE id = $1 AND manager_id = $2`,
+                [customer.route_id, req.user.id]
+            );
+            if (routeCheck.rows.length === 0) {
+                return res.status(403).json({ success: false, message: 'এই কাস্টমার আপনার টিমে নেই।' });
+            }
+        }
+
+        return res.status(200).json({ success: true, data: customer });
 
     } catch (error) {
         console.error('❌ Get Customer Error:', error.message);
@@ -345,6 +358,19 @@ const updateCustomer = async (req, res) => {
 const getCustomerHistory = async (req, res) => {
     try {
         const { id } = req.params;
+
+        // Manager শুধু নিজের রুটের customer এর history দেখতে পারবে
+        if (req.user.role === 'manager') {
+            const routeCheck = await query(
+                `SELECT c.id FROM customers c
+                 JOIN routes r ON c.route_id = r.id
+                 WHERE c.id = $1 AND r.manager_id = $2`,
+                [id, req.user.id]
+            );
+            if (routeCheck.rows.length === 0) {
+                return res.status(403).json({ success: false, message: 'এই কাস্টমার আপনার টিমে নেই।' });
+            }
+        }
 
         // বিক্রয় ইতিহাস
         const sales = await query(
