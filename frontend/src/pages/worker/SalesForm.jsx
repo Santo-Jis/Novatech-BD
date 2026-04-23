@@ -174,6 +174,11 @@ export default function SalesForm() {
   const [submitting,   setSubmitting]   = useState(false)
   const [step,         setStep]         = useState('products')
 
+  // ── অনুমোদিত অর্ডার state ─────────────────────────────────
+  const [approvedOrder,    setApprovedOrder]    = useState(null)   // approved order object
+  const [orderCheckDone,   setOrderCheckDone]   = useState(false)  // check শেষ হয়েছে কিনা
+  const [orderCheckError,  setOrderCheckError]  = useState(false)  // নেটওয়ার্ক error হয়েছে কিনা
+
   useEffect(() => {
     const loadData = async () => {
       // প্রথমে cache থেকে দেখাও (offline fast load)
@@ -195,7 +200,24 @@ export default function SalesForm() {
           saveCache(`customer_${customerId}`, custRes.data.data)
           saveCache('products_active', prodRes.data.data)
         } catch { /* cache দিয়েই চলবে */ }
+
+        // ── আজকের অনুমোদিত অর্ডার চেক করো ──────────────────
+        try {
+          const orderRes = await api.get('/orders/today')
+          const allOrders = orderRes.data.all_orders || []
+          // status === 'approved' এমন অর্ডার খোঁজো
+          const found = allOrders.find(o => o.status === 'approved')
+          setApprovedOrder(found || null)
+        } catch {
+          setOrderCheckError(true)
+        } finally {
+          setOrderCheckDone(true)
+        }
+      } else {
+        // অফলাইনে order check সম্ভব না — এটি জানিয়ে দেব
+        setOrderCheckDone(true)
       }
+
       setLoading(false)
     }
     loadData()
@@ -297,8 +319,13 @@ export default function SalesForm() {
       const items = Object.entries(selected).map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
       const replacementItems = Object.entries(replacements).map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
 
-      const todayOrder = await api.get('/orders/today')
-      const orderId = todayOrder.data.data?.id
+      // ── অনুমোদিত অর্ডার বাধ্যতামূলক ──────────────────────
+      if (!approvedOrder) {
+        toast.error('❌ আজকের অর্ডার ম্যানেজার অনুমোদন করেননি। বিক্রয় করা সম্ভব নয়।', { duration: 5000 })
+        setSubmitting(false)
+        return
+      }
+      const orderId = approvedOrder.id
 
       let receiptPhotoUrl = null
       if (receiptPhoto) {
@@ -346,6 +373,32 @@ export default function SalesForm() {
 
   if (loading) return <div className="p-4"><div className="h-64 bg-white rounded-2xl animate-pulse" /></div>
 
+  // ── অনুমোদিত অর্ডার না থাকলে hard block ─────────────────
+  if (navigator.onLine && orderCheckDone && !approvedOrder && !orderCheckError) {
+    return (
+      <div className="p-4 flex flex-col items-center justify-center min-h-[60vh] gap-4 animate-fade-in">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center text-3xl">🚫</div>
+        <div className="text-center space-y-2">
+          <p className="font-bold text-gray-800 text-base">অর্ডার অনুমোদিত হয়নি</p>
+          <p className="text-sm text-gray-500 leading-relaxed">
+            আজকের অর্ডার এখনো ম্যানেজার অনুমোদন করেননি।<br />
+            অনুমোদন ছাড়া বিক্রয় করা সম্ভব নয়।
+          </p>
+        </div>
+        <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-700 text-center w-full max-w-xs">
+          ম্যানেজারকে অর্ডার অনুমোদন করতে বলুন, তারপর এই পেজ রিফ্রেশ করুন।
+        </div>
+        <button
+          onClick={() => { setOrderCheckDone(false); setApprovedOrder(null); window.location.reload() }}
+          className="mt-2 px-6 py-3 bg-primary text-white rounded-2xl font-semibold text-sm"
+        >
+          🔄 রিফ্রেশ করুন
+        </button>
+        <button onClick={() => navigate(-1)} className="text-sm text-gray-400 underline">পিছনে যান</button>
+      </div>
+    )
+  }
+
   return (
     <div className="p-4 space-y-4 animate-fade-in pb-36">
       {/* Customer header */}
@@ -356,6 +409,17 @@ export default function SalesForm() {
           <p className="text-xs text-gray-500">{customer?.owner_name}</p>
         </div>
       </div>
+
+      {/* অনুমোদিত অর্ডার ব্যাজ */}
+      {approvedOrder && (
+        <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-2.5">
+          <span className="text-green-600 text-base">✅</span>
+          <div>
+            <p className="text-xs font-semibold text-green-700">অর্ডার অনুমোদিত</p>
+            <p className="text-[10px] text-green-500">অর্ডার #{approvedOrder.id} — বিক্রয় করা যাবে</p>
+          </div>
+        </div>
+      )}
 
       {/* Step tabs */}
       <div className="flex bg-gray-100 p-1 rounded-xl">
