@@ -8,14 +8,14 @@ import toast from 'react-hot-toast'
 import {
   FiUsers, FiPlus, FiEdit2, FiTarget, FiUserPlus,
   FiChevronDown, FiChevronUp, FiSearch, FiTrash2,
-  FiCheck, FiX, FiTrendingUp
+  FiCheck, FiX, FiTrendingUp, FiArrowRight
 } from 'react-icons/fi'
 
 // ─── ছোট helper ──────────────────────────────────────────
 const fmt = n => Number(n || 0).toLocaleString('bn-BD')
 
 // ─── টিম কার্ড ────────────────────────────────────────────
-function TeamCard({ team, onEdit, onTarget, onAssignSR, onExpand, expanded }) {
+function TeamCard({ team, onEdit, onTarget, onAssignSR, onExpand, expanded, onRemoveSR, onMoveSR }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
       {/* Header */}
@@ -93,9 +93,27 @@ function TeamCard({ team, onEdit, onTarget, onAssignSR, onExpand, expanded }) {
                     <p className="text-xs text-gray-400 font-mono">{sr.employee_code}</p>
                   </div>
                 </div>
-                <div className="text-right flex-shrink-0">
-                  <p className="text-xs font-semibold text-green-600">৳{fmt(sr.monthly_target)}</p>
-                  <p className="text-xs text-gray-400">টার্গেট</p>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <div className="text-right mr-1">
+                    <p className="text-xs font-semibold text-green-600">৳{fmt(sr.monthly_target)}</p>
+                    <p className="text-xs text-gray-400">টার্গেট</p>
+                  </div>
+                  {/* Move SR button */}
+                  <button
+                    onClick={() => onMoveSR(sr, team)}
+                    title="অন্য টিমে সরান"
+                    className="p-1.5 rounded-lg border border-blue-100 text-blue-500 hover:bg-blue-50 transition-colors"
+                  >
+                    <FiArrowRight className="text-xs" />
+                  </button>
+                  {/* Remove SR button */}
+                  <button
+                    onClick={() => onRemoveSR(sr, team)}
+                    title="টিম থেকে সরান"
+                    className="p-1.5 rounded-lg border border-red-100 text-red-400 hover:bg-red-50 transition-colors"
+                  >
+                    <FiX className="text-xs" />
+                  </button>
                 </div>
               </div>
             ))
@@ -120,6 +138,8 @@ export default function AdminTeams() {
   const [editModal,   setEditModal]   = useState(null)  // team object
   const [targetModal, setTargetModal] = useState(null)  // team object
   const [assignModal, setAssignModal] = useState(null)  // team object
+  const [removeModal, setRemoveModal] = useState(null)  // { sr, team }
+  const [moveModal,   setMoveModal]   = useState(null)  // { sr, fromTeam }
   const [saving,      setSaving]      = useState(false)
 
   // Form states
@@ -127,6 +147,7 @@ export default function AdminTeams() {
   const [targetVal, setTargetVal] = useState('')
   const [selectedSRs, setSelectedSRs] = useState([])
   const [srSearch, setSrSearch] = useState('')
+  const [moveTargetTeamId, setMoveTargetTeamId] = useState('')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -267,6 +288,49 @@ export default function AdminTeams() {
     }
   }
 
+  // ─── Remove SR from Team ────────────────────────────────
+  const handleRemoveSR = async () => {
+    if (!removeModal) return
+    setSaving(true)
+    try {
+      await api.delete(`/teams/${removeModal.team.id}/members/${removeModal.sr.id}`)
+      toast.success(`${removeModal.sr.name_bn}-কে টিম থেকে সরানো হয়েছে।`)
+      setRemoveModal(null)
+      // local state আপডেট
+      setTeams(prev => prev.map(t =>
+        t.id === removeModal.team.id
+          ? { ...t, sr_count: Math.max(0, (t.sr_count || 1) - 1), members: (t.members || []).filter(m => m.id !== removeModal.sr.id) }
+          : t
+      ))
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'সমস্যা হয়েছে।')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  // ─── Move SR to Another Team ────────────────────────────
+  const openMove = (sr, fromTeam) => {
+    setMoveTargetTeamId('')
+    setMoveModal({ sr, fromTeam })
+  }
+
+  const handleMoveSR = async () => {
+    if (!moveTargetTeamId) { toast.error('নতুন টিম বাছাই করুন।'); return }
+    if (moveTargetTeamId === moveModal.fromTeam.id) { toast.error('SR ইতিমধ্যে এই টিমে আছে।'); return }
+    setSaving(true)
+    try {
+      await api.patch(`/teams/sr/${moveModal.sr.id}/move`, { team_id: moveTargetTeamId })
+      toast.success(`${moveModal.sr.name_bn}-কে নতুন টিমে সরানো হয়েছে।`)
+      setMoveModal(null)
+      load()
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'সমস্যা হয়েছে।')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   // ─── Filter ─────────────────────────────────────────────
   const filtered = teams.filter(t =>
     t.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -355,6 +419,8 @@ export default function AdminTeams() {
               onAssignSR={openAssign}
               onExpand={handleExpand}
               expanded={!!expanded[team.id]}
+              onRemoveSR={(sr, team) => setRemoveModal({ sr, team })}
+              onMoveSR={openMove}
             />
           ))}
         </div>
@@ -491,6 +557,81 @@ export default function AdminTeams() {
               ))}
             </div>
           )}
+        </div>
+      </Modal>
+
+      {/* ════════════════════════════════════════════════════
+          MODAL: SR টিম থেকে সরানো (Confirm)
+      ════════════════════════════════════════════════════ */}
+      <Modal
+        isOpen={!!removeModal}
+        onClose={() => setRemoveModal(null)}
+        title="SR সরানো নিশ্চিত করুন"
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setRemoveModal(null)}>বাতিল</Button>
+            <Button
+              onClick={handleRemoveSR}
+              loading={saving}
+              icon={<FiX />}
+              className="bg-red-500 hover:bg-red-600 border-red-500"
+            >
+              সরিয়ে দিন
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <div className="bg-red-50 rounded-xl p-4 text-center">
+            <FiUsers className="text-3xl text-red-400 mx-auto mb-2" />
+            <p className="text-sm font-semibold text-red-700">{removeModal?.sr?.name_bn}</p>
+            <p className="text-xs text-red-500 font-mono">{removeModal?.sr?.employee_code}</p>
+          </div>
+          <p className="text-sm text-gray-600 text-center">
+            এই SR-কে <span className="font-semibold text-gray-800">{removeModal?.team?.name}</span> থেকে সরিয়ে দেওয়া হবে এবং SR টিমহীন হয়ে যাবে।
+          </p>
+        </div>
+      </Modal>
+
+      {/* ════════════════════════════════════════════════════
+          MODAL: SR অন্য টিমে Move করা
+      ════════════════════════════════════════════════════ */}
+      <Modal
+        isOpen={!!moveModal}
+        onClose={() => setMoveModal(null)}
+        title={`টিম পরিবর্তন — ${moveModal?.sr?.name_bn}`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setMoveModal(null)}>বাতিল</Button>
+            <Button onClick={handleMoveSR} loading={saving} icon={<FiArrowRight />}>সরান</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="bg-blue-50 rounded-xl p-3 text-center">
+            <p className="text-xs text-blue-500">বর্তমান টিম</p>
+            <p className="text-sm font-bold text-blue-700 mt-0.5">{moveModal?.fromTeam?.name}</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">নতুন টিম বাছাই করুন</label>
+            <select
+              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
+              value={moveTargetTeamId}
+              onChange={e => setMoveTargetTeamId(e.target.value)}
+            >
+              <option value="">— টিম বাছাই করুন —</option>
+              {teams
+                .filter(t => t.id !== moveModal?.fromTeam?.id && t.is_active)
+                .map(t => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} {t.manager_name_bn ? `(${t.manager_name_bn})` : ''}
+                  </option>
+                ))
+              }
+            </select>
+          </div>
         </div>
       </Modal>
     </div>
