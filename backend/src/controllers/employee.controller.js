@@ -237,7 +237,10 @@ const createEmployee = async (req, res) => {
                 skills ? JSON.stringify(skills) : '{}',
                 education ? JSON.stringify(education) : '[]',
                 experience ? JSON.stringify(experience) : '[]',
-                emergency_contact ? JSON.stringify(emergency_contact) : '{}',
+                // emergency_contact সবসময় plain string/phone হিসেবে store করো
+                typeof emergency_contact === 'object'
+                    ? (emergency_contact?.number || emergency_contact?.phone || emergency_contact?.value || null)
+                    : (emergency_contact ? String(emergency_contact).trim() : null),
                 profilePhotoUrl,
                 basic_salary || 0,
                 manager_id || req.user.manager_id || null,
@@ -712,16 +715,30 @@ const updateOwnProfile = async (req, res) => {
         const { name_bn, name_en, phone, current_address, emergency_contact } = req.body;
         const userId = req.user.id;
 
+        // emergency_contact সবসময় plain string হিসেবে store করো
+        // যদি object আসে (data inconsistency) তাহলে number/phone বের করো
+        let emergencyContactStr = null;
+        if (emergency_contact !== undefined && emergency_contact !== null) {
+            if (typeof emergency_contact === 'object') {
+                emergencyContactStr = emergency_contact?.number
+                    || emergency_contact?.phone
+                    || emergency_contact?.value
+                    || '';
+            } else {
+                emergencyContactStr = String(emergency_contact).trim();
+            }
+        }
+
         await query(
             `UPDATE users SET
                 name_bn           = COALESCE($1, name_bn),
                 name_en           = COALESCE($2, name_en),
                 phone             = COALESCE($3, phone),
                 current_address   = COALESCE($4, current_address),
-                emergency_contact = COALESCE($5, emergency_contact),
+                emergency_contact = COALESCE($5::text, emergency_contact),
                 updated_at        = NOW()
              WHERE id = $6`,
-            [name_bn, name_en, phone, current_address, emergency_contact, userId]
+            [name_bn, name_en, phone, current_address, emergencyContactStr, userId]
         );
 
         return res.status(200).json({
