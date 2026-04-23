@@ -39,8 +39,11 @@ const getMyCommission = async (req, res) => {
         // দৈনিক কমিশন
         const daily = await query(
             `SELECT c.date, c.sales_amount, c.commission_rate,
-                    c.commission_amount, c.type, c.paid
+                    c.commission_amount, c.type, c.paid,
+                    c.paid_at, c.payment_reference,
+                    approver.name_bn AS approved_by_name
              FROM commission c
+             LEFT JOIN users approver ON c.approved_by = approver.id
              WHERE c.user_id = $1
                AND EXTRACT(YEAR  FROM c.date) = $2
                AND EXTRACT(MONTH FROM c.date) = $3
