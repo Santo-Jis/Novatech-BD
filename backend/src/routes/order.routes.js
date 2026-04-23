@@ -12,7 +12,8 @@ const {
     getPendingOrders,
     approveOrder,
     rejectOrder,
-    getTodayOrder
+    getTodayOrder,
+    getStockStatus,
 } = require('../controllers/order.controller');
 
 // ============================================================
@@ -21,7 +22,10 @@ const {
 // ============================================================
 
 // আজকের অর্ডার (SR এর)
-router.get('/today',    auth, allowRoles('worker'), getTodayOrder);
+router.get('/today',        auth, allowRoles('worker'), getTodayOrder);
+
+// SR স্টক স্ট্যাটাস — অর্ডার vs বিক্রয় vs হাতে
+router.get('/stock-status', auth, allowRoles('worker'), getStockStatus);
 
 // SR এর অর্ডার তালিকা
 router.get('/my',       auth, allowRoles('worker'), getMyOrders);
