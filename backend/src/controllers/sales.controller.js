@@ -936,6 +936,45 @@ const getMyVisitStats = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET VISIT STATUS FOR TODAY
+// GET /api/sales/visit-status/:customerId
+// আজকে এই কাস্টমারে ভিজিট হয়েছে কিনা চেক করে
+// ============================================================
+
+const getVisitStatus = async (req, res) => {
+    try {
+        const { customerId } = req.params;
+        const workerId = req.user.id;
+        const today = new Date().toISOString().split('T')[0];
+
+        const result = await query(
+            `SELECT id, will_sell, no_sell_reason, created_at
+             FROM visits
+             WHERE worker_id = $1
+               AND customer_id = $2
+               AND visit_date = $3
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [workerId, customerId, today]
+        );
+
+        const visited = result.rows.length > 0;
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                visited,
+                visit: visited ? result.rows[0] : null
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Visit Status Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     createVisit,
     createSale,
@@ -947,5 +986,6 @@ module.exports = {
     getTodaySummary,
     getSaleDetail,
     getMyMonthlySales,
-    getMyVisitStats
+    getMyVisitStats,
+    getVisitStatus
 };
