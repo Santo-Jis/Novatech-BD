@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore }  from '../store/app.store'
 import {
@@ -11,6 +11,7 @@ import OfflineStatusBar from '../components/OfflineStatusBar'
 import { useOffline } from '../store/useOffline'
 import { retryFailed } from '../api/syncService'
 import { getPendingQueue } from '../api/offlineQueue'
+import api from '../api/axios'
 
 // ─── Bottom Navigation (সবসময় দেখা যাবে) ───────────────────
 const bottomNav = [
@@ -57,6 +58,41 @@ export default function WorkerLayout() {
   const unread    = notifications.filter(n => !n.read).length
   const [menuOpen, setMenuOpen] = useState(false)
   const navigate  = useNavigate()
+  const location  = useLocation()
+
+  // ✅ চেক-ইন স্ট্যাটাস
+  const [checkedIn,       setCheckedIn]       = useState(null)  // null = loading
+  const [showCheckinPopup, setShowCheckinPopup] = useState(false)
+
+  // চেক-ইন-সুরক্ষিত route গুলো
+  const PROTECTED_PATHS = [
+    '/worker/customers',
+    '/worker/order',
+    '/worker/settlement',
+  ]
+
+  // Mount হলে চেক-ইন স্ট্যাটাস টানো
+  useEffect(() => {
+    const fetchCheckinStatus = async () => {
+      try {
+        const res = await api.get('/sales/today-summary')
+        setCheckedIn(res.data.data?.checked_in ?? false)
+      } catch {
+        setCheckedIn(false)
+      }
+    }
+    fetchCheckinStatus()
+  }, [])
+
+  // Route পরিবর্তনে চেক করো
+  useEffect(() => {
+    if (checkedIn === false) {
+      const isProtected = PROTECTED_PATHS.some(p => location.pathname.startsWith(p))
+      if (isProtected) {
+        setShowCheckinPopup(true)
+      }
+    }
+  }, [location.pathname, checkedIn])
 
   // Failed sync items ট্র্যাক করা
   const { isOnline } = useOffline()
@@ -92,6 +128,43 @@ export default function WorkerLayout() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col max-w-md mx-auto relative transition-colors">
+
+      {/* ── ✅ চেক-ইন না করলে Popup ──────────────────────────── */}
+      {showCheckinPopup && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/60 backdrop-blur-sm px-6">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl p-6 w-full max-w-sm text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <FiAlertTriangle className="text-red-500 text-3xl" />
+            </div>
+            <h2 className="text-lg font-bold text-gray-800 dark:text-white mb-2">
+              আগে চেক-ইন করুন!
+            </h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+              ভিজিট, বিক্রয় বা অর্ডার করতে হলে প্রথমে আজকের চেক-ইন করা বাধ্যতামূলক।
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowCheckinPopup(false)
+                  navigate('/worker/dashboard')
+                }}
+                className="flex-1 py-2.5 border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-300 rounded-xl text-sm font-medium"
+              >
+                ফিরে যান
+              </button>
+              <button
+                onClick={() => {
+                  setShowCheckinPopup(false)
+                  navigate('/worker/attendance')
+                }}
+                className="flex-1 py-2.5 bg-primary text-white rounded-xl text-sm font-bold"
+              >
+                চেক-ইন করুন 👆
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Header ─────────────────────────────────────────── */}
       <header className="bg-primary dark:bg-slate-800 text-white px-4 py-3 flex items-center justify-between sticky top-0 z-40 shadow-md transition-colors">
