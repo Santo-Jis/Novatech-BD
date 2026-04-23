@@ -3,7 +3,7 @@ const router = express.Router();
 const { auth } = require('../middlewares/auth');
 const { allowRoles, checkTeamAccess } = require('../middlewares/roleCheck');
 const { getSalesReport, getAttendanceReport, getCommissionReport, getCreditReport, getEmployeePDFReport, getDashboardKPI, getPLStatement, getLedger, getMonthlyArchive, getTopProducts, getTopShops } = require('../controllers/report.controller');
-router.get('/kpi', auth, allowRoles('admin','manager','supervisor','asm','rsm'), checkTeamAccess, getDashboardKPI);
+router.get('/kpi', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getDashboardKPI);
 router.get('/sales', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getSalesReport);
 router.get('/attendance', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getAttendanceReport);
 router.get('/commission', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), getCommissionReport);
