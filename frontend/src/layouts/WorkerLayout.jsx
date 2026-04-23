@@ -5,7 +5,7 @@ import { useAppStore }  from '../store/app.store'
 import {
   FiHome, FiMapPin, FiShoppingBag, FiDollarSign, FiUser,
   FiBell, FiMoon, FiSun, FiUsers, FiMenu, FiX, FiLogOut,
-  FiClipboard, FiAlertTriangle, FiRefreshCw, FiTrendingUp
+  FiClipboard, FiAlertTriangle, FiRefreshCw, FiTrendingUp, FiPackage
 } from 'react-icons/fi'
 import OfflineStatusBar from '../components/OfflineStatusBar'
 import { useOffline } from '../store/useOffline'
@@ -14,11 +14,12 @@ import { getPendingQueue } from '../api/offlineQueue'
 
 // ─── Bottom Navigation (সবসময় দেখা যাবে) ───────────────────
 const bottomNav = [
-  { path: '/worker/dashboard',  icon: <FiHome />,        label: 'হোম' },
-  { path: '/worker/customers',  icon: <FiUsers />,       label: 'কাস্টমার' },
-  { path: '/worker/settlement', icon: <FiShoppingBag />, label: 'হিসাব' },
-  { path: '/worker/commission', icon: <FiDollarSign />,  label: 'কমিশন' },
-  { path: '/worker/profile',    icon: <FiUser />,        label: 'প্রোফাইল' },
+  { path: '/worker/dashboard',    icon: <FiHome />,        label: 'হোম' },
+  { path: '/worker/customers',    icon: <FiUsers />,       label: 'কাস্টমার' },
+  { path: '/worker/stock-status', icon: <FiPackage />,     label: 'স্টক' },
+  { path: '/worker/settlement',   icon: <FiShoppingBag />, label: 'হিসাব' },
+  { path: '/worker/profile',      icon: <FiUser />,        label: 'প্রোফাইল' },
+  
 ]
 
 // ─── Hamburger Menu Items (গৌণ পৃষ্ঠা) ──────────────────────
