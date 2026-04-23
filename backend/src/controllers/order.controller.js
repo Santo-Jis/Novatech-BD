@@ -487,11 +487,116 @@ const rejectOrder = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET SR STOCK STATUS (অর্ডার vs বিক্রয় vs হাতে থাকা)
+// GET /api/orders/stock-status
+// ============================================================
+
+const getStockStatus = async (req, res) => {
+    try {
+        const today    = new Date().toISOString().split('T')[0];
+        const workerId = req.user.id;
+
+        // আজকের approved অর্ডার আনো
+        const orderResult = await query(
+            `SELECT id, items, total_amount, approved_at, requested_at, status
+             FROM orders
+             WHERE worker_id = $1
+               AND DATE(requested_at) = $2
+               AND status = 'approved'
+             ORDER BY approved_at DESC
+             LIMIT 1`,
+            [workerId, today]
+        );
+
+        if (orderResult.rows.length === 0) {
+            return res.status(200).json({
+                success: true,
+                has_approved_order: false,
+                message: 'আজকে কোনো অনুমোদিত অর্ডার নেই।',
+                items: []
+            });
+        }
+
+        const order      = orderResult.rows[0];
+        let orderedItems = order.items;
+        if (typeof orderedItems === 'string') {
+            try { orderedItems = JSON.parse(orderedItems); } catch { orderedItems = []; }
+        }
+        if (!Array.isArray(orderedItems)) orderedItems = [];
+
+        // আজকের বিক্রয় থেকে প্রতিটি পণ্যের বিক্রিত পরিমাণ আনো
+        const salesResult = await query(
+            `SELECT items FROM sales_transactions
+             WHERE worker_id = $1 AND date = $2`,
+            [workerId, today]
+        );
+
+        // বিক্রয়ের সব items flatten করো
+        const soldMap = {};
+        for (const sale of salesResult.rows) {
+            let saleItems = sale.items;
+            if (typeof saleItems === 'string') {
+                try { saleItems = JSON.parse(saleItems); } catch { saleItems = []; }
+            }
+            if (!Array.isArray(saleItems)) continue;
+            for (const si of saleItems) {
+                const pid = si.product_id;
+                soldMap[pid] = (soldMap[pid] || 0) + (parseInt(si.qty) || 0);
+            }
+        }
+
+        // প্রতিটি ordered item-এ বিক্রয় ও বাকি যোগ করো
+        const statusItems = orderedItems.map(item => {
+            const ordered  = parseInt(item.approved_qty || item.requested_qty || 0);
+            const sold     = soldMap[item.product_id] || 0;
+            const inHand   = Math.max(0, ordered - sold);
+
+            return {
+                product_id:   item.product_id,
+                product_name: item.product_name || item.name || 'অজানা পণ্য',
+                price:        parseFloat(item.price || item.final_price || 0),
+                ordered_qty:  ordered,
+                sold_qty:     sold,
+                in_hand_qty:  inHand,
+                sell_percent: ordered > 0 ? Math.round((sold / ordered) * 100) : 0,
+            };
+        });
+
+        // সামগ্রিক সারসংক্ষেপ
+        const totalOrdered  = statusItems.reduce((s, i) => s + i.ordered_qty, 0);
+        const totalSold     = statusItems.reduce((s, i) => s + i.sold_qty, 0);
+        const totalInHand   = statusItems.reduce((s, i) => s + i.in_hand_qty, 0);
+        const totalSoldAmt  = statusItems.reduce((s, i) => s + (i.sold_qty * i.price), 0);
+        const totalHandAmt  = statusItems.reduce((s, i) => s + (i.in_hand_qty * i.price), 0);
+
+        return res.status(200).json({
+            success:            true,
+            has_approved_order: true,
+            order_id:           order.id,
+            approved_at:        order.approved_at,
+            summary: {
+                total_ordered:   totalOrdered,
+                total_sold:      totalSold,
+                total_in_hand:   totalInHand,
+                sold_amount:     totalSoldAmt,
+                in_hand_amount:  totalHandAmt,
+            },
+            items: statusItems,
+        });
+
+    } catch (error) {
+        console.error('❌ Stock Status Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     createOrder,
     getMyOrders,
     getTodayOrder,
     getPendingOrders,
     approveOrder,
-    rejectOrder
+    rejectOrder,
+    getStockStatus,
 };
