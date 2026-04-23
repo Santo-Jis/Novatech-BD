@@ -1,713 +1,539 @@
-import { useState, useEffect, useCallback } from 'react'
-import api from '../../api/axios'
-import Button from '../../components/ui/Button'
-import Input from '../../components/ui/Input'
-import Modal from '../../components/ui/Modal'
-import Badge from '../../components/ui/Badge'
-import toast from 'react-hot-toast'
-import {
-  FiUsers, FiPlus, FiEdit2, FiTarget, FiUserPlus,
-  FiChevronDown, FiChevronUp, FiSearch, FiTrash2,
-  FiCheck, FiX, FiTrendingUp, FiArrowRight
-} from 'react-icons/fi'
+const { query, withTransaction } = require('../config/db');
 
-// ─── ছোট helper ──────────────────────────────────────────
-const fmt = n => Number(n || 0).toLocaleString('bn-BD')
-
-// ─── টিম কার্ড ────────────────────────────────────────────
-function TeamCard({ team, onEdit, onTarget, onAssignSR, onExpand, expanded, onRemoveSR, onMoveSR }) {
-  return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-primary to-blue-600 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-white font-bold text-lg truncate">{team.name}</h3>
-            <p className="text-white/70 text-xs mt-0.5">
-              {team.manager_name_bn
-                ? `ম্যানেজার: ${team.manager_name_bn} (${team.manager_code})`
-                : 'ম্যানেজার নিয়োগ হয়নি'}
-            </p>
-          </div>
-          <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${team.is_active ? 'bg-green-400/30 text-green-100' : 'bg-red-400/30 text-red-100'}`}>
-            {team.is_active ? 'সক্রিয়' : 'বন্ধ'}
-          </span>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="p-4 grid grid-cols-2 gap-3 border-b border-gray-100">
-        <div className="bg-blue-50 rounded-xl p-3 text-center">
-          <p className="text-2xl font-bold text-blue-600">{team.sr_count || 0}</p>
-          <p className="text-xs text-blue-500 mt-0.5">মোট SR</p>
-        </div>
-        <div className="bg-green-50 rounded-xl p-3 text-center">
-          <p className="text-lg font-bold text-green-600 leading-tight">৳{fmt(team.monthly_target)}</p>
-          <p className="text-xs text-green-500 mt-0.5">মাসিক টার্গেট</p>
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="p-3 flex flex-wrap gap-2">
-        <button
-          onClick={() => onEdit(team)}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs border border-gray-200 rounded-xl text-gray-600 hover:bg-gray-50 transition-colors"
-        >
-          <FiEdit2 className="text-sm" /> সম্পাদনা
-        </button>
-        <button
-          onClick={() => onTarget(team)}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs border border-green-200 rounded-xl text-green-600 hover:bg-green-50 transition-colors"
-        >
-          <FiTarget className="text-sm" /> টার্গেট
-        </button>
-        <button
-          onClick={() => onAssignSR(team)}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs border border-blue-200 rounded-xl text-blue-600 hover:bg-blue-50 transition-colors"
-        >
-          <FiUserPlus className="text-sm" /> SR যোগ
-        </button>
-        <button
-          onClick={() => onExpand(team.id)}
-          className="px-3 py-2 text-xs border border-gray-200 rounded-xl text-gray-500 hover:bg-gray-50 transition-colors"
-        >
-          {expanded ? <FiChevronUp /> : <FiChevronDown />}
-        </button>
-      </div>
-
-      {/* SR List (expanded) */}
-      {expanded && team.members && (
-        <div className="border-t border-gray-100 px-4 pb-4 pt-3 space-y-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">SR তালিকা</p>
-          {team.members.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center py-2">কোনো SR নেই</p>
-          ) : (
-            team.members.map(sr => (
-              <div key={sr.id} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <FiUsers className="text-primary text-xs" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">{sr.name_bn}</p>
-                    <p className="text-xs text-gray-400 font-mono">{sr.employee_code}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <div className="text-right mr-1">
-                    <p className="text-xs font-semibold text-green-600">৳{fmt(sr.monthly_target)}</p>
-                    <p className="text-xs text-gray-400">টার্গেট</p>
-                  </div>
-                  {/* Move SR button */}
-                  <button
-                    onClick={() => onMoveSR(sr, team)}
-                    title="অন্য টিমে সরান"
-                    className="p-1.5 rounded-lg border border-blue-100 text-blue-500 hover:bg-blue-50 transition-colors"
-                  >
-                    <FiArrowRight className="text-xs" />
-                  </button>
-                  {/* Remove SR button */}
-                  <button
-                    onClick={() => onRemoveSR(sr, team)}
-                    title="টিম থেকে সরান"
-                    className="p-1.5 rounded-lg border border-red-100 text-red-400 hover:bg-red-50 transition-colors"
-                  >
-                    <FiX className="text-xs" />
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Main Component ────────────────────────────────────────
-export default function AdminTeams() {
-  const [teams,     setTeams]     = useState([])
-  const [managers,  setManagers]  = useState([])   // টিমহীন ম্যানেজার
-  const [unassigned,setUnassigned]= useState([])   // টিমহীন SR
-  const [loading,   setLoading]   = useState(true)
-  const [search,    setSearch]    = useState('')
-  const [expanded,  setExpanded]  = useState({})   // { [teamId]: bool }
-
-  // Modal states
-  const [createModal, setCreateModal] = useState(false)
-  const [editModal,   setEditModal]   = useState(null)  // team object
-  const [targetModal, setTargetModal] = useState(null)  // team object
-  const [assignModal, setAssignModal] = useState(null)  // team object
-  const [removeModal, setRemoveModal] = useState(null)  // { sr, team }
-  const [moveModal,   setMoveModal]   = useState(null)  // { sr, fromTeam }
-  const [saving,      setSaving]      = useState(false)
-
-  // Form states
-  const [form, setForm] = useState({ name: '', manager_id: '', monthly_target: '', description: '' })
-  const [targetVal, setTargetVal] = useState('')
-  const [selectedSRs, setSelectedSRs] = useState([])
-  const [srSearch, setSrSearch] = useState('')
-  const [moveTargetTeamId, setMoveTargetTeamId] = useState('')
-
-  const load = useCallback(async () => {
-    setLoading(true)
+// ============================================================
+// GET ALL TEAMS (Admin)
+// GET /api/teams
+// ============================================================
+const getTeams = async (req, res) => {
     try {
-      const [teamsRes, mgrRes, srRes] = await Promise.all([
-        api.get('/teams'),
-        api.get('/teams/available-managers'),
-        api.get('/teams/unassigned-srs')
-      ])
-      setTeams(teamsRes.data.data)
-      setManagers(mgrRes.data.data)
-      setUnassigned(srRes.data.data)
-    } catch {
-      toast.error('তথ্য আনতে সমস্যা হয়েছে।')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+        const result = await query(`
+            SELECT
+                t.id,
+                t.name,
+                t.monthly_target,
+                t.description,
+                t.is_active,
+                t.created_at,
+                -- ম্যানেজারের তথ্য
+                m.id            AS manager_id,
+                m.name_bn       AS manager_name_bn,
+                m.name_en       AS manager_name_en,
+                m.employee_code AS manager_code,
+                m.phone         AS manager_phone,
+                -- SR সংখ্যা (active)
+                COUNT(DISTINCT sr.id) FILTER (WHERE sr.role = 'worker' AND sr.status = 'active') AS sr_count
+            FROM teams t
+            LEFT JOIN users m  ON m.id = t.manager_id
+            LEFT JOIN users sr ON sr.team_id = t.id
+            GROUP BY t.id, m.id
+            ORDER BY t.is_active DESC, t.name
+        `);
 
-  useEffect(() => { load() }, [load])
-
-  // টিম expand হলে members লোড করো
-  const handleExpand = async (teamId) => {
-    if (expanded[teamId]) {
-      setExpanded(prev => ({ ...prev, [teamId]: false }))
-      return
+        return res.status(200).json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ getTeams Error:', error.message);
+        return res.status(500).json({ success: false, message: 'টিম তালিকা আনতে সমস্যা হয়েছে।' });
     }
+};
+
+// ============================================================
+// GET SINGLE TEAM + SR LIST
+// GET /api/teams/:id
+// ============================================================
+const getTeam = async (req, res) => {
     try {
-      const res = await api.get(`/teams/${teamId}`)
-      setTeams(prev => prev.map(t => t.id === teamId ? { ...t, members: res.data.data.members } : t))
-      setExpanded(prev => ({ ...prev, [teamId]: true }))
-    } catch {
-      toast.error('SR তালিকা আনতে সমস্যা।')
-    }
-  }
+        const { id } = req.params;
 
-  // ─── Create Team ────────────────────────────────────────
-  const openCreate = () => {
-    setForm({ name: '', manager_id: '', monthly_target: '', description: '' })
-    setCreateModal(true)
-  }
+        // টিম তথ্য
+        const teamResult = await query(`
+            SELECT
+                t.*,
+                m.id            AS manager_id,
+                m.name_bn       AS manager_name_bn,
+                m.employee_code AS manager_code,
+                m.phone         AS manager_phone
+            FROM teams t
+            LEFT JOIN users m ON m.id = t.manager_id
+            WHERE t.id = $1
+        `, [id]);
 
-  const handleCreate = async () => {
-    if (!form.name.trim()) { toast.error('টিমের নাম দিন।'); return }
-    setSaving(true)
-    try {
-      await api.post('/teams', {
-        ...form,
-        monthly_target: parseFloat(form.monthly_target) || 0,
-        manager_id: form.manager_id || undefined
-      })
-      toast.success('টিম তৈরি হয়েছে!')
-      setCreateModal(false)
-      load()
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'সমস্যা হয়েছে।')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // ─── Edit Team ──────────────────────────────────────────
-  const openEdit = (team) => {
-    setForm({
-      name: team.name,
-      manager_id: team.manager_id || '',
-      monthly_target: team.monthly_target || '',
-      description: team.description || '',
-      is_active: team.is_active
-    })
-    setEditModal(team)
-  }
-
-  const handleEdit = async () => {
-    setSaving(true)
-    try {
-      await api.put(`/teams/${editModal.id}`, {
-        ...form,
-        monthly_target: parseFloat(form.monthly_target) || 0,
-        manager_id: form.manager_id || undefined
-      })
-      toast.success('টিম আপডেট হয়েছে!')
-      setEditModal(null)
-      load()
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'সমস্যা হয়েছে।')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // ─── Set Target ─────────────────────────────────────────
-  const openTarget = (team) => {
-    setTargetVal(team.monthly_target || '')
-    setTargetModal(team)
-  }
-
-  const handleSetTarget = async () => {
-    if (!targetVal || isNaN(targetVal)) { toast.error('বৈধ টার্গেট দিন।'); return }
-    setSaving(true)
-    try {
-      await api.patch(`/teams/${targetModal.id}/target`, { monthly_target: parseFloat(targetVal) })
-      toast.success('টার্গেট সেট হয়েছে!')
-      setTargetModal(null)
-      load()
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'সমস্যা হয়েছে।')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // ─── Assign SRs ─────────────────────────────────────────
-  const openAssign = async (team) => {
-    setAssignModal(team)
-    setSelectedSRs([])
-    setSrSearch('')
-  }
-
-  const toggleSR = (srId) => {
-    setSelectedSRs(prev =>
-      prev.includes(srId) ? prev.filter(id => id !== srId) : [...prev, srId]
-    )
-  }
-
-  const handleAssign = async () => {
-    if (selectedSRs.length === 0) { toast.error('অন্তত একজন SR বেছে নিন।'); return }
-    setSaving(true)
-    try {
-      await api.put(`/teams/${assignModal.id}/members`, { sr_ids: selectedSRs })
-      toast.success(`${selectedSRs.length} জন SR যোগ করা হয়েছে!`)
-      setAssignModal(null)
-      load()
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'সমস্যা হয়েছে।')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // ─── Remove SR from Team ────────────────────────────────
-  const handleRemoveSR = async () => {
-    if (!removeModal) return
-    setSaving(true)
-    try {
-      await api.delete(`/teams/${removeModal.team.id}/members/${removeModal.sr.id}`)
-      toast.success(`${removeModal.sr.name_bn}-কে টিম থেকে সরানো হয়েছে।`)
-      setRemoveModal(null)
-      // local state আপডেট
-      setTeams(prev => prev.map(t =>
-        t.id === removeModal.team.id
-          ? { ...t, sr_count: Math.max(0, (t.sr_count || 1) - 1), members: (t.members || []).filter(m => m.id !== removeModal.sr.id) }
-          : t
-      ))
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'সমস্যা হয়েছে।')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // ─── Move SR to Another Team ────────────────────────────
-  const openMove = (sr, fromTeam) => {
-    setMoveTargetTeamId('')
-    setMoveModal({ sr, fromTeam })
-  }
-
-  const handleMoveSR = async () => {
-    if (!moveTargetTeamId) { toast.error('নতুন টিম বাছাই করুন।'); return }
-    if (moveTargetTeamId === moveModal.fromTeam.id) { toast.error('SR ইতিমধ্যে এই টিমে আছে।'); return }
-    setSaving(true)
-    try {
-      await api.patch(`/teams/sr/${moveModal.sr.id}/move`, { team_id: moveTargetTeamId })
-      toast.success(`${moveModal.sr.name_bn}-কে নতুন টিমে সরানো হয়েছে।`)
-      setMoveModal(null)
-      load()
-    } catch (err) {
-      toast.error(err?.response?.data?.message || 'সমস্যা হয়েছে।')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // ─── Filter ─────────────────────────────────────────────
-  const filtered = teams.filter(t =>
-    t.name.toLowerCase().includes(search.toLowerCase()) ||
-    (t.manager_name_bn || '').includes(search)
-  )
-
-  const filteredSRs = unassigned.filter(sr =>
-    sr.name_bn.includes(srSearch) ||
-    sr.employee_code?.includes(srSearch) ||
-    sr.phone?.includes(srSearch)
-  )
-
-  // ─── All managers (for select — existing + available) ───
-  const allManagerOptions = [
-    ...managers,
-    ...(editModal?.manager_id ? [{
-      id: editModal.manager_id,
-      name_bn: editModal.manager_name_bn,
-      employee_code: editModal.manager_code
-    }] : [])
-  ]
-
-  if (loading) return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {[...Array(6)].map((_, i) => (
-        <div key={i} className="h-52 bg-white rounded-2xl animate-pulse" />
-      ))}
-    </div>
-  )
-
-  return (
-    <div className="space-y-5 animate-fade-in">
-      {/* ─── Header ─────────────────────────────────────── */}
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-800">টিম ম্যানেজমেন্ট</h1>
-          <p className="text-sm text-gray-500">মোট {teams.length}টি টিম • {unassigned.length} জন SR টিমে নেই</p>
-        </div>
-        <Button onClick={openCreate} icon={<FiPlus />}>নতুন টিম</Button>
-      </div>
-
-      {/* ─── Stats Bar ──────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm text-center">
-          <p className="text-2xl font-bold text-primary">{teams.length}</p>
-          <p className="text-xs text-gray-500 mt-1">মোট টিম</p>
-        </div>
-        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm text-center">
-          <p className="text-2xl font-bold text-green-600">
-            {teams.reduce((s, t) => s + parseInt(t.sr_count || 0), 0)}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">মোট SR</p>
-        </div>
-        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm text-center">
-          <p className="text-sm font-bold text-orange-600">
-            ৳{fmt(teams.reduce((s, t) => s + parseFloat(t.monthly_target || 0), 0))}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">মোট টার্গেট</p>
-        </div>
-      </div>
-
-      {/* ─── Search ─────────────────────────────────────── */}
-      <Input
-        placeholder="টিমের নাম বা ম্যানেজার দিয়ে খুঁজুন"
-        icon={<FiSearch />}
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-        className="max-w-sm"
-      />
-
-      {/* ─── Team Grid ──────────────────────────────────── */}
-      {filtered.length === 0 ? (
-        <div className="bg-white rounded-2xl p-12 text-center border border-gray-100">
-          <FiUsers className="text-5xl text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-400">কোনো টিম নেই।</p>
-          <Button onClick={openCreate} icon={<FiPlus />} className="mt-4">প্রথম টিম তৈরি করুন</Button>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map(team => (
-            <TeamCard
-              key={team.id}
-              team={team}
-              onEdit={openEdit}
-              onTarget={openTarget}
-              onAssignSR={openAssign}
-              onExpand={handleExpand}
-              expanded={!!expanded[team.id]}
-              onRemoveSR={(sr, team) => setRemoveModal({ sr, team })}
-              onMoveSR={openMove}
-            />
-          ))}
-        </div>
-      )}
-
-      {/* ════════════════════════════════════════════════════
-          MODAL: নতুন টিম তৈরি
-      ════════════════════════════════════════════════════ */}
-      <Modal
-        isOpen={createModal}
-        onClose={() => setCreateModal(false)}
-        title="নতুন টিম তৈরি"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setCreateModal(false)}>বাতিল</Button>
-            <Button onClick={handleCreate} loading={saving} icon={<FiCheck />}>তৈরি করুন</Button>
-          </>
+        if (teamResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'টিম পাওয়া যায়নি।' });
         }
-      >
-        <TeamForm
-          form={form}
-          setForm={setForm}
-          managers={managers}
-          showTarget
-        />
-      </Modal>
 
-      {/* ════════════════════════════════════════════════════
-          MODAL: টিম সম্পাদনা
-      ════════════════════════════════════════════════════ */}
-      <Modal
-        isOpen={!!editModal}
-        onClose={() => setEditModal(null)}
-        title={`সম্পাদনা — ${editModal?.name}`}
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setEditModal(null)}>বাতিল</Button>
-            <Button onClick={handleEdit} loading={saving} icon={<FiCheck />}>আপডেট করুন</Button>
-          </>
+        // SR তালিকা
+        const srResult = await query(`
+            SELECT
+                id, name_bn, name_en, employee_code,
+                phone, status, monthly_target,
+                profile_photo, basic_salary
+            FROM users
+            WHERE team_id = $1 AND role = 'worker'
+            ORDER BY name_bn
+        `, [id]);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                team: teamResult.rows[0],
+                members: srResult.rows
+            }
+        });
+    } catch (error) {
+        console.error('❌ getTeam Error:', error.message);
+        return res.status(500).json({ success: false, message: 'টিম তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// CREATE TEAM (Admin)
+// POST /api/teams
+// ============================================================
+const createTeam = async (req, res) => {
+    try {
+        const { name, manager_id, monthly_target = 0, description } = req.body;
+
+        if (!name?.trim()) {
+            return res.status(400).json({ success: false, message: 'টিমের নাম দিন।' });
         }
-      >
-        <TeamForm
-          form={form}
-          setForm={setForm}
-          managers={allManagerOptions}
-          showTarget
-          showStatus
-        />
-      </Modal>
 
-      {/* ════════════════════════════════════════════════════
-          MODAL: টার্গেট সেট
-      ════════════════════════════════════════════════════ */}
-      <Modal
-        isOpen={!!targetModal}
-        onClose={() => setTargetModal(null)}
-        title={`টার্গেট — ${targetModal?.name}`}
-        size="sm"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setTargetModal(null)}>বাতিল</Button>
-            <Button onClick={handleSetTarget} loading={saving} icon={<FiTrendingUp />}>সেট করুন</Button>
-          </>
+        // একজন ম্যানেজার শুধু একটি টিমে থাকতে পারবে
+        if (manager_id) {
+            const existCheck = await query(
+                'SELECT id FROM teams WHERE manager_id = $1',
+                [manager_id]
+            );
+            if (existCheck.rows.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'এই ম্যানেজার ইতিমধ্যে অন্য একটি টিমে আছেন।'
+                });
+            }
         }
-      >
-        <div className="space-y-4">
-          <div className="bg-blue-50 rounded-xl p-4 text-center">
-            <p className="text-sm text-blue-600">বর্তমান টার্গেট</p>
-            <p className="text-2xl font-bold text-blue-700 mt-1">৳{fmt(targetModal?.monthly_target)}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">নতুন মাসিক টার্গেট (টাকা)</label>
-            <Input
-              type="number"
-              placeholder="যেমন: 500000"
-              value={targetVal}
-              onChange={e => setTargetVal(e.target.value)}
-              icon={<span className="text-gray-400 text-xs font-bold">৳</span>}
-            />
-          </div>
-        </div>
-      </Modal>
 
-      {/* ════════════════════════════════════════════════════
-          MODAL: SR যোগ করা
-      ════════════════════════════════════════════════════ */}
-      <Modal
-        isOpen={!!assignModal}
-        onClose={() => setAssignModal(null)}
-        title={`SR যোগ — ${assignModal?.name}`}
-        size="lg"
-        footer={
-          <>
-            <span className="text-sm text-gray-500 mr-auto">
-              {selectedSRs.length} জন বাছাই করা হয়েছে
-            </span>
-            <Button variant="outline" onClick={() => setAssignModal(null)}>বাতিল</Button>
-            <Button onClick={handleAssign} loading={saving} icon={<FiUserPlus />}>
-              যোগ করুন
-            </Button>
-          </>
+        const result = await query(`
+            INSERT INTO teams (name, manager_id, monthly_target, description, created_by)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING *
+        `, [name.trim(), manager_id || null, monthly_target, description || null, req.user.id]);
+
+        // Audit log
+        await query(
+            `INSERT INTO audit_logs (user_id, action, table_name, new_value)
+             VALUES ($1, 'CREATE_TEAM', 'teams', $2)`,
+            [req.user.id, JSON.stringify({ name, manager_id, monthly_target })]
+        );
+
+        return res.status(201).json({
+            success: true,
+            message: 'টিম তৈরি হয়েছে।',
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('❌ createTeam Error:', error.message);
+        if (error.code === '23505') {
+            return res.status(400).json({ success: false, message: 'এই টিমের নাম বা ম্যানেজার ইতিমধ্যে বিদ্যমান।' });
         }
-      >
-        <div className="space-y-3">
-          <Input
-            placeholder="নাম, কোড বা ফোন দিয়ে খুঁজুন"
-            icon={<FiSearch />}
-            value={srSearch}
-            onChange={e => setSrSearch(e.target.value)}
-          />
-          {filteredSRs.length === 0 ? (
-            <p className="text-center text-gray-400 py-6">টিমহীন কোনো SR নেই</p>
-          ) : (
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {filteredSRs.map(sr => (
-                <label key={sr.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors">
-                  <input
-                    type="checkbox"
-                    checked={selectedSRs.includes(sr.id)}
-                    onChange={() => toggleSR(sr.id)}
-                    className="w-4 h-4 rounded text-primary accent-primary"
-                  />
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <FiUsers className="text-primary text-xs" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800">{sr.name_bn}</p>
-                    <p className="text-xs text-gray-400 font-mono">{sr.employee_code} • {sr.phone}</p>
-                  </div>
-                  {selectedSRs.includes(sr.id) && (
-                    <FiCheck className="text-primary text-sm flex-shrink-0" />
-                  )}
-                </label>
-              ))}
-            </div>
-          )}
-        </div>
-      </Modal>
+        return res.status(500).json({ success: false, message: 'টিম তৈরিতে সমস্যা হয়েছে।' });
+    }
+};
 
-      {/* ════════════════════════════════════════════════════
-          MODAL: SR টিম থেকে সরানো (Confirm)
-      ════════════════════════════════════════════════════ */}
-      <Modal
-        isOpen={!!removeModal}
-        onClose={() => setRemoveModal(null)}
-        title="SR সরানো নিশ্চিত করুন"
-        size="sm"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setRemoveModal(null)}>বাতিল</Button>
-            <Button
-              onClick={handleRemoveSR}
-              loading={saving}
-              icon={<FiX />}
-              className="bg-red-500 hover:bg-red-600 border-red-500"
-            >
-              সরিয়ে দিন
-            </Button>
-          </>
+// ============================================================
+// UPDATE TEAM (Admin) — নাম, ম্যানেজার, টার্গেট
+// PUT /api/teams/:id
+// ============================================================
+const updateTeam = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { name, manager_id, monthly_target, description, is_active } = req.body;
+
+        // টিম আছে কিনা চেক
+        const existing = await query('SELECT * FROM teams WHERE id = $1', [id]);
+        if (existing.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'টিম পাওয়া যায়নি।' });
         }
-      >
-        <div className="space-y-3">
-          <div className="bg-red-50 rounded-xl p-4 text-center">
-            <FiUsers className="text-3xl text-red-400 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-red-700">{removeModal?.sr?.name_bn}</p>
-            <p className="text-xs text-red-500 font-mono">{removeModal?.sr?.employee_code}</p>
-          </div>
-          <p className="text-sm text-gray-600 text-center">
-            এই SR-কে <span className="font-semibold text-gray-800">{removeModal?.team?.name}</span> থেকে সরিয়ে দেওয়া হবে এবং SR টিমহীন হয়ে যাবে।
-          </p>
-        </div>
-      </Modal>
 
-      {/* ════════════════════════════════════════════════════
-          MODAL: SR অন্য টিমে Move করা
-      ════════════════════════════════════════════════════ */}
-      <Modal
-        isOpen={!!moveModal}
-        onClose={() => setMoveModal(null)}
-        title={`টিম পরিবর্তন — ${moveModal?.sr?.name_bn}`}
-        size="sm"
-        footer={
-          <>
-            <Button variant="outline" onClick={() => setMoveModal(null)}>বাতিল</Button>
-            <Button onClick={handleMoveSR} loading={saving} icon={<FiArrowRight />}>সরান</Button>
-          </>
+        // ম্যানেজার অন্য টিমে আছে কিনা চেক
+        if (manager_id && manager_id !== existing.rows[0].manager_id) {
+            const conflict = await query(
+                'SELECT id FROM teams WHERE manager_id = $1 AND id != $2',
+                [manager_id, id]
+            );
+            if (conflict.rows.length > 0) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'এই ম্যানেজার ইতিমধ্যে অন্য টিমে আছেন।'
+                });
+            }
         }
-      >
-        <div className="space-y-4">
-          <div className="bg-blue-50 rounded-xl p-3 text-center">
-            <p className="text-xs text-blue-500">বর্তমান টিম</p>
-            <p className="text-sm font-bold text-blue-700 mt-0.5">{moveModal?.fromTeam?.name}</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">নতুন টিম বাছাই করুন</label>
-            <select
-              className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
-              value={moveTargetTeamId}
-              onChange={e => setMoveTargetTeamId(e.target.value)}
-            >
-              <option value="">— টিম বাছাই করুন —</option>
-              {teams
-                .filter(t => t.id !== moveModal?.fromTeam?.id && t.is_active)
-                .map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.name} {t.manager_name_bn ? `(${t.manager_name_bn})` : ''}
-                  </option>
-                ))
-              }
-            </select>
-          </div>
-        </div>
-      </Modal>
-    </div>
-  )
-}
 
-// ─── Reusable Form ─────────────────────────────────────────
-function TeamForm({ form, setForm, managers, showTarget, showStatus }) {
-  const set = (key, val) => setForm(prev => ({ ...prev, [key]: val }))
+        const result = await query(`
+            UPDATE teams SET
+                name           = COALESCE($1, name),
+                manager_id     = COALESCE($2, manager_id),
+                monthly_target = COALESCE($3, monthly_target),
+                description    = COALESCE($4, description),
+                is_active      = COALESCE($5, is_active)
+            WHERE id = $6
+            RETURNING *
+        `, [
+            name?.trim() || null,
+            manager_id || null,
+            monthly_target !== undefined ? monthly_target : null,
+            description !== undefined ? description : null,
+            is_active !== undefined ? is_active : null,
+            id
+        ]);
 
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
-          টিমের নাম <span className="text-red-500">*</span>
-        </label>
-        <Input
-          placeholder="যেমন: বরিশাল সিটি টিম"
-          value={form.name}
-          onChange={e => set('name', e.target.value)}
-        />
-      </div>
+        // Audit log
+        await query(
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
+             VALUES ($1, 'UPDATE_TEAM', 'teams', $2, $3)`,
+            [req.user.id, id, JSON.stringify(req.body)]
+        );
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">ম্যানেজার নির্বাচন</label>
-        <select
-          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
-          value={form.manager_id}
-          onChange={e => set('manager_id', e.target.value)}
-        >
-          <option value="">— ম্যানেজার বাছাই করুন (ঐচ্ছিক) —</option>
-          {managers.map(m => (
-            <option key={m.id} value={m.id}>
-              {m.name_bn} ({m.employee_code})
-            </option>
-          ))}
-        </select>
-      </div>
+        return res.status(200).json({
+            success: true,
+            message: 'টিম আপডেট হয়েছে।',
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('❌ updateTeam Error:', error.message);
+        return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
+    }
+};
 
-      {showTarget && (
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">মাসিক টার্গেট (টাকা)</label>
-          <Input
-            type="number"
-            placeholder="যেমন: 500000"
-            value={form.monthly_target}
-            onChange={e => set('monthly_target', e.target.value)}
-            icon={<span className="text-gray-400 text-xs font-bold">৳</span>}
-          />
-        </div>
-      )}
+// ============================================================
+// SET TEAM TARGET (Admin) — শুধু টার্গেট আপডেট
+// PATCH /api/teams/:id/target
+// ============================================================
+const setTeamTarget = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { monthly_target } = req.body;
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">বিবরণ (ঐচ্ছিক)</label>
-        <textarea
-          rows={2}
-          placeholder="টিম সম্পর্কে সংক্ষিপ্ত বিবরণ"
-          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-          value={form.description}
-          onChange={e => set('description', e.target.value)}
-        />
-      </div>
+        if (monthly_target === undefined || isNaN(monthly_target) || monthly_target < 0) {
+            return res.status(400).json({ success: false, message: 'বৈধ টার্গেট পরিমাণ দিন।' });
+        }
 
-      {showStatus && (
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-gray-700">সক্রিয় অবস্থা</label>
-          <button
-            type="button"
-            onClick={() => set('is_active', !form.is_active)}
-            className={`relative w-11 h-6 rounded-full transition-colors ${form.is_active ? 'bg-primary' : 'bg-gray-300'}`}
-          >
-            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.is_active ? 'translate-x-5' : ''}`} />
-          </button>
-          <span className="text-sm text-gray-500">{form.is_active ? 'সক্রিয়' : 'বন্ধ'}</span>
-        </div>
-      )}
-    </div>
-  )
-}
+        const result = await query(`
+            UPDATE teams SET monthly_target = $1
+            WHERE id = $2
+            RETURNING id, name, monthly_target
+        `, [monthly_target, id]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'টিম পাওয়া যায়নি।' });
+        }
+
+        await query(
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
+             VALUES ($1, 'SET_TEAM_TARGET', 'teams', $2, $3)`,
+            [req.user.id, id, JSON.stringify({ monthly_target })]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'টিমের টার্গেট সেট হয়েছে।',
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('❌ setTeamTarget Error:', error.message);
+        return res.status(500).json({ success: false, message: 'টার্গেট সেটে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// ASSIGN SR TO TEAM (Admin)
+// PUT /api/teams/:id/members
+// body: { sr_ids: [...] }  — SR-দের এই টিমে যোগ করো
+// ============================================================
+const assignSRToTeam = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { sr_ids } = req.body;
+
+        if (!Array.isArray(sr_ids) || sr_ids.length === 0) {
+            return res.status(400).json({ success: false, message: 'sr_ids array দিন।' });
+        }
+
+        // টিম আছে কিনা চেক
+        const teamCheck = await query('SELECT id, manager_id FROM teams WHERE id = $1', [id]);
+        if (teamCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'টিম পাওয়া যায়নি।' });
+        }
+
+        const team = teamCheck.rows[0];
+
+        // SR-দের team_id ও manager_id আপডেট করো
+        await query(`
+            UPDATE users
+            SET team_id = $1, manager_id = $2
+            WHERE id = ANY($3::uuid[]) AND role = 'worker'
+        `, [id, team.manager_id, sr_ids]);
+
+        return res.status(200).json({
+            success: true,
+            message: `${sr_ids.length} জন SR টিমে যোগ করা হয়েছে।`
+        });
+    } catch (error) {
+        console.error('❌ assignSRToTeam Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET MY TEAM (Manager) — নিজের টিম ও SR তালিকা
+// GET /api/teams/my
+// ============================================================
+const getMyTeam = async (req, res) => {
+    try {
+        const managerId = req.user.id;
+
+        const teamResult = await query(`
+            SELECT t.*,
+                   m.name_bn AS manager_name_bn, m.employee_code AS manager_code
+            FROM teams t
+            LEFT JOIN users m ON m.id = t.manager_id
+            WHERE t.manager_id = $1 AND t.is_active = true
+        `, [managerId]);
+
+        if (teamResult.rows.length === 0) {
+            return res.status(200).json({
+                success: true,
+                data: { team: null, members: [] }
+            });
+        }
+
+        const team = teamResult.rows[0];
+
+        const srResult = await query(`
+            SELECT
+                id, name_bn, name_en, employee_code,
+                phone, status, monthly_target,
+                profile_photo, basic_salary, outstanding_dues
+            FROM users
+            WHERE team_id = $1 AND role = 'worker'
+            ORDER BY name_bn
+        `, [team.id]);
+
+        return res.status(200).json({
+            success: true,
+            data: { team, members: srResult.rows }
+        });
+    } catch (error) {
+        console.error('❌ getMyTeam Error:', error.message);
+        return res.status(500).json({ success: false, message: 'টিম তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// SET SR TARGET (Manager) — নিজের টিমের SR-এর টার্গেট সেট
+// PATCH /api/teams/sr/:srId/target
+// ============================================================
+const setSRTarget = async (req, res) => {
+    try {
+        const { srId } = req.params;
+        const { monthly_target } = req.body;
+        const managerId = req.user.id;
+
+        if (monthly_target === undefined || isNaN(monthly_target) || monthly_target < 0) {
+            return res.status(400).json({ success: false, message: 'বৈধ টার্গেট পরিমাণ দিন।' });
+        }
+
+        // SR ম্যানেজারের টিমে আছে কিনা চেক
+        const srCheck = await query(`
+            SELECT u.id, u.name_bn, u.team_id
+            FROM users u
+            JOIN teams t ON t.id = u.team_id
+            WHERE u.id = $1 AND u.role = 'worker' AND t.manager_id = $2
+        `, [srId, managerId]);
+
+        if (srCheck.rows.length === 0) {
+            return res.status(403).json({
+                success: false,
+                message: 'এই SR আপনার টিমে নেই।'
+            });
+        }
+
+        const result = await query(`
+            UPDATE users SET monthly_target = $1
+            WHERE id = $2
+            RETURNING id, name_bn, employee_code, monthly_target
+        `, [monthly_target, srId]);
+
+        await query(
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
+             VALUES ($1, 'SET_SR_TARGET', 'users', $2, $3)`,
+            [managerId, srId, JSON.stringify({ monthly_target })]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: `${result.rows[0].name_bn}-এর টার্গেট সেট হয়েছে।`,
+            data: result.rows[0]
+        });
+    } catch (error) {
+        console.error('❌ setSRTarget Error:', error.message);
+        return res.status(500).json({ success: false, message: 'টার্গেট সেটে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET MANAGERS WITHOUT TEAM (Admin) — টিমহীন ম্যানেজার তালিকা
+// GET /api/teams/available-managers
+// ============================================================
+const getAvailableManagers = async (req, res) => {
+    try {
+        const result = await query(`
+            SELECT u.id, u.name_bn, u.name_en, u.employee_code, u.phone
+            FROM users u
+            LEFT JOIN teams t ON t.manager_id = u.id
+            WHERE u.role = 'manager'
+              AND u.status = 'active'
+              AND t.id IS NULL
+            ORDER BY u.name_bn
+        `);
+
+        return res.status(200).json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ getAvailableManagers Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET UNASSIGNED SRs (Admin) — টিমহীন SR তালিকা
+// GET /api/teams/unassigned-srs
+// ============================================================
+const getUnassignedSRs = async (req, res) => {
+    try {
+        const result = await query(`
+            SELECT id, name_bn, employee_code, phone
+            FROM users
+            WHERE role = 'worker'
+              AND status = 'active'
+              AND (team_id IS NULL)
+            ORDER BY name_bn
+        `);
+
+        return res.status(200).json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ getUnassignedSRs Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// REMOVE SR FROM TEAM (Admin)
+// DELETE /api/teams/:id/members/:srId
+// ============================================================
+const removeSRFromTeam = async (req, res) => {
+    try {
+        const { id, srId } = req.params;
+
+        // SR ঐ টিমে আছে কিনা চেক করো
+        const srCheck = await query(`
+            SELECT id, name_bn FROM users
+            WHERE id = $1 AND role = 'worker' AND team_id = $2
+        `, [srId, id]);
+
+        if (srCheck.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'এই SR ঐ টিমে নেই।'
+            });
+        }
+
+        // SR-এর team_id ও manager_id NULL করো
+        await query(`
+            UPDATE users SET team_id = NULL, manager_id = NULL
+            WHERE id = $1
+        `, [srId]);
+
+        await query(
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
+             VALUES ($1, 'REMOVE_SR_FROM_TEAM', 'users', $2, $3)`,
+            [req.user.id, srId, JSON.stringify({ removed_from_team: id })]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: `${srCheck.rows[0].name_bn}-কে টিম থেকে সরানো হয়েছে।`
+        });
+    } catch (error) {
+        console.error('❌ removeSRFromTeam Error:', error.message);
+        return res.status(500).json({ success: false, message: 'SR সরাতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// MOVE SR TO ANOTHER TEAM (Admin)
+// PATCH /api/teams/sr/:srId/move
+// body: { team_id: "..." }
+// ============================================================
+const moveSRToTeam = async (req, res) => {
+    try {
+        const { srId } = req.params;
+        const { team_id } = req.body;
+
+        if (!team_id) {
+            return res.status(400).json({ success: false, message: 'নতুন team_id দিন।' });
+        }
+
+        // SR আছে কিনা চেক
+        const srCheck = await query(
+            `SELECT id, name_bn, team_id FROM users WHERE id = $1 AND role = 'worker'`,
+            [srId]
+        );
+        if (srCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'SR পাওয়া যায়নি।' });
+        }
+
+        // নতুন টিম আছে কিনা চেক ও ম্যানেজার আনো
+        const teamCheck = await query(
+            `SELECT id, manager_id FROM teams WHERE id = $1 AND is_active = true`,
+            [team_id]
+        );
+        if (teamCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'টিম পাওয়া যায়নি।' });
+        }
+
+        const oldTeamId = srCheck.rows[0].team_id;
+        const newTeam   = teamCheck.rows[0];
+
+        await query(`
+            UPDATE users SET team_id = $1, manager_id = $2
+            WHERE id = $3
+        `, [newTeam.id, newTeam.manager_id, srId]);
+
+        await query(
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
+             VALUES ($1, 'MOVE_SR_TO_TEAM', 'users', $2, $3)`,
+            [req.user.id, srId, JSON.stringify({ from_team: oldTeamId, to_team: team_id })]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: `${srCheck.rows[0].name_bn}-কে নতুন টিমে সরানো হয়েছে।`
+        });
+    } catch (error) {
+        console.error('❌ moveSRToTeam Error:', error.message);
+        return res.status(500).json({ success: false, message: 'SR সরাতে সমস্যা হয়েছে।' });
+    }
+};
+
+module.exports = {
+    getTeams,
+    getTeam,
+    createTeam,
+    updateTeam,
+    setTeamTarget,
+    assignSRToTeam,
+    removeSRFromTeam,
+    moveSRToTeam,
+    getMyTeam,
+    setSRTarget,
+    getAvailableManagers,
+    getUnassignedSRs
+};
