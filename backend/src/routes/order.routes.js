@@ -1,10 +1,11 @@
-const express  = require('express');
-const router   = express.Router();
-const { auth } = require('../middlewares/auth');
+const express        = require('express');
+const router         = express.Router();
+const { auth }       = require('../middlewares/auth');
 const {
     allowRoles,
     canApproveOrder
 } = require('../middlewares/roleCheck');
+const requireCheckin = require('../middlewares/requireCheckin'); // ✅ নতুন
 
 const {
     createOrder,
@@ -33,8 +34,8 @@ router.get('/my',       auth, allowRoles('worker'), getMyOrders);
 // পেন্ডিং অর্ডার (Manager/Admin)
 router.get('/pending',  auth, canApproveOrder, getPendingOrders);
 
-// নতুন অর্ডার (SR)
-router.post('/',        auth, allowRoles('worker'), createOrder);
+// নতুন অর্ডার (SR) — ✅ চেক-ইন বাধ্যতামূলক
+router.post('/',        auth, allowRoles('worker'), requireCheckin, createOrder);
 
 // অর্ডার অনুমোদন
 router.put('/:id/approve', auth, canApproveOrder, approveOrder);
