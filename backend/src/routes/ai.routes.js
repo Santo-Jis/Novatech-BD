@@ -1,7 +1,7 @@
 const express  = require('express');
 const router   = express.Router();
 const { auth } = require('../middlewares/auth');
-const { isAdmin } = require('../middlewares/roleCheck');
+const { isAdmin, allowRoles } = require('../middlewares/roleCheck');
 
 const {
     getInsights,
@@ -20,10 +20,10 @@ const {
 // ============================================================
 
 // AI Insights দেখুন
-router.get('/insights',        auth, isAdmin, getInsights);
+router.get('/insights',        auth, allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm'), getInsights);
 
 // Insight পড়া হিসেবে মার্ক করুন
-router.put('/insights/:id/read', auth, isAdmin, markInsightRead);
+router.put('/insights/:id/read', auth, allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm'), markInsightRead);
 
 // AI Config দেখুন
 router.get('/config',          auth, isAdmin, getAIConfig);
