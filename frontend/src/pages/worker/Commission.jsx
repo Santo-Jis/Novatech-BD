@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
-import { FiTrendingUp, FiGift, FiDollarSign, FiCalendar, FiChevronLeft, FiChevronRight, FiCheckCircle, FiClock } from 'react-icons/fi'
+import { FiTrendingUp, FiGift, FiDollarSign, FiCalendar, FiChevronLeft, FiChevronRight, FiCheckCircle, FiClock, FiUser, FiHash, FiInfo } from 'react-icons/fi'
 
 // ─── বাংলা মাসের নাম ───────────────────────────────
 const MONTHS_BN = ['', 'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
@@ -13,6 +13,15 @@ const taka = (n) => '৳' + parseInt(n || 0).toLocaleString('en-IN')
 const formatDate = (dateStr) => {
   const d = new Date(dateStr)
   return `${d.getDate()} ${MONTHS_BN[d.getMonth() + 1]}`
+}
+
+const formatDateTime = (dateStr) => {
+  if (!dateStr) return null
+  const d = new Date(dateStr)
+  const date = `${d.getDate()} ${MONTHS_BN[d.getMonth() + 1]} ${d.getFullYear()}`
+  const h = d.getHours().toString().padStart(2, '0')
+  const m = d.getMinutes().toString().padStart(2, '0')
+  return `${date}, ${h}:${m}`
 }
 
 // ─── Row Type ব্যাজ ──────────────────────────────────
@@ -36,6 +45,7 @@ export default function Commission() {
   const [year, setYear]   = useState(now.getFullYear())
   const [data, setData]   = useState(null)
   const [loading, setLoading] = useState(true)
+  const [expandedRow, setExpandedRow] = useState(null)
 
   const fetchData = () => {
     setLoading(true)
@@ -168,46 +178,142 @@ export default function Commission() {
               </div>
             ) : (
               <div>
-                {daily.map((row, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '11px 16px',
-                      borderBottom: i < daily.length - 1 ? '1px solid #f8fafc' : 'none',
-                      background: i % 2 === 0 ? '#fff' : '#fafafa'
-                    }}
-                  >
-                    {/* বাম: তারিখ + ধরন */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span style={{ fontWeight: 600, fontSize: 13, color: '#1e293b' }}>
-                          {formatDate(row.date)}
-                        </span>
-                        <TypeBadge type={row.type} />
+                {daily.map((row, i) => {
+                  const isExpanded = expandedRow === i
+                  const isPaid = row.paid
+
+                  return (
+                    <div key={i} style={{ borderBottom: i < daily.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                      {/* ─── মূল রো ─── */}
+                      <div
+                        onClick={() => setExpandedRow(isExpanded ? null : i)}
+                        style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '11px 16px',
+                          background: isExpanded ? '#f0f9ff' : (i % 2 === 0 ? '#fff' : '#fafafa'),
+                          cursor: 'pointer',
+                          transition: 'background 0.15s'
+                        }}
+                      >
+                        {/* বাম: তারিখ + ধরন */}
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontWeight: 600, fontSize: 13, color: '#1e293b' }}>
+                              {formatDate(row.date)}
+                            </span>
+                            <TypeBadge type={row.type} />
+                          </div>
+                          {row.sales_amount > 0 && (
+                            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                              বিক্রয়: {taka(row.sales_amount)}
+                              {row.commission_rate > 0 && ` · ${row.commission_rate}%`}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* ডান: কমিশন + পেমেন্ট স্ট্যাটাস */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                          <span style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>
+                            {taka(row.commission_amount)}
+                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: isPaid ? '#15803d' : '#b45309' }}>
+                              {isPaid
+                                ? <><FiCheckCircle size={10} /> পরিশোধিত</>
+                                : <><FiClock size={10} /> বাকি</>
+                              }
+                            </span>
+                            {isPaid && (
+                              <FiInfo size={11} color={isExpanded ? '#1d4ed8' : '#94a3b8'} />
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      {row.sales_amount > 0 && (
-                        <span style={{ fontSize: 11, color: '#94a3b8' }}>
-                          বিক্রয়: {taka(row.sales_amount)}
-                          {row.commission_rate > 0 && ` · ${row.commission_rate}%`}
-                        </span>
+
+                      {/* ─── পেমেন্ট বিস্তারিত (expanded) ─── */}
+                      {isExpanded && (
+                        <div style={{
+                          background: '#f0f9ff',
+                          borderTop: '1px dashed #bae6fd',
+                          padding: '10px 16px 12px 16px',
+                        }}>
+                          {isPaid ? (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                              {/* পরিশোধের তারিখ */}
+                              {row.paid_at && (
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                                  <span style={{
+                                    background: '#dbeafe', color: '#1d4ed8',
+                                    borderRadius: 6, padding: '3px 5px', display: 'flex', flexShrink: 0
+                                  }}>
+                                    <FiCalendar size={11} />
+                                  </span>
+                                  <div>
+                                    <p style={{ fontSize: 10, color: '#64748b', margin: '0 0 1px 0' }}>পরিশোধের তারিখ ও সময়</p>
+                                    <p style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', margin: 0 }}>
+                                      {formatDateTime(row.paid_at)}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* অনুমোদনকারী */}
+                              {row.approved_by_name && (
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                                  <span style={{
+                                    background: '#dcfce7', color: '#15803d',
+                                    borderRadius: 6, padding: '3px 5px', display: 'flex', flexShrink: 0
+                                  }}>
+                                    <FiUser size={11} />
+                                  </span>
+                                  <div>
+                                    <p style={{ fontSize: 10, color: '#64748b', margin: '0 0 1px 0' }}>অনুমোদন করেছেন</p>
+                                    <p style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', margin: 0 }}>
+                                      {row.approved_by_name}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* পেমেন্ট রেফারেন্স */}
+                              {row.payment_reference && (
+                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                                  <span style={{
+                                    background: '#fef3c7', color: '#b45309',
+                                    borderRadius: 6, padding: '3px 5px', display: 'flex', flexShrink: 0
+                                  }}>
+                                    <FiHash size={11} />
+                                  </span>
+                                  <div>
+                                    <p style={{ fontSize: 10, color: '#64748b', margin: '0 0 1px 0' }}>পেমেন্ট রেফারেন্স</p>
+                                    <p style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', margin: 0, fontFamily: 'monospace' }}>
+                                      {row.payment_reference}
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* কোনো তথ্য না থাকলে */}
+                              {!row.paid_at && !row.approved_by_name && !row.payment_reference && (
+                                <p style={{ fontSize: 12, color: '#94a3b8', margin: 0, textAlign: 'center' }}>
+                                  পেমেন্টের বিস্তারিত তথ্য পাওয়া যায়নি
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            /* বাকি থাকলে */
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <FiClock size={13} color='#b45309' />
+                              <p style={{ fontSize: 12, color: '#92400e', margin: 0 }}>
+                                এখনো পরিশোধ হয়নি — পেমেন্টের পর বিস্তারিত দেখা যাবে
+                              </p>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
-
-                    {/* ডান: কমিশন + পেমেন্ট স্ট্যাটাস */}
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                      <span style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>
-                        {taka(row.commission_amount)}
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: row.paid ? '#15803d' : '#b45309' }}>
-                        {row.paid
-                          ? <><FiCheckCircle size={10} /> পরিশোধিত</>
-                          : <><FiClock size={10} /> বাকি</>
-                        }
-                      </span>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
