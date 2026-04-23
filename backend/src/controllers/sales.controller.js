@@ -613,6 +613,15 @@ const getTodaySummary = async (req, res) => {
             [workerId]
         );
 
+        // ✅ আজকের চেক-ইন স্ট্যাটাস যাচাই
+        const attendanceToday = await query(
+            `SELECT check_in_time, check_out_time FROM attendance
+             WHERE worker_id = $1 AND date = $2
+             LIMIT 1`,
+            [workerId, today]
+        );
+        const checkedIn = attendanceToday.rows.length > 0 && !!attendanceToday.rows[0].check_in_time;
+
         return res.status(200).json({
             success: true,
             data: {
@@ -626,7 +635,8 @@ const getTodaySummary = async (req, res) => {
                         : 0
                 },
                 today_order:      todayOrder.rows[0] || null,
-                outstanding_dues: dues.rows[0]?.outstanding_dues || 0
+                outstanding_dues: dues.rows[0]?.outstanding_dues || 0,
+                checked_in:       checkedIn   // ✅ নতুন: চেক-ইন হয়েছে কিনা
             }
         });
 
