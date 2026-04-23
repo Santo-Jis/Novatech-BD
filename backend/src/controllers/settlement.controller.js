@@ -586,6 +586,13 @@ const getSettlementDetail = async (req, res) => {
             return res.status(404).json({ success: false, message: 'হিসাব পাওয়া যায়নি।' });
         }
 
+        const settlement = result.rows[0];
+
+        // Manager শুধু নিজের টিমের settlement দেখতে পারবে
+        if (req.user.role === 'manager' && settlement.manager_id !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'এই হিসাব আপনার টিমের নয়।' });
+        }
+
         const shortagePayments = await query(
             `SELECT sp.*, u.name_bn AS created_by_name
              FROM shortage_payments sp
@@ -598,7 +605,7 @@ const getSettlementDetail = async (req, res) => {
         return res.status(200).json({
             success: true,
             data: {
-                settlement:        result.rows[0],
+                settlement:        settlement,
                 shortage_payments: shortagePayments.rows
             }
         });
