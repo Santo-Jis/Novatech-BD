@@ -14,7 +14,7 @@ export default function Profile() {
   const [passModal, setPassModal] = useState(false)
   const fileRef = useRef()
 
-  const [form, setForm] = useState({ name_bn: '', name_en: '', phone: '', current_address: '', emergency_contact: '' })
+  const [form, setForm] = useState({ name_bn: '', name_en: '', phone: '', email: '', current_address: '', emergency_contact: '' })
   const [passForm, setPassForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' })
 
   const fetchData = async () => {
@@ -34,8 +34,9 @@ export default function Profile() {
         name_bn: meData.name_bn || '',
         name_en: meData.name_en || '',
         phone: meData.phone || '',
+        email: meData.email || '',
         current_address: meData.current_address || '',
-        emergency_contact: typeof meData.emergency_contact === 'object' ? (meData.emergency_contact?.number || meData.emergency_contact?.phone || meData.emergency_contact?.value || '') : String(meData.emergency_contact || '')
+        emergency_contact: String(meData.emergency_contact || '')
       })
     } catch {
       setError('তথ্য লোড হয়নি।')
@@ -146,6 +147,19 @@ export default function Profile() {
               </div>
             </div>
           ))}
+          {/* ইমেইল — read-only, পাসওয়ার্ড রিসেটের জন্য জরুরি */}
+          <div className="flex items-start gap-3">
+            <div className="flex-1">
+              <p className="text-xs text-gray-400">ইমেইল (পাসওয়ার্ড রিসেট)</p>
+              <p className="text-sm text-gray-700 font-medium">{String(form.email || '—')}</p>
+              {editing && !form.email && (
+                <p className="text-xs text-red-500 mt-0.5">⚠️ ইমেইল নেই! পাসওয়ার্ড ভুললে রিসেট করা যাবে না। Admin-কে জানান।</p>
+              )}
+              {editing && form.email && (
+                <p className="text-xs text-amber-500 mt-0.5">ইমেইল পরিবর্তনের জন্য Admin-এর সাথে যোগাযোগ করুন।</p>
+              )}
+            </div>
+          </div>
         </div>
         {editing && (
           <button onClick={handleSave} disabled={saving} className="w-full mt-4 bg-blue-600 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2">
