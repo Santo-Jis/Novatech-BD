@@ -60,6 +60,7 @@ export default function WorkerDashboard() {
   const visits   = summary?.visits   || {}
   const dues     = parseFloat(summary?.outstanding_dues || 0)
   const todayAtt = summary?.today_order
+  const checkedIn = summary?.checked_in ?? true  // ✅ চেক-ইন স্ট্যাটাস
 
   return (
     <div className="p-4 space-y-4 animate-fade-in">
@@ -73,6 +74,23 @@ export default function WorkerDashboard() {
           {new Date().toLocaleDateString('bn-BD', { weekday: 'long', day: 'numeric', month: 'long' })}
         </p>
       </div>
+
+      {/* ✅ চেক-ইন না করলে Warning Banner */}
+      {!checkedIn && (
+        <div className="bg-orange-50 border border-orange-300 rounded-2xl p-4 flex items-center gap-3">
+          <span className="text-3xl">👆</span>
+          <div className="flex-1">
+            <p className="text-orange-700 font-bold text-sm">এখনো চেক-ইন করা হয়নি!</p>
+            <p className="text-orange-600 text-xs mt-0.5">ভিজিট, বিক্রয় ও অর্ডার করতে আগে চেক-ইন করুন।</p>
+          </div>
+          <button
+            onClick={() => navigate('/worker/attendance')}
+            className="px-3 py-2 bg-orange-500 text-white rounded-xl text-xs font-bold flex-shrink-0"
+          >
+            চেক-ইন
+          </button>
+        </div>
+      )}
 
       {/* Outstanding Dues Alert */}
       {dues > 0 && (
