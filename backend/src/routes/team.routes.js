@@ -10,6 +10,8 @@ const {
     updateTeam,
     setTeamTarget,
     assignSRToTeam,
+    removeSRFromTeam,
+    moveSRToTeam,
     getMyTeam,
     setSRTarget,
     getAvailableManagers,
@@ -49,6 +51,12 @@ router.patch('/:id/target',          auth, isAdmin, setTeamTarget);
 
 // SR-দের টিমে যোগ করা (Admin)
 router.put('/:id/members',           auth, isAdmin, assignSRToTeam);
+
+// একজন SR-কে টিম থেকে সরানো (Admin)
+router.delete('/:id/members/:srId',  auth, isAdmin, removeSRFromTeam);
+
+// একজন SR-কে অন্য টিমে move করা (Admin)
+router.patch('/sr/:srId/move',       auth, isAdmin, moveSRToTeam);
 
 // ── Manager Routes ────────────────────────────────────────
 
