@@ -64,6 +64,8 @@ export default function VisitPage() {
   // Visit state
   const [visiting,    setVisiting]    = useState(false)
   const [visited,     setVisited]     = useState(false)
+  const [visitedToday, setVisitedToday] = useState(false)   // backend থেকে আজকের status
+  const [visitStatusLoading, setVisitStatusLoading] = useState(true) // status চেক হচ্ছে
 
   // No-sell state
   const [showNoSell,  setShowNoSell]  = useState(false)
@@ -88,7 +90,27 @@ export default function VisitPage() {
       }
       setLoading(false)
     }
+
+    // আজকের visit status backend থেকে চেক
+    const checkVisitStatus = async () => {
+      if (!navigator.onLine) {
+        setVisitStatusLoading(false)
+        return
+      }
+      try {
+        const res = await api.get(`/sales/visit-status/${id}`)
+        if (res.data.data?.visited) {
+          setVisitedToday(true)
+        }
+      } catch {
+        // চেক করা না গেলেও চলবে, UI block হবে না
+      } finally {
+        setVisitStatusLoading(false)
+      }
+    }
+
     loadCustomer()
+    checkVisitStatus()
   }, [id])
 
   // পেজ লোড হলেই GPS নেওয়া শুরু
@@ -155,6 +177,7 @@ export default function VisitPage() {
           icon: '📶',
         })
         setVisited(true)
+        setVisitedToday(true)
       } catch {
         toast.error('Offline save ব্যর্থ হয়েছে।')
       } finally {
@@ -191,8 +214,7 @@ export default function VisitPage() {
       }
 
       setVisited(true)
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'সমস্যা হয়েছে')
+      setVisitedToday(true)
     } finally {
       setVisiting(false)
     }
@@ -286,7 +308,7 @@ export default function VisitPage() {
       {/* ── Action Buttons ── */}
       {!visited ? (
         <div className="space-y-3">
-          {/* বিক্রয় করুন */}
+          {/* বিক্রয় করুন — সবসময় সক্রিয় */}
           <button
             onClick={() => navigate(`/worker/sales/${id}`)}
             className="w-full bg-primary text-white rounded-2xl p-4 flex items-center justify-center gap-3 font-semibold text-base active:scale-95 transition-transform"
@@ -294,6 +316,16 @@ export default function VisitPage() {
             <FiShoppingCart className="text-xl" />
             বিক্রয় করুন
           </button>
+
+          {/* আজকে ভিজিট হয়ে গেছে — notice */}
+          {visitedToday && !visitStatusLoading && (
+            <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+              <FiCheckCircle size={16} className="text-green-500 flex-shrink-0" />
+              <p className="text-sm text-green-700 font-medium">
+                আজকে এই দোকানে ভিজিট হয়ে গেছে।
+              </p>
+            </div>
+          )}
 
           {/* Offline notice */}
           {!navigator.onLine && (
@@ -305,7 +337,6 @@ export default function VisitPage() {
             </div>
           )}
 
-          {/* ভিজিট (বিক্রি হয়নি) */}
           {/* GPS না থাকলে warning বার */}
           {(gpsState === 'error' || gpsState === 'idle' || (!location && gpsState !== 'loading')) && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
@@ -319,7 +350,7 @@ export default function VisitPage() {
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => submitVisit({ will_sell: true })}
-              disabled={visiting || gpsState !== 'done' || !location}
+              disabled={visiting || gpsState !== 'done' || !location || visitedToday || visitStatusLoading}
               className="bg-white border-2 border-gray-200 text-gray-700 rounded-2xl p-4 flex flex-col items-center gap-2 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {visiting
@@ -327,17 +358,19 @@ export default function VisitPage() {
                 : <FiUser className="text-2xl" />
               }
               <span className="text-sm font-semibold">ভিজিট (আসবে)</span>
-              {!navigator.onLine && <span className="text-[10px] text-amber-600">offline</span>}
+              {visitedToday && <span className="text-[10px] text-green-600 font-medium">✅ হয়ে গেছে</span>}
+              {!navigator.onLine && !visitedToday && <span className="text-[10px] text-amber-600">offline</span>}
             </button>
 
             <button
               onClick={() => setShowNoSell(true)}
-              disabled={visiting || gpsState !== 'done' || !location}
+              disabled={visiting || gpsState !== 'done' || !location || visitedToday || visitStatusLoading}
               className="bg-amber-50 border-2 border-amber-200 text-amber-700 rounded-2xl p-4 flex flex-col items-center gap-2 active:scale-95 transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <FiAlertTriangle className="text-2xl" />
               <span className="text-sm font-semibold">রাখেনি</span>
-              {!navigator.onLine && <span className="text-[10px] text-amber-600">offline</span>}
+              {visitedToday && <span className="text-[10px] text-green-600 font-medium">✅ হয়ে গেছে</span>}
+              {!navigator.onLine && !visitedToday && <span className="text-[10px] text-amber-600">offline</span>}
             </button>
           </div>
         </div>
