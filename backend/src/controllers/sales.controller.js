@@ -122,7 +122,7 @@ const createVisit = async (req, res) => {
 
 const createSale = async (req, res) => {
     try {
-        const {
+        let {
             customer_id, visit_id, order_id,
             items,
             payment_method,
@@ -135,6 +135,30 @@ const createSale = async (req, res) => {
                 success: false,
                 message: 'কাস্টমার, পণ্য এবং পেমেন্ট পদ্ধতি আবশ্যক।'
             });
+        }
+
+        // ── অনুমোদিত অর্ডার যাচাই (Server-side hard block) ──────
+        const today = new Date().toISOString().split('T')[0];
+        const orderCheck = await query(
+            `SELECT id FROM orders
+             WHERE worker_id = $1
+               AND DATE(requested_at) = $2
+               AND status = 'approved'
+             ORDER BY approved_at DESC
+             LIMIT 1`,
+            [req.user.id, today]
+        );
+
+        if (orderCheck.rows.length === 0) {
+            return res.status(403).json({
+                success: false,
+                message: 'আজকের অর্ডার ম্যানেজার কর্তৃক অনুমোদিত হয়নি। অনুমোদন ছাড়া বিক্রয় সম্ভব নয়।'
+            });
+        }
+
+        // order_id না পাঠালে approved order থেকেই নাও
+        if (!order_id) {
+            order_id = orderCheck.rows[0].id;
         }
 
         // কাস্টমার তথ্য
