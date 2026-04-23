@@ -35,6 +35,11 @@ const menuItems = [
     path: '/worker/order',
   },
   {
+    icon: <FiDollarSign />,
+    label: 'কমিশন',
+    path: '/worker/commission',
+  },
+  {
     icon: <FiTrendingUp />,
     label: 'বিক্রয় ইতিহাস',
     path: '/worker/sales-history',
