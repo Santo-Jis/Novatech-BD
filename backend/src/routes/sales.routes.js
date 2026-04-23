@@ -1,8 +1,9 @@
-const express  = require('express');
-const router   = express.Router();
-const { auth } = require('../middlewares/auth');
+const express         = require('express');
+const router          = express.Router();
+const { auth }        = require('../middlewares/auth');
 const { allowRoles, checkTeamAccess } = require('../middlewares/roleCheck');
-const multer   = require('multer');
+const requireCheckin  = require('../middlewares/requireCheckin'); // ✅ নতুন
+const multer          = require('multer');
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -27,15 +28,17 @@ const {
 // ============================================================
 
 // দোকান ভিজিট রেকর্ড (বন্ধ দোকানের ছবি optional)
+// ✅ requireCheckin: চেক-ইন না করলে ভিজিট করা যাবে না
 router.post('/visit',
     auth,
     allowRoles('worker'),
+    requireCheckin,
     upload.single('closed_shop_photo'),
     createVisit
 );
 
-// বিক্রয় তৈরি
-router.post('/',        auth, allowRoles('worker'), createSale);
+// বিক্রয় তৈরি — ✅ চেক-ইন বাধ্যতামূলক
+router.post('/',        auth, allowRoles('worker'), requireCheckin, createSale);
 
 // Invoice পাঠানো (WhatsApp/SMS)
 router.post('/invoice/send',  auth, allowRoles('worker'), sendInvoice);
