@@ -36,7 +36,7 @@ export default function Profile() {
         phone: meData.phone || '',
         email: meData.email || '',
         current_address: meData.current_address || '',
-        emergency_contact: String(meData.emergency_contact || '')
+        emergency_contact: typeof meData.emergency_contact === 'object' ? (meData.emergency_contact?.number || meData.emergency_contact?.phone || meData.emergency_contact?.value || '') : String(meData.emergency_contact || '')
       })
     } catch {
       setError('তথ্য লোড হয়নি।')
@@ -147,6 +147,7 @@ export default function Profile() {
               </div>
             </div>
           ))}
+
           {/* ইমেইল — read-only, পাসওয়ার্ড রিসেটের জন্য জরুরি */}
           <div className="flex items-start gap-3">
             <div className="flex-1">
@@ -173,11 +174,10 @@ export default function Profile() {
         <h3 className="font-semibold text-gray-700 mb-4 flex items-center gap-2"><FiClock className="text-blue-500" /> কর্মসংক্রান্ত তথ্য</h3>
         <div className="space-y-2">
           {[
-            ['পদবী', p.role === 'worker' ? 'কর্মী (SR)' : String(p.role || '—')],
+            ['পদবী',   p.role === 'worker' ? 'কর্মী (SR)' : String(p.role || '—')],
             ['মূল বেতন', p.basic_salary ? '৳' + parseInt(p.basic_salary).toLocaleString() : '—'],
-            ['বকেয়া', '৳' + parseInt(p.outstanding_dues || 0).toLocaleString()],
             ['স্ট্যাটাস', p.status === 'active' ? '✅ সক্রিয়' : '❌ নিষ্ক্রিয়'],
-            ['যোগদান', p.join_date ? new Date(p.join_date).toLocaleDateString() : '—'],
+            ['যোগদান',  p.join_date ? new Date(p.join_date).toLocaleDateString() : '—'],
           ].map(([label, value]) => (
             <div key={label} className="flex justify-between items-center py-1 border-b border-gray-50">
               <span className="text-sm text-gray-500">{label}</span>
@@ -185,6 +185,48 @@ export default function Profile() {
             </div>
           ))}
         </div>
+
+        {/* ─── বকেয়া breakdown ─── */}
+        {parseFloat(p.outstanding_dues || 0) > 0 ? (
+          <div className="mt-4 bg-red-50 border border-red-100 rounded-xl p-4">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-bold text-red-700 flex items-center gap-1">
+                ⚠️ মোট বকেয়া
+              </span>
+              <span className="text-base font-extrabold text-red-600">
+                ৳{parseInt(p.outstanding_dues).toLocaleString()}
+              </span>
+            </div>
+            <p className="text-xs text-red-500 mb-3">এই টাকা বেতন / কমিশন থেকে কেটে নেওয়া হবে</p>
+            <div className="space-y-1.5">
+              {parseFloat(p.cash_dues || 0) > 0 && (
+                <div className="flex justify-between items-center bg-white rounded-lg px-3 py-2">
+                  <span className="text-xs text-gray-600 flex items-center gap-1">
+                    💵 নগদ ঘাটতি
+                  </span>
+                  <span className="text-xs font-bold text-red-500">
+                    ৳{parseInt(p.cash_dues).toLocaleString()}
+                  </span>
+                </div>
+              )}
+              {parseFloat(p.outstanding_dues || 0) - parseFloat(p.cash_dues || 0) > 0 && (
+                <div className="flex justify-between items-center bg-white rounded-lg px-3 py-2">
+                  <span className="text-xs text-gray-600 flex items-center gap-1">
+                    📦 পণ্য ঘাটতি
+                  </span>
+                  <span className="text-xs font-bold text-red-500">
+                    ৳{parseInt(parseFloat(p.outstanding_dues) - parseFloat(p.cash_dues || 0)).toLocaleString()}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4 bg-green-50 border border-green-100 rounded-xl px-4 py-3 flex justify-between items-center">
+            <span className="text-sm text-green-700 font-medium">✅ কোনো বকেয়া নেই</span>
+            <span className="text-sm font-bold text-green-600">৳০</span>
+          </div>
+        )}
       </div>
 
       <button onClick={() => setPassModal(true)} className="w-full bg-white rounded-2xl p-4 shadow-sm flex items-center gap-3 text-left">
