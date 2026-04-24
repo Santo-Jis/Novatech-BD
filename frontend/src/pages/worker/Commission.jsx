@@ -153,6 +153,18 @@ export default function Commission() {
                   <span style={{ fontSize: 13, opacity: 0.85 }}>বকেয়া কর্তন</span>
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#fca5a5' }}>− {taka(preview.outstanding_dues)}</span>
                 </div>
+                {preview.product_dues > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: 10 }}>
+                    <span style={{ fontSize: 11, opacity: 0.65 }}>↳ পণ্য ঘাটতি</span>
+                    <span style={{ fontSize: 11, color: '#fca5a5', opacity: 0.85 }}>৳{parseInt(preview.product_dues).toLocaleString()}</span>
+                  </div>
+                )}
+                {preview.cash_dues > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: 10, marginTop: 2 }}>
+                    <span style={{ fontSize: 11, opacity: 0.65 }}>↳ নগদ ঘাটতি</span>
+                    <span style={{ fontSize: 11, color: '#fca5a5', opacity: 0.85 }}>৳{parseInt(preview.cash_dues).toLocaleString()}</span>
+                  </div>
+                )}
               )}
               <div style={{ borderTop: '1px solid rgba(255,255,255,0.2)', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between' }}>
                 <span style={{ fontWeight: 700, fontSize: 15 }}>নেট পাওনা</span>
