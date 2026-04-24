@@ -71,10 +71,12 @@ const getMyCommission = async (req, res) => {
             [req.user.id]
         );
 
-        const basicSalary       = parseFloat(worker.rows[0]?.basic_salary || 0);
-        const totalCommission   = parseFloat(summary.rows[0]?.total_commission || 0);
-        const outstandingDues   = parseFloat(worker.rows[0]?.outstanding_dues || 0);
-        const netPayable        = basicSalary + totalCommission - outstandingDues;
+        const basicSalary     = parseFloat(worker.rows[0]?.basic_salary      || 0);
+        const totalCommission = parseFloat(summary.rows[0]?.total_commission || 0);
+        const outstandingDues = parseFloat(worker.rows[0]?.outstanding_dues  || 0);
+        const cashDues        = parseFloat(worker.rows[0]?.cash_dues         || 0);
+        const productDues     = Math.max(0, outstandingDues - cashDues);
+        const netPayable      = basicSalary + totalCommission - outstandingDues;
 
         return res.status(200).json({
             success: true,
@@ -87,6 +89,8 @@ const getMyCommission = async (req, res) => {
                     basic_salary:     basicSalary,
                     total_commission: totalCommission,
                     outstanding_dues: outstandingDues,
+                    cash_dues,
+                    product_dues:     productDues,
                     net_payable:      Math.max(0, netPayable)
                 }
             }
