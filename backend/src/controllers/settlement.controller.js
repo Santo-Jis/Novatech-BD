@@ -43,7 +43,8 @@ const createSettlement = async (req, res) => {
         const {
             cash_collected: srCashInput,   // SR নিজে দেওয়া নগদ
             returned_items,                 // [{ product_id, qty }]
-            shortage_note
+            shortage_note,
+            mismatch_explanation            // নগদ পার্থক্যের কারণ (৳৫০০+ হলে বাধ্যতামূলক)
         } = req.body;
 
         if (srCashInput === undefined || srCashInput === null) {
@@ -99,6 +100,18 @@ const createSettlement = async (req, res) => {
         const sales         = salesData.rows[0];
         const systemCash    = parseFloat(sales.cash_collected) || 0;
         const srCash        = parseFloat(srCashInput)          || 0;
+
+        // ─── নগদ পার্থক্য সীমা যাচাই (backend guard) ────────
+        const CASH_BLOCK_LIMIT = 500;
+        const absDiff = Math.abs(srCash - systemCash);
+        if (absDiff > CASH_BLOCK_LIMIT) {
+            if (!mismatch_explanation || !String(mismatch_explanation).trim()) {
+                return res.status(422).json({
+                    success: false,
+                    message: `নগদ পার্থক্য ৳${absDiff.toFixed(0)} — ৳${CASH_BLOCK_LIMIT} এর বেশি হলে কারণ লেখা বাধ্যতামূলক।`
+                });
+            }
+        }
 
         // ─── নগদ মিলানো — পার্থক্য রেকর্ড করা হবে ─────────
         const cashDifference = srCash - systemCash;   // + হলে বেশি জমা, - হলে কম জমা
@@ -176,8 +189,8 @@ const createSettlement = async (req, res) => {
               cash_collected, cash_difference,
               credit_given,
               old_credit_collected, replacement_value,
-              shortage_qty_value, shortage_note)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+              shortage_qty_value, shortage_note, mismatch_explanation)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
              RETURNING id`,
             [
                 workerId,
@@ -185,13 +198,14 @@ const createSettlement = async (req, res) => {
                 today,
                 JSON.stringify(itemsReport),
                 sales.total_sales,
-                srCash,                          // SR-এর জমা দেওয়া নগদ
-                cashDifference,                  // পার্থক্য (audit trail)
+                srCash,                                          // SR-এর জমা দেওয়া নগদ
+                cashDifference,                                  // পার্থক্য (audit trail)
                 sales.credit_given,
                 sales.old_credit_collected,
                 sales.replacement_value,
                 totalShortageValue,
-                shortage_note || null
+                shortage_note || null,
+                mismatch_explanation?.trim() || null             // নগদ পার্থক্যের কারণ
             ]
         );
 
@@ -331,6 +345,11 @@ const approveSettlement = async (req, res) => {
             });
         }
 
+        const s              = settlement.rows[0];
+        const cashDiff       = parseFloat(s.cash_difference || 0);
+        // cashDiff < 0 → SR কম জমা দিয়েছে → বকেয়া বাড়বে
+        const cashShortfall  = cashDiff < 0 ? Math.abs(cashDiff) : 0;
+
         await withTransaction(async (client) => {
             await client.query(
                 `UPDATE daily_settlements
@@ -347,22 +366,49 @@ const approveSettlement = async (req, res) => {
                 `UPDATE attendance
                  SET settlement_approved = true, updated_at = NOW()
                  WHERE user_id = $1 AND date = $2`,
-                [settlement.rows[0].worker_id, settlement.rows[0].settlement_date]
+                [s.worker_id, s.settlement_date]
             );
+
+            // নগদ ঘাটতি থাকলে outstanding_dues এ যোগ করো
+            if (cashShortfall > 0) {
+                await client.query(
+                    `UPDATE users
+                     SET outstanding_dues      = outstanding_dues + $1,
+                         cash_dues             = COALESCE(cash_dues, 0) + $1,
+                         updated_at            = NOW()
+                     WHERE id = $2`,
+                    [cashShortfall, s.worker_id]
+                );
+
+                // audit trail
+                await client.query(
+                    `INSERT INTO dues_ledger
+                     (worker_id, settlement_id, due_type, amount, note, created_by)
+                     VALUES ($1, $2, 'cash_mismatch', $3, $4, $5)`,
+                    [
+                        s.worker_id, id, cashShortfall,
+                        `নগদ ঘাটতি: সিস্টেম ৳${parseFloat(s.cash_collected) - cashDiff} — জমা ৳${s.cash_collected}`,
+                        req.user.id
+                    ]
+                );
+            }
         });
 
+        const notifyMsg = cashShortfall > 0
+            ? `✅ হিসাব অনুমোদিত। তবে ৳${cashShortfall.toFixed(0)} নগদ ঘাটতি আপনার বকেয়ায় যোগ হয়েছে।`
+            : '✅ Manager হিসাব অনুমোদন করেছেন। এখন চেক-আউট করুন।';
+
         await firebaseNotify(
-            `notifications/${settlement.rows[0].worker_id}/settlement`,
-            {
-                settlementId: id,
-                status:       'approved',
-                message:      '✅ Manager হিসাব অনুমোদন করেছেন। এখন চেক-আউট করুন।'
-            }
+            `notifications/${s.worker_id}/settlement`,
+            { settlementId: id, status: 'approved', cashShortfall, message: notifyMsg }
         );
 
         return res.status(200).json({
             success: true,
-            message: 'হিসাব অনুমোদন সফল। SR এখন চেক-আউট করতে পারবে।'
+            cashShortfall,
+            message: cashShortfall > 0
+                ? `হিসাব অনুমোদন সফল। ৳${cashShortfall.toFixed(0)} নগদ ঘাটতি SR এর বকেয়ায় যোগ হয়েছে।`
+                : 'হিসাব অনুমোদন সফল। SR এখন চেক-আউট করতে পারবে।'
         });
 
     } catch (error) {
@@ -390,7 +436,12 @@ const disputeSettlement = async (req, res) => {
             return res.status(404).json({ success: false, message: 'হিসাব পাওয়া যায়নি।' });
         }
 
-        const finalShortage = shortage_value || settlement.rows[0].shortage_qty_value;
+        const s             = settlement.rows[0];
+        const finalShortage = parseFloat(shortage_value || s.shortage_qty_value || 0);
+        const cashDiff      = parseFloat(s.cash_difference || 0);
+        const cashShortfall = cashDiff < 0 ? Math.abs(cashDiff) : 0;
+        // মোট বকেয়া = পণ্য ঘাটতি + নগদ ঘাটতি
+        const totalDues     = finalShortage + cashShortfall;
 
         await withTransaction(async (client) => {
             await client.query(
@@ -404,27 +455,59 @@ const disputeSettlement = async (req, res) => {
                 [req.user.id, note || null, finalShortage, id]
             );
 
-            await client.query(
-                `UPDATE users
-                 SET outstanding_dues = outstanding_dues + $1, updated_at = NOW()
-                 WHERE id = $2`,
-                [finalShortage, settlement.rows[0].worker_id]
-            );
+            // মোট বকেয়া outstanding_dues এ যোগ
+            if (totalDues > 0) {
+                await client.query(
+                    `UPDATE users
+                     SET outstanding_dues = outstanding_dues + $1,
+                         cash_dues        = COALESCE(cash_dues, 0) + $2,
+                         updated_at       = NOW()
+                     WHERE id = $3`,
+                    [totalDues, cashShortfall, s.worker_id]
+                );
+            }
+
+            // পণ্য ঘাটতি ledger
+            if (finalShortage > 0) {
+                await client.query(
+                    `INSERT INTO dues_ledger
+                     (worker_id, settlement_id, due_type, amount, note, created_by)
+                     VALUES ($1, $2, 'product_shortage', $3, $4, $5)`,
+                    [s.worker_id, id, finalShortage, `পণ্য ঘাটতি — Manager নিশ্চিত`, req.user.id]
+                );
+            }
+
+            // নগদ ঘাটতি ledger
+            if (cashShortfall > 0) {
+                await client.query(
+                    `INSERT INTO dues_ledger
+                     (worker_id, settlement_id, due_type, amount, note, created_by)
+                     VALUES ($1, $2, 'cash_mismatch', $3, $4, $5)`,
+                    [s.worker_id, id, cashShortfall, `নগদ ঘাটতি ৳${cashShortfall} — dispute`, req.user.id]
+                );
+            }
         });
 
+        const notifyParts = [];
+        if (finalShortage > 0) notifyParts.push(`৳${Math.round(finalShortage)} পণ্য ঘাটতি`);
+        if (cashShortfall > 0) notifyParts.push(`৳${Math.round(cashShortfall)} নগদ ঘাটতি`);
+
         await firebaseNotify(
-            `notifications/${settlement.rows[0].worker_id}/settlement`,
+            `notifications/${s.worker_id}/settlement`,
             {
-                settlementId:  id,
-                status:        'disputed',
-                shortageValue: finalShortage,
-                message: `⚠️ হিসাবে ৳${finalShortage} ঘাটতি পাওয়া গেছে। পরিশোধ করুন।`
+                settlementId:   id,
+                status:         'disputed',
+                shortageValue:  finalShortage,
+                cashShortfall,
+                totalDues,
+                message: `⚠️ ${notifyParts.join(' + ')} — মোট ৳${Math.round(totalDues)} বকেয়ায় যোগ হয়েছে।`
             }
         );
 
         return res.status(200).json({
             success: true,
-            message: `ঘাটতি চিহ্নিত করা হয়েছে। ৳${finalShortage} SR এর বকেয়ায় যোগ হয়েছে।`
+            totalDues,
+            message: `চিহ্নিত হয়েছে। মোট ৳${Math.round(totalDues)} SR এর বকেয়ায় যোগ হয়েছে।`
         });
 
     } catch (error) {
