@@ -4,9 +4,13 @@ import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
 import {
   FiDollarSign, FiSend, FiPackage, FiAlertTriangle,
-  FiCheckCircle, FiChevronDown, FiChevronUp, FiInfo
+  FiCheckCircle, FiChevronDown, FiChevronUp, FiInfo, FiLock
 } from 'react-icons/fi'
 import toast from 'react-hot-toast'
+
+// নগদ মিলের সীমা — এর বেশি পার্থক্য হলে submit block + বাধ্যতামূলক ব্যাখ্যা
+const CASH_BLOCK_LIMIT   = 500   // ৳৫০০ এর বেশি হলে সম্পূর্ণ block
+const CASH_WARN_LIMIT    = 1     // ৳১ এর বেশি হলে সতর্কতা
 
 function SummaryCard({ label, value, color = 'text-gray-800' }) {
   return (
@@ -56,8 +60,9 @@ export default function Settlement() {
   const [todayCash,        setTodayCash]        = useState(0)
   const [todaySales,       setTodaySales]       = useState(0)
   const [todayCredit,      setTodayCredit]      = useState(0)
-  const [shortageNote,     setShortageNote]     = useState('')
-  const [loading,          setLoading]          = useState(true)
+  const [shortageNote,        setShortageNote]        = useState('')
+  const [mismatchExplanation, setMismatchExplanation] = useState('')
+  const [loading,             setLoading]             = useState(true)
   const [submitting,       setSubmitting]       = useState(false)
   const [showConfirm,      setShowConfirm]      = useState(false)
   const [preview,          setPreview]          = useState(null)
@@ -148,8 +153,9 @@ export default function Settlement() {
     const creditGivenVal = alreadySubmitted ? parseFloat(data?.credit_given || 0) : todayCredit
     const enteredCash  = parseFloat(cashAmount || 0)
     const cashDiff     = Math.abs(enteredCash - systemCash)
-    const cashMismatch = cashDiff > 1
-    return { items, totalShortage, systemCash, enteredCash, cashDiff, cashMismatch, creditGiven: creditGivenVal }
+    const cashMismatch = cashDiff > CASH_WARN_LIMIT
+    const cashBlocked  = cashDiff > CASH_BLOCK_LIMIT          // ৳৫০০+ → submit block
+    return { items, totalShortage, systemCash, enteredCash, cashDiff, cashMismatch, cashBlocked, creditGiven: creditGivenVal }
   }
 
   const handleReview = () => {
@@ -160,6 +166,13 @@ export default function Settlement() {
 
   const handleSubmit = async () => {
     if (!preview) return
+
+    // ৳৫০০+ পার্থক্যে ব্যাখ্যা না দিলে block
+    if (preview.cashBlocked && !mismatchExplanation.trim()) {
+      toast.error('নগদ পার্থক্যের কারণ অবশ্যই লিখুন')
+      return
+    }
+
     setSubmitting(true)
     try {
       const returnedItems = Object.entries(returnedQtys)
@@ -167,9 +180,10 @@ export default function Settlement() {
         .map(([product_id, qty]) => ({ product_id, qty }))
 
       await api.post('/settlements', {
-        cash_collected: parseFloat(cashAmount),
-        returned_items: returnedItems,
-        shortage_note:  shortageNote || undefined,
+        cash_collected:       parseFloat(cashAmount),
+        returned_items:       returnedItems,
+        shortage_note:        shortageNote || undefined,
+        mismatch_explanation: mismatchExplanation.trim() || undefined,
       })
       toast.success('হিসাব জমা দেওয়া হয়েছে ✅ Manager এর অনুমোদনের অপেক্ষায়।')
       setShowConfirm(false)
@@ -285,13 +299,35 @@ export default function Settlement() {
           placeholder={`${parseInt(systemCash) || 0}`}
           className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/30"
         />
-        {cashAmount && Math.abs(parseFloat(cashAmount) - systemCash) > 1 && (
-          <div className="mt-2 flex items-start gap-2 bg-amber-50 rounded-xl p-3">
-            <FiAlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={14} />
-            <p className="text-xs text-amber-700">
-              সিস্টেমের নগদ ({parseInt(systemCash).toLocaleString()} ৳) এর সাথে মিলছে না।
-              পার্থক্য: ৳{Math.abs(parseFloat(cashAmount) - systemCash).toLocaleString()}
-            </p>
+        {cashAmount && Math.abs(parseFloat(cashAmount) - systemCash) > CASH_WARN_LIMIT && (
+          <div className={`mt-2 flex items-start gap-2 rounded-xl p-3 ${
+            Math.abs(parseFloat(cashAmount) - systemCash) > CASH_BLOCK_LIMIT
+              ? 'bg-red-50 border border-red-200'
+              : 'bg-amber-50'
+          }`}>
+            {Math.abs(parseFloat(cashAmount) - systemCash) > CASH_BLOCK_LIMIT
+              ? <FiLock className="text-red-500 flex-shrink-0 mt-0.5" size={14} />
+              : <FiAlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" size={14} />
+            }
+            <div>
+              <p className={`text-xs font-semibold ${
+                Math.abs(parseFloat(cashAmount) - systemCash) > CASH_BLOCK_LIMIT
+                  ? 'text-red-700' : 'text-amber-700'
+              }`}>
+                {Math.abs(parseFloat(cashAmount) - systemCash) > CASH_BLOCK_LIMIT
+                  ? `⚠️ ৳${CASH_BLOCK_LIMIT}+ পার্থক্য — submit করতে কারণ দিতে হবে`
+                  : 'সিস্টেমের নগদের সাথে মিলছে না'
+                }
+              </p>
+              <p className={`text-xs mt-0.5 ${
+                Math.abs(parseFloat(cashAmount) - systemCash) > CASH_BLOCK_LIMIT
+                  ? 'text-red-600' : 'text-amber-600'
+              }`}>
+                সিস্টেম: ৳{parseInt(systemCash).toLocaleString()} —
+                আপনার দেওয়া: ৳{parseInt(parseFloat(cashAmount)).toLocaleString()} —
+                পার্থক্য: ৳{Math.abs(parseFloat(cashAmount) - systemCash).toLocaleString()}
+              </p>
+            </div>
           </div>
         )}
       </div>
@@ -322,15 +358,39 @@ export default function Settlement() {
           <div className="space-y-4">
 
             {preview.cashMismatch && (
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
-                <FiAlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-semibold text-amber-700">নগদ মিলছে না!</p>
-                  <p className="text-xs text-amber-600 mt-0.5">
+              <div className={`border rounded-xl p-3 flex items-start gap-2 ${
+                preview.cashBlocked
+                  ? 'bg-red-50 border-red-200'
+                  : 'bg-amber-50 border-amber-200'
+              }`}>
+                {preview.cashBlocked
+                  ? <FiLock className="text-red-500 flex-shrink-0 mt-0.5" />
+                  : <FiAlertTriangle className="text-amber-500 flex-shrink-0 mt-0.5" />
+                }
+                <div className="flex-1">
+                  <p className={`text-sm font-semibold ${preview.cashBlocked ? 'text-red-700' : 'text-amber-700'}`}>
+                    {preview.cashBlocked ? '🔒 নগদ পার্থক্য সীমা পেরিয়েছে!' : 'নগদ মিলছে না!'}
+                  </p>
+                  <p className={`text-xs mt-0.5 ${preview.cashBlocked ? 'text-red-600' : 'text-amber-600'}`}>
                     সিস্টেম: ৳{parseInt(preview.systemCash).toLocaleString()} —
                     আপনার দেওয়া: ৳{parseInt(preview.enteredCash).toLocaleString()} —
                     পার্থক্য: ৳{preview.cashDiff.toLocaleString()}
                   </p>
+                  {preview.cashBlocked && (
+                    <div className="mt-3">
+                      <label className="text-xs font-semibold text-red-700 block mb-1">
+                        কারণ লিখুন <span className="text-red-500">*</span>
+                        <span className="font-normal text-red-500 ml-1">(submit করতে অবশ্যই দিতে হবে)</span>
+                      </label>
+                      <textarea
+                        value={mismatchExplanation}
+                        onChange={e => setMismatchExplanation(e.target.value)}
+                        placeholder="যেমন: গ্রাহক ভাঙতি দিতে পারেননি, নগদ ঘরে রাখা হয়েছে..."
+                        rows={3}
+                        className="w-full border border-red-300 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-red-300 resize-none bg-white"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -393,8 +453,23 @@ export default function Settlement() {
 
             <div className="flex justify-end gap-3 pt-2 border-t border-gray-100">
               <Button variant="ghost" onClick={() => setShowConfirm(false)}>সংশোধন করুন</Button>
-              <Button onClick={handleSubmit} loading={submitting} icon={<FiSend size={14} />}>
-                নিশ্চিত করে জমা দিন
+              <Button
+                onClick={handleSubmit}
+                loading={submitting}
+                icon={preview?.cashBlocked && !mismatchExplanation.trim()
+                  ? <FiLock size={14} />
+                  : <FiSend size={14} />
+                }
+                disabled={preview?.cashBlocked && !mismatchExplanation.trim()}
+                className={preview?.cashBlocked && !mismatchExplanation.trim()
+                  ? 'opacity-50 cursor-not-allowed'
+                  : ''
+                }
+              >
+                {preview?.cashBlocked && !mismatchExplanation.trim()
+                  ? 'কারণ লেখা বাধ্যতামূলক'
+                  : 'নিশ্চিত করে জমা দিন'
+                }
               </Button>
             </div>
           </div>
