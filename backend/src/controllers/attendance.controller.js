@@ -548,6 +548,222 @@ const getAttendanceSettings = async (req, res) => {
     }
 };
 
+// ============================================================
+// APPLY FOR LEAVE (SR/Worker নিজে আবেদন করবে)
+// POST /api/attendance/leave/apply
+// ============================================================
+
+const applyLeave = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { start_date, end_date, reason, leave_type } = req.body;
+
+        if (!start_date || !end_date || !reason) {
+            return res.status(400).json({
+                success: false,
+                message: 'তারিখ ও কারণ আবশ্যক।'
+            });
+        }
+
+        if (new Date(start_date) > new Date(end_date)) {
+            return res.status(400).json({
+                success: false,
+                message: 'শেষ তারিখ শুরুর তারিখের আগে হতে পারবে না।'
+            });
+        }
+
+        // টেবিল না থাকলে তৈরি করো
+        await query(`
+            CREATE TABLE IF NOT EXISTS leave_requests (
+                id              SERIAL PRIMARY KEY,
+                user_id         INTEGER NOT NULL,
+                start_date      DATE    NOT NULL,
+                end_date        DATE    NOT NULL,
+                leave_type      VARCHAR(50) DEFAULT 'casual',
+                reason          TEXT    NOT NULL,
+                status          VARCHAR(20) DEFAULT 'pending',
+                reviewed_by     INTEGER,
+                reviewed_at     TIMESTAMP,
+                reviewer_note   TEXT,
+                created_at      TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        const result = await query(
+            `INSERT INTO leave_requests (user_id, start_date, end_date, leave_type, reason)
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING id, start_date, end_date, leave_type, reason, status, created_at`,
+            [userId, start_date, end_date, leave_type || 'casual', reason]
+        );
+
+        return res.status(201).json({
+            success: true,
+            message: 'ছুটির আবেদন সফলভাবে জমা হয়েছে।',
+            data: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('❌ Apply Leave Error:', error.message);
+        return res.status(500).json({ success: false, message: 'আবেদন জমা দিতে সমস্যা হয়েছে।' });
+    }
+};
+
+
+// ============================================================
+// MY LEAVE REQUESTS (নিজের আবেদনের তালিকা)
+// GET /api/attendance/leave/my
+// ============================================================
+
+const getMyLeaveRequests = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        await query(`
+            CREATE TABLE IF NOT EXISTS leave_requests (
+                id              SERIAL PRIMARY KEY,
+                user_id         INTEGER NOT NULL,
+                start_date      DATE    NOT NULL,
+                end_date        DATE    NOT NULL,
+                leave_type      VARCHAR(50) DEFAULT 'casual',
+                reason          TEXT    NOT NULL,
+                status          VARCHAR(20) DEFAULT 'pending',
+                reviewed_by     INTEGER,
+                reviewed_at     TIMESTAMP,
+                reviewer_note   TEXT,
+                created_at      TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        const result = await query(
+            `SELECT id, start_date, end_date, leave_type, reason,
+                    status, reviewer_note, reviewed_at, created_at
+             FROM leave_requests
+             WHERE user_id = $1
+             ORDER BY created_at DESC
+             LIMIT 30`,
+            [userId]
+        );
+
+        return res.json({
+            success: true,
+            data: result.rows
+        });
+
+    } catch (error) {
+        console.error('❌ Get My Leave Requests Error:', error.message);
+        return res.status(500).json({ success: false, message: 'আবেদন তালিকা আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+
+// ============================================================
+// GET ALL LEAVE REQUESTS (Manager/Admin — অনুমোদনের জন্য)
+// GET /api/attendance/leave/all
+// ============================================================
+
+const getAllLeaveRequests = async (req, res) => {
+    try {
+        await query(`
+            CREATE TABLE IF NOT EXISTS leave_requests (
+                id              SERIAL PRIMARY KEY,
+                user_id         INTEGER NOT NULL,
+                start_date      DATE    NOT NULL,
+                end_date        DATE    NOT NULL,
+                leave_type      VARCHAR(50) DEFAULT 'casual',
+                reason          TEXT    NOT NULL,
+                status          VARCHAR(20) DEFAULT 'pending',
+                reviewed_by     INTEGER,
+                reviewed_at     TIMESTAMP,
+                reviewer_note   TEXT,
+                created_at      TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        const result = await query(
+            `SELECT lr.id, lr.start_date, lr.end_date, lr.leave_type,
+                    lr.reason, lr.status, lr.reviewer_note, lr.reviewed_at, lr.created_at,
+                    u.name AS employee_name, u.employee_id, u.role
+             FROM leave_requests lr
+             JOIN users u ON u.id = lr.user_id
+             ORDER BY
+               CASE WHEN lr.status = 'pending' THEN 0 ELSE 1 END,
+               lr.created_at DESC
+             LIMIT 100`
+        );
+
+        return res.json({
+            success: true,
+            data: result.rows
+        });
+
+    } catch (error) {
+        console.error('❌ Get All Leave Requests Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তালিকা আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+
+// ============================================================
+// REVIEW LEAVE REQUEST (Manager/Admin — অনুমোদন বা প্রত্যাখ্যান)
+// PUT /api/attendance/leave/:id/review
+// ============================================================
+
+const reviewLeaveRequest = async (req, res) => {
+    try {
+        const reviewerId = req.user.id;
+        const { id }     = req.params;
+        const { status, reviewer_note } = req.body;
+
+        if (!['approved', 'rejected'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'স্ট্যাটাস approved বা rejected হতে হবে।' });
+        }
+
+        const leaveResult = await query(
+            `UPDATE leave_requests
+             SET status = $1, reviewed_by = $2, reviewed_at = NOW(), reviewer_note = $3
+             WHERE id = $4 AND status = 'pending'
+             RETURNING *`,
+            [status, reviewerId, reviewer_note || null, id]
+        );
+
+        if (leaveResult.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'আবেদনটি পাওয়া যায়নি অথবা ইতিমধ্যে পর্যালোচনা হয়েছে।'
+            });
+        }
+
+        const leave = leaveResult.rows[0];
+
+        // অনুমোদন হলে attendance table-এ 'leave' status সেট করো
+        if (status === 'approved') {
+            const start = new Date(leave.start_date);
+            const end   = new Date(leave.end_date);
+            for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                const dateStr = d.toISOString().split('T')[0];
+                await query(
+                    `INSERT INTO attendance (user_id, date, status, leave_approved)
+                     VALUES ($1, $2, 'leave', TRUE)
+                     ON CONFLICT (user_id, date)
+                     DO UPDATE SET status = 'leave', leave_approved = TRUE`,
+                    [leave.user_id, dateStr]
+                );
+            }
+        }
+
+        return res.json({
+            success: true,
+            message: status === 'approved' ? 'ছুটি অনুমোদিত হয়েছে।' : 'ছুটির আবেদন প্রত্যাখ্যান করা হয়েছে।',
+            data: leave
+        });
+
+    } catch (error) {
+        console.error('❌ Review Leave Error:', error.message);
+        return res.status(500).json({ success: false, message: 'পর্যালোচনা করতে সমস্যা হয়েছে।' });
+    }
+};
+
+
 module.exports = {
     checkIn,
     checkOut,
@@ -556,6 +772,10 @@ module.exports = {
     getTeamAttendance,
     getAllAttendance,
     getMonthlyReport,
-    getAttendanceSettings
+    getAttendanceSettings,
+    applyLeave,
+    getMyLeaveRequests,
+    getAllLeaveRequests,
+    reviewLeaveRequest
 };
 
