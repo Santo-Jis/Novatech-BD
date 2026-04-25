@@ -16,7 +16,11 @@ const {
     getTeamAttendance,
     getAllAttendance,
     getTodayLive,
-    getMonthlyReport
+    getMonthlyReport,
+    applyLeave,
+    getMyLeaveRequests,
+    getAllLeaveRequests,
+    reviewLeaveRequest
 } = require('../controllers/attendance.controller');
 
 // ============================================================
@@ -90,6 +94,37 @@ router.get('/monthly',
     allowRoles('admin', 'manager', 'supervisor', 'accountant'),
     checkTeamAccess,
     getMonthlyReport
+);
+
+// ============================================================
+// LEAVE APPLICATION ROUTES
+// ============================================================
+
+// SR/Worker নিজে ছুটির আবেদন করবে
+router.post('/leave/apply',
+    auth,
+    allowRoles('worker', 'manager', 'supervisor', 'asm', 'rsm'),
+    applyLeave
+);
+
+// নিজের আবেদনের তালিকা
+router.get('/leave/my',
+    auth,
+    getMyLeaveRequests
+);
+
+// সব আবেদন (Manager/Admin দেখবে)
+router.get('/leave/all',
+    auth,
+    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm'),
+    getAllLeaveRequests
+);
+
+// আবেদন অনুমোদন / প্রত্যাখ্যান
+router.put('/leave/:id/review',
+    auth,
+    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm'),
+    reviewLeaveRequest
 );
 
 module.exports = router;
