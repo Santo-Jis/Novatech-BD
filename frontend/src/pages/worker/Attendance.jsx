@@ -162,6 +162,14 @@ export default function WorkerAttendance() {
   const [histLoading, setHistLoading] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
 
+  // ─── ছুটির আবেদন state ───
+  const [showLeaveModal,  setShowLeaveModal]  = useState(false)
+  const [leaveForm,       setLeaveForm]       = useState({ start_date: '', end_date: '', leave_type: 'casual', reason: '' })
+  const [leaveSubmitting, setLeaveSubmitting] = useState(false)
+  const [myLeaves,        setMyLeaves]        = useState([])
+  const [showLeaveHistory,setShowLeaveHistory]= useState(false)
+  const [leaveHistLoading,setLeaveHistLoading]= useState(false)
+
   const fetchHistory = (month, year) => {
     setHistLoading(true)
     api.get(`/attendance/my?month=${month}&year=${year}`)
@@ -177,6 +185,33 @@ export default function WorkerAttendance() {
       .finally(() => setHistLoading(false))
   }
 
+  const fetchMyLeaves = () => {
+    setLeaveHistLoading(true)
+    api.get('/attendance/leave/my')
+      .then(r => setMyLeaves(r.data.data || []))
+      .catch(() => {})
+      .finally(() => setLeaveHistLoading(false))
+  }
+
+  const handleLeaveSubmit = async () => {
+    if (!leaveForm.start_date || !leaveForm.end_date || !leaveForm.reason.trim()) {
+      toast.error('সব তথ্য পূরণ করুন।')
+      return
+    }
+    setLeaveSubmitting(true)
+    try {
+      await api.post('/attendance/leave/apply', leaveForm)
+      toast.success('ছুটির আবেদন সফলভাবে জমা হয়েছে!')
+      setShowLeaveModal(false)
+      setLeaveForm({ start_date: '', end_date: '', leave_type: 'casual', reason: '' })
+      fetchMyLeaves()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'আবেদন জমা দিতে সমস্যা হয়েছে।')
+    } finally {
+      setLeaveSubmitting(false)
+    }
+  }
+
   useEffect(() => {
     api.get('/attendance/settings').then(r => { if (r.data?.data) setSettings(r.data.data) }).catch(()=>{})
     setLoading(true)
@@ -190,6 +225,7 @@ export default function WorkerAttendance() {
         setTodayAtt(data.attendance.find(a => a.date?.startsWith(today)) || null)
       })
       .finally(() => setLoading(false))
+    fetchMyLeaves()
   }, [])
 
   const handleMonthChange = (month, year) => {
@@ -346,7 +382,197 @@ export default function WorkerAttendance() {
             </p>
           </div>
         )}
+
+        {/* ─── ছুটির আবেদন বাটন ─── */}
+        <button
+          onClick={() => setShowLeaveModal(true)}
+          style={{
+            width:'100%', padding:'14px', borderRadius:16, border:'2px solid #7c3aed',
+            background:'#faf5ff', color:'#7c3aed', fontSize:'0.95rem', fontWeight:800,
+            cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8
+          }}
+        >
+          🏖️ ছুটির আবেদন করুন
+        </button>
       </div>
+
+      {/* ─── ছুটির আবেদন ইতিহাস ─── */}
+      <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 1px 4px rgba(0,0,0,0.08)', overflow:'hidden', marginBottom:16 }}>
+        <button
+          onClick={() => { setShowLeaveHistory(v => !v); if (!showLeaveHistory) fetchMyLeaves() }}
+          style={{
+            width:'100%', padding:'14px 16px', border:'none', background:'none',
+            display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer'
+          }}
+        >
+          <span style={{ fontWeight:700, color:'#1f2937', fontSize:'0.95rem' }}>🏖️ আমার ছুটির আবেদন</span>
+          <span style={{ color:'#6b7280', fontSize:'1.1rem', transition:'transform 0.2s', transform: showLeaveHistory ? 'rotate(180deg)' : 'none' }}>▼</span>
+        </button>
+
+        {showLeaveHistory && (
+          <div style={{ borderTop:'1px solid #f3f4f6', padding:16 }}>
+            {leaveHistLoading && (
+              <p style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.85rem' }}>লোড হচ্ছে...</p>
+            )}
+            {!leaveHistLoading && myLeaves.length === 0 && (
+              <p style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.85rem', padding:'12px 0' }}>
+                কোনো আবেদন নেই।
+              </p>
+            )}
+            {!leaveHistLoading && myLeaves.map((lv, i) => {
+              const statusMap = {
+                pending:  { label:'অপেক্ষমাণ', bg:'#fef3c7', color:'#92400e' },
+                approved: { label:'অনুমোদিত',  bg:'#d1fae5', color:'#065f46' },
+                rejected: { label:'প্রত্যাখ্যাত',bg:'#fee2e2', color:'#991b1b' },
+              }
+              const s = statusMap[lv.status] || { label: lv.status, bg:'#f3f4f6', color:'#374151' }
+              const leaveTypeMap = { casual:'নৈমিত্তিক', sick:'অসুস্থতা', annual:'বার্ষিক', other:'অন্যান্য' }
+              return (
+                <div key={i} style={{
+                  padding:'10px 8px', marginLeft:-8, marginRight:-8,
+                  borderBottom: i < myLeaves.length-1 ? '1px solid #f3f4f6' : 'none'
+                }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+                    <div style={{ flex:1 }}>
+                      <p style={{ fontSize:'0.82rem', fontWeight:700, color:'#1f2937' }}>
+                        {new Date(lv.start_date).toLocaleDateString('bn-BD', { day:'numeric', month:'short' })}
+                        {lv.start_date !== lv.end_date && ` — ${new Date(lv.end_date).toLocaleDateString('bn-BD', { day:'numeric', month:'short' })}`}
+                        <span style={{ fontWeight:400, color:'#6b7280', marginLeft:6, fontSize:'0.75rem' }}>
+                          ({leaveTypeMap[lv.leave_type] || lv.leave_type})
+                        </span>
+                      </p>
+                      <p style={{ fontSize:'0.75rem', color:'#6b7280', marginTop:2 }}>{lv.reason}</p>
+                      {lv.reviewer_note && (
+                        <p style={{ fontSize:'0.72rem', color:'#7c3aed', marginTop:3, fontStyle:'italic' }}>
+                          📝 {lv.reviewer_note}
+                        </p>
+                      )}
+                    </div>
+                    <span style={{
+                      background: s.bg, color: s.color,
+                      fontSize:'0.7rem', fontWeight:700,
+                      padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap', marginLeft:8
+                    }}>{s.label}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ─── ছুটির আবেদন Modal ─── */}
+      {showLeaveModal && (
+        <div style={{
+          position:'fixed', inset:0, background:'rgba(0,0,0,0.5)',
+          zIndex:1000, display:'flex', alignItems:'flex-end', justifyContent:'center'
+        }}
+          onClick={e => { if (e.target === e.currentTarget) setShowLeaveModal(false) }}
+        >
+          <div style={{
+            background:'#fff', borderRadius:'20px 20px 0 0',
+            padding:24, width:'100%', maxWidth:480,
+            maxHeight:'85vh', overflowY:'auto'
+          }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
+              <h3 style={{ fontSize:'1.1rem', fontWeight:800, color:'#1f2937', margin:0 }}>🏖️ ছুটির আবেদন</h3>
+              <button
+                onClick={() => setShowLeaveModal(false)}
+                style={{ background:'none', border:'none', fontSize:'1.4rem', color:'#9ca3af', cursor:'pointer', lineHeight:1 }}
+              >×</button>
+            </div>
+
+            {/* ছুটির ধরন */}
+            <div style={{ marginBottom:14 }}>
+              <label style={{ fontSize:'0.82rem', fontWeight:700, color:'#374151', display:'block', marginBottom:6 }}>
+                ছুটির ধরন
+              </label>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                {[
+                  { value:'casual', label:'নৈমিত্তিক' },
+                  { value:'sick',   label:'অসুস্থতা' },
+                  { value:'annual', label:'বার্ষিক' },
+                  { value:'other',  label:'অন্যান্য' },
+                ].map(t => (
+                  <button
+                    key={t.value}
+                    onClick={() => setLeaveForm(f => ({ ...f, leave_type: t.value }))}
+                    style={{
+                      padding:'10px', borderRadius:10, border:'2px solid',
+                      borderColor: leaveForm.leave_type === t.value ? '#7c3aed' : '#e5e7eb',
+                      background: leaveForm.leave_type === t.value ? '#faf5ff' : '#f9fafb',
+                      color: leaveForm.leave_type === t.value ? '#7c3aed' : '#6b7280',
+                      fontWeight:700, fontSize:'0.82rem', cursor:'pointer'
+                    }}
+                  >{t.label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* তারিখ */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
+              <div>
+                <label style={{ fontSize:'0.82rem', fontWeight:700, color:'#374151', display:'block', marginBottom:6 }}>শুরুর তারিখ</label>
+                <input
+                  type="date"
+                  value={leaveForm.start_date}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={e => setLeaveForm(f => ({ ...f, start_date: e.target.value }))}
+                  style={{
+                    width:'100%', padding:'10px', borderRadius:10, border:'1px solid #e5e7eb',
+                    fontSize:'0.85rem', color:'#1f2937', background:'#f9fafb', boxSizing:'border-box'
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize:'0.82rem', fontWeight:700, color:'#374151', display:'block', marginBottom:6 }}>শেষ তারিখ</label>
+                <input
+                  type="date"
+                  value={leaveForm.end_date}
+                  min={leaveForm.start_date || new Date().toISOString().split('T')[0]}
+                  onChange={e => setLeaveForm(f => ({ ...f, end_date: e.target.value }))}
+                  style={{
+                    width:'100%', padding:'10px', borderRadius:10, border:'1px solid #e5e7eb',
+                    fontSize:'0.85rem', color:'#1f2937', background:'#f9fafb', boxSizing:'border-box'
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* কারণ */}
+            <div style={{ marginBottom:20 }}>
+              <label style={{ fontSize:'0.82rem', fontWeight:700, color:'#374151', display:'block', marginBottom:6 }}>
+                ছুটির কারণ
+              </label>
+              <textarea
+                value={leaveForm.reason}
+                onChange={e => setLeaveForm(f => ({ ...f, reason: e.target.value }))}
+                placeholder="ছুটির কারণ লিখুন..."
+                rows={3}
+                style={{
+                  width:'100%', padding:'10px', borderRadius:10, border:'1px solid #e5e7eb',
+                  fontSize:'0.85rem', color:'#1f2937', background:'#f9fafb',
+                  resize:'none', boxSizing:'border-box', fontFamily:'inherit'
+                }}
+              />
+            </div>
+
+            {/* সাবমিট */}
+            <button
+              onClick={handleLeaveSubmit}
+              disabled={leaveSubmitting}
+              style={{
+                width:'100%', padding:'14px', borderRadius:14, border:'none',
+                background: leaveSubmitting ? '#c4b5fd' : '#7c3aed',
+                color:'#fff', fontWeight:800, fontSize:'1rem',
+                cursor: leaveSubmitting ? 'not-allowed' : 'pointer',
+              }}
+            >
+              {leaveSubmitting ? 'জমা হচ্ছে...' : '✅ আবেদন জমা দিন'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ─── মাসিক ইতিহাস ─── */}
       <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 1px 4px rgba(0,0,0,0.08)', overflow:'hidden' }}>
