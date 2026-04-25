@@ -17,6 +17,14 @@ export function ManagerAttendance() {
   const [month,      setMonth]      = useState(String(new Date().getMonth() + 1))
   const [year,       setYear]       = useState(String(new Date().getFullYear()))
 
+  // ─── ছুটির আবেদন state ───
+  const [leaveRequests,  setLeaveRequests]  = useState([])
+  const [leaveLoading,   setLeaveLoading]   = useState(false)
+  const [processing,     setProcessing]     = useState({})   // { [id]: 'approving'|'rejecting' }
+  const [reviewModal,    setReviewModal]    = useState(null) // selected leave request
+  const [reviewNote,     setReviewNote]     = useState('')
+  const [reviewAction,   setReviewAction]   = useState(null) // 'approved'|'rejected'
+
   useEffect(() => {
     const fetchToday = async () => {
       try {
@@ -26,7 +34,303 @@ export function ManagerAttendance() {
       finally { setLoading(false) }
     }
     fetchToday()
+    fetchLeaveRequests()
   }, [])
+
+  const fetchLeaveRequests = async () => {
+    setLeaveLoading(true)
+    try {
+      const res = await api.get('/attendance/leave/all')
+      setLeaveRequests(res.data.data || [])
+    } catch { /* silent */ }
+    finally { setLeaveLoading(false) }
+  }
+
+  const fetchMonthly = async () => {
+    setLoading(true)
+    try {
+      const res = await api.get(`/reports/attendance?month=${month}&year=${year}`)
+      setAttendance(res.data.data.workers || [])
+    } catch { toast.error('তথ্য আনতে সমস্যা।') }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { if (tab === 'monthly') fetchMonthly() }, [tab, month, year])
+
+  const pendingLeaves = leaveRequests.filter(l => l.status === 'pending')
+
+  const openReview = (leave, action) => {
+    setReviewModal(leave)
+    setReviewAction(action)
+    setReviewNote('')
+  }
+
+  const submitReview = async () => {
+    if (!reviewModal) return
+    setProcessing(p => ({ ...p, [reviewModal.id]: reviewAction }))
+    try {
+      await api.put(`/attendance/leave/${reviewModal.id}/review`, {
+        status: reviewAction,
+        reviewer_note: reviewNote.trim() || null
+      })
+      toast.success(reviewAction === 'approved' ? '✅ ছুটি অনুমোদিত হয়েছে।' : '❌ আবেদন প্রত্যাখ্যান করা হয়েছে।')
+      setReviewModal(null)
+      fetchLeaveRequests()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।')
+    } finally {
+      setProcessing(p => ({ ...p, [reviewModal?.id]: undefined }))
+    }
+  }
+
+  const months = Array.from({ length: 12 }, (_, i) => ({
+    value: String(i + 1),
+    label: new Date(2024, i).toLocaleString('bn-BD', { month: 'long' })
+  }))
+
+  const leaveTypeMap = { casual:'নৈমিত্তিক', sick:'অসুস্থতা', annual:'বার্ষিক', other:'অন্যান্য' }
+
+  return (
+    <div className="space-y-5 animate-fade-in">
+      <h1 className="text-2xl font-bold text-gray-800">হাজিরা</h1>
+
+      <div className="flex gap-2 bg-gray-100 p-1 rounded-xl w-fit flex-wrap">
+        {[
+          { key: 'today',   label: 'আজকের লাইভ' },
+          { key: 'monthly', label: 'মাসিক রিপোর্ট' },
+          { key: 'leave',   label: `ছুটির আবেদন${pendingLeaves.length > 0 ? ` (${pendingLeaves.length})` : ''}` },
+        ].map(t => (
+          <button key={t.key} onClick={() => setTab(t.key)}
+            className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === t.key ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}>
+            {t.label}
+            {t.key === 'leave' && pendingLeaves.length > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-red-500 text-white text-[9px] flex items-center justify-center font-bold">
+                {pendingLeaves.length}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'today' && (
+        <div className="space-y-3">
+          {loading ? <div className="h-40 bg-white rounded-2xl animate-pulse" /> :
+            today.map(w => (
+              <Card key={w.id}>
+                <div className="flex items-center gap-4">
+                  <div className={`w-3 h-3 rounded-full flex-shrink-0 ${w.check_in_time ? 'bg-emerald-500' : 'bg-gray-300'}`} />
+                  <div className="flex-1">
+                    <p className="font-semibold text-sm">{w.name_bn}</p>
+                    <p className="text-xs text-gray-400">{w.employee_code}</p>
+                  </div>
+                  {w.check_in_time && (
+                    <div className="text-right text-xs text-gray-500">
+                      <p>ইন: {new Date(w.check_in_time).toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })}</p>
+                      {w.check_out_time && <p>আউট: {new Date(w.check_out_time).toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })}</p>}
+                    </div>
+                  )}
+                  <Badge variant={w.status || (w.check_in_time ? 'present' : 'absent')} />
+                  {w.late_minutes > 0 && <span className="text-xs text-amber-600">দেরি: {w.late_minutes} মিনিট</span>}
+                </div>
+              </Card>
+            ))
+          }
+        </div>
+      )}
+
+      {tab === 'monthly' && (
+        <div className="space-y-4">
+          <div className="flex gap-3">
+            <Select options={months} value={month} onChange={e => setMonth(e.target.value)} className="w-36" />
+            <Select options={[{ value: '2025', label: '২০২৫' }, { value: '2026', label: '২০২৬' }]}
+              value={year} onChange={e => setYear(e.target.value)} className="w-28" />
+          </div>
+          {loading ? <div className="h-40 bg-white rounded-2xl animate-pulse" /> :
+            <div className="overflow-x-auto bg-white rounded-2xl border border-gray-100 shadow-sm">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50">
+                    {['নাম', 'উপস্থিত', 'দেরি', 'অনুপস্থিত', 'কর্তন'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-600">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {attendance.map((w, i) => (
+                    <tr key={i} className="border-t border-gray-100">
+                      <td className="px-4 py-3 font-medium">{w.name_bn}</td>
+                      <td className="px-4 py-3 text-emerald-600 font-semibold">{w.present}</td>
+                      <td className="px-4 py-3 text-amber-600 font-semibold">{w.late}</td>
+                      <td className="px-4 py-3 text-red-600 font-semibold">{w.absent}</td>
+                      <td className="px-4 py-3 text-red-500">৳{parseInt(w.total_deduction || 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          }
+        </div>
+      )}
+
+      {/* ─── ছুটির আবেদন Tab ─── */}
+      {tab === 'leave' && (
+        <div className="space-y-4">
+
+          {/* Pending আবেদন */}
+          {pendingLeaves.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-amber-700 bg-amber-50 px-3 py-2 rounded-lg mb-3">
+                ⏳ {pendingLeaves.length}টি আবেদন অনুমোদনের অপেক্ষায়
+              </p>
+              <div className="space-y-3">
+                {pendingLeaves.map(lv => (
+                  <Card key={lv.id}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-bold text-gray-800 text-sm">{lv.employee_name}</p>
+                          <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{lv.employee_id}</span>
+                          <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full font-semibold">
+                            {leaveTypeMap[lv.leave_type] || lv.leave_type}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-1">
+                          📅 {new Date(lv.start_date).toLocaleDateString('bn-BD', { day:'numeric', month:'short' })}
+                          {lv.start_date !== lv.end_date && ` — ${new Date(lv.end_date).toLocaleDateString('bn-BD', { day:'numeric', month:'short' })}`}
+                        </p>
+                        <p className="text-xs text-gray-600 mt-1 leading-relaxed">{lv.reason}</p>
+                        <p className="text-xs text-gray-300 mt-1">
+                          {new Date(lv.created_at).toLocaleString('bn-BD')}
+                        </p>
+                      </div>
+                      <div className="flex flex-col gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => openReview(lv, 'approved')}
+                          disabled={!!processing[lv.id]}
+                          className="px-3 py-1.5 bg-green-500 text-white text-xs font-semibold rounded-lg disabled:opacity-60 flex items-center gap-1"
+                        >
+                          {processing[lv.id] === 'approved'
+                            ? <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            : '✅'} অনুমোদন
+                        </button>
+                        <button
+                          onClick={() => openReview(lv, 'rejected')}
+                          disabled={!!processing[lv.id]}
+                          className="px-3 py-1.5 bg-red-100 text-red-600 text-xs font-semibold rounded-lg disabled:opacity-60 flex items-center gap-1"
+                        >
+                          {processing[lv.id] === 'rejected'
+                            ? <span className="w-3 h-3 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" />
+                            : '✗'} বাতিল
+                        </button>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ইতিহাস — approved/rejected */}
+          {(() => {
+            const reviewed = leaveRequests.filter(l => l.status !== 'pending')
+            if (reviewed.length === 0 && pendingLeaves.length === 0) return (
+              <div className="text-center py-12 text-gray-400">
+                <p className="text-4xl mb-3">📋</p>
+                <p className="text-sm">কোনো ছুটির আবেদন নেই।</p>
+              </div>
+            )
+            if (reviewed.length === 0) return null
+            return (
+              <div>
+                <p className="text-xs font-semibold text-gray-400 px-1 mb-2">পর্যালোচিত আবেদন</p>
+                <div className="space-y-2">
+                  {reviewed.map(lv => {
+                    const statusStyle = lv.status === 'approved'
+                      ? { bg: 'bg-emerald-50', badge: 'bg-emerald-100 text-emerald-700', label: 'অনুমোদিত' }
+                      : { bg: 'bg-red-50',     badge: 'bg-red-100 text-red-600',         label: 'প্রত্যাখ্যাত' }
+                    return (
+                      <div key={lv.id} className={`${statusStyle.bg} rounded-xl px-4 py-3`}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p className="font-semibold text-gray-800 text-sm">{lv.employee_name}</p>
+                              <span className="text-xs text-gray-400">{lv.employee_id}</span>
+                            </div>
+                            <p className="text-xs text-gray-500 mt-0.5">
+                              {new Date(lv.start_date).toLocaleDateString('bn-BD', { day:'numeric', month:'short' })}
+                              {lv.start_date !== lv.end_date && ` — ${new Date(lv.end_date).toLocaleDateString('bn-BD', { day:'numeric', month:'short' })}`}
+                              <span className="ml-2 text-gray-400">({leaveTypeMap[lv.leave_type] || lv.leave_type})</span>
+                            </p>
+                            {lv.reviewer_note && (
+                              <p className="text-xs text-gray-500 italic mt-1">📝 {lv.reviewer_note}</p>
+                            )}
+                          </div>
+                          <span className={`text-xs font-bold px-2 py-1 rounded-full flex-shrink-0 ${statusStyle.badge}`}>
+                            {statusStyle.label}
+                          </span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
+
+          {leaveLoading && <div className="h-24 bg-white rounded-2xl animate-pulse" />}
+        </div>
+      )}
+
+      {/* ─── Review Confirmation Modal ─── */}
+      {reviewModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center p-0">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setReviewModal(null)} />
+          <div className="relative bg-white rounded-t-2xl p-6 w-full max-w-md shadow-2xl">
+            <h3 className="font-bold text-lg mb-1">
+              {reviewAction === 'approved' ? '✅ ছুটি অনুমোদন করুন' : '❌ আবেদন প্রত্যাখ্যান করুন'}
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              <span className="font-semibold text-gray-700">{reviewModal.employee_name}</span> —{' '}
+              {new Date(reviewModal.start_date).toLocaleDateString('bn-BD', { day:'numeric', month:'short' })}
+              {reviewModal.start_date !== reviewModal.end_date && ` থেকে ${new Date(reviewModal.end_date).toLocaleDateString('bn-BD', { day:'numeric', month:'short' })}`}
+            </p>
+            <div className="mb-5">
+              <label className="text-xs font-semibold text-gray-600 block mb-1.5">
+                মন্তব্য <span className="text-gray-400 font-normal">(ঐচ্ছিক)</span>
+              </label>
+              <textarea
+                value={reviewNote}
+                onChange={e => setReviewNote(e.target.value)}
+                placeholder={reviewAction === 'approved' ? 'অনুমোদনের কারণ বা নির্দেশনা...' : 'প্রত্যাখ্যানের কারণ লিখুন...'}
+                rows={3}
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-700 resize-none focus:outline-none focus:ring-2 focus:ring-primary/30"
+              />
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setReviewModal(null)}
+                className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600"
+              >
+                বাতিল
+              </button>
+              <button
+                onClick={submitReview}
+                disabled={!!processing[reviewModal.id]}
+                className={`flex-1 py-3 rounded-xl text-sm font-bold text-white disabled:opacity-60
+                  ${reviewAction === 'approved' ? 'bg-green-500' : 'bg-red-500'}`}
+              >
+                {processing[reviewModal.id]
+                  ? 'প্রক্রিয়া হচ্ছে...'
+                  : reviewAction === 'approved' ? '✅ অনুমোদন দিন' : '❌ প্রত্যাখ্যান করুন'
+                }
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
   const fetchMonthly = async () => {
     setLoading(true)
