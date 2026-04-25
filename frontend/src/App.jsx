@@ -16,6 +16,8 @@ import AdminEmployees   from './pages/admin/Employees'
 import EmployeeForm     from './pages/admin/EmployeeForm'
 import PendingApprovals from './pages/admin/PendingApprovals'
 import AdminReports     from './pages/admin/Reports'
+import CommissionPayment from './pages/admin/CommissionPayment'
+import SalaryPayment    from './pages/admin/SalaryPayment'
 import AIInsights       from './pages/admin/AIInsights'
 import AdminSettings    from './pages/admin/Settings'
 import AdminProducts    from './pages/admin/Products'
@@ -49,6 +51,7 @@ import SalesForm        from './pages/worker/SalesForm'
 import OTPVerify        from './pages/worker/OTPVerify'
 import WorkerSettlement from './pages/worker/Settlement'
 import Commission       from './pages/worker/Commission'
+import SalaryHistory    from './pages/worker/SalaryHistory'
 import Profile          from './pages/worker/Profile'
 import SalesHistory     from './pages/worker/SalesHistory'
 import StockStatus      from './pages/worker/StockStatus'
@@ -133,6 +136,8 @@ export default function App() {
         <Route path="employees/:id"   element={<EmployeeForm />} />
         <Route path="pending"         element={<PendingApprovals />} />
         <Route path="reports"         element={<AdminReports />} />
+        <Route path="commission-pay"  element={<CommissionPayment />} />
+        <Route path="salary-pay"      element={<SalaryPayment />} />
         <Route path="ai-insights"     element={<AIInsights />} />
         <Route path="ai-chat"         element={<AIChat />} />
         <Route path="notices"         element={<AdminNotices />} />
@@ -178,6 +183,7 @@ export default function App() {
         <Route path="otp/:id"      element={<OTPVerify />} />
         <Route path="settlement"   element={<WorkerSettlement />} />
         <Route path="commission"   element={<Commission />} />
+        <Route path="salary-history" element={<SalaryHistory />} />
         <Route path="profile"      element={<Profile />} />
         <Route path="sales-history" element={<SalesHistory />} />
         <Route path="stock-status"  element={<StockStatus />} />
