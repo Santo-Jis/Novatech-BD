@@ -14,7 +14,9 @@ const {
     getSettings,
     updateSettings,
     getBonusStatus,
-    getCommissionSummary
+    getCommissionSummary,
+    payCommission,
+    getPayableCommissions
 } = require('../controllers/commission.controller');
 
 // ============================================================
@@ -58,6 +60,20 @@ router.put('/settings',
     auth,
     canManageCommission,
     updateSettings
+);
+
+// সব worker এর পরিশোধযোগ্য কমিশন (Admin/Accountant)
+router.get('/payable',
+    auth,
+    allowRoles('admin', 'accountant'),
+    getPayableCommissions
+);
+
+// কমিশন পরিশোধ করো (Admin/Accountant)
+router.post('/pay',
+    auth,
+    allowRoles('admin', 'accountant'),
+    payCommission
 );
 
 module.exports = router;
