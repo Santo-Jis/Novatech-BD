@@ -175,19 +175,19 @@ const callClaudeAPI = callAI; // backward compat
 const collectDailyData = async (managerId = null) => {
     const today = new Date().toISOString().split('T')[0];
     let workerFilter = '', workerFilterParams = [];
-    if (managerId) { workerFilter = 'AND u.manager_id = $1'; workerFilterParams = [managerId]; }
+    if (managerId) { workerFilter = 'AND u.manager_id = $2'; workerFilterParams = [managerId]; }
 
     const attendance = await query(
         `SELECT u.name_bn, a.status, a.late_minutes, a.salary_deduction
          FROM attendance a JOIN users u ON a.user_id = u.id
-         WHERE a.date = $${managerId ? '2' : '1'} ${workerFilter}`,
+         WHERE a.date = $1 ${workerFilter}`,
         managerId ? [today, ...workerFilterParams] : [today]
     );
 
     const sales = await query(
         `SELECT u.name_bn, SUM(st.total_amount) AS total_sales, COUNT(st.id) AS invoice_count, SUM(st.credit_used) AS credit_given
          FROM sales_transactions st JOIN users u ON st.worker_id = u.id
-         WHERE st.date = $${managerId ? '2' : '1'} ${workerFilter}
+         WHERE st.date = $1 ${workerFilter}
          GROUP BY u.id, u.name_bn`,
         managerId ? [today, ...workerFilterParams] : [today]
     );
@@ -195,8 +195,8 @@ const collectDailyData = async (managerId = null) => {
     const trend = await query(
         `SELECT st.date, SUM(st.total_amount) AS total
          FROM sales_transactions st JOIN users u ON st.worker_id = u.id
-         WHERE st.date >= $${managerId ? '2' : '1'}::date - INTERVAL '7 days'
-           AND st.date <= $${managerId ? '2' : '1'} ${workerFilter}
+         WHERE st.date >= $1::date - INTERVAL '7 days'
+           AND st.date <= $1 ${workerFilter}
          GROUP BY st.date ORDER BY st.date`,
         managerId ? [today, ...workerFilterParams] : [today]
     );
