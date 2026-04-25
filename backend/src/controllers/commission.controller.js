@@ -89,7 +89,7 @@ const getMyCommission = async (req, res) => {
                     basic_salary:     basicSalary,
                     total_commission: totalCommission,
                     outstanding_dues: outstandingDues,
-                    cash_dues,
+                    cash_dues:        cashDues,
                     product_dues:     productDues,
                     net_payable:      Math.max(0, netPayable)
                 }
