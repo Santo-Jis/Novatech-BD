@@ -89,7 +89,7 @@ const getMyCommission = async (req, res) => {
                     basic_salary:     basicSalary,
                     total_commission: totalCommission,
                     outstanding_dues: outstandingDues,
-                    cash_dues:        cashDues,
+                    cash_dues,
                     product_dues:     productDues,
                     net_payable:      Math.max(0, netPayable)
                 }
@@ -333,6 +333,144 @@ const getCommissionSummary = async (req, res) => {
     }
 };
 
+// ============================================================
+// PAY COMMISSION
+// POST /api/commission/pay
+// Admin/Accountant একজন worker এর মাসের কমিশন পরিশোধ করবে
+// ============================================================
+
+const payCommission = async (req, res) => {
+    try {
+        const { worker_id, month, year, payment_reference, note } = req.body;
+
+        if (!worker_id || !month || !year) {
+            return res.status(400).json({
+                success: false,
+                message: 'worker_id, month এবং year দিন।'
+            });
+        }
+
+        // unpaid commission আছে কিনা দেখো
+        const unpaid = await query(
+            `SELECT id, commission_amount FROM commission
+             WHERE user_id = $1
+               AND EXTRACT(YEAR  FROM date) = $2
+               AND EXTRACT(MONTH FROM date) = $3
+               AND paid = false`,
+            [worker_id, parseInt(year), parseInt(month)]
+        );
+
+        if (unpaid.rows.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'এই মাসে পরিশোধযোগ্য কোনো কমিশন নেই।'
+            });
+        }
+
+        const totalAmount = unpaid.rows.reduce(
+            (sum, r) => sum + parseFloat(r.commission_amount || 0), 0
+        );
+
+        // payment reference না দিলে auto generate করো
+        const ref = payment_reference?.trim() ||
+            `PAY-${year}-${String(month).padStart(2, '0')}-${Date.now().toString().slice(-5)}`;
+
+        // সব unpaid কমিশন একসাথে আপডেট করো
+        await query(
+            `UPDATE commission
+             SET paid              = true,
+                 paid_at           = NOW(),
+                 approved_by       = $1,
+                 payment_reference = $2,
+                 updated_at        = NOW()
+             WHERE user_id = $3
+               AND EXTRACT(YEAR  FROM date) = $4
+               AND EXTRACT(MONTH FROM date) = $5
+               AND paid = false`,
+            [req.user.id, ref, worker_id, parseInt(year), parseInt(month)]
+        );
+
+        // Audit log
+        await query(
+            `INSERT INTO audit_logs (user_id, action, table_name, new_value)
+             VALUES ($1, 'PAY_COMMISSION', 'commission', $2)`,
+            [req.user.id, JSON.stringify({
+                worker_id, month, year,
+                total_amount: totalAmount,
+                payment_reference: ref,
+                entries_count: unpaid.rows.length,
+                note: note || null
+            })]
+        );
+
+        // Worker কে notification
+        const worker = await query('SELECT name_bn FROM users WHERE id = $1', [worker_id]);
+
+        return res.status(200).json({
+            success: true,
+            message: `${worker.rows[0]?.name_bn || 'Worker'} এর ৳${Math.round(totalAmount)} কমিশন পরিশোধ সফল।`,
+            data: {
+                entries_paid:      unpaid.rows.length,
+                total_amount:      totalAmount,
+                payment_reference: ref,
+                paid_at:           new Date().toISOString(),
+                approved_by_name:  req.user.name_bn
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Pay Commission Error:', error.message);
+        return res.status(500).json({ success: false, message: 'পরিশোধে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET PAYABLE COMMISSIONS (Admin)
+// GET /api/commission/payable
+// সব worker এর unpaid commission summary
+// ============================================================
+
+const getPayableCommissions = async (req, res) => {
+    try {
+        const { month, year } = req.query;
+        const currentYear  = parseInt(year  || new Date().getFullYear());
+        const currentMonth = parseInt(month || new Date().getMonth() + 1);
+
+        const result = await query(
+            `SELECT
+                u.id          AS worker_id,
+                u.name_bn,
+                u.employee_code,
+                u.basic_salary,
+                COALESCE(SUM(c.commission_amount), 0)                              AS total_commission,
+                COALESCE(SUM(CASE WHEN c.type='daily' THEN c.commission_amount END), 0) AS sales_commission,
+                COALESCE(SUM(CASE WHEN c.type='attendance_bonus' THEN c.commission_amount END), 0) AS bonus,
+                COUNT(c.id)   AS total_entries,
+                COUNT(CASE WHEN c.paid = false THEN 1 END) AS unpaid_entries,
+                COALESCE(SUM(CASE WHEN c.paid = false THEN c.commission_amount END), 0) AS unpaid_amount,
+                bool_and(c.paid) AS fully_paid,
+                MAX(c.paid_at)   AS last_paid_at,
+                MAX(c.payment_reference) AS last_payment_ref
+             FROM users u
+             LEFT JOIN commission c
+                ON u.id = c.user_id
+                AND EXTRACT(YEAR  FROM c.date) = $1
+                AND EXTRACT(MONTH FROM c.date) = $2
+             WHERE u.role   = 'worker'
+               AND u.status = 'active'
+             GROUP BY u.id, u.name_bn, u.employee_code, u.basic_salary
+             ORDER BY unpaid_amount DESC, u.name_bn ASC`,
+            [currentYear, currentMonth]
+        );
+
+        return res.status(200).json({ success: true, data: result.rows });
+
+    } catch (error) {
+        console.error('❌ Payable Commissions Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getMyCommission,
     getBonusStatus,
@@ -341,5 +479,7 @@ module.exports = {
     getSettings,
     updateSettings,
     getCommissionSummary,
-    calculateCommission
+    calculateCommission,
+    payCommission,
+    getPayableCommissions
 };
