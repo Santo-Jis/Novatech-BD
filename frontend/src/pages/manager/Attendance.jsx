@@ -677,4 +677,4 @@ export function ManagerRoutes() {
   )
 }
 
-export default Attendance
+export default ManagerAttendance
