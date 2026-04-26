@@ -322,9 +322,13 @@ export default function SalesHistory() {
         const lastDay = new Date(year, month, 0).getDate()
         const to   = `${year}-${String(month).padStart(2, '0')}-${lastDay}`
         const res  = await api.get(`/sales/my?from=${from}&to=${to}`)
-        setData({ fallback: res.data.data || [] })
+        setData({
+          fallback:      res.data.data || [],
+          visitsByDate:  res.data.visit_summary?.visitsByDate  || {},
+          totalCustomers: res.data.visit_summary?.total_customers || 0
+        })
       } catch {
-        setData({ fallback: [] })
+        setData({ fallback: [], visitsByDate: {}, totalCustomers: 0 })
       }
     } finally {
       setLoading(false)
@@ -348,7 +352,7 @@ export default function SalesHistory() {
   }
 
   // ─── Process fallback data into daily ────────────────────
-  const buildDailyFromFallback = (sales) => {
+  const buildDailyFromFallback = (sales, visitsByDate = {}, totalCustomers = 0) => {
     const map = {}
     sales.forEach(s => {
       const d = s.date || s.created_at?.split('T')[0]
@@ -356,7 +360,8 @@ export default function SalesHistory() {
       if (!map[d]) map[d] = {
         date: d, sale_count: 0, total_amount: 0,
         cash_received: 0, credit_given: 0,
-        total_visits: 0, total_customers: 0
+        total_visits:    visitsByDate[d]?.total_visits  || 0,
+        total_customers: totalCustomers
       }
       map[d].sale_count++
       map[d].total_amount   += parseFloat(s.total_amount || 0)
@@ -380,11 +385,13 @@ export default function SalesHistory() {
   const isCurrent = month === now.getMonth() + 1 && year === now.getFullYear()
 
   // ─── Derived values ──────────────────────────────────────
-  const monthly   = data?.monthly  || {}
-  const visits    = data?.visits   || {}
-  const fallback  = data?.fallback
+  const monthly        = data?.monthly  || {}
+  const visits         = data?.visits   || {}
+  const fallback       = data?.fallback
+  const visitsByDate   = data?.visitsByDate   || {}
+  const fbTotalCustomers = data?.totalCustomers || 0
   const daily     = fallback
-    ? buildDailyFromFallback(fallback)
+    ? buildDailyFromFallback(fallback, visitsByDate, fbTotalCustomers)
     : (monthly.daily || [])
 
   const totalSales   = fallback
@@ -396,8 +403,18 @@ export default function SalesHistory() {
   const totalCredit  = fallback
     ? fallback.reduce((s, r) => s + parseFloat(r.credit_used || 0), 0)
     : parseFloat(monthly.credit_given || 0)
-  const totalVisits  = parseInt(visits.total_visits || monthly.total_visits || 0)
-  const totalCustomers = parseInt(visits.total_customers || monthly.total_customers || 0)
+  const totalVisits  = fallback
+    ? Object.values(visitsByDate).reduce((s, v) => s + (v.total_visits || 0), 0)
+    : parseInt(visits.total_visits || monthly.total_visits || 0)
+  const totalCustomers = fallback
+    ? fbTotalCustomers
+    : parseInt(visits.total_customers || monthly.total_customers || 0)
+  const soldVisits = fallback
+    ? Object.values(visitsByDate).reduce((s, v) => s + (v.sold_visits || 0), 0)
+    : parseInt(visits.sold_visits || 0)
+  const noSellVisits = fallback
+    ? Math.max(0, totalVisits - soldVisits)
+    : parseInt(visits.no_sell_visits || 0)
   const visitRate    = totalCustomers > 0 ? Math.round((totalVisits / totalCustomers) * 100) : 0
   const saleCount    = fallback ? fallback.length : parseInt(monthly.sale_count || 0)
 
@@ -497,7 +514,20 @@ export default function SalesHistory() {
           ))}
         </div>
       ) : (
-        <>
+        <>\n          {/* ─── Fallback Mode Banner ─── */}
+          {fallback && (
+            <div style={{
+              background: '#fffbeb', border: '1px solid #fcd34d',
+              borderRadius: 12, padding: '8px 12px', marginBottom: 12,
+              display: 'flex', alignItems: 'center', gap: 8
+            }}>
+              <span style={{ fontSize: 15 }}>⚠️</span>
+              <p style={{ fontSize: 12, color: '#92400e', fontWeight: 500, margin: 0 }}>
+                সীমিত মোড — মাসিক সারসংক্ষেপ API অনুপলব্ধ। ভিজিট তথ্য সরাসরি লগ থেকে নেওয়া হয়েছে।
+              </p>
+            </div>
+          )}
+
           {/* ─── Summary Cards ─── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
             <StatCard
@@ -555,8 +585,8 @@ export default function SalesHistory() {
             />
             <div style={{ display: 'flex', gap: 14, marginTop: 8 }}>
               {[
-                { l: 'বিক্রয়সহ', v: parseInt(visits.sold_visits || 0), c: '#15803d' },
-                { l: 'বিক্রয়বিহীন', v: parseInt(visits.no_sell_visits || 0), c: '#dc2626' },
+                { l: 'বিক্রয়সহ', v: soldVisits, c: '#15803d' },
+                { l: 'বিক্রয়বিহীন', v: noSellVisits, c: '#dc2626' },
                 { l: 'বাকি', v: Math.max(0, totalCustomers - totalVisits), c: '#94a3b8' },
               ].map(({ l, v, c }) => (
                 <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
