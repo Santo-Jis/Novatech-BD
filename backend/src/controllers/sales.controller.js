@@ -881,22 +881,78 @@ const getMyMonthlySales = async (req, res) => {
         const lastDay = new Date(targetYear, targetMonth, 0).getDate();
         const to      = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${lastDay}`;
 
-        // দৈনিক বিক্রয়
+        // দৈনিক বিক্রয় + ভিজিট (LEFT JOIN)
         const dailyResult = await query(
             `SELECT
                 st.date,
-                COUNT(*)                             AS sale_count,
-                COALESCE(SUM(st.total_amount), 0)    AS total_amount,
-                COALESCE(SUM(st.cash_received), 0)   AS cash_received,
-                COALESCE(SUM(st.credit_used), 0)     AS credit_given,
-                COALESCE(SUM(st.replacement_value),0) AS replacement_value
+                COUNT(DISTINCT st.id)                 AS sale_count,
+                COALESCE(SUM(st.total_amount), 0)     AS total_amount,
+                COALESCE(SUM(st.cash_received), 0)    AS cash_received,
+                COALESCE(SUM(st.credit_used), 0)      AS credit_given,
+                COALESCE(SUM(st.replacement_value),0) AS replacement_value,
+                COALESCE(v.total_visits, 0)            AS total_visits,
+                COALESCE(v.sold_visits, 0)             AS sold_visits
              FROM sales_transactions st
+             LEFT JOIN (
+                 SELECT
+                     visit_date AS date,
+                     COUNT(*) AS total_visits,
+                     COUNT(CASE WHEN will_sell = true THEN 1 END) AS sold_visits
+                 FROM visits
+                 WHERE worker_id = $1 AND visit_date BETWEEN $2 AND $3
+                 GROUP BY visit_date
+             ) v ON v.date = st.date
              WHERE st.worker_id = $1
                AND st.date BETWEEN $2 AND $3
-             GROUP BY st.date
+             GROUP BY st.date, v.total_visits, v.sold_visits
              ORDER BY st.date DESC`,
             [workerId, from, to]
         );
+
+        // visit আছে কিন্তু sale নেই — এমন দিনও include করি
+        const visitOnlyResult = await query(
+            `SELECT
+                visit_date::text AS date,
+                COUNT(*) AS total_visits,
+                COUNT(CASE WHEN will_sell = true THEN 1 END) AS sold_visits
+             FROM visits
+             WHERE worker_id = $1
+               AND visit_date BETWEEN $2 AND $3
+               AND visit_date NOT IN (
+                   SELECT DISTINCT date FROM sales_transactions
+                   WHERE worker_id = $1 AND date BETWEEN $2 AND $3
+               )
+             GROUP BY visit_date
+             ORDER BY visit_date DESC`,
+            [workerId, from, to]
+        );
+
+        // মোট active customer count
+        const custResult = await query(
+            `SELECT COUNT(*) AS total
+             FROM customer_assignments
+             WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL`,
+            [workerId]
+        );
+        const totalCustomers = parseInt(custResult.rows[0]?.total || 0);
+
+        // sale+visit + শুধু-visit দিন মার্জ করা
+        const visitOnlyRows = visitOnlyResult.rows.map(r => ({
+            date: r.date, sale_count: 0, total_amount: 0,
+            cash_received: 0, credit_given: 0, replacement_value: 0,
+            total_visits: parseInt(r.total_visits || 0),
+            sold_visits:  parseInt(r.sold_visits  || 0),
+            total_customers: totalCustomers,
+        }));
+        const mergedDaily = [
+            ...dailyResult.rows.map(r => ({
+                ...r,
+                total_visits:    parseInt(r.total_visits || 0),
+                sold_visits:     parseInt(r.sold_visits  || 0),
+                total_customers: totalCustomers,
+            })),
+            ...visitOnlyRows,
+        ].sort((a, b) => b.date.localeCompare(a.date));
 
         // মাসিক মোট
         const totalResult = await query(
@@ -926,7 +982,7 @@ const getMyMonthlySales = async (req, res) => {
                 year:  targetYear,
                 from,
                 to,
-                daily:             dailyResult.rows,
+                daily:             mergedDaily,
                 ...totalResult.rows[0],
                 monthly_target:    targetResult.rows[0]?.monthly_target    || 0,
                 target_visit_rate: targetResult.rows[0]?.target_visit_rate || 80,
