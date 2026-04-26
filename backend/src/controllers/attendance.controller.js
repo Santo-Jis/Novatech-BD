@@ -682,7 +682,7 @@ const getAllLeaveRequests = async (req, res) => {
         const result = await query(
             `SELECT lr.id, lr.start_date, lr.end_date, lr.leave_type,
                     lr.reason, lr.status, lr.reviewer_note, lr.reviewed_at, lr.created_at,
-                    u.name_bn AS employee_name, u.employee_id, u.role
+                    u.name_bn AS employee_name, u.employee_code AS employee_id, u.role
              FROM leave_requests lr
              JOIN users u ON u.id = lr.user_id
              ORDER BY
