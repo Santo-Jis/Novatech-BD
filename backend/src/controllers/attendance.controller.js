@@ -576,13 +576,13 @@ const applyLeave = async (req, res) => {
         await query(`
             CREATE TABLE IF NOT EXISTS leave_requests (
                 id              SERIAL PRIMARY KEY,
-                user_id         INTEGER NOT NULL,
+                user_id         UUID NOT NULL,
                 start_date      DATE    NOT NULL,
                 end_date        DATE    NOT NULL,
                 leave_type      VARCHAR(50) DEFAULT 'casual',
                 reason          TEXT    NOT NULL,
                 status          VARCHAR(20) DEFAULT 'pending',
-                reviewed_by     INTEGER,
+                reviewed_by     UUID,
                 reviewed_at     TIMESTAMP,
                 reviewer_note   TEXT,
                 created_at      TIMESTAMP DEFAULT NOW()
@@ -621,13 +621,13 @@ const getMyLeaveRequests = async (req, res) => {
         await query(`
             CREATE TABLE IF NOT EXISTS leave_requests (
                 id              SERIAL PRIMARY KEY,
-                user_id         INTEGER NOT NULL,
+                user_id         UUID NOT NULL,
                 start_date      DATE    NOT NULL,
                 end_date        DATE    NOT NULL,
                 leave_type      VARCHAR(50) DEFAULT 'casual',
                 reason          TEXT    NOT NULL,
                 status          VARCHAR(20) DEFAULT 'pending',
-                reviewed_by     INTEGER,
+                reviewed_by     UUID,
                 reviewed_at     TIMESTAMP,
                 reviewer_note   TEXT,
                 created_at      TIMESTAMP DEFAULT NOW()
@@ -666,13 +666,13 @@ const getAllLeaveRequests = async (req, res) => {
         await query(`
             CREATE TABLE IF NOT EXISTS leave_requests (
                 id              SERIAL PRIMARY KEY,
-                user_id         INTEGER NOT NULL,
+                user_id         UUID NOT NULL,
                 start_date      DATE    NOT NULL,
                 end_date        DATE    NOT NULL,
                 leave_type      VARCHAR(50) DEFAULT 'casual',
                 reason          TEXT    NOT NULL,
                 status          VARCHAR(20) DEFAULT 'pending',
-                reviewed_by     INTEGER,
+                reviewed_by     UUID,
                 reviewed_at     TIMESTAMP,
                 reviewer_note   TEXT,
                 created_at      TIMESTAMP DEFAULT NOW()
