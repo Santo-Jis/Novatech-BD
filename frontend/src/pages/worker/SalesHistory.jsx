@@ -514,7 +514,9 @@ export default function SalesHistory() {
           ))}
         </div>
       ) : (
-        <>\n          {/* ─── Fallback Mode Banner ─── */}
+        
+        <>
+          {/* ─── Fallback Mode Banner ─── */}
           {fallback && (
             <div style={{
               background: '#fffbeb', border: '1px solid #fcd34d',
