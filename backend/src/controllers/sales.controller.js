@@ -548,7 +548,72 @@ const getMySales = async (req, res) => {
             params
         );
 
-        return res.status(200).json({ success: true, data: result.rows });
+        // ─── Visit stats per date (fallback mode এর জন্য) ───────────────
+        let visitsByDate = {};
+        if (from && to) {
+            // Date range: প্রতিটি দিনের visit count আলাদা করে আনি
+            const visitResult = await query(
+                `SELECT
+                    visit_date::text                                AS date,
+                    COUNT(*)                                        AS total_visits,
+                    COUNT(CASE WHEN will_sell = true THEN 1 END)   AS sold_visits
+                 FROM visits
+                 WHERE worker_id = $1
+                   AND visit_date BETWEEN $2 AND $3
+                 GROUP BY visit_date`,
+                [req.user.id, from, to]
+            );
+            visitResult.rows.forEach(row => {
+                visitsByDate[row.date] = {
+                    total_visits: parseInt(row.total_visits || 0),
+                    sold_visits:  parseInt(row.sold_visits || 0),
+                };
+            });
+
+            // মোট active customer count (সব দিনের জন্য একই)
+            const totalCustomersResult = await query(
+                `SELECT COUNT(*) AS total
+                 FROM customer_assignments
+                 WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL`,
+                [req.user.id]
+            );
+            const totalCustomers = parseInt(totalCustomersResult.rows[0]?.total || 0);
+
+            return res.status(200).json({
+                success: true,
+                data: result.rows,
+                visit_summary: { visitsByDate, total_customers: totalCustomers }
+            });
+        } else {
+            // Single date: visit stats সরাসরি include করি
+            const visitResult = await query(
+                `SELECT
+                    COUNT(*)                                        AS total_visits,
+                    COUNT(CASE WHEN will_sell = true THEN 1 END)   AS sold_visits
+                 FROM visits
+                 WHERE worker_id = $1 AND visit_date = $2`,
+                [req.user.id, today]
+            );
+            const totalCustomersResult = await query(
+                `SELECT COUNT(*) AS total
+                 FROM customer_assignments
+                 WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL`,
+                [req.user.id]
+            );
+            return res.status(200).json({
+                success: true,
+                data: result.rows,
+                visit_summary: {
+                    visitsByDate: {
+                        [today]: {
+                            total_visits: parseInt(visitResult.rows[0]?.total_visits || 0),
+                            sold_visits:  parseInt(visitResult.rows[0]?.sold_visits || 0),
+                        }
+                    },
+                    total_customers: parseInt(totalCustomersResult.rows[0]?.total || 0)
+                }
+            });
+        }
 
     } catch (error) {
         console.error('❌ My Sales Error:', error.message);
