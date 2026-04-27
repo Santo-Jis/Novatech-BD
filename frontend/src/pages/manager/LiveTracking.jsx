@@ -9,7 +9,7 @@ import { FiMapPin, FiUsers, FiWifi, FiWifiOff, FiRefreshCw } from 'react-icons/f
 // Google Maps JS API — ফ্রি টায়ারেই চলে
 // ============================================================
 
-const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || ''
+const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || 'AIzaSyD91UxTVfrc9Q_B4pX2bTNilBygc7MW0FA'
 
 // SR-এর জন্য রঙ
 const COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16']
