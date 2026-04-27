@@ -9,7 +9,7 @@ import { FiMapPin, FiUsers, FiWifi, FiWifiOff, FiRefreshCw } from 'react-icons/f
 // Google Maps JS API — ফ্রি টায়ারেই চলে
 // ============================================================
 
-const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''
+const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || ''
 
 // SR-এর জন্য রঙ
 const COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16']
@@ -189,7 +189,7 @@ export default function LiveTracking() {
             <FiMapPin style={{ fontSize: 48, color: '#ef4444', marginBottom: 12 }} />
             <h2 style={{ color: '#1f2937', marginBottom: 8 }}>Google Maps লোড হয়নি</h2>
             <p style={{ color: '#6b7280', fontSize: 14 }}>
-                <code>VITE_GOOGLE_MAPS_API_KEY</code> environment variable চেক করুন।
+                <code>VITE_GOOGLE_MAPS_KEY</code> environment variable চেক করুন।
             </p>
         </div>
     )
