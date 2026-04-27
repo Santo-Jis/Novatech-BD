@@ -1,8 +1,10 @@
-const { setLiveLocation, setPresence, getDB } = require('../config/firebase');
+const { setLiveLocation, setPresence, addGpsTrail, getDB } = require('../config/firebase');
+const { query } = require('../config/db');
 
 // ============================================================
 // লাইভ লোকেশন আপডেট (Worker → Firebase)
 // POST /api/location/update
+// ✅ FIX: addGpsTrail() এখন call হচ্ছে — movement history সংরক্ষিত হবে
 // ============================================================
 const updateLocation = async (req, res) => {
     try {
@@ -15,14 +17,20 @@ const updateLocation = async (req, res) => {
             return res.status(400).json({ success: false, message: 'GPS কোঅর্ডিনেট দেওয়া হয়নি।' });
         }
 
-        await setLiveLocation(userId, {
+        const locationData = {
             latitude: parseFloat(latitude),
             longitude: parseFloat(longitude),
             accuracy: accuracy || null,
             name_bn: userName,
             employee_code: employeeCode,
             role: req.user.role,
-        });
+        };
+
+        // লাইভ লোকেশন আপডেট (সবসময় overwrite)
+        await setLiveLocation(userId, locationData);
+
+        // ✅ GPS trail সংরক্ষণ (movement history)
+        await addGpsTrail(userId, locationData);
 
         res.json({ success: true, message: 'লোকেশন আপডেট হয়েছে।' });
     } catch (error) {
@@ -53,22 +61,67 @@ const updatePresence = async (req, res) => {
 };
 
 // ============================================================
-// Manager — সব active worker-এর লোকেশন দেখো
+// Manager/Supervisor/ASM/RSM — শুধু নিজের team-এর লোকেশন দেখো
 // GET /api/location/team
+//
+// ✅ FIX: আগে সব worker-এর লোকেশন দেখাতো — কোনো filter ছিল না।
+// এখন role অনুযায়ী শুধু authorized worker-দের লোকেশন দেখাবে:
+//
+//   admin     → সবার লোকেশন দেখতে পারবে
+//   manager   → শুধু নিজের team-এর worker (teams.manager_id = req.user.id)
+//   supervisor/asm/rsm → নিজের manager_id-এর team-এর worker
+//                        (users.manager_id = req.user.id)
 // ============================================================
 const getTeamLocations = async (req, res) => {
     try {
+        const { role, id: currentUserId } = req.user;
+
+        // ── Step 1: Role অনুযায়ী authorized worker ID-গুলো DB থেকে আনো ──
+        let authorizedWorkerIds;
+
+        if (role === 'admin') {
+            // Admin সব worker দেখতে পারবে — DB query দরকার নেই
+            authorizedWorkerIds = null; // null = সবাই
+        } else if (role === 'manager') {
+            // Manager: নিজের team-এ যেসব worker আছে
+            const result = await query(
+                `SELECT u.id
+                 FROM users u
+                 JOIN teams t ON t.id = u.team_id
+                 WHERE t.manager_id = $1
+                   AND u.role = 'worker'
+                   AND u.status = 'active'`,
+                [currentUserId]
+            );
+            authorizedWorkerIds = new Set(result.rows.map(r => String(r.id)));
+        } else {
+            // supervisor / asm / rsm:
+            // এই roles-এর users-এর manager_id field-এ তাদের উপরের manager আছে।
+            // কিন্তু তারা যাদের manage করে — সেই worker-দের manager_id = currentUserId
+            const result = await query(
+                `SELECT id
+                 FROM users
+                 WHERE manager_id = $1
+                   AND role = 'worker'
+                   AND status = 'active'`,
+                [currentUserId]
+            );
+            authorizedWorkerIds = new Set(result.rows.map(r => String(r.id)));
+        }
+
+        // ── Step 2: Firebase থেকে সব live location আনো ──
         const db = getDB();
         const snapshot = await db.ref('liveLocations').once('value');
         const data = snapshot.val() || {};
 
-        const locations = Object.entries(data).map(([userId, loc]) => ({
-            userId,
-            ...loc,
-        }));
+        // ── Step 3: Role অনুযায়ী filter করো ──
+        const locations = Object.entries(data)
+            .filter(([userId]) => authorizedWorkerIds === null || authorizedWorkerIds.has(userId))
+            .map(([userId, loc]) => ({ userId, ...loc }));
 
         res.json({ success: true, data: locations });
     } catch (error) {
+        console.error('getTeamLocations error:', error);
         res.status(500).json({ success: false, message: 'লোকেশন আনতে সমস্যা।' });
     }
 };
