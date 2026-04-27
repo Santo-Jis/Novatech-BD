@@ -12,6 +12,7 @@ import { useOffline } from '../store/useOffline'
 import { retryFailed } from '../api/syncService'
 import { getPendingQueue } from '../api/offlineQueue'
 import api from '../api/axios'
+import { useLiveTracking } from '../hooks/useLiveTracking'
 
 // ─── Bottom Navigation (সবসময় দেখা যাবে) ───────────────────
 const bottomNav = [
@@ -64,6 +65,9 @@ export default function WorkerLayout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const navigate  = useNavigate()
   const location  = useLocation()
+
+  // ✅ লাইভ GPS ট্র্যাকিং — ব্যাকগ্রাউন্ডে চলে
+  useLiveTracking()
 
   // ✅ চেক-ইন স্ট্যাটাস
   const [checkedIn,       setCheckedIn]       = useState(null)  // null = loading
