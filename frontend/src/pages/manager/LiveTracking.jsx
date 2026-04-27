@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from 'react'
 import { db } from '../../firebase/config'
 import { ref, onValue, off } from 'firebase/database'
 import { FiMapPin, FiUsers, FiWifi, FiWifiOff, FiRefreshCw } from 'react-icons/fi'
+import api from '../../api/axios'
 
 // ============================================================
 // Manager Live Tracking Page
 // Firebase Realtime DB থেকে সব SR-এর লোকেশন লাইভ দেখায়
 // Google Maps JS API — ফ্রি টায়ারেই চলে
+// Maps Key → Backend থেকে আনা হয় (secure)
 // ============================================================
-
-const MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || 'AIzaSyD91UxTVfrc9Q_B4pX2bTNilBygc7MW0FA'
 
 // SR-এর জন্য রঙ
 const COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16']
@@ -20,24 +20,30 @@ export default function LiveTracking() {
     const markers      = useRef({})          // { userId: google.maps.Marker }
     const infoWindows  = useRef({})
 
-    const [workers,    setWorkers]    = useState([])   // Firebase-এর লাইভ ডেটা
+    const [workers,    setWorkers]    = useState([])
     const [selected,   setSelected]   = useState(null)
     const [mapsLoaded, setMapsLoaded] = useState(false)
     const [mapError,   setMapError]   = useState(false)
+    const mapsKey                     = useRef('')
 
-    // ── ১. Google Maps JS লোড ──────────────────────────────
+    // ── ১. Backend থেকে Maps Key আনো, তারপর লোড করো ──────
     useEffect(() => {
         if (window.google?.maps) { setMapsLoaded(true); return }
-        if (!MAPS_API_KEY) { setMapError(true); return }
 
-        const script = document.createElement('script')
-        script.src   = `https://maps.googleapis.com/maps/api/js?key=${MAPS_API_KEY}`
-        script.async = true
-        script.onload  = () => setMapsLoaded(true)
-        script.onerror = () => setMapError(true)
-        document.head.appendChild(script)
+        api.get('/location/maps-key')
+            .then(res => {
+                const key = res.data?.key
+                if (!key) { setMapError(true); return }
+                mapsKey.current = key
 
-        return () => { document.head.removeChild(script) }
+                const script = document.createElement('script')
+                script.src   = `https://maps.googleapis.com/maps/api/js?key=${key}`
+                script.async = true
+                script.onload  = () => setMapsLoaded(true)
+                script.onerror = () => setMapError(true)
+                document.head.appendChild(script)
+            })
+            .catch(() => setMapError(true))
     }, [])
 
     // ── ২. ম্যাপ তৈরি করো ──────────────────────────────────
@@ -189,7 +195,7 @@ export default function LiveTracking() {
             <FiMapPin style={{ fontSize: 48, color: '#ef4444', marginBottom: 12 }} />
             <h2 style={{ color: '#1f2937', marginBottom: 8 }}>Google Maps লোড হয়নি</h2>
             <p style={{ color: '#6b7280', fontSize: 14 }}>
-                <code>VITE_GOOGLE_MAPS_KEY</code> environment variable চেক করুন।
+                Backend-এ <code>GOOGLE_MAPS_KEY</code> environment variable চেক করুন।
             </p>
         </div>
     )
