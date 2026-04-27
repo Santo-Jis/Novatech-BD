@@ -39,6 +39,7 @@ import ManagerAttendance  from './pages/manager/Attendance'
 import ManagerCustomers   from './pages/manager/Customers'
 import ManagerRoutes      from './pages/manager/Routes'
 import VisitOrder         from './pages/manager/VisitOrder'
+import LiveTracking       from './pages/manager/LiveTracking'
 
 // Worker Pages
 import WorkerDashboard  from './pages/worker/Dashboard'
@@ -162,6 +163,7 @@ export default function App() {
         <Route path="customers"    element={<ManagerCustomers />} />
         <Route path="routes"       element={<ManagerRoutes />} />
         <Route path="visit-order"  element={<VisitOrder />} />
+        <Route path="live-tracking" element={<LiveTracking />} />
         <Route path="ai-chat"      element={<AIChat />} />
         <Route path="notices"      element={<NoticesView />} />
       </Route>
