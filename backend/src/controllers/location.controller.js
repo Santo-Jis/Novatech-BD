@@ -42,7 +42,6 @@ const updatePresence = async (req, res) => {
 
         await setPresence(userId, !!online);
 
-        // অফলাইন হলে লাইভ লোকেশন মুছে ফেলো
         if (!online) {
             await getDB().ref(`liveLocations/${userId}`).remove();
         }
@@ -74,4 +73,17 @@ const getTeamLocations = async (req, res) => {
     }
 };
 
-module.exports = { updateLocation, updatePresence, getTeamLocations };
+// ============================================================
+// Google Maps API Key — Frontend-এ secure ভাবে দাও
+// GET /api/location/maps-key
+// শুধু logged-in user পাবে — GitHub-এ key থাকবে না
+// ============================================================
+const getMapsKey = (req, res) => {
+    const key = process.env.GOOGLE_MAPS_KEY;
+    if (!key) {
+        return res.status(500).json({ success: false, message: 'Maps key configured নেই।' });
+    }
+    res.json({ success: true, key });
+};
+
+module.exports = { updateLocation, updatePresence, getTeamLocations, getMapsKey };
