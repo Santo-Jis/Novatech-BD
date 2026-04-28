@@ -2,6 +2,7 @@ const express = require('express');
 const router  = express.Router();
 const { auth } = require('../middlewares/auth');
 const { allowRoles } = require('../middlewares/roleCheck');
+const requireCheckin = require('../middlewares/requireCheckin');
 const { updateLocation, updatePresence, getTeamLocations, getMapsKey } = require('../controllers/location.controller');
 
 // ============================================================
@@ -10,7 +11,8 @@ const { updateLocation, updatePresence, getTeamLocations, getMapsKey } = require
 // ============================================================
 
 // Worker নিজের লোকেশন পাঠাবে
-router.post('/update',   auth, allowRoles('worker'), updateLocation);
+// ✅ requireCheckin: চেক-ইন না করলে tracking হবে না — ব্যক্তিগত গোপনীয়তা রক্ষা
+router.post('/update',   auth, allowRoles('worker'), requireCheckin, updateLocation);
 
 // Worker অনলাইন/অফলাইন স্ট্যাটাস
 router.post('/presence', auth, allowRoles('worker'), updatePresence);
