@@ -181,9 +181,10 @@ app.use((err, req, res, next) => {
 // BACKGROUND JOBS
 // ============================================================
 
-const { startCommissionJob } = require('./jobs/commission.job');
-const { startBonusJob }      = require('./jobs/bonus.job');
-const { startAIJob }         = require('./jobs/ai.job');
+const { startCommissionJob }       = require('./jobs/commission.job');
+const { startBonusJob }            = require('./jobs/bonus.job');
+const { startAIJob }               = require('./jobs/ai.job');
+const { startGpsTrailCleanupJob }  = require('./jobs/gpsTrail.job');
 
 
 // ============================================================
@@ -225,6 +226,7 @@ app.listen(PORT, "0.0.0.0", () => {
     startCommissionJob();
     startBonusJob();
     startAIJob();
+    startGpsTrailCleanupJob();
 
     console.log('✅ Background jobs চালু হয়েছে');
 });
