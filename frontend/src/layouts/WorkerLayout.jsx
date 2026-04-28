@@ -69,6 +69,25 @@ export default function WorkerLayout() {
   // ✅ লাইভ GPS ট্র্যাকিং — ব্যাকগ্রাউন্ডে চলে
   useLiveTracking()
 
+  // GPS Permission check — প্রথমবার login করলে permission চাও
+  const [gpsPermission, setGpsPermission] = useState(null) // null=checking, true=granted, false=denied
+  useEffect(() => {
+    if (!navigator.geolocation) { setGpsPermission(false); return }
+    navigator.permissions?.query({ name: 'geolocation' })
+      .then(result => {
+        setGpsPermission(result.state === 'granted')
+        result.onchange = () => setGpsPermission(result.state === 'granted')
+      })
+      .catch(() => setGpsPermission(null))
+  }, [])
+
+  const requestGpsPermission = () => {
+    navigator.geolocation.getCurrentPosition(
+      () => setGpsPermission(true),
+      () => setGpsPermission(false)
+    )
+  }
+
   // ✅ চেক-ইন স্ট্যাটাস
   const [checkedIn,       setCheckedIn]       = useState(null)  // null = loading
   const [showCheckinPopup, setShowCheckinPopup] = useState(false)
@@ -136,6 +155,31 @@ export default function WorkerLayout() {
   }
 
   return (
+    <>
+    {/* GPS Permission Banner */}
+    {gpsPermission === false && (
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 9999,
+        background: '#dc2626', color: '#fff',
+        padding: '12px 16px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+      }}>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>
+          📍 GPS Permission নেই — ট্র্যাকিং কাজ করবে না
+        </div>
+        <button
+          onClick={requestGpsPermission}
+          style={{
+            background: '#fff', color: '#dc2626',
+            border: 'none', borderRadius: 8,
+            padding: '6px 14px', fontWeight: 700,
+            fontSize: 12, cursor: 'pointer', flexShrink: 0,
+          }}
+        >
+          Permission দিন
+        </button>
+      </div>
+    )}
     <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex flex-col max-w-md mx-auto relative transition-colors">
 
       {/* ── ✅ চেক-ইন না করলে Popup ──────────────────────────── */}
@@ -364,5 +408,6 @@ export default function WorkerLayout() {
         ))}
       </nav>
     </div>
+  </>
   )
 }
