@@ -3,7 +3,7 @@ const router  = express.Router();
 const { auth } = require('../middlewares/auth');
 const { allowRoles } = require('../middlewares/roleCheck');
 const requireCheckin = require('../middlewares/requireCheckin');
-const { updateLocation, updatePresence, getTeamLocations, getMapsKey } = require('../controllers/location.controller');
+const { updateLocation, updatePresence, getTeamLocations, getMapsKey, getGpsTrail } = require('../controllers/location.controller');
 
 // ============================================================
 // LOCATION ROUTES
@@ -28,5 +28,8 @@ router.get('/team',      auth, allowRoles('manager', 'supervisor', 'asm', 'rsm',
 
 // Frontend-এ Google Maps Key সরবরাহ (secure — login ছাড়া পাবে না)
 router.get('/maps-key',  auth, getMapsKey);
+
+// SR-এর GPS Trail History (date ও workerId দিয়ে)
+router.get('/trail/:workerId', auth, allowRoles('manager', 'supervisor', 'asm', 'rsm', 'admin'), getGpsTrail);
 
 module.exports = router;
