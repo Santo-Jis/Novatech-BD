@@ -15,7 +15,13 @@ const { updateLocation, updatePresence, getTeamLocations, getMapsKey } = require
 router.post('/update',   auth, allowRoles('worker'), requireCheckin, updateLocation);
 
 // Worker অনলাইন/অফলাইন স্ট্যাটাস
-router.post('/presence', auth, allowRoles('worker'), updatePresence);
+// ✅ requireCheckin: online=true হলে check-in লাগবে
+//    online=false সবসময় allow — logout/crash-এ offline করতে পারবে
+const presenceCheckin = (req, res, next) => {
+    if (req.body?.online === false) return next()  // offline — block করো না
+    return requireCheckin(req, res, next)           // online — checkin check করো
+}
+router.post('/presence', auth, allowRoles('worker'), presenceCheckin, updatePresence);
 
 // Manager টিমের সব লোকেশন দেখবে
 router.get('/team',      auth, allowRoles('manager', 'supervisor', 'asm', 'rsm', 'admin'), getTeamLocations);
