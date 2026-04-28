@@ -30,11 +30,12 @@ export default function TrailHistory() {
     const [activePoint, setActivePoint] = useState(null)
 
     // ── ১. Team-এর SR list আনো ──────────────────────────────
+    // /employee/ route-এ checkTeamAccess middleware আছে —
+    // Manager শুধু নিজের team-এর worker দেখবে (teamFilter = manager.id)
     useEffect(() => {
-        api.get('/employee/team-workers')
-            .catch(() => api.get('/employee/list?role=worker'))
+        api.get('/employee/?role=worker&status=active')
             .then(res => {
-                const list = res.data?.data || res.data?.workers || []
+                const list = (res.data?.data || []).filter(e => e.role === 'worker')
                 setWorkers(list)
             })
             .catch(() => {})
