@@ -33,7 +33,7 @@ export default function TrailHistory() {
     // /employee/ route-এ checkTeamAccess middleware আছে —
     // Manager শুধু নিজের team-এর worker দেখবে (teamFilter = manager.id)
     useEffect(() => {
-        api.get('/employee/?role=worker&status=active')
+        api.get('/employees/?role=worker&status=active')
             .then(res => {
                 const list = (res.data?.data || []).filter(e => e.role === 'worker')
                 setWorkers(list)
