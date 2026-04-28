@@ -118,7 +118,6 @@ const getTeamLocations = async (req, res) => {
 // ============================================================
 // Google Maps API Key — Frontend-এ secure ভাবে দাও
 // GET /api/location/maps-key
-// শুধু logged-in user পাবে — GitHub-এ key থাকবে না
 // ============================================================
 const getMapsKey = (req, res) => {
     const key = process.env.GOOGLE_MAPS_KEY;
@@ -128,4 +127,94 @@ const getMapsKey = (req, res) => {
     res.json({ success: true, key });
 };
 
-module.exports = { updateLocation, updatePresence, getTeamLocations, getMapsKey };
+// ============================================================
+// GPS Trail History — একজন SR-এর নির্দিষ্ট দিনের movement
+// GET /api/location/trail/:workerId?date=YYYY-MM-DD
+//
+// - Manager শুধু নিজের team-এর SR-এর trail দেখতে পারবে
+// - Firebase থেকে সেই দিনের সব GPS point আনো
+// - দূরত্ব calculate করে পাঠাও (Haversine formula)
+// ============================================================
+const getGpsTrail = async (req, res) => {
+    try {
+        const { workerId }          = req.params;
+        const { date }              = req.query;   // YYYY-MM-DD
+        const { role, id: currentUserId } = req.user;
+
+        if (!workerId || !date) {
+            return res.status(400).json({ success: false, message: 'workerId ও date দরকার।' });
+        }
+
+        // ── Authorization: Manager শুধু নিজের team-এর SR দেখবে ──
+        if (role !== 'admin') {
+            const authCheck = await query(
+                `SELECT id FROM users
+                 WHERE id = $1 AND manager_id = $2 AND role = 'worker'`,
+                [workerId, currentUserId]
+            );
+            if (authCheck.rows.length === 0) {
+                return res.status(403).json({ success: false, message: 'এই SR আপনার team-এ নেই।' });
+            }
+        }
+
+        // ── SR-এর নাম ও info আনো ──
+        const workerInfo = await query(
+            `SELECT name_bn, employee_code FROM users WHERE id = $1`,
+            [workerId]
+        );
+        if (workerInfo.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'SR পাওয়া যায়নি।' });
+        }
+
+        // ── Firebase থেকে সেই দিনের trail আনো ──
+        const db       = getDB();
+        const snapshot = await db.ref(`gpsTrail/${workerId}`).once('value');
+        const allTrail = snapshot.val() || {};
+
+        // date অনুযায়ী filter (timestamp থেকে date বের করো)
+        const dayStart = new Date(date + 'T00:00:00+06:00').getTime();
+        const dayEnd   = new Date(date + 'T23:59:59+06:00').getTime();
+
+        const points = Object.entries(allTrail)
+            .filter(([ts]) => {
+                const t = parseInt(ts);
+                return t >= dayStart && t <= dayEnd;
+            })
+            .map(([ts, loc]) => ({ ...loc, timestamp: parseInt(ts) }))
+            .sort((a, b) => a.timestamp - b.timestamp);  // সময় অনুযায়ী sort
+
+        // ── Haversine formula দিয়ে মোট দূরত্ব calculate করো ──
+        const toRad = (deg) => deg * Math.PI / 180;
+        const haversine = (p1, p2) => {
+            const R    = 6371000; // পৃথিবীর radius মিটারে
+            const dLat = toRad(p2.latitude  - p1.latitude);
+            const dLon = toRad(p2.longitude - p1.longitude);
+            const a    = Math.sin(dLat/2) ** 2 +
+                         Math.cos(toRad(p1.latitude)) * Math.cos(toRad(p2.latitude)) *
+                         Math.sin(dLon/2) ** 2;
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        };
+
+        let totalMeters = 0;
+        for (let i = 1; i < points.length; i++) {
+            totalMeters += haversine(points[i-1], points[i]);
+        }
+
+        const totalKm = (totalMeters / 1000).toFixed(2);
+
+        res.json({
+            success:  true,
+            worker:   workerInfo.rows[0],
+            date,
+            points,
+            totalPoints: points.length,
+            totalKm,
+        });
+
+    } catch (error) {
+        console.error('getGpsTrail error:', error);
+        res.status(500).json({ success: false, message: 'Trail আনতে সমস্যা।' });
+    }
+};
+
+module.exports = { updateLocation, updatePresence, getTeamLocations, getMapsKey, getGpsTrail };
