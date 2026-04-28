@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/auth.store'
 import { FirebaseProvider } from './firebase/notifications'
+import PermissionSetup, { usePermissionSetup } from './components/PermissionSetup'
 
 // Layouts
 import AdminLayout   from './layouts/AdminLayout'
@@ -106,10 +107,22 @@ const HomeRedirect = () => {
 // App Routes
 // ============================================================
 
-export default function App() {
+// ============================================================
+// Inner App — Permission hook-এর জন্য আলাদা component
+// (FirebaseProvider এর ভেতরে থাকতে হবে যাতে user পাওয়া যায়)
+// ============================================================
+
+function AppWithPermissions() {
+  const { show: showPermissions, close: closePermissions } = usePermissionSetup()
+
   return (
-    <FirebaseProvider>
-    <Routes>
+    <>
+      {/* Permission Setup Modal — Login করার পরে দেখায় */}
+      {showPermissions && (
+        <PermissionSetup onDone={closePermissions} />
+      )}
+
+      <Routes>
       {/* Public */}
       <Route path="/login" element={<Login />} />
       <Route path="/apply/sr" element={<SRApplicationForm />} />
@@ -204,6 +217,14 @@ export default function App() {
         </div>
       } />
     </Routes>
+    </>
+  )
+}
+
+export default function App() {
+  return (
+    <FirebaseProvider>
+      <AppWithPermissions />
     </FirebaseProvider>
   )
 }
