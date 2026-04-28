@@ -82,22 +82,11 @@ const getTeamLocations = async (req, res) => {
         if (role === 'admin') {
             // Admin সব worker দেখতে পারবে — DB query দরকার নেই
             authorizedWorkerIds = null; // null = সবাই
-        } else if (role === 'manager') {
-            // Manager: নিজের team-এ যেসব worker আছে
-            const result = await query(
-                `SELECT u.id
-                 FROM users u
-                 JOIN teams t ON t.id = u.team_id
-                 WHERE t.manager_id = $1
-                   AND u.role = 'worker'
-                   AND u.status = 'active'`,
-                [currentUserId]
-            );
-            authorizedWorkerIds = new Set(result.rows.map(r => String(r.id)));
         } else {
-            // supervisor / asm / rsm:
-            // এই roles-এর users-এর manager_id field-এ তাদের উপরের manager আছে।
-            // কিন্তু তারা যাদের manage করে — সেই worker-দের manager_id = currentUserId
+            // manager / supervisor / asm / rsm:
+            // users table-এ manager_id field আছে।
+            // Worker-দের manager_id = তাদের উপরের manager/supervisor-এর id।
+            // তাই: যেসব worker-এর manager_id = আমার id, শুধু তারাই আমার team।
             const result = await query(
                 `SELECT id
                  FROM users
