@@ -7,6 +7,7 @@ import { FiHome, FiUsers, FiShoppingCart, FiCheckSquare, FiCalendar, FiMapPin, F
 const navItems = [
   { path: '/manager/dashboard',     icon: <FiHome />,         label: 'ড্যাশবোর্ড' },
   { path: '/manager/live-tracking', icon: <FiMapPin />,       label: '🔴 লাইভ ট্র্যাকিং' },
+  { path: '/manager/trail-history', icon: <FiMapPin />,       label: '🗺️ Trail History' },
   { path: '/manager/team',          icon: <FiUsers />,        label: 'আমার টিম' },
   { path: '/manager/orders',        icon: <FiShoppingCart />, label: 'অর্ডার' },
   { path: '/manager/settlements',   icon: <FiCheckSquare />,  label: 'হিসাব' },
