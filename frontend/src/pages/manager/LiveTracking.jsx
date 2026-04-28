@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { db } from '../../firebase/config'
 import { ref, onValue, off } from 'firebase/database'
-import { FiMapPin, FiUsers, FiWifi, FiWifiOff, FiRefreshCw } from 'react-icons/fi'
+import { FiMapPin, FiUsers, FiWifi, FiWifiOff, FiRefreshCw, FiAlertTriangle } from 'react-icons/fi'
 import api from '../../api/axios'
 
 // ============================================================
@@ -22,6 +22,20 @@ const getColorForUser = (userId) => {
     return COLORS[Math.abs(hash) % COLORS.length]
 }
 
+// কতক্ষণ আগে আপডেট হয়েছে — human readable
+const timeAgo = (timestamp) => {
+    if (!timestamp) return 'অজানা'
+    const seconds = Math.floor((Date.now() - timestamp) / 1000)
+    if (seconds < 60)  return `${seconds} সেকেন্ড আগে`
+    const minutes = Math.floor(seconds / 60)
+    if (minutes < 60)  return `${minutes} মিনিট আগে`
+    const hours = Math.floor(minutes / 60)
+    return `${hours} ঘন্টা আগে`
+}
+
+// ৫ মিনিটের বেশি পুরনো হলে stale ধরবো
+const isStale = (timestamp) => !timestamp || (Date.now() - timestamp) > 5 * 60 * 1000
+
 export default function LiveTracking() {
     const mapRef        = useRef(null)
     const mapInstance   = useRef(null)
@@ -33,6 +47,13 @@ export default function LiveTracking() {
     const [selected,   setSelected]   = useState(null)
     const [mapsLoaded, setMapsLoaded] = useState(false)
     const [mapError,   setMapError]   = useState(false)
+    const [now,        setNow]        = useState(Date.now())
+
+    // প্রতি ৩০ সেকেন্ডে "কতক্ষণ আগে" text আপডেট করো
+    useEffect(() => {
+        const timer = setInterval(() => setNow(Date.now()), 30_000)
+        return () => clearInterval(timer)
+    }, [])
 
     // ── ১. Backend থেকে Maps Key আনো, তারপর লোড করো ──────
     useEffect(() => {
@@ -196,7 +217,7 @@ export default function LiveTracking() {
                 ${w.latitude?.toFixed(5)}, ${w.longitude?.toFixed(5)}
             </p>
             <p style="font-size:11px;color:#9ca3af;margin:4px 0 0">
-                ${w.updatedAt ? '🕐 ' + new Date(w.updatedAt).toLocaleTimeString('bn-BD', {hour:'2-digit',minute:'2-digit'}) : ''}
+                ${w.updatedAt ? `🕐 ${timeAgo(w.updatedAt)}${isStale(w.updatedAt) ? ' ⚠️ পুরনো' : ''}` : ''}
             </p>
         </div>
     `
@@ -328,13 +349,22 @@ export default function LiveTracking() {
                                         {w.employee_code}
                                     </p>
                                 </div>
-                                <FiWifi style={{ color: '#10b981', flexShrink: 0, fontSize: 13 }} />
+                                {w.gpsError
+                                    ? <FiAlertTriangle style={{ color: '#ef4444', flexShrink: 0, fontSize: 13 }} />
+                                    : <FiWifi style={{ color: isStale(w.updatedAt) ? '#f59e0b' : '#10b981', flexShrink: 0, fontSize: 13 }} />
+                                }
                             </div>
-                            {w.updatedAt && (
-                                <p style={{ fontSize: 10, color: '#9ca3af', margin: '6px 0 0' }}>
-                                    🕐 {new Date(w.updatedAt).toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })}
+                            {w.gpsError && (
+                                <p style={{ fontSize: 10, color: '#ef4444', margin: '6px 0 0', fontWeight: 600 }}>
+                                    ⚠️ GPS বন্ধ
                                 </p>
                             )}
+                            {!w.gpsError && w.updatedAt && (
+                                <p style={{ fontSize: 10, color: isStale(w.updatedAt) ? '#f59e0b' : '#9ca3af', margin: '6px 0 0' }}>
+                                    🕐 {timeAgo(w.updatedAt)}
+                                </p>
+                            )}
+                            
                         </div>
                     ))}
                 </div>
