@@ -80,10 +80,13 @@ const writeAuditLog = async (userId, action, details) => {
 };
 
 // GPS trail যোগ করো
+// ✅ FIX: একবার Date.now() call করে path ও object-এ একই timestamp ব্যবহার।
+//         আগে দুটো আলাদা call ছিল — path-এর key আর timestamp মিলত না।
 const addGpsTrail = async (userId, location) => {
-    await getDB().ref(`gpsTrail/${userId}/${Date.now()}`).set({
+    const ts = Date.now();
+    await getDB().ref(`gpsTrail/${userId}/${ts}`).set({
         ...location,
-        timestamp: Date.now()
+        timestamp: ts
     });
 };
 
