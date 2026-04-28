@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { db } from '../../firebase/config'
 import { ref, onValue, off } from 'firebase/database'
 import { FiMapPin, FiUsers, FiWifi, FiWifiOff, FiRefreshCw } from 'react-icons/fi'
@@ -6,25 +6,33 @@ import api from '../../api/axios'
 
 // ============================================================
 // Manager Live Tracking Page
-// Firebase Realtime DB থেকে সব SR-এর লোকেশন লাইভ দেখায়
-// Google Maps JS API — ফ্রি টায়ারেই চলে
-// Maps Key → Backend থেকে আনা হয় (secure)
+// Firebase Realtime DB trigger করে, Backend থেকে filtered
+// লোকেশন আনে — Manager শুধু নিজের SR দেখবে
 // ============================================================
 
-// SR-এর জন্য রঙ
+// userId থেকে consistent color বের করো
+// index-ভিত্তিক হলে SR অফলাইন হলে সবার color বদলে যায়
 const COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06b6d4','#84cc16']
+const getColorForUser = (userId) => {
+    let hash = 0
+    const str = String(userId)
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash)
+    }
+    return COLORS[Math.abs(hash) % COLORS.length]
+}
 
 export default function LiveTracking() {
-    const mapRef       = useRef(null)
-    const mapInstance  = useRef(null)
-    const markers      = useRef({})          // { userId: google.maps.Marker }
-    const infoWindows  = useRef({})
+    const mapRef        = useRef(null)
+    const mapInstance   = useRef(null)
+    const markers       = useRef({})
+    const infoWindows   = useRef({})
+    const mapReadyRef   = useRef(false)   // ✅ map ready কিনা track করতে ref ব্যবহার
 
     const [workers,    setWorkers]    = useState([])
     const [selected,   setSelected]   = useState(null)
     const [mapsLoaded, setMapsLoaded] = useState(false)
     const [mapError,   setMapError]   = useState(false)
-    const mapsKey                     = useRef('')
 
     // ── ১. Backend থেকে Maps Key আনো, তারপর লোড করো ──────
     useEffect(() => {
@@ -34,10 +42,9 @@ export default function LiveTracking() {
             .then(res => {
                 const key = res.data?.key
                 if (!key) { setMapError(true); return }
-                mapsKey.current = key
 
                 const script = document.createElement('script')
-                script.src   = `https://maps.googleapis.com/maps/api/js?key=${key}`
+                script.src   = `https://maps.googleapis.com/maps/api/js?key=${key}&libraries=marker`
                 script.async = true
                 script.onload  = () => setMapsLoaded(true)
                 script.onerror = () => setMapError(true)
@@ -51,8 +58,9 @@ export default function LiveTracking() {
         if (!mapsLoaded || !mapRef.current || mapInstance.current) return
 
         mapInstance.current = new window.google.maps.Map(mapRef.current, {
-            center: { lat: 23.8103, lng: 90.4125 }, // ঢাকা
+            center: { lat: 23.8103, lng: 90.4125 },
             zoom: 12,
+            mapId: 'NOVATECH_MAP',
             mapTypeControl: false,
             fullscreenControl: false,
             streetViewControl: false,
@@ -61,37 +69,63 @@ export default function LiveTracking() {
                 { featureType: 'transit', stylers: [{ visibility: 'simplified' }] },
             ],
         })
-    }, [mapsLoaded])
+        mapReadyRef.current = true
 
-    // ── ৩. Firebase থেকে রিয়েলটাইম লোকেশন শোনো ──────────
-    useEffect(() => {
-        const locationRef = ref(db, 'liveLocations')
+        // ✅ KEY FIX: Map তৈরি হওয়ার পর আবার location আনো।
+        // Firebase data আগেই এসেছিল কিন্তু map null ছিল তাই markers হয়নি।
+        fetchLocations()
+    }, [mapsLoaded, fetchLocations])
 
-        const unsubscribe = onValue(locationRef, (snapshot) => {
-            const data = snapshot.val() || {}
-            const list = Object.entries(data).map(([userId, loc], i) => ({
-                userId,
+    // ── ৩. Backend থেকে filtered লোকেশন আনো ──────────────
+    // ✅ FIX: আগে Firebase সরাসরি listen করত — সব SR দেখাত।
+    // এখন Firebase শুধু trigger হিসেবে কাজ করে।
+    // Actual data আসে Backend API থেকে — Manager শুধু
+    // নিজের team-এর SR দেখবে, অন্যের SR নয়।
+    const fetchLocations = useCallback(async () => {
+        try {
+            const res = await api.get('/location/team')
+            if (!res.data?.success) return
+
+            const list = (res.data.data || []).map(loc => ({
                 ...loc,
-                color: COLORS[i % COLORS.length],
+                color: getColorForUser(loc.userId),  // ✅ userId hash থেকে consistent color
             }))
             setWorkers(list)
             updateMarkers(list)
+        } catch (err) {
+            console.error('Location fetch error:', err)
+        }
+    }, [])
+
+    // ── ৪. Firebase change হলে Backend থেকে fresh data আনো ─
+    useEffect(() => {
+        const locationRef = ref(db, 'liveLocations')
+
+        // প্রথমবার data আনো
+        fetchLocations()
+
+        // Firebase-এ যেকোনো change হলে Backend থেকে আবার আনো
+        const unsubscribe = onValue(locationRef, () => {
+            fetchLocations()
         })
 
         return () => off(locationRef, 'value', unsubscribe)
-    }, [mapsLoaded])
+    }, [fetchLocations])
 
-    // ── ৪. Markers আপডেট করো ───────────────────────────────
+    // ── ৪. Markers আপডেট করো (AdvancedMarkerElement) ────────
+    // ✅ FIX: পুরনো google.maps.Marker deprecated (v3.58+)
+    //         নতুন AdvancedMarkerElement ব্যবহার করা হচ্ছে।
+    //         SVG icon এখন DOM element হিসেবে দেওয়া হয় — আরও flexible।
     const updateMarkers = (list) => {
         if (!mapInstance.current) return
 
-        // নতুন userId-গুলো
+        const { AdvancedMarkerElement } = window.google.maps.marker
         const activeIds = new Set(list.map(w => w.userId))
 
-        // পুরনো marker সরিয়ে দাও (SR অফলাইন হলে)
+        // অফলাইন SR-এর marker সরিয়ে দাও
         Object.keys(markers.current).forEach(id => {
             if (!activeIds.has(id)) {
-                markers.current[id].setMap(null)
+                markers.current[id].map = null   // AdvancedMarker এভাবে remove করে
                 delete markers.current[id]
                 if (infoWindows.current[id]) {
                     infoWindows.current[id].close()
@@ -103,37 +137,36 @@ export default function LiveTracking() {
         list.forEach((worker) => {
             const pos = { lat: worker.latitude, lng: worker.longitude }
 
-            // Custom SVG marker
-            const svg = `
-                <svg xmlns="http://www.w3.org/2000/svg" width="44" height="54" viewBox="0 0 44 54">
-                    <circle cx="22" cy="22" r="20" fill="${worker.color}" stroke="white" stroke-width="3"/>
-                    <text x="22" y="27" font-size="14" font-weight="bold" fill="white"
-                        text-anchor="middle" font-family="Arial">
-                        ${(worker.name_bn || worker.employee_code || '?').charAt(0)}
-                    </text>
-                    <polygon points="22,46 15,36 29,36" fill="${worker.color}"/>
-                </svg>
-            `
-            const icon = {
-                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-                scaledSize: new window.google.maps.Size(44, 54),
-                anchor: new window.google.maps.Point(22, 54),
+            // SVG DOM element — AdvancedMarkerElement-এ content হিসেবে দেওয়া হয়
+            const makePinElement = () => {
+                const div = document.createElement('div')
+                div.innerHTML = `
+                    <svg xmlns="http://www.w3.org/2000/svg" width="44" height="54" viewBox="0 0 44 54"
+                         style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); cursor: pointer;">
+                        <circle cx="22" cy="22" r="20" fill="${worker.color}" stroke="white" stroke-width="3"/>
+                        <text x="22" y="27" font-size="14" font-weight="bold" fill="white"
+                            text-anchor="middle" font-family="Arial">
+                            ${(worker.name_bn || worker.employee_code || '?').charAt(0)}
+                        </text>
+                        <polygon points="22,46 15,36 29,36" fill="${worker.color}"/>
+                    </svg>
+                `
+                return div
             }
 
             if (markers.current[worker.userId]) {
-                // Existing marker — শুধু position আপডেট
-                markers.current[worker.userId].setPosition(pos)
+                // Existing marker — position আপডেট
+                markers.current[worker.userId].position = pos
             } else {
-                // নতুন marker তৈরি
-                const marker = new window.google.maps.Marker({
+                // নতুন AdvancedMarkerElement তৈরি
+                const marker = new AdvancedMarkerElement({
                     position: pos,
                     map: mapInstance.current,
                     title: worker.name_bn,
-                    icon,
-                    animation: window.google.maps.Animation.DROP,
+                    content: makePinElement(),
                 })
 
-                // InfoWindow (ক্লিক করলে দেখাবে)
+                // InfoWindow
                 const iw = new window.google.maps.InfoWindow({
                     content: buildInfoContent(worker),
                 })
@@ -144,7 +177,7 @@ export default function LiveTracking() {
                     setSelected(worker.userId)
                 })
 
-                markers.current[worker.userId]  = marker
+                markers.current[worker.userId]     = marker
                 infoWindows.current[worker.userId] = iw
             }
 
