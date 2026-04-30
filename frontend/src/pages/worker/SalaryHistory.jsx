@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
 import api from '../../api/axios'
-import { saveCache, getCache } from '../../api/offlineQueue'
 import {
   FiTrendingUp, FiMapPin, FiTarget, FiCalendar,
   FiChevronLeft, FiChevronRight, FiShoppingBag,
@@ -291,64 +290,79 @@ function DayRow({ day, onShowSales }) {
   )
 }
 
+// ─── Infer visits from sales when visit API is unavailable ───
+function inferVisitsFromSales(sales) {
+  const visitsByDate = {}
+  sales.forEach(s => {
+    const d = s.date || s.created_at?.split('T')[0]
+    if (!d) return
+    if (!visitsByDate[d]) {
+      visitsByDate[d] = { total_visits: 0, sold_visits: 0, visitedShops: new Set() }
+    }
+    // একই দোকানে একই দিনে একাধিক sale হলেও ১ visit হিসেবে গণনা
+    const shopKey = s.shop_id || s.shop_name
+    if (shopKey && !visitsByDate[d].visitedShops.has(shopKey)) {
+      visitsByDate[d].total_visits++
+      visitsByDate[d].sold_visits++
+      visitsByDate[d].visitedShops.add(shopKey)
+    }
+  })
+  // Set serializable না — cleanup করো
+  Object.values(visitsByDate).forEach(v => delete v.visitedShops)
+  return visitsByDate
+}
+
 // ─── Main Page ───────────────────────────────────────────────
 export default function SalesHistory() {
   const now     = new Date()
   const [view,    setView]    = useState('monthly')  // 'monthly' | 'weekly'
   const [month,   setMonth]   = useState(now.getMonth() + 1)
   const [year,    setYear]    = useState(now.getFullYear())
-  const [data,         setData]         = useState(null)
-  const [loading,      setLoading]      = useState(true)
-  const [salesModal,   setSalesModal]   = useState(null)
-  const [detailSale,   setDetailSale]   = useState(null)
+  const [data,    setData]    = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [salesModal, setSalesModal] = useState(null)   // { date, sales[] }
+  const [detailSale, setDetailSale] = useState(null)
   const [loadingSales, setLoadingSales] = useState(false)
-  const [isFallback,   setIsFallback]   = useState(false)
-  const [isStaleCache, setIsStaleCache] = useState(false)
 
   // ─── Data Fetch ──────────────────────────────────────────
   const fetchData = useCallback(async () => {
     setLoading(true)
-    setIsFallback(false)
-    setIsStaleCache(false)
-
-    const cacheKey = `sales_history_${year}_${month}`
-
     try {
-      // ১. Primary API — দুটো endpoint একসাথে
+      // ১. মাসের প্রতিদিনের বিক্রয় সারসংক্ষেপ
       const [salesRes, visitRes] = await Promise.all([
         api.get(`/sales/my-monthly?month=${month}&year=${year}`),
         api.get(`/sales/my-visit-stats?month=${month}&year=${year}`)
       ])
-      const freshData = {
+      setData({
         monthly: salesRes.data.data,
         visits:  visitRes.data.data
-      }
-      setData(freshData)
-      // সফল হলে cache এ সেভ করো
-      await saveCache(cacheKey, freshData)
-
-    } catch {
-      // ২. Primary fail — cache চেক করো
+      })
+    } catch (err) {
+      // fallback: শুধু /sales/my দিয়ে ডেটা বানাই
       try {
-        const cached = await getCache(cacheKey)
-        if (cached) {
-          setData(cached.data)
-          setIsFallback(true)
-          setIsStaleCache(!cached.isToday)
-          return
-        }
-      } catch { /* cache read fail — নিচে fallback চলবে */ }
-
-      // ৩. Cache নেই — /sales/my দিয়ে fallback বানাও
-      setIsFallback(true)
-      try {
-        const from    = `${year}-${String(month).padStart(2, '0')}-01`
+        const from = `${year}-${String(month).padStart(2, '0')}-01`
         const lastDay = new Date(year, month, 0).getDate()
-        const to      = `${year}-${String(month).padStart(2, '0')}-${lastDay}`
-        const res     = await api.get(`/sales/my?from=${from}&to=${to}`)
-        setData({ fallback: res.data.data || [] })
+        const to   = `${year}-${String(month).padStart(2, '0')}-${lastDay}`
+        const res  = await api.get(`/sales/my?from=${from}&to=${to}`)
+        const sales = res.data.data || []
+
+        // visit_summary API থেকে আসলে সেটা ব্যবহার করো
+        let visitsByDate = res.data.visit_summary?.visitsByDate || {}
+        const hasRealVisits = Object.keys(visitsByDate).length > 0
+
+        // visitsByDate empty হলে sales থেকে minimum visit count infer করো
+        if (!hasRealVisits && sales.length > 0) {
+          visitsByDate = inferVisitsFromSales(sales)
+        }
+
+        setData({
+          fallback:       sales,
+          visitsByDate,
+          totalCustomers: res.data.visit_summary?.total_customers || 0,
+          visitsInferred: !hasRealVisits
+        })
       } catch {
-        setData({ fallback: [] })
+        setData({ fallback: [], visitsByDate: {}, totalCustomers: 0, visitsInferred: false })
       }
     } finally {
       setLoading(false)
@@ -372,9 +386,7 @@ export default function SalesHistory() {
   }
 
   // ─── Process fallback data into daily ────────────────────
-  // SalesHistory থেকে visit tracking calculate করা হচ্ছে
-  // প্রতিটি unique customer_id = একটি visit
-  const buildDailyFromFallback = (sales) => {
+  const buildDailyFromFallback = (sales, visitsByDate = {}, totalCustomers = 0) => {
     const map = {}
     sales.forEach(s => {
       const d = s.date || s.created_at?.split('T')[0]
@@ -382,32 +394,15 @@ export default function SalesHistory() {
       if (!map[d]) map[d] = {
         date: d, sale_count: 0, total_amount: 0,
         cash_received: 0, credit_given: 0,
-        total_visits: 0, total_customers: 0,
-        _customer_ids: new Set()          // unique customers track করতে
+        total_visits:    visitsByDate[d]?.total_visits  || 0,
+        total_customers: totalCustomers
       }
       map[d].sale_count++
-      map[d].total_amount  += parseFloat(s.total_amount  || 0)
-      map[d].cash_received += parseFloat(s.cash_received || 0)
-      map[d].credit_given  += parseFloat(s.credit_used   || 0)
-
-      // প্রতিটি sale = কমপক্ষে ১টি visit।
-      // unique customer_id দিয়ে দোকান count করা হচ্ছে।
-      if (s.customer_id) {
-        map[d]._customer_ids.add(String(s.customer_id))
-      } else {
-        // customer_id না থাকলে invoice নম্বর দিয়ে approximate
-        map[d]._customer_ids.add(s.invoice_number || `sale_${map[d].sale_count}`)
-      }
+      map[d].total_amount   += parseFloat(s.total_amount || 0)
+      map[d].cash_received  += parseFloat(s.cash_received || 0)
+      map[d].credit_given   += parseFloat(s.credit_used || 0)
     })
-
-    // Set থেকে real count বের করো, তারপর Set মুছে ফেলো
-    return Object.values(map)
-      .map(({ _customer_ids, ...day }) => ({
-        ...day,
-        total_visits:    _customer_ids.size,  // প্রতিটি unique দোকান = ১ visit
-        total_customers: _customer_ids.size,  // fallback এ visited = total
-      }))
-      .sort((a, b) => b.date.localeCompare(a.date))
+    return Object.values(map).sort((a, b) => b.date.localeCompare(a.date))
   }
 
   // ─── Month navigation ────────────────────────────────────
@@ -424,11 +419,14 @@ export default function SalesHistory() {
   const isCurrent = month === now.getMonth() + 1 && year === now.getFullYear()
 
   // ─── Derived values ──────────────────────────────────────
-  const monthly   = data?.monthly  || {}
-  const visits    = data?.visits   || {}
-  const fallback  = data?.fallback
+  const monthly          = data?.monthly  || {}
+  const visits           = data?.visits   || {}
+  const fallback         = data?.fallback
+  const visitsByDate     = data?.visitsByDate     || {}
+  const fbTotalCustomers = data?.totalCustomers   || 0
+  const visitsInferred   = data?.visitsInferred   || false
   const daily     = fallback
-    ? buildDailyFromFallback(fallback)
+    ? buildDailyFromFallback(fallback, visitsByDate, fbTotalCustomers)
     : (monthly.daily || [])
 
   const totalSales   = fallback
@@ -440,14 +438,18 @@ export default function SalesHistory() {
   const totalCredit  = fallback
     ? fallback.reduce((s, r) => s + parseFloat(r.credit_used || 0), 0)
     : parseFloat(monthly.credit_given || 0)
-
-  // Fallback mode এ daily থেকে visit aggregate করা হচ্ছে
-  const totalVisits = fallback
-    ? daily.reduce((s, d) => s + parseInt(d.total_visits || 0), 0)
+  const totalVisits  = fallback
+    ? Object.values(visitsByDate).reduce((s, v) => s + (v.total_visits || 0), 0)
     : parseInt(visits.total_visits || monthly.total_visits || 0)
   const totalCustomers = fallback
-    ? daily.reduce((s, d) => s + parseInt(d.total_customers || 0), 0)
+    ? fbTotalCustomers
     : parseInt(visits.total_customers || monthly.total_customers || 0)
+  const soldVisits = fallback
+    ? Object.values(visitsByDate).reduce((s, v) => s + (v.sold_visits || 0), 0)
+    : parseInt(visits.sold_visits || 0)
+  const noSellVisits = fallback
+    ? Math.max(0, totalVisits - soldVisits)
+    : parseInt(visits.no_sell_visits || 0)
   const visitRate    = totalCustomers > 0 ? Math.round((totalVisits / totalCustomers) * 100) : 0
   const saleCount    = fallback ? fallback.length : parseInt(monthly.sale_count || 0)
 
@@ -506,30 +508,6 @@ export default function SalesHistory() {
         </button>
       </div>
 
-      {/* ─── Fallback / Stale Cache Warning ─── */}
-      {isFallback && !loading && (
-        <div style={{
-          display: 'flex', alignItems: 'flex-start', gap: 8,
-          background: isStaleCache ? '#fffbeb' : '#fff7ed',
-          border: `1px solid ${isStaleCache ? '#fcd34d' : '#fed7aa'}`,
-          borderRadius: 12, padding: '10px 14px', marginBottom: 14
-        }}>
-          <FiAlertCircle size={15} style={{ color: '#d97706', marginTop: 1, flexShrink: 0 }} />
-          <div>
-            <p style={{ fontSize: 12, fontWeight: 600, color: '#92400e' }}>
-              {isStaleCache
-                ? '⚠️ পুরনো ক্যাশ দেখানো হচ্ছে'
-                : '⚠️ সার্ভার সংযোগ নেই'}
-            </p>
-            <p style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>
-              {isStaleCache
-                ? 'সার্ভার থেকে তথ্য আনা যায়নি। গতকালের ক্যাশ দেখানো হচ্ছে। ভিজিট সংখ্যা আনুমানিক।'
-                : 'সার্ভার থেকে তথ্য আনা যায়নি। বিক্রয় ডেটা থেকে ভিজিট আনুমানিক হিসাব করা হয়েছে।'}
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* ─── Month Navigator ─── */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -571,7 +549,25 @@ export default function SalesHistory() {
           ))}
         </div>
       ) : (
+        
         <>
+          {/* ─── Fallback Mode Banner ─── */}
+          {fallback && (
+            <div style={{
+              background: '#fffbeb', border: '1px solid #fcd34d',
+              borderRadius: 12, padding: '8px 12px', marginBottom: 12,
+              display: 'flex', alignItems: 'center', gap: 8
+            }}>
+              <span style={{ fontSize: 15 }}>⚠️</span>
+              <p style={{ fontSize: 12, color: '#92400e', fontWeight: 500, margin: 0 }}>
+                {visitsInferred
+                  ? 'সীমিত মোড — ভিজিট তথ্য পাওয়া যায়নি, বিক্রয় রেকর্ড থেকে সর্বনিম্ন ভিজিট অনুমান করা হয়েছে।'
+                  : 'সীমিত মোড — মাসিক সারসংক্ষেপ API অনুপলব্ধ। ভিজিট তথ্য সরাসরি লগ থেকে নেওয়া হয়েছে।'
+                }
+              </p>
+            </div>
+          )}
+
           {/* ─── Summary Cards ─── */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
             <StatCard
@@ -629,8 +625,8 @@ export default function SalesHistory() {
             />
             <div style={{ display: 'flex', gap: 14, marginTop: 8 }}>
               {[
-                { l: 'বিক্রয়সহ', v: parseInt(visits.sold_visits || 0), c: '#15803d' },
-                { l: 'বিক্রয়বিহীন', v: parseInt(visits.no_sell_visits || 0), c: '#dc2626' },
+                { l: 'বিক্রয়সহ', v: soldVisits, c: '#15803d' },
+                { l: 'বিক্রয়বিহীন', v: noSellVisits, c: '#dc2626' },
                 { l: 'বাকি', v: Math.max(0, totalCustomers - totalVisits), c: '#94a3b8' },
               ].map(({ l, v, c }) => (
                 <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
