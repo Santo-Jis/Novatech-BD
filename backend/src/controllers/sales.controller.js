@@ -1117,17 +1117,16 @@ const getTeamVisits = async (req, res) => {
         let params     = [fromDate, toDate];
         let paramCount = 2;
 
-        // Manager শুধু নিজের টিমের SR দেখতে পারবেন
-        if (req.teamFilter) {
-            paramCount++;
-            conditions.push(`u.manager_id = $${paramCount}`);
-            params.push(req.teamFilter);
-        }
-
+        // worker_id দিলে সরাসরি সেই worker-এর data আনো — manager filter দরকার নেই
         if (worker_id) {
             paramCount++;
             conditions.push(`v.worker_id = $${paramCount}`);
             params.push(worker_id);
+        } else if (req.teamFilter) {
+            // worker_id না দিলে পুরো টিমের data ফিল্টার করো
+            paramCount++;
+            conditions.push(`u.manager_id = $${paramCount}`);
+            params.push(req.teamFilter);
         }
 
         const result = await query(
