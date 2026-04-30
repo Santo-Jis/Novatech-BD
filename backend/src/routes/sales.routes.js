@@ -15,6 +15,7 @@ const {
     skipOTPWithPhoto,
     getMySales,
     getTeamSales,
+    getTeamVisits,
     getTodaySummary,
     getSaleDetail,
     getMyMonthlySales,
@@ -66,6 +67,14 @@ router.get('/team',
     allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
     checkTeamAccess,
     getTeamSales
+);
+
+// টিমের ভিজিট লগ — no-sell reason, ছবি সহ (Manager/Admin)
+router.get('/team-visits',
+    auth,
+    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm'),
+    checkTeamAccess,
+    getTeamVisits
 );
 
 // SR-এর মাসিক দৈনিক বিক্রয় সারসংক্ষেপ
