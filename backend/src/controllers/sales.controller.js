@@ -952,7 +952,7 @@ const getMyMonthlySales = async (req, res) => {
                 total_customers: totalCustomers,
             })),
             ...visitOnlyRows,
-        ].sort((a, b) => b.date.localeCompare(a.date));
+        ].sort((a, b) => String(b.date).localeCompare(String(a.date)));
 
         // মাসিক মোট
         const totalResult = await query(
