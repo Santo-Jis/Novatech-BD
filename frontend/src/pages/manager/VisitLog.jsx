@@ -238,14 +238,6 @@ export default function VisitLog() {
                       </div>
                     )}
 
-                    {/* ঠিকানা */}
-                    {v.address && (
-                      <div className="flex items-start gap-2 text-xs text-gray-500">
-                        <FiMapPin size={11} className="flex-shrink-0 mt-0.5" />
-                        <span>{v.address}</span>
-                      </div>
-                    )}
-
                     {/* লোকেশন status + Maps link */}
                     <div className="flex items-center gap-2 flex-wrap">
                       {v.location_matched === true && (
