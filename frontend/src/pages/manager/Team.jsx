@@ -9,11 +9,10 @@ import toast from 'react-hot-toast'
 import {
   FiSearch, FiUser, FiPhone, FiDollarSign, FiDownload,
   FiTarget, FiTrendingUp, FiUsers, FiCheck, FiEdit2,
-  FiMapPin, FiEye, FiX, FiCalendar, FiCheckCircle, FiXCircle
+  FiMapPin
 } from 'react-icons/fi'
 
 const fmt  = n => Number(n || 0).toLocaleString('bn-BD')
-const WEEKDAYS_BN = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহঃ', 'শুক্র', 'শনি']
 
 export default function ManagerTeam() {
   const navigate = useNavigate()
@@ -26,14 +25,6 @@ export default function ManagerTeam() {
   const [targetModal, setTargetModal] = useState(null)
   const [targetVal,   setTargetVal]   = useState('')
   const [saving,      setSaving]      = useState(false)
-
-  // Visit log modal
-  const [visitModal,   setVisitModal]   = useState(null)
-  const [visitDateFrom, setVisitDateFrom] = useState('')
-  const [visitDateTo,   setVisitDateTo]   = useState('')
-  const [visits,       setVisits]       = useState([])
-  const [visitLoading, setVisitLoading] = useState(false)
-  const [photoModal,   setPhotoModal]   = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -76,36 +67,6 @@ export default function ManagerTeam() {
     } finally {
       setSaving(false)
     }
-  }
-
-  const fetchVisits = async (workerId, from, to) => {
-    setVisitLoading(true)
-    setVisits([])
-    try {
-      const res = await api.get(`/sales/team-visits?worker_id=${workerId}&from=${from}&to=${to}`)
-      setVisits(res.data.data || [])
-    } catch {
-      toast.error('ভিজিট তথ্য আনতে সমস্যা।')
-    } finally {
-      setVisitLoading(false)
-    }
-  }
-
-  const openVisitLog = (sr) => {
-    const today = new Date()
-    const to    = today.toISOString().split('T')[0]
-    // default: গত ৭ দিন
-    const from  = new Date(today.setDate(today.getDate() - 6)).toISOString().split('T')[0]
-    setVisitModal(sr)
-    setVisitDateFrom(from)
-    setVisitDateTo(to)
-    fetchVisits(sr.id, from, to)
-  }
-
-  const handleDateChange = (from, to) => {
-    setVisitDateFrom(from)
-    setVisitDateTo(to)
-    if (from && to) fetchVisits(visitModal.id, from, to)
   }
 
   const downloadPDF = async (id, code) => {
@@ -211,7 +172,7 @@ export default function ManagerTeam() {
               onTarget={openTarget}
               onDownload={downloadPDF}
               onDetails={() => navigate(`/admin/employees/${worker.id}`)}
-              onVisitLog={openVisitLog}
+              onVisitLog={() => navigate(`/manager/team/${worker.id}/visits?name=${encodeURIComponent(worker.name_bn)}`)}
             />
           ))}
         </div>
@@ -258,158 +219,6 @@ export default function ManagerTeam() {
         </div>
       </Modal>
 
-      {/* ════ MODAL: Visit Log ════ */}
-      <Modal
-        isOpen={!!visitModal}
-        onClose={() => { setVisitModal(null); setVisits([]) }}
-        title={`ভিজিট লগ — ${visitModal?.name_bn}`}
-        size="lg"
-      >
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="flex items-center gap-1 flex-1">
-                <FiCalendar className="text-gray-400 flex-shrink-0" size={13} />
-                <input
-                  type="date"
-                  value={visitDateFrom}
-                  max={visitDateTo}
-                  onChange={e => handleDateChange(e.target.value, visitDateTo)}
-                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary flex-1 min-w-0"
-                />
-                <span className="text-gray-400 text-xs">—</span>
-                <input
-                  type="date"
-                  value={visitDateTo}
-                  min={visitDateFrom}
-                  max={new Date().toISOString().split('T')[0]}
-                  onChange={e => handleDateChange(visitDateFrom, e.target.value)}
-                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary flex-1 min-w-0"
-                />
-              </div>
-            </div>
-            {/* Quick range buttons */}
-            <div className="flex gap-2">
-              {[
-                { label: 'আজ', days: 0 },
-                { label: '৭ দিন', days: 6 },
-                { label: '১৫ দিন', days: 14 },
-                { label: 'এই মাস', days: 29 },
-              ].map(({ label, days }) => (
-                <button
-                  key={label}
-                  onClick={() => {
-                    const today = new Date()
-                    const to  = today.toISOString().split('T')[0]
-                    const from = new Date(new Date().setDate(new Date().getDate() - days)).toISOString().split('T')[0]
-                    handleDateChange(from, to)
-                  }}
-                  className="text-xs px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-colors"
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <p className="text-xs text-gray-400">
-              {visitLoading ? 'লোড হচ্ছে...' : `${visits.length}টি ভিজিট পাওয়া গেছে`}
-            </p>
-          </div>
-
-          {visitLoading ? (
-            <div className="space-y-2">
-              {[...Array(3)].map((_, i) => (
-                <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />
-              ))}
-            </div>
-          ) : visits.length === 0 ? (
-            <div className="text-center py-10 text-gray-400">
-              <FiMapPin className="text-3xl mx-auto mb-2 opacity-30" />
-              <p className="text-sm">এই তারিখে কোনো ভিজিট নেই</p>
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-              {visits.map((v, i) => {
-                const time = new Date(v.created_at)
-                return (
-                  <div key={i} className={`rounded-xl border p-3 ${v.will_sell ? 'border-green-100 bg-green-50' : 'border-red-100 bg-red-50'}`}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {v.will_sell
-                            ? <FiCheckCircle className="text-green-500 flex-shrink-0" size={14} />
-                            : <FiXCircle className="text-red-400 flex-shrink-0" size={14} />
-                          }
-                          <p className="font-semibold text-sm text-gray-800 truncate">{v.shop_name}</p>
-                          {v.area && <span className="text-xs text-gray-400">{v.area}</span>}
-                        </div>
-                        <p className="text-xs text-gray-400 mt-0.5 ml-5">
-                          <span className="font-medium text-gray-500">{new Date(v.visit_date).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' })}</span>
-                          {' · '}
-                          {time.toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })}
-                          {v.location_matched === false && (
-                            <span className="ml-2 text-orange-500 font-medium">
-                              ⚠️ লোকেশন মেলেনি ({v.location_distance}মি)
-                            </span>
-                          )}
-                        </p>
-                        {!v.will_sell && v.no_sell_reason && (
-                          <div className="mt-1.5 ml-5 bg-white rounded-lg px-2 py-1 border border-red-100">
-                            <p className="text-xs text-red-600">
-                              <span className="font-semibold">কারণ:</span> {v.no_sell_reason}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                      {v.closed_shop_photo && (
-                        <button
-                          onClick={() => setPhotoModal(v.closed_shop_photo)}
-                          className="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden border border-red-200 hover:opacity-80 transition-opacity"
-                        >
-                          <img src={v.closed_shop_photo} alt="দোকান" className="w-full h-full object-cover" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {visits.length > 0 && (
-            <div className="flex gap-4 pt-2 border-t border-gray-100 text-xs text-gray-500">
-              <span className="flex items-center gap-1">
-                <FiCheckCircle className="text-green-500" />
-                বিক্রয়: {visits.filter(v => v.will_sell).length}
-              </span>
-              <span className="flex items-center gap-1">
-                <FiXCircle className="text-red-400" />
-                বিক্রয়বিহীন: {visits.filter(v => !v.will_sell).length}
-              </span>
-            </div>
-          )}
-        </div>
-      </Modal>
-
-      {/* ════ MODAL: Full Photo ════ */}
-      {photoModal && (
-        <div
-          className="fixed inset-0 bg-black/80 z-[200] flex items-center justify-center p-4"
-          onClick={() => setPhotoModal(null)}
-        >
-          <button
-            className="absolute top-4 right-4 w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white hover:bg-white/20"
-            onClick={() => setPhotoModal(null)}
-          >
-            <FiX />
-          </button>
-          <img
-            src={photoModal}
-            alt="বন্ধ দোকান"
-            className="max-w-full max-h-[85vh] rounded-xl object-contain"
-            onClick={e => e.stopPropagation()}
-          />
-        </div>
-      )}
     </div>
   )
 }
