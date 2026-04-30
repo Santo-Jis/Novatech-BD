@@ -13,8 +13,10 @@ export default function ManagerSettlements() {
   const [loading,     setLoading]     = useState(true)
   const [modal,       setModal]       = useState(null)
   const [detail,      setDetail]      = useState(null)
-  const [shortageAmt, setShortageAmt] = useState('')
-  const [saving,      setSaving]      = useState(false)
+  const [shortageAmt,      setShortageAmt]      = useState('')
+  const [overrideUnlocked, setOverrideUnlocked] = useState(false)
+  const [overrideReason,   setOverrideReason]   = useState('')
+  const [saving,           setSaving]           = useState(false)
 
   const fetchSettlements = async () => {
     try {
@@ -50,19 +52,32 @@ export default function ManagerSettlements() {
   }
 
   const dispute = async (id) => {
-    if (!shortageAmt || parseFloat(shortageAmt) <= 0) {
-      toast.error('ঘাটতির পরিমাণ দিন।')
+    const systemValue  = parseFloat(detail?.shortage_qty_value || 0)
+    const enteredValue = parseFloat(shortageAmt || 0)
+
+    if (enteredValue > systemValue) {
+      toast.error(`সিস্টেম গণনার চেয়ে বেশি দেওয়া যাবে না। সর্বোচ্চ: ৳${systemValue.toLocaleString()}`)
+      return
+    }
+    if (overrideUnlocked && enteredValue !== systemValue && !overrideReason.trim()) {
+      toast.error('পরিমাণ পরিবর্তনের কারণ লিখুন।')
       return
     }
     setSaving(true)
     try {
-      const res = await api.put(`/settlements/${id}/dispute`, {
-        shortage_value: parseFloat(shortageAmt),
-        note: 'Manager কর্তৃক ঘাটতি চিহ্নিত।'
-      })
+      const payload = {
+        shortage_value: enteredValue,
+        note: 'Manager কর্তৃক ঘাটতি চিহ্নিত।',
+        ...(overrideUnlocked && enteredValue !== systemValue && {
+          override_reason: overrideReason.trim()
+        })
+      }
+      const res = await api.put(`/settlements/${id}/dispute`, payload)
       toast.success(res.data?.message || 'ঘাটতি চিহ্নিত। SR এর বকেয়ায় যোগ হয়েছে।')
       setModal(null)
       setShortageAmt('')
+      setOverrideUnlocked(false)
+      setOverrideReason('')
       fetchSettlements()
     } catch { toast.error('সমস্যা হয়েছে।') }
     finally { setSaving(false) }
@@ -142,7 +157,13 @@ export default function ManagerSettlements() {
                     className="flex items-center gap-1 px-3 py-2 bg-secondary text-white rounded-xl text-sm font-semibold hover:bg-secondary-dark">
                     <FiCheck /> অনুমোদন
                   </button>
-                  <button onClick={() => { setDetail(s); setModal('dispute') }}
+                  <button onClick={() => {
+                      setDetail(s)
+                      setShortageAmt(parseFloat(s.shortage_qty_value || 0).toString())
+                      setOverrideUnlocked(false)
+                      setOverrideReason('')
+                      setModal('dispute')
+                    }}
                     className="flex items-center gap-1 px-3 py-2 bg-red-50 text-red-600 rounded-xl text-sm font-semibold hover:bg-red-100">
                     <FiAlertTriangle /> ঘাটতি
                   </button>
@@ -220,37 +241,121 @@ export default function ManagerSettlements() {
       </Modal>
 
       {/* Dispute Modal */}
-      <Modal isOpen={modal === 'dispute'} onClose={() => { setModal(null); setShortageAmt('') }}
+      <Modal isOpen={modal === 'dispute'} onClose={() => { setModal(null); setShortageAmt(''); setOverrideUnlocked(false); setOverrideReason('') }}
         title="ঘাটতি চিহ্নিত করুন" size="sm">
-        <div className="space-y-4">
-          <p className="text-sm text-gray-600">
-            ঘাটতির পরিমাণ নিশ্চিত করুন। পণ্য ঘাটতি + নগদ ঘাটতি উভয়ই SR এর বকেয়ায় যোগ হবে।
-          </p>
-          {cashShortfall(detail) > 0 && (
-            <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-xs text-orange-700">
-              <p className="font-semibold mb-1">নগদ ঘাটতি (স্বয়ংক্রিয়):</p>
-              <p>৳{Math.round(cashShortfall(detail)).toLocaleString()} — এটি আলাদাভাবে বকেয়ায় যাবে।</p>
+        {(() => {
+          const systemValue  = parseFloat(detail?.shortage_qty_value || 0)
+          const enteredValue = parseFloat(shortageAmt || 0)
+          const isModified   = overrideUnlocked && enteredValue !== systemValue
+
+          return (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                পণ্য ঘাটতি + নগদ ঘাটতি উভয়ই SR এর বকেয়ায় যোগ হবে।
+              </p>
+
+              {cashShortfall(detail) > 0 && (
+                <div className="bg-orange-50 border border-orange-100 rounded-xl p-3 text-xs text-orange-700">
+                  <p className="font-semibold mb-1">নগদ ঘাটতি (স্বয়ংক্রিয়):</p>
+                  <p>৳{Math.round(cashShortfall(detail)).toLocaleString()} — এটি আলাদাভাবে বকেয়ায় যাবে।</p>
+                </div>
+              )}
+
+              {/* Locked system value */}
+              <div className="rounded-xl border border-gray-200 overflow-hidden">
+                <div className="bg-gray-50 px-3 py-2 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    সিস্টেম গণনা (পণ্য ঘাটতি)
+                  </span>
+                  <span className="text-xs bg-blue-100 text-blue-700 font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <FiLock size={10} /> স্বয়ংক্রিয়
+                  </span>
+                </div>
+                <div className="px-3 py-3 flex items-center justify-between">
+                  <span className="text-xl font-bold text-red-600">
+                    ৳{systemValue.toLocaleString()}
+                  </span>
+                  {!overrideUnlocked ? (
+                    <button
+                      onClick={() => setOverrideUnlocked(true)}
+                      className="text-xs text-gray-400 hover:text-amber-600 underline underline-offset-2 transition-colors"
+                    >
+                      পরিমাণ পরিবর্তন করবেন?
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setOverrideUnlocked(false)
+                        setShortageAmt(systemValue.toString())
+                        setOverrideReason('')
+                      }}
+                      className="text-xs text-gray-400 hover:text-gray-600 underline underline-offset-2"
+                    >
+                      পূর্বাবস্থায় ফিরুন
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Override section */}
+              {overrideUnlocked && (
+                <div className="space-y-3 border border-amber-200 bg-amber-50 rounded-xl p-3">
+                  <div className="flex items-center gap-2">
+                    <FiAlertTriangle className="text-amber-500 flex-shrink-0" size={14} />
+                    <p className="text-xs text-amber-700 font-semibold">
+                      পরিবর্তন করলে Admin audit log-এ রেকর্ড হবে।
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 block mb-1">
+                      সংশোধিত পরিমাণ (৳) — সর্বোচ্চ ৳{systemValue.toLocaleString()}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max={systemValue}
+                      value={shortageAmt}
+                      onChange={e => setShortageAmt(e.target.value)}
+                      className="w-full border border-amber-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-500 bg-white"
+                    />
+                    {enteredValue > systemValue && (
+                      <p className="text-xs text-red-500 mt-1">
+                        সিস্টেম গণনার চেয়ে বেশি দেওয়া যাবে না।
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 block mb-1">
+                      পরিবর্তনের কারণ <span className="text-red-500">*</span>
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={overrideReason}
+                      onChange={e => setOverrideReason(e.target.value)}
+                      placeholder="কেন সিস্টেম মান থেকে কম দেওয়া হচ্ছে..."
+                      className="w-full border border-amber-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-500 bg-white resize-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3">
+                <Button variant="ghost" onClick={() => { setModal(null); setShortageAmt(''); setOverrideUnlocked(false); setOverrideReason('') }}>
+                  বাতিল
+                </Button>
+                <Button
+                  variant="danger"
+                  onClick={() => dispute(detail?.id)}
+                  loading={saving}
+                  icon={<FiAlertTriangle />}
+                  disabled={overrideUnlocked && isModified && !overrideReason.trim()}
+                >
+                  ঘাটতি নিশ্চিত করুন
+                </Button>
+              </div>
             </div>
-          )}
-          <div className="bg-amber-50 rounded-xl p-3 text-sm">
-            <p className="text-amber-700 font-semibold">
-              পণ্য ঘাটতি (সিস্টেম): ৳{parseFloat(detail?.shortage_qty_value || 0).toLocaleString()}
-            </p>
-          </div>
-          <Input
-            label="চূড়ান্ত পণ্য ঘাটতির পরিমাণ (৳)"
-            type="number"
-            value={shortageAmt}
-            onChange={e => setShortageAmt(e.target.value)}
-            placeholder={detail?.shortage_qty_value || '0'}
-          />
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => { setModal(null); setShortageAmt('') }}>বাতিল</Button>
-            <Button variant="danger" onClick={() => dispute(detail?.id)} loading={saving} icon={<FiAlertTriangle />}>
-              ঘাটতি নিশ্চিত করুন
-            </Button>
-          </div>
-        </div>
+          )
+        })()}
       </Modal>
     </div>
   )
