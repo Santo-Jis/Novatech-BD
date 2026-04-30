@@ -279,7 +279,7 @@ function SRCard({ worker, onTarget, onDownload, onDetails, onVisitLog }) {
           বিস্তারিত
         </button>
         <button
-          onClick={() => onVisitLog(worker)}
+          onClick={() => onVisitLog()}
           className="flex-1 py-2 text-sm border border-blue-200 rounded-xl text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-1"
         >
           <FiMapPin className="text-xs" /> ভিজিট
