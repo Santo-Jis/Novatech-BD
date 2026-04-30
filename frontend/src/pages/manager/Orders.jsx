@@ -5,14 +5,26 @@ import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import toast from 'react-hot-toast'
-import { FiCheck, FiX, FiPackage, FiEdit } from 'react-icons/fi'
+import { FiCheck, FiX, FiPackage, FiEdit, FiAlertCircle } from 'react-icons/fi'
+
+const REJECT_REASONS = [
+  'স্টক অপ্রতুল',
+  'অর্ডার পরিমাণ অতিরিক্ত',
+  'পণ্যের দাম পরিবর্তিত',
+  'ডুপ্লিকেট অর্ডার',
+  'অন্যান্য',
+]
 
 export default function ManagerOrders() {
-  const [orders,   setOrders]   = useState([])
-  const [loading,  setLoading]  = useState(true)
-  const [modal,    setModal]    = useState(null)
-  const [editItems, setEditItems] = useState([])
-  const [approving, setApproving] = useState(false)
+  const [orders,      setOrders]      = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [modal,       setModal]       = useState(null)
+  const [editItems,   setEditItems]   = useState([])
+  const [approving,   setApproving]   = useState(false)
+  const [rejectModal, setRejectModal] = useState(null)   // { id, orderId }
+  const [rejectReason, setRejectReason] = useState('')
+  const [customReason, setCustomReason] = useState('')
+  const [rejecting,   setRejecting]   = useState(false)
 
   const fetchOrders = async () => {
     try {
@@ -40,12 +52,28 @@ export default function ManagerOrders() {
     finally { setApproving(false) }
   }
 
-  const reject = async (id) => {
+  const openReject = (order) => {
+    setRejectModal(order)
+    setRejectReason('')
+    setCustomReason('')
+  }
+
+  const confirmReject = async () => {
+    const finalReason = rejectReason === 'অন্যান্য'
+      ? customReason.trim()
+      : rejectReason
+    if (!finalReason) {
+      toast.error('বাতিলের কারণ দিন।')
+      return
+    }
+    setRejecting(true)
     try {
-      await api.put(`/orders/${id}/reject`, { reason: 'Manager কর্তৃক বাতিল' })
+      await api.put(`/orders/${rejectModal.id}/reject`, { reason: finalReason })
       toast.success('অর্ডার বাতিল করা হয়েছে।')
+      setRejectModal(null)
       fetchOrders()
     } catch { toast.error('সমস্যা হয়েছে।') }
+    finally { setRejecting(false) }
   }
 
   const totalApproved = editItems.reduce((sum, i) => sum + (i.price * i.approved_qty), 0)
@@ -107,7 +135,7 @@ export default function ManagerOrders() {
                     className="flex items-center gap-1 px-4 py-2 bg-secondary text-white rounded-xl text-sm font-semibold hover:bg-secondary-dark">
                     <FiEdit className="text-xs" /> পর্যালোচনা
                   </button>
-                  <button onClick={() => reject(order.id)}
+                  <button onClick={() => openReject(order)}
                     className="flex items-center gap-1 px-4 py-2 bg-red-50 text-red-600 rounded-xl text-sm font-semibold hover:bg-red-100">
                     <FiX className="text-xs" /> বাতিল
                   </button>
@@ -172,6 +200,65 @@ export default function ManagerOrders() {
               <span>অনুমোদিত মোট:</span>
               <span className="text-secondary">৳{totalApproved.toLocaleString()}</span>
             </div>
+          </div>
+        )}
+      </Modal>
+      {/* Reject Reason Modal */}
+      <Modal
+        isOpen={!!rejectModal}
+        onClose={() => setRejectModal(null)}
+        title="অর্ডার বাতিলের কারণ"
+        size="sm"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setRejectModal(null)}>বাতিল</Button>
+            <Button
+              onClick={confirmReject}
+              loading={rejecting}
+              icon={<FiX />}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              নিশ্চিত করুন
+            </Button>
+          </>
+        }
+      >
+        {rejectModal && (
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 bg-red-50 rounded-xl p-3">
+              <FiAlertCircle className="text-red-500 flex-shrink-0" />
+              <p className="text-sm text-red-700 font-medium">
+                <span className="font-bold">{rejectModal.worker_name}</span>-এর অর্ডার বাতিল করছেন।
+                SR-কে কারণ জানানো হবে।
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {REJECT_REASONS.map(reason => (
+                <button
+                  key={reason}
+                  onClick={() => setRejectReason(reason)}
+                  className={`w-full text-left px-4 py-2.5 rounded-xl text-sm font-medium border transition-all ${
+                    rejectReason === reason
+                      ? 'border-red-400 bg-red-50 text-red-700'
+                      : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100'
+                  }`}
+                >
+                  {rejectReason === reason ? '● ' : '○ '}{reason}
+                </button>
+              ))}
+            </div>
+
+            {rejectReason === 'অন্যান্য' && (
+              <textarea
+                autoFocus
+                rows={3}
+                placeholder="কারণ লিখুন..."
+                value={customReason}
+                onChange={e => setCustomReason(e.target.value)}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-red-400 resize-none"
+              />
+            )}
           </div>
         )}
       </Modal>
