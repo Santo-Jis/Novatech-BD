@@ -100,6 +100,8 @@ export default function ManagerTeam() {
     setVisitDate(date)
     fetchVisits(visitModal.id, date)
   }
+
+  const downloadPDF = async (id, code) => {
     try {
       const res = await api.get(`/reports/employee/${id}/pdf`, { responseType: 'blob' })
       const url = URL.createObjectURL(res.data)
