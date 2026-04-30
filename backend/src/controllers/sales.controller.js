@@ -1144,10 +1144,11 @@ const getTeamVisits = async (req, res) => {
                 u.employee_code,
                 c.shop_name,
                 c.owner_name,
-                c.area
+                r.name      AS area
              FROM visits v
              JOIN users     u ON v.worker_id   = u.id
              JOIN customers c ON v.customer_id = c.id
+             LEFT JOIN routes r ON c.route_id  = r.id
              WHERE ${conditions.join(' AND ')}
              ORDER BY v.created_at DESC`,
             params
