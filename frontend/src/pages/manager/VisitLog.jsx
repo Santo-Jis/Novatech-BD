@@ -43,6 +43,8 @@ export default function VisitLog() {
     try {
       const res = await api.get(`/sales/team-visits?worker_id=${workerId}&from=${from}&to=${to}`)
       setVisits(res.data.data || [])
+      // debug: closed_shop_photo values
+      console.log('📸 Photos:', res.data.data?.map(v => ({ shop: v.shop_name, photo: v.closed_shop_photo })))
     } catch {
       toast.error('ভিজিট তথ্য আনতে সমস্যা।')
     } finally {
@@ -205,18 +207,28 @@ export default function VisitLog() {
                       </div>
                     </div>
                     {/* বন্ধ দোকানের ছবি */}
-                    {v.closed_shop_photo ? (
-                      <button
-                        onClick={() => setPhotoModal(v.closed_shop_photo)}
-                        className="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 border-red-200 hover:opacity-80 transition-opacity"
-                      >
-                        <img src={v.closed_shop_photo} alt="দোকান" className="w-full h-full object-cover" />
-                      </button>
-                    ) : !v.will_sell ? (
-                      <div className="flex-shrink-0 w-14 h-14 rounded-lg border-2 border-dashed border-red-200 bg-red-50 flex items-center justify-center">
-                        <span className="text-xs text-red-300 text-center leading-tight">ছবি নেই</span>
-                      </div>
-                    ) : null}
+                    {v.closed_shop_photo
+                      ? (
+                        <button
+                          onClick={() => setPhotoModal(v.closed_shop_photo)}
+                          className="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 border-red-200 hover:opacity-80 transition-opacity"
+                        >
+                          <img
+                            src={v.closed_shop_photo}
+                            alt="দোকান"
+                            className="w-full h-full object-cover"
+                            onError={e => { e.target.style.display='none'; e.target.parentElement.innerHTML='<span style="font-size:10px;color:#fca5a5;padding:4px;text-align:center">লোড হয়নি</span>' }}
+                          />
+                        </button>
+                      )
+                      : !v.will_sell
+                        ? (
+                          <div className="flex-shrink-0 w-14 h-14 rounded-lg border-2 border-dashed border-red-200 bg-red-50 flex items-center justify-center">
+                            <span className="text-xs text-red-300 text-center leading-tight px-1">ছবি নেই</span>
+                          </div>
+                        )
+                        : null
+                    }
                   </div>
 
                   {/* Card Body */}
