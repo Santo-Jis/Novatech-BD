@@ -34,6 +34,7 @@ import SRApplicationForm from './pages/SRApplicationForm'
 // Manager Pages
 import ManagerDashboard   from './pages/manager/Dashboard'
 import ManagerTeam        from './pages/manager/Team'
+import VisitLog           from './pages/manager/VisitLog'
 import ManagerOrders      from './pages/manager/Orders'
 import ManagerSettlements from './pages/manager/Settlements'
 import ManagerAttendance  from './pages/manager/Attendance'
@@ -170,7 +171,8 @@ function AppWithPermissions() {
       }>
         <Route index               element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard"    element={<ManagerDashboard />} />
-        <Route path="team"         element={<ManagerTeam />} />
+        <Route path="team"                        element={<ManagerTeam />} />
+        <Route path="team/:workerId/visits"       element={<VisitLog />} />
         <Route path="orders"       element={<ManagerOrders />} />
         <Route path="settlements"  element={<ManagerSettlements />} />
         <Route path="attendance"   element={<ManagerAttendance />} />
