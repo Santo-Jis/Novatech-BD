@@ -28,11 +28,12 @@ export default function ManagerTeam() {
   const [saving,      setSaving]      = useState(false)
 
   // Visit log modal
-  const [visitModal,   setVisitModal]   = useState(null)  // sr object
-  const [visitDate,    setVisitDate]    = useState(() => new Date().toISOString().split('T')[0])
+  const [visitModal,   setVisitModal]   = useState(null)
+  const [visitDateFrom, setVisitDateFrom] = useState('')
+  const [visitDateTo,   setVisitDateTo]   = useState('')
   const [visits,       setVisits]       = useState([])
   const [visitLoading, setVisitLoading] = useState(false)
-  const [photoModal,   setPhotoModal]   = useState(null)  // image url
+  const [photoModal,   setPhotoModal]   = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -77,11 +78,11 @@ export default function ManagerTeam() {
     }
   }
 
-  const fetchVisits = async (workerId, date) => {
+  const fetchVisits = async (workerId, from, to) => {
     setVisitLoading(true)
     setVisits([])
     try {
-      const res = await api.get(`/sales/team-visits?worker_id=${workerId}&date=${date}`)
+      const res = await api.get(`/sales/team-visits?worker_id=${workerId}&from=${from}&to=${to}`)
       setVisits(res.data.data || [])
     } catch {
       toast.error('ভিজিট তথ্য আনতে সমস্যা।')
@@ -91,14 +92,20 @@ export default function ManagerTeam() {
   }
 
   const openVisitLog = (sr) => {
+    const today = new Date()
+    const to    = today.toISOString().split('T')[0]
+    // default: গত ৭ দিন
+    const from  = new Date(today.setDate(today.getDate() - 6)).toISOString().split('T')[0]
     setVisitModal(sr)
-    setVisitDate(new Date().toISOString().split('T')[0])
-    fetchVisits(sr.id, new Date().toISOString().split('T')[0])
+    setVisitDateFrom(from)
+    setVisitDateTo(to)
+    fetchVisits(sr.id, from, to)
   }
 
-  const handleDateChange = (date) => {
-    setVisitDate(date)
-    fetchVisits(visitModal.id, date)
+  const handleDateChange = (from, to) => {
+    setVisitDateFrom(from)
+    setVisitDateTo(to)
+    if (from && to) fetchVisits(visitModal.id, from, to)
   }
 
   const downloadPDF = async (id, code) => {
@@ -259,18 +266,53 @@ export default function ManagerTeam() {
         size="lg"
       >
         <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <FiCalendar className="text-gray-400 flex-shrink-0" />
-            <input
-              type="date"
-              value={visitDate}
-              max={new Date().toISOString().split('T')[0]}
-              onChange={e => handleDateChange(e.target.value)}
-              className="border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-primary"
-            />
-            <span className="text-xs text-gray-400">
-              {visitLoading ? 'লোড হচ্ছে...' : `${visits.length}টি ভিজিট`}
-            </span>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1 flex-1">
+                <FiCalendar className="text-gray-400 flex-shrink-0" size={13} />
+                <input
+                  type="date"
+                  value={visitDateFrom}
+                  max={visitDateTo}
+                  onChange={e => handleDateChange(e.target.value, visitDateTo)}
+                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary flex-1 min-w-0"
+                />
+                <span className="text-gray-400 text-xs">—</span>
+                <input
+                  type="date"
+                  value={visitDateTo}
+                  min={visitDateFrom}
+                  max={new Date().toISOString().split('T')[0]}
+                  onChange={e => handleDateChange(visitDateFrom, e.target.value)}
+                  className="border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-primary flex-1 min-w-0"
+                />
+              </div>
+            </div>
+            {/* Quick range buttons */}
+            <div className="flex gap-2">
+              {[
+                { label: 'আজ', days: 0 },
+                { label: '৭ দিন', days: 6 },
+                { label: '১৫ দিন', days: 14 },
+                { label: 'এই মাস', days: 29 },
+              ].map(({ label, days }) => (
+                <button
+                  key={label}
+                  onClick={() => {
+                    const today = new Date()
+                    const to  = today.toISOString().split('T')[0]
+                    const from = new Date(new Date().setDate(new Date().getDate() - days)).toISOString().split('T')[0]
+                    handleDateChange(from, to)
+                  }}
+                  className="text-xs px-2 py-1 rounded-lg border border-gray-200 text-gray-500 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 transition-colors"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400">
+              {visitLoading ? 'লোড হচ্ছে...' : `${visits.length}টি ভিজিট পাওয়া গেছে`}
+            </p>
           </div>
 
           {visitLoading ? (
@@ -301,6 +343,8 @@ export default function ManagerTeam() {
                           {v.area && <span className="text-xs text-gray-400">{v.area}</span>}
                         </div>
                         <p className="text-xs text-gray-400 mt-0.5 ml-5">
+                          <span className="font-medium text-gray-500">{new Date(v.visit_date).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' })}</span>
+                          {' · '}
                           {time.toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })}
                           {v.location_matched === false && (
                             <span className="ml-2 text-orange-500 font-medium">
