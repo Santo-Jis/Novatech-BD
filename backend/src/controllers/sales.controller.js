@@ -1145,7 +1145,6 @@ const getTeamVisits = async (req, res) => {
                 u.employee_code,
                 c.shop_name,
                 c.owner_name,
-                c.address,
                 r.name           AS route_name
              FROM visits v
              JOIN users     u ON v.worker_id   = u.id
