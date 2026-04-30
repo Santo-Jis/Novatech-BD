@@ -205,14 +205,18 @@ export default function VisitLog() {
                       </div>
                     </div>
                     {/* বন্ধ দোকানের ছবি */}
-                    {v.closed_shop_photo && (
+                    {v.closed_shop_photo ? (
                       <button
                         onClick={() => setPhotoModal(v.closed_shop_photo)}
                         className="flex-shrink-0 w-14 h-14 rounded-lg overflow-hidden border-2 border-red-200 hover:opacity-80 transition-opacity"
                       >
                         <img src={v.closed_shop_photo} alt="দোকান" className="w-full h-full object-cover" />
                       </button>
-                    )}
+                    ) : !v.will_sell ? (
+                      <div className="flex-shrink-0 w-14 h-14 rounded-lg border-2 border-dashed border-red-200 bg-red-50 flex items-center justify-center">
+                        <span className="text-xs text-red-300 text-center leading-tight">ছবি নেই</span>
+                      </div>
+                    ) : null}
                   </div>
 
                   {/* Card Body */}
@@ -229,6 +233,20 @@ export default function VisitLog() {
                         {time.toLocaleTimeString('bn-BD', { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
+
+                    {/* phone / email */}
+                    {(v.whatsapp || v.sms_phone) && (
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <FiPhone size={11} className="flex-shrink-0" />
+                        <span>{v.whatsapp || v.sms_phone}</span>
+                      </div>
+                    )}
+                    {v.email && (
+                      <div className="flex items-center gap-2 text-xs text-gray-500">
+                        <FiMail size={11} className="flex-shrink-0" />
+                        <span>{v.email}</span>
+                      </div>
+                    )}
 
                     {/* Route */}
                     {v.route_name && (
