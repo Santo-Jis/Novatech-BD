@@ -1139,11 +1139,14 @@ const getTeamVisits = async (req, res) => {
                 v.closed_shop_photo,
                 v.location_matched,
                 v.location_distance,
-                u.name_bn   AS worker_name,
+                ST_X(v.worker_location::geometry) AS worker_lng,
+                ST_Y(v.worker_location::geometry) AS worker_lat,
+                u.name_bn        AS worker_name,
                 u.employee_code,
                 c.shop_name,
                 c.owner_name,
-                r.name      AS area
+                c.address,
+                r.name           AS route_name
              FROM visits v
              JOIN users     u ON v.worker_id   = u.id
              JOIN customers c ON v.customer_id = c.id
