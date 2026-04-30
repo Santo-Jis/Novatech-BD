@@ -1106,6 +1106,61 @@ const getVisitStatus = async (req, res) => {
     }
 };
 
+const getTeamVisits = async (req, res) => {
+    try {
+        const { worker_id, date, from, to } = req.query;
+        const today    = new Date().toISOString().split('T')[0];
+        const fromDate = from || date || today;
+        const toDate   = to   || date || today;
+
+        let conditions = ['v.visit_date BETWEEN $1 AND $2'];
+        let params     = [fromDate, toDate];
+        let paramCount = 2;
+
+        // Manager শুধু নিজের টিমের SR দেখতে পারবেন
+        if (req.teamFilter) {
+            paramCount++;
+            conditions.push(`u.manager_id = $${paramCount}`);
+            params.push(req.teamFilter);
+        }
+
+        if (worker_id) {
+            paramCount++;
+            conditions.push(`v.worker_id = $${paramCount}`);
+            params.push(worker_id);
+        }
+
+        const result = await query(
+            `SELECT
+                v.id,
+                v.visit_date,
+                v.created_at,
+                v.will_sell,
+                v.no_sell_reason,
+                v.closed_shop_photo,
+                v.location_matched,
+                v.location_distance,
+                u.name_bn   AS worker_name,
+                u.employee_code,
+                c.shop_name,
+                c.owner_name,
+                c.area
+             FROM visits v
+             JOIN users     u ON v.worker_id   = u.id
+             JOIN customers c ON v.customer_id = c.id
+             WHERE ${conditions.join(' AND ')}
+             ORDER BY v.created_at DESC`,
+            params
+        );
+
+        return res.status(200).json({ success: true, data: result.rows });
+
+    } catch (error) {
+        console.error('❌ Team Visits Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     createVisit,
     createSale,
@@ -1114,6 +1169,7 @@ module.exports = {
     skipOTPWithPhoto,
     getMySales,
     getTeamSales,
+    getTeamVisits,
     getTodaySummary,
     getSaleDetail,
     getMyMonthlySales,
