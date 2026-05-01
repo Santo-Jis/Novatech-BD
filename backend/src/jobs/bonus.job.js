@@ -5,6 +5,7 @@ const {
     isHoliday,
     isWeeklyOff
 } = require('../services/attendance.service');
+const { sendPushNotification } = require('../services/fcm.service');
 
 // ============================================================
 // Attendance Bonus Background Job
@@ -157,6 +158,13 @@ const checkAndPayEightMonthBonus = async (userId) => {
                         }
                     );
                 }
+                // FCM Push
+                sendPushNotification(userId, {
+                    title: '🎉 বোনাস পেয়েছেন!',
+                    body:  `৮ মাসের উপস্থিতি বোনাস ৳${totalBonus} আপনার কমিশনে যোগ হয়েছে।`,
+                    type:  'bonus',
+                    data:  { amount: String(totalBonus) }
+                }).catch(() => {});
             } catch (fbErr) {
                 console.error('⚠️ Firebase Bonus Notify Error:', fbErr.message);
             }
