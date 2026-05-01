@@ -1,6 +1,7 @@
 const { query, withTransaction } = require('../config/db');
 const axios = require('axios');
 const { sendOrderNotificationEmail } = require('../services/email.service');
+const { sendPushNotification } = require('../services/fcm.service');
 
 // ============================================================
 // Firebase নোটিফিকেশন Helper
@@ -142,6 +143,13 @@ const createOrder = async (req, res) => {
                     message:   `📦 ${req.user.name_bn} অর্ডার দিয়েছে। মোট: ৳${totalAmount}`
                 }
             );
+            // FCM Push
+            sendPushNotification(req.user.manager_id, {
+                title: '📦 নতুন অর্ডার',
+                body:  `${req.user.name_bn} অর্ডার দিয়েছে। মোট: ৳${totalAmount}`,
+                type:  'order',
+                data:  { orderId: String(orderId) }
+            }).catch(() => {});
         }
 
         // ============================================================
@@ -418,6 +426,13 @@ const approveOrder = async (req, res) => {
                 message: '✅ আপনার অর্ডার অনুমোদিত হয়েছে। মাল নিন এবং রুটে বের হন।'
             }
         );
+        // FCM Push
+        sendPushNotification(order.rows[0].worker_id, {
+            title: '✅ অর্ডার অনুমোদিত',
+            body:  'আপনার অর্ডার অনুমোদিত হয়েছে। মাল নিন এবং রুটে বের হন।',
+            type:  'approval',
+            data:  { orderId: String(id) }
+        }).catch(() => {});
 
         return res.status(200).json({
             success: true,
@@ -478,6 +493,13 @@ const rejectOrder = async (req, res) => {
                 message: `❌ আপনার অর্ডার বাতিল হয়েছে। কারণ: ${reason || 'উল্লেখ নেই'}`
             }
         );
+        // FCM Push
+        sendPushNotification(order.rows[0].worker_id, {
+            title: '❌ অর্ডার বাতিল',
+            body:  `আপনার অর্ডার বাতিল হয়েছে। কারণ: ${reason || 'উল্লেখ নেই'}`,
+            type:  'approval',
+            data:  { orderId: String(id), status: 'rejected' }
+        }).catch(() => {});
 
         return res.status(200).json({ success: true, message: 'অর্ডার বাতিল করা হয়েছে।' });
 
