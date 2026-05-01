@@ -1,5 +1,6 @@
 const { query, withTransaction } = require('../config/db');
 const axios = require('axios');
+const { sendPushNotification } = require('../services/fcm.service');
 
 // Firebase নোটিফিকেশন
 const firebaseNotify = async (path, data) => {
@@ -234,6 +235,13 @@ const createSettlement = async (req, res) => {
                     message
                 }
             );
+            // FCM Push
+            sendPushNotification(req.user.manager_id, {
+                title: hasCashMismatch || totalShortageValue > 0 ? '⚠️ হিসাব জমা (ঘাটতি)' : '✅ হিসাব জমা',
+                body:  message,
+                type:  'settlement',
+                data:  { settlementId: String(result.rows[0].id) }
+            }).catch(() => {});
         }
 
         return res.status(201).json({
@@ -402,6 +410,13 @@ const approveSettlement = async (req, res) => {
             `notifications/${s.worker_id}/settlement`,
             { settlementId: id, status: 'approved', cashShortfall, message: notifyMsg }
         );
+        // FCM Push
+        sendPushNotification(s.worker_id, {
+            title: '✅ হিসাব অনুমোদিত',
+            body:  notifyMsg,
+            type:  'settlement_result',
+            data:  { settlementId: String(id) }
+        }).catch(() => {});
 
         return res.status(200).json({
             success: true,
@@ -503,6 +518,13 @@ const disputeSettlement = async (req, res) => {
                 message: `⚠️ ${notifyParts.join(' + ')} — মোট ৳${Math.round(totalDues)} বকেয়ায় যোগ হয়েছে।`
             }
         );
+        // FCM Push
+        sendPushNotification(s.worker_id, {
+            title: '⚠️ হিসাবে ঘাটতি',
+            body:  `${notifyParts.join(' + ')} — মোট ৳${Math.round(totalDues)} বকেয়ায় যোগ হয়েছে।`,
+            type:  'settlement_result',
+            data:  { settlementId: String(id), status: 'disputed' }
+        }).catch(() => {});
 
         return res.status(200).json({
             success: true,
@@ -586,6 +608,13 @@ const payShortage = async (req, res) => {
                     message:      '✅ ঘাটতি পরিশোধ সম্পন্ন। এখন চেক-আউট করুন।'
                 }
             );
+            // FCM Push
+            sendPushNotification(settlement.rows[0].worker_id, {
+                title: '✅ ঘাটতি পরিশোধ সম্পন্ন',
+                body:  'ঘাটতি পরিশোধ সম্পন্ন। এখন চেক-আউট করুন।',
+                type:  'settlement_result',
+                data:  { settlementId: String(id) }
+            }).catch(() => {});
         }
 
         return res.status(200).json({
