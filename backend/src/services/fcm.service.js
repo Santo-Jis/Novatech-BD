@@ -10,9 +10,6 @@ const admin = require('firebase-admin')
 const { query } = require('../config/db')
 const { initializeFirebase } = require('../config/firebase')
 
-// Firebase init নিশ্চিত করো
-initializeFirebase()
-
 // ============================================================
 // saveFCMToken — User-এর FCM token DB-তে সেভ করো
 // auth.controller.js এর নতুন route handler থেকে কল হবে
@@ -72,6 +69,9 @@ const sendPushToMany = async (userIds, { title, body, type, data = {} }) => {
 
 const sendPushToTokens = async (tokens, { title, body, type, data = {} }) => {
   if (!tokens.length) return
+
+  // প্রথম push call-এ Firebase init নিশ্চিত করো
+  initializeFirebase()
 
   try {
     const message = {
