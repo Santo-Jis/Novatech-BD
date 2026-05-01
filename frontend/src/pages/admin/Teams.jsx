@@ -14,6 +14,9 @@ import {
 // ─── ছোট helper ──────────────────────────────────────────
 const fmt = n => Number(n || 0).toLocaleString('bn-BD')
 
+const DAYS_BN = ['রবিবার', 'সোমবার', 'মঙ্গলবার', 'বুধবার', 'বৃহস্পতিবার', 'শুক্রবার', 'শনিবার']
+
+
 // ─── টিম কার্ড ────────────────────────────────────────────
 function TeamCard({ team, onEdit, onTarget, onAssignSR, onExpand, expanded, onRemoveSR, onMoveSR }) {
   return (
@@ -28,6 +31,11 @@ function TeamCard({ team, onEdit, onTarget, onAssignSR, onExpand, expanded, onRe
                 ? `ম্যানেজার: ${team.manager_name_bn} (${team.manager_code})`
                 : 'ম্যানেজার নিয়োগ হয়নি'}
             </p>
+            {team.weekly_off_day !== null && team.weekly_off_day !== undefined && (
+              <p className="text-white/60 text-xs mt-0.5">
+                ছুটি: {DAYS_BN[team.weekly_off_day]}
+              </p>
+            )}
           </div>
           <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-xs font-medium ${team.is_active ? 'bg-green-400/30 text-green-100' : 'bg-red-400/30 text-red-100'}`}>
             {team.is_active ? 'সক্রিয়' : 'বন্ধ'}
@@ -143,7 +151,7 @@ export default function AdminTeams() {
   const [saving,      setSaving]      = useState(false)
 
   // Form states
-  const [form, setForm] = useState({ name: '', manager_id: '', monthly_target: '', description: '' })
+  const [form, setForm] = useState({ name: '', manager_id: '', monthly_target: '', description: '', weekly_off_day: '' })
   const [targetVal, setTargetVal] = useState('')
   const [selectedSRs, setSelectedSRs] = useState([])
   const [srSearch, setSrSearch] = useState('')
@@ -186,7 +194,7 @@ export default function AdminTeams() {
 
   // ─── Create Team ────────────────────────────────────────
   const openCreate = () => {
-    setForm({ name: '', manager_id: '', monthly_target: '', description: '' })
+    setForm({ name: '', manager_id: '', monthly_target: '', description: '', weekly_off_day: '' })
     setCreateModal(true)
   }
 
@@ -216,6 +224,7 @@ export default function AdminTeams() {
       manager_id: team.manager_id || '',
       monthly_target: team.monthly_target || '',
       description: team.description || '',
+      weekly_off_day: team.weekly_off_day !== null && team.weekly_off_day !== undefined ? String(team.weekly_off_day) : '',
       is_active: team.is_active
     })
     setEditModal(team)
@@ -693,6 +702,25 @@ function TeamForm({ form, setForm, managers, showTarget, showStatus }) {
           value={form.description}
           onChange={e => set('description', e.target.value)}
         />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1.5">সাপ্তাহিক ছুটির দিন</label>
+        <select
+          className="w-full px-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-white"
+          value={form.weekly_off_day ?? ''}
+          onChange={e => set('weekly_off_day', e.target.value)}
+        >
+          <option value="">— গ্লোবাল সেটিং অনুসরণ করবে —</option>
+          <option value="0">রবিবার</option>
+          <option value="1">সোমবার</option>
+          <option value="2">মঙ্গলবার</option>
+          <option value="3">বুধবার</option>
+          <option value="4">বৃহস্পতিবার</option>
+          <option value="5">শুক্রবার</option>
+          <option value="6">শনিবার</option>
+        </select>
+        <p className="mt-1 text-xs text-gray-400">খালি রাখলে Settings-এর গ্লোবাল ছুটির দিন প্রযোজ্য হবে।</p>
       </div>
 
       {showStatus && (
