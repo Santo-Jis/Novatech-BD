@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ref, onValue, off, push, set, serverTimestamp } from 'firebase/database'
+import { ref, onValue, off, set, serverTimestamp } from 'firebase/database'
 import { db } from './config'
+import { useFCMToken } from './useFCMToken'           // ← NEW
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore }  from '../store/app.store'
 import toast from 'react-hot-toast'
@@ -60,8 +61,6 @@ export function useFirebaseNotifications() {
         })
       }, { onlyOnce: true })
 
-      // নতুন অর্ডার শোনো
-      const unsubOrders = onValue(ref(db, `notifications/${user.id}/orders`), () => {}, { onlyOnce: true })
       listenersRef.current.push({ ref: ordersRef, handler: orderHandler })
     }
 
@@ -189,18 +188,15 @@ export function useFirebaseNotifications() {
       const liveAttRef  = ref(db, `live/attendance/${today}`)
 
       const liveAttHandler = (snapshot) => {
-        // Manager এর ড্যাশবোর্ড রিফ্রেশ হবে
-        // useAppStore এর notification দিয়ে trigger হবে
         const data = snapshot.val()
         if (data) {
-          // Silent update — toast দেখাবে না, শুধু state update
           addNotification({
             id:      `live_att_${Date.now()}`,
             type:    'live_attendance',
             title:   'হাজিরা আপডেট',
             message: `${data.name} ${data.status === 'present' ? 'চেক-ইন' : 'চেক-আউট'} করেছে`,
             time:    new Date().toISOString(),
-            read:    true, // automatically read
+            read:    true,
             data
           })
         }
@@ -235,7 +231,6 @@ export function useOnlinePresence() {
     const unsubscribe = onValue(connectedRef, async (snapshot) => {
       if (snapshot.val() === true) {
         try {
-          // অনলাইন হলে
           await set(presenceRef, {
             online:    true,
             name:      user.name_bn,
@@ -243,7 +238,6 @@ export function useOnlinePresence() {
             lastSeen:  serverTimestamp()
           })
 
-          // অফলাইন হলে অটো আপডেট
           const { onDisconnect } = await import('firebase/database')
           await onDisconnect(presenceRef).set({
             online:   false,
@@ -252,7 +246,7 @@ export function useOnlinePresence() {
             lastSeen: serverTimestamp()
           })
         } catch (e) {
-          // Firebase presence write failed (permission_denied) — non-critical, ignoring
+          // Firebase presence write failed (permission_denied) — non-critical
         }
       }
     })
@@ -264,7 +258,7 @@ export function useOnlinePresence() {
         name:     user.name_bn,
         role:     user.role,
         lastSeen: serverTimestamp()
-      }).catch(() => {}) // permission_denied — non-critical
+      }).catch(() => {})
     }
   }, [user?.id])
 }
@@ -300,10 +294,12 @@ export function useTeamPresence(workerIds = []) {
 // ============================================================
 // Firebase নোটিফিকেশন Provider Component
 // App.jsx এ wrap করতে হবে
+// ── পরিবর্তন: useFCMToken() এখানে যোগ করা হয়েছে ──
 // ============================================================
 
 export function FirebaseProvider({ children }) {
   useFirebaseNotifications()
   useOnlinePresence()
+  useFCMToken()                    // ← NEW: FCM token register + foreground handler
   return React.createElement(React.Fragment, null, children)
 }
