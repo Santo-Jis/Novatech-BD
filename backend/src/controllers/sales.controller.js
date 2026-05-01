@@ -681,7 +681,7 @@ const getTodaySummary = async (req, res) => {
         // ✅ আজকের চেক-ইন স্ট্যাটাস যাচাই
         const attendanceToday = await query(
             `SELECT check_in_time, check_out_time FROM attendance
-             WHERE worker_id = $1 AND date = $2
+             WHERE user_id = $1 AND date = $2
              LIMIT 1`,
             [workerId, today]
         );
