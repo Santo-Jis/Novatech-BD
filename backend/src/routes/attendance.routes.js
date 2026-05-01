@@ -12,15 +12,16 @@ const {
     checkIn,
     checkOut,
     getMyAttendance,
-    getAttendanceSettings,
+    getTodayLive,
     getTeamAttendance,
     getAllAttendance,
-    getTodayLive,
     getMonthlyReport,
+    getAttendanceSettings,
     applyLeave,
     getMyLeaveRequests,
     getAllLeaveRequests,
-    reviewLeaveRequest
+    reviewLeaveRequest,
+    correctAttendance
 } = require('../controllers/attendance.controller');
 
 // ============================================================
@@ -125,6 +126,13 @@ router.put('/leave/:id/review',
     auth,
     allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm'),
     reviewLeaveRequest
+);
+
+// হাজিরা ম্যানুয়াল সংশোধন (Manager/Admin)
+router.put('/correct',
+    auth,
+    allowRoles('admin', 'manager'),
+    correctAttendance
 );
 
 module.exports = router;
