@@ -128,13 +128,41 @@ const isHoliday = async (date) => {
 };
 
 // ============================================================
-// সাপ্তাহিক ছুটি কিনা যাচাই (শুক্রবার)
+// সাপ্তাহিক ছুটি কিনা যাচাই
+// userId দিলে → সেই user-এর টিমের weekly_off_day চেক করবে
+// না দিলে → global settings থেকে নেবে
 // ============================================================
 
-const isWeeklyOff = async (date) => {
-    const settings  = await getSettings();
-    const offDay    = parseInt(settings.weekly_off_day || '5'); // 5 = শুক্রবার
-    const dateObj   = typeof date === 'string' ? new Date(date) : date;
+const isWeeklyOff = async (date, userId = null) => {
+    const settings = await getSettings();
+    let offDay     = parseInt(settings.weekly_off_day || '5'); // global default
+
+    // যদি userId থাকে → টিমের নিজস্ব ছুটির দিন আছে কিনা দেখো
+    if (userId) {
+        try {
+            const { query: dbQuery } = require('../config/db');
+            const teamResult = await dbQuery(
+                `SELECT t.weekly_off_day
+                 FROM team_members tm
+                 JOIN teams t ON t.id = tm.team_id
+                 WHERE tm.worker_id = $1
+                   AND t.is_active = true
+                 LIMIT 1`,
+                [userId]
+            );
+            if (
+                teamResult.rows.length > 0 &&
+                teamResult.rows[0].weekly_off_day !== null &&
+                teamResult.rows[0].weekly_off_day !== undefined
+            ) {
+                offDay = parseInt(teamResult.rows[0].weekly_off_day);
+            }
+        } catch (err) {
+            console.warn('⚠️ টিমের weekly_off_day পড়া যায়নি, global ব্যবহার হচ্ছে:', err.message);
+        }
+    }
+
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
     return dateObj.getDay() === offDay;
 };
 
