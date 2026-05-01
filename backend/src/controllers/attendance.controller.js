@@ -31,9 +31,9 @@ const checkIn = async (req, res) => {
             });
         }
 
-        // ২. ছুটির দিন যাচাই
+        // ২. ছুটির দিন যাচাই (টিম-ওয়াইজ সাপ্তাহিক ছুটি সহ)
         const holiday  = await isHoliday(today);
-        const weeklyOff = await isWeeklyOff(today);
+        const weeklyOff = await isWeeklyOff(today, userId);
 
         if (holiday || weeklyOff) {
             return res.status(400).json({
