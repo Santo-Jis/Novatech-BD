@@ -7,6 +7,7 @@ const {
     verifyRefreshToken,
     deleteRefreshToken
 } = require('../services/auth.service');
+const { saveFCMToken: saveFCMTokenToDB } = require('../services/fcm.service');
 
 // ============================================================
 // LOGIN
@@ -451,6 +452,38 @@ const resetPasswordWithOtp = async (req, res) => {
     }
 };
 
+// ============================================================
+// SAVE FCM TOKEN
+// POST /api/auth/fcm-token
+// ============================================================
+
+const saveFCMToken = async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+        const userId = req.user.id;
+
+        if (!fcmToken || typeof fcmToken !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: 'fcmToken প্রয়োজন'
+            });
+        }
+
+        await saveFCMTokenToDB(userId, fcmToken);
+
+        return res.json({
+            success: true,
+            message: 'FCM Token সেভ হয়েছে'
+        });
+    } catch (error) {
+        console.error('❌ FCM Token Save Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'FCM Token সেভ ব্যর্থ'
+        });
+    }
+};
+
 module.exports = {
     login,
     refresh,
@@ -459,5 +492,6 @@ module.exports = {
     changePassword,
     forgotPassword,
     verifyOtp,
-    resetPasswordWithOtp
+    resetPasswordWithOtp,
+    saveFCMToken
 };
