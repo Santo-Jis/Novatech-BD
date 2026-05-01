@@ -120,6 +120,29 @@ export default function AdminSettings() {
         </div>
       </Card>
 
+      {/* Weekly Off */}
+      <Card title="সাপ্তাহিক ছুটি (গ্লোবাল)">
+        <div className="space-y-2">
+          <p className="text-xs text-gray-400">এই সেটিং সব টিমের জন্য ডিফল্ট। টিম-ভিত্তিক আলাদা ছুটি সেট করতে টিম ম্যানেজমেন্ট পেজে যান।</p>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">সাপ্তাহিক ছুটির দিন</label>
+            <select
+              value={settings.weekly_off_day ?? '5'}
+              onChange={e => set('weekly_off_day', e.target.value)}
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-primary"
+            >
+              <option value="0">রবিবার</option>
+              <option value="1">সোমবার</option>
+              <option value="2">মঙ্গলবার</option>
+              <option value="3">বুধবার</option>
+              <option value="4">বৃহস্পতিবার</option>
+              <option value="5">শুক্রবার</option>
+              <option value="6">শনিবার</option>
+            </select>
+          </div>
+        </div>
+      </Card>
+
       {/* Holidays */}
       <Card title="সরকারি ছুটির তালিকা">
         <div className="flex gap-2 mb-3">
