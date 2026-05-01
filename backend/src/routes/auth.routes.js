@@ -9,7 +9,8 @@ const {
     changePassword,
     forgotPassword,
     verifyOtp,
-    resetPasswordWithOtp
+    resetPasswordWithOtp,
+    saveFCMToken
 } = require('../controllers/auth.controller');
 
 const { auth } = require('../middlewares/auth');
@@ -50,5 +51,9 @@ router.post('/verify-otp', verifyOtp);
 // POST /api/auth/reset-password
 // নতুন পাসওয়ার্ড সেট
 router.post('/reset-password', resetPasswordWithOtp);
+
+// POST /api/auth/fcm-token
+// FCM Push Token সেভ করা (login করা user)
+router.post('/fcm-token', auth, saveFCMToken);
 
 module.exports = router;
