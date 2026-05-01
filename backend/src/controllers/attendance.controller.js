@@ -764,6 +764,110 @@ const reviewLeaveRequest = async (req, res) => {
 };
 
 
+// ============================================================
+// CORRECT ATTENDANCE (Manual Correction)
+// PUT /api/attendance/correct
+// Manager/Admin → SR এর ভুল check-in/out সংশোধন করবে
+// Body: { user_id, date, check_in_time, check_out_time, note }
+// ============================================================
+
+const correctAttendance = async (req, res) => {
+    try {
+        const { user_id, date, check_in_time, check_out_time, note } = req.body;
+
+        if (!user_id || !date) {
+            return res.status(400).json({ success: false, message: 'user_id ও date দিন।' });
+        }
+
+        // Manager শুধু নিজের টিমের SR কে সংশোধন করতে পারবে
+        if (req.user.role === 'manager') {
+            const teamCheck = await query(
+                `SELECT u.id FROM users u
+                 JOIN team_members tm ON tm.worker_id = u.id
+                 JOIN teams t ON tm.team_id = t.id
+                 WHERE u.id = $1 AND t.manager_id = $2`,
+                [user_id, req.user.id]
+            );
+            if (teamCheck.rows.length === 0) {
+                return res.status(403).json({ success: false, message: 'এই SR আপনার টিমে নেই।' });
+            }
+        }
+
+        // বর্তমান রেকর্ড আছে কিনা চেক
+        const existing = await query(
+            'SELECT id FROM attendance WHERE user_id = $1 AND date = $2',
+            [user_id, date]
+        );
+
+        // check_in_time থেকে late_minutes পুনর্গণনা
+        let lateMinutes = 0;
+        let status = 'present';
+        if (check_in_time) {
+            const settings = await query('SELECT check_in_start, check_in_end FROM attendance_settings LIMIT 1');
+            if (settings.rows.length > 0) {
+                const { check_in_end } = settings.rows[0];
+                const [endH, endM] = check_in_end.split(':').map(Number);
+                const inTime = new Date(check_in_time);
+                const deadline = new Date(inTime);
+                deadline.setHours(endH, endM, 0, 0);
+                if (inTime > deadline) {
+                    lateMinutes = Math.round((inTime - deadline) / 60000);
+                    status = 'late';
+                }
+            }
+        }
+
+        let result;
+        if (existing.rows.length > 0) {
+            // আপডেট
+            result = await query(
+                `UPDATE attendance SET
+                    check_in_time   = COALESCE($1, check_in_time),
+                    check_out_time  = COALESCE($2, check_out_time),
+                    late_minutes    = $3,
+                    status          = $4,
+                    correction_note = $5,
+                    corrected_by    = $6,
+                    corrected_at    = NOW(),
+                    updated_at      = NOW()
+                 WHERE user_id = $7 AND date = $8
+                 RETURNING id, check_in_time, check_out_time, status`,
+                [check_in_time || null, check_out_time || null, lateMinutes, status,
+                 note || null, req.user.id, user_id, date]
+            );
+        } else {
+            // নতুন রেকর্ড তৈরি
+            result = await query(
+                `INSERT INTO attendance
+                 (user_id, date, check_in_time, check_out_time, late_minutes, status, correction_note, corrected_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 RETURNING id, check_in_time, check_out_time, status`,
+                [user_id, date, check_in_time || null, check_out_time || null,
+                 lateMinutes, status, note || null, req.user.id]
+            );
+        }
+
+        // Audit log
+        await query(
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
+             VALUES ($1, 'ATTENDANCE_CORRECTION', 'attendance', $2, $3)`,
+            [req.user.id, result.rows[0].id,
+             JSON.stringify({ user_id, date, check_in_time, check_out_time, note })]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'হাজিরা সংশোধন সফল।',
+            data: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('❌ Correct Attendance Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সংশোধনে সমস্যা হয়েছে।' });
+    }
+};
+
+
 module.exports = {
     checkIn,
     checkOut,
@@ -776,6 +880,7 @@ module.exports = {
     applyLeave,
     getMyLeaveRequests,
     getAllLeaveRequests,
-    reviewLeaveRequest
+    reviewLeaveRequest,
+    correctAttendance
 };
 
