@@ -110,6 +110,10 @@ export default function CustomerPortal() {
   const [activeTab, setActiveTab] = useState('summary')
   const [error, setError]         = useState('')
   const [loggingIn, setLoggingIn] = useState(false)
+  const [notifications, setNotifications]   = useState([])
+  const [unreadCount, setUnreadCount]       = useState(0)
+  const [showBell, setShowBell]             = useState(false)
+  const [unreadBanner, setUnreadBanner]     = useState(null)
 
   const getStorageKey = (cid) => `portal_jwt_${cid}`
 
@@ -121,10 +125,100 @@ export default function CustomerPortal() {
       })
       setDashboard(data.data)
       setPhase('dashboard')
+      // Notification লোড করো (jwt param দরকার)
+      loadNotifications(jwt)
+      // Web Push permission চাও (প্রথমবার popup আসবে)
+      requestPushPermission(jwt)
     } catch (err) {
       console.error('Dashboard error:', err)
       setError('Session শেষ হয়েছে। আবার লগইন করুন।')
       setPhase('login')
+    }
+  }
+
+  // ── Notifications লোড ────────────────────────────────────
+  const loadNotifications = async (jwt) => {
+    try {
+      const data = await portalFetch('/portal/notifications', {
+        headers: { Authorization: `Bearer ${jwt}` }
+      })
+      const notifs = data.data.notifications || []
+      setNotifications(notifs)
+      setUnreadCount(data.data.unread_count || 0)
+      // সবচেয়ে নতুন অপঠিত টা banner এ দেখাও
+      const newest = notifs.find(n => !n.is_read)
+      if (newest) setUnreadBanner(newest)
+    } catch (e) {
+      console.error('Notification load error:', e)
+    }
+  }
+
+  const markAllAsRead = async (jwt) => {
+    try {
+      await portalFetch('/portal/notifications/read-all', {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${jwt}` }
+      })
+      setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
+      setUnreadCount(0)
+      setUnreadBanner(null)
+    } catch (e) { console.error(e) }
+  }
+
+  // ── Web Push Permission + FCM Token (কাস্টমারের জন্য) ─────
+  const requestPushPermission = async (jwt) => {
+    try {
+      // Browser support চেক
+      if (!('Notification' in window) || !('serviceWorker' in navigator)) return
+      if (Notification.permission === 'denied') return
+
+      // Permission চাও
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') return
+
+      // Service Worker ready হওয়া পর্যন্ত অপেক্ষা
+      const swReg = await navigator.serviceWorker.ready
+
+      // Firebase dynamically import (CustomerPortal এ firebase আলাদা load করি)
+      const { initializeApp, getApps } = await import('firebase/app')
+      const { getMessaging, getToken }  = await import('firebase/messaging')
+
+      const firebaseConfig = {
+        apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+        authDomain:        `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
+        databaseURL:       import.meta.env.VITE_FIREBASE_DATABASE_URL,
+        projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+        storageBucket:     `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.appspot.com`,
+        messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+        appId:             import.meta.env.VITE_FIREBASE_APP_ID,
+      }
+
+      const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig)
+      const messaging = getMessaging(app)
+
+      const fcmToken = await getToken(messaging, {
+        vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
+        serviceWorkerRegistration: swReg,
+      })
+
+      if (!fcmToken) return
+
+      // Cache check — একই token আবার না পাঠাতে
+      const cacheKey = 'portal_fcm_token'
+      if (localStorage.getItem(cacheKey) === fcmToken) return
+
+      // Backend এ save করো
+      await portalFetch('/portal/save-fcm-token', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${jwt}` },
+        body: JSON.stringify({ fcm_token: fcmToken }),
+      })
+      localStorage.setItem(cacheKey, fcmToken)
+      console.log('[Portal FCM] Token saved ✅')
+
+    } catch (e) {
+      console.warn('[Portal FCM] Permission/token error:', e.message)
+      // silent fail — push না পেলেও in-app চলবে
     }
   }
 
@@ -296,23 +390,108 @@ export default function CustomerPortal() {
               <h1 className="text-xl font-bold">{customer.shop_name}</h1>
               <p className="text-indigo-200 text-sm">{customer.owner_name} • {customer.customer_code}</p>
             </div>
-            <button
-              onClick={() => {
-                Object.keys(localStorage)
-                  .filter(k => k.startsWith('portal_jwt_'))
-                  .forEach(k => localStorage.removeItem(k))
-                setPhase('login')
-                setDashboard(null)
-                setPortalJWT(null)
-              }}
-              style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 10, padding: '6px 12px', color: 'white', fontSize: 12, cursor: 'pointer' }}
-            >
-              লগআউট
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Bell Icon */}
+              <div className="relative">
+                <button
+                  onClick={() => { setShowBell(v => !v); if (unreadCount > 0) markAllAsRead(portalJWT) }}
+                  style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 10, padding: '8px 10px', color: 'white', fontSize: 18, cursor: 'pointer', position: 'relative' }}
+                >
+                  🔔
+                  {unreadCount > 0 && (
+                    <span style={{
+                      position: 'absolute', top: -4, right: -4,
+                      background: '#ef4444', color: 'white',
+                      borderRadius: '50%', width: 18, height: 18,
+                      fontSize: 10, fontWeight: 'bold',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                    }}>
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Notification Dropdown */}
+                {showBell && (
+                  <div style={{
+                    position: 'absolute', right: 0, top: 44, width: 290, maxHeight: 380,
+                    background: 'white', borderRadius: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
+                    overflowY: 'auto', zIndex: 100
+                  }}>
+                    <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ color: '#1e1e1e', fontWeight: 700, fontSize: 14 }}>🔔 Notification</span>
+                      <button onClick={() => setShowBell(false)} style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#888' }}>✕</button>
+                    </div>
+                    {notifications.length === 0 ? (
+                      <p style={{ textAlign: 'center', color: '#aaa', fontSize: 13, padding: '24px 16px' }}>কোনো notification নেই।</p>
+                    ) : (
+                      notifications.map(n => (
+                        <div key={n.id} style={{
+                          padding: '12px 16px',
+                          borderBottom: '1px solid #f9f9f9',
+                          background: n.is_read ? 'white' : '#eff6ff',
+                          display: 'flex', gap: 10, alignItems: 'flex-start'
+                        }}>
+                          <span style={{ fontSize: 20, marginTop: 1 }}>
+                            {n.type === 'credit_reminder' ? '💳' : '🔔'}
+                          </span>
+                          <div style={{ flex: 1 }}>
+                            <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#1e1e1e' }}>{n.title}</p>
+                            <p style={{ margin: '3px 0 0', fontSize: 12, color: '#555', lineHeight: 1.5 }}>{n.body}</p>
+                            <p style={{ margin: '4px 0 0', fontSize: 10, color: '#aaa' }}>
+                              {new Date(n.created_at).toLocaleString('bn-BD', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                          </div>
+                          {!n.is_read && (
+                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', marginTop: 5, flexShrink: 0 }} />
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={() => {
+                  Object.keys(localStorage)
+                    .filter(k => k.startsWith('portal_jwt_'))
+                    .forEach(k => localStorage.removeItem(k))
+                  setPhase('login')
+                  setDashboard(null)
+                  setPortalJWT(null)
+                }}
+                style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 10, padding: '6px 12px', color: 'white', fontSize: 12, cursor: 'pointer' }}
+              >
+                লগআউট
+              </button>
+            </div>
           </div>
         </div>
 
         <div className="px-4 -mt-10 space-y-4 pb-10">
+          {/* Unread Banner — Facebook-এর মতো */}
+          {unreadBanner && (
+            <div style={{
+              background: 'linear-gradient(135deg, #1e3a8a, #1d4ed8)',
+              borderRadius: 16, padding: '14px 16px',
+              display: 'flex', gap: 12, alignItems: 'flex-start',
+              boxShadow: '0 4px 16px rgba(29,78,216,0.3)'
+            }}>
+              <span style={{ fontSize: 24, flexShrink: 0 }}>💳</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, color: 'white', fontWeight: 700, fontSize: 14 }}>{unreadBanner.title}</p>
+                <p style={{ margin: '4px 0 0', color: '#bfdbfe', fontSize: 12, lineHeight: 1.5 }}>{unreadBanner.body}</p>
+              </div>
+              <button
+                onClick={() => { setUnreadBanner(null); markAllAsRead(portalJWT) }}
+                style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '4px 8px', color: 'white', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
               <p className="text-xs text-gray-400 mb-1">বর্তমান বাকি</p>
