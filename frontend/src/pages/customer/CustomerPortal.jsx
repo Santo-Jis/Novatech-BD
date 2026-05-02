@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useGoogleLogin } from '@react-oauth/google'
-import api from '../api/axios'
+import api from '../../api/axios'
 
 // ── Helpers ───────────────────────────────────────────────────
 const fmt = (n) => parseFloat(n || 0).toLocaleString('bn-BD', { minimumFractionDigits: 0 })
