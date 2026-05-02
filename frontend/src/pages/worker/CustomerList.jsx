@@ -17,7 +17,7 @@ import EmailOTPVerify   from '../../components/EmailOTPVerify'
 // ── Step Indicator ────────────────────────────────────────────
 function StepBadge({ step }) {
   const steps  = ['form', 'email_otp']
-  const labels = { form: 'তথ্য পূরণ', email_otp: 'Email যাচাই' }
+  const labels = { form: 'তথ্য পূরণ', email_otp: 'Email যাচাই', whatsapp_success: 'সম্পন্ন' }
   return (
     <div className="flex items-center gap-1 mt-1">
       {steps.map((s, i) => (
@@ -50,7 +50,9 @@ export default function CustomerList() {
   const [editModal,    setEditModal]    = useState(null)
   const [saving,       setSaving]       = useState(false)
   const [gpsLoading,   setGpsLoading]   = useState(false)
-  const [step,         setStep]         = useState('form') // 'form' | 'email_otp'
+  const [step,         setStep]         = useState('form') // 'form' | 'email_otp' | 'whatsapp_success'
+  const [waUrl,         setWaUrl]         = useState(null)
+  const [sendingLink,   setSendingLink]   = useState(null) // customer id যার link পাঠানো হচ্ছে
   const [emailVerified, setEmailVerified] = useState(false)
   const fileRef = useRef()
   const [userLocation, setUserLocation] = useState(null)
@@ -204,6 +206,25 @@ export default function CustomerList() {
     toast.success('ছবি সিলেক্ট হয়েছে ✅')
   }
 
+  // ── পুরাতন কাস্টমারকে WhatsApp Portal Link পাঠাও ──────────
+  const sendPortalLinkToCustomer = async (customer) => {
+    if (!customer.whatsapp) return toast.error('এই কাস্টমারের WhatsApp নম্বর নেই।')
+    setSendingLink(customer.id)
+    try {
+      const linkRes = await api.post(`/portal/send-link/${customer.id}`)
+      const url = linkRes.data?.data?.whatsapp_url
+      if (url) {
+        setWaUrl(url)
+        setStep('whatsapp_success')
+        setShowAddModal(true) // success screen দেখাতে modal খুলি
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'লিংক তৈরিতে সমস্যা হয়েছে।')
+    } finally {
+      setSendingLink(null)
+    }
+  }
+
   // ── Form → Next Step ─────────────────────────────────────────
   const handleFormNext = () => {
     if (!newCustomer.shop_name.trim()) return toast.error('দোকানের নাম দিন')
@@ -234,11 +255,29 @@ export default function CustomerList() {
       if (newCustomer.route_id)      formData.append('route_id',      newCustomer.route_id)
       if (newCustomer.photo)         formData.append('shop_photo',    newCustomer.photo)
 
-      await api.post('/customers', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      const createRes = await api.post('/customers', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
       toast.success('নতুন কাস্টমার যোগ হয়েছে ✅')
+      loadCustomers()
+
+      // ✅ Portal Link তৈরি করে WhatsApp Success Screen দেখাও
+      const newCustomerId = createRes.data?.data?.id
+      if (newCustomerId) {
+        try {
+          const linkRes = await api.post(`/portal/send-link/${newCustomerId}`)
+          const url = linkRes.data?.data?.whatsapp_url
+          if (url) {
+            setWaUrl(url)
+            setStep('whatsapp_success')
+            return // modal বন্ধ করব না, success screen দেখাব
+          }
+        } catch (linkErr) {
+          console.warn('WhatsApp link তৈরি হয়নি:', linkErr.message)
+        }
+      }
+
+      // link না পেলে সরাসরি modal বন্ধ
       setShowAddModal(false)
       resetForm()
-      loadCustomers()
     } catch (err) {
       toast.error(err.response?.data?.message || 'কাস্টমার যোগ হয়নি')
       setStep('form')
@@ -377,6 +416,20 @@ export default function CustomerList() {
                   ? <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">✅ ভিজিট</span>
                   : <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">বাকি</span>
                 }
+                {/* WhatsApp Portal Link বাটন */}
+                {c.whatsapp && (
+                  <button
+                    onClick={e => { e.stopPropagation(); sendPortalLinkToCustomer(c) }}
+                    disabled={sendingLink === c.id}
+                    title="WhatsApp-এ Portal Link পাঠান"
+                    className="p-1.5 rounded-lg bg-green-50 text-green-600 active:scale-90 transition-transform disabled:opacity-50"
+                  >
+                    {sendingLink === c.id
+                      ? <span style={{fontSize:12}}>...</span>
+                      : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                    }
+                  </button>
+                )}
                 {!c.has_pending_edit && (
                   <button onClick={e => { e.stopPropagation(); setEditModal(c) }}
                     className="p-1.5 rounded-lg bg-blue-50 text-blue-500 active:scale-90 transition-transform">
@@ -579,6 +632,50 @@ export default function CustomerList() {
                   onBack={() => setStep('form')}
                   skipLabel="Email বাদ দিয়ে যোগ করুন"
                 />
+              )}
+
+              {/* ════════ STEP 3: WHATSAPP SUCCESS ════════ */}
+              {step === 'whatsapp_success' && (
+                <div style={{ textAlign: 'center', padding: '24px 16px' }}>
+                  {/* সবুজ চেক আইকন */}
+                  <div style={{ width: 72, height: 72, background: '#dcfce7', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+                    <span style={{ fontSize: 36 }}>✅</span>
+                  </div>
+
+                  <h3 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 6 }}>
+                    কাস্টমার যোগ হয়েছে!
+                  </h3>
+                  <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 4 }}>
+                    <strong>{newCustomer.shop_name}</strong> সফলভাবে তৈরি হয়েছে।
+                  </p>
+                  <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 24 }}>
+                    নিচের বাটনে চাপুন — WhatsApp খুলবে, শুধু <strong>Send</strong> করুন।
+                  </p>
+
+                  {/* WhatsApp বাটন */}
+                  <a
+                    href={waUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+                      background: '#25d366', color: '#fff', borderRadius: 14,
+                      padding: '14px 24px', fontWeight: 700, fontSize: 16,
+                      textDecoration: 'none', marginBottom: 12, width: '100%', boxSizing: 'border-box'
+                    }}
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                    WhatsApp-এ পাঠান
+                  </a>
+
+                  {/* বাদ দিন বাটন */}
+                  <button
+                    onClick={() => { setShowAddModal(false); resetForm() }}
+                    style={{ width: '100%', padding: '11px', background: 'transparent', border: '1.5px solid #e5e7eb', borderRadius: 12, color: '#6b7280', fontWeight: 600, fontSize: 14, cursor: 'pointer' }}
+                  >
+                    এখন নয়
+                  </button>
+                </div>
               )}
 
             </div>
