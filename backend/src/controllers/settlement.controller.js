@@ -1,6 +1,7 @@
 const { query, withTransaction } = require('../config/db');
 const axios = require('axios');
 const { sendPushNotification } = require('../services/fcm.service');
+const { addLedgerEntry } = require('./ledger.controller');
 
 // Firebase নোটিফিকেশন
 const firebaseNotify = async (path, data) => {
@@ -199,16 +200,50 @@ const createSettlement = async (req, res) => {
                 today,
                 JSON.stringify(itemsReport),
                 sales.total_sales,
-                srCash,                                          // SR-এর জমা দেওয়া নগদ
-                cashDifference,                                  // পার্থক্য (audit trail)
+                srCash,
+                cashDifference,
                 sales.credit_given,
                 sales.old_credit_collected,
                 sales.replacement_value,
                 totalShortageValue,
                 shortage_note || null,
-                mismatch_explanation?.trim() || null             // নগদ পার্থক্যের কারণ
+                mismatch_explanation?.trim() || null
             ]
         );
+
+        // ─── Ledger: ফেরত দেওয়া পণ্য OUT হিসেবে রেকর্ড ────
+        for (const item of itemsReport) {
+            // ফেরত দেওয়া পণ্য
+            if (item.returned_qty > 0) {
+                await addLedgerEntry(null, {
+                    worker_id:      workerId,
+                    product_id:     item.product_id,
+                    product_name:   item.name,
+                    txn_type:       'return_out',
+                    direction:      -1,
+                    qty:            item.returned_qty,
+                    reference_id:   result.rows[0].id,
+                    reference_type: 'settlement',
+                    note:           `Settlement ফেরত — ${today}`,
+                    created_by:     workerId,
+                });
+            }
+            // ঘাটতি পণ্যও OUT হিসেবে রেকর্ড (হারিয়ে গেছে বা দায় নেওয়া হয়েছে)
+            if (item.shortage_qty > 0) {
+                await addLedgerEntry(null, {
+                    worker_id:      workerId,
+                    product_id:     item.product_id,
+                    product_name:   item.name,
+                    txn_type:       'return_out',
+                    direction:      -1,
+                    qty:            item.shortage_qty,
+                    reference_id:   result.rows[0].id,
+                    reference_type: 'settlement',
+                    note:           `ঘাটতি — ${today}`,
+                    created_by:     workerId,
+                });
+            }
+        }
 
         // ─── Manager কে Firebase নোটিফিকেশন ────────────────
         if (req.user.manager_id) {
