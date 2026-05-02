@@ -1,33 +1,22 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
-// ============================================================
-// Axios Instance
-// Base URL + Auto Token Refresh
-// ============================================================
-
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
-  timeout: 12000,   // 12s — slow internet-এ 60s অপেক্ষা করা যায় না
+  timeout: 12000,
   headers: {
     'Content-Type': 'application/json'
   }
 })
 
-// ── Network বা Timeout error চেনার helper ───────────────────
-// এই error গুলোতে server response আসেনি — cache fallback উচিত
 export function isNetworkError(error) {
   return (
     !error.response &&
-    (error.code === 'ECONNABORTED' ||   // timeout
-     error.code === 'ERR_NETWORK' ||    // data off
-     error.message === 'Network Error') // axios generic
+    (error.code === 'ECONNABORTED' ||
+     error.code === 'ERR_NETWORK' ||
+     error.message === 'Network Error')
   )
 }
-
-// ============================================================
-// Request Interceptor — Token যোগ করো
-// ============================================================
 
 api.interceptors.request.use(
   (config) => {
@@ -39,10 +28,6 @@ api.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 )
-
-// ============================================================
-// Response Interceptor — Token Refresh
-// ============================================================
 
 let isRefreshing = false
 let failedQueue  = []
@@ -60,7 +45,12 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config
 
-    // Token নেই বা invalid — সরাসরি login এ পাঠাও
+    // ✅ FIX: Customer Portal routes-এ redirect করবো না
+    const isPortalRoute = originalRequest?.url?.includes('/portal/')
+    if (isPortalRoute) {
+      return Promise.reject(error)
+    }
+
     if (
       error.response?.status === 401 &&
       !error.response?.data?.code &&
@@ -71,7 +61,6 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    // Token মেয়াদ শেষ হলে Refresh করো
     if (
       error.response?.status === 401 &&
       error.response?.data?.code === 'TOKEN_EXPIRED' &&
@@ -94,7 +83,6 @@ api.interceptors.response.use(
       const refreshToken = localStorage.getItem('refreshToken')
 
       if (!refreshToken) {
-        // লগআউট করো
         localStorage.clear()
         window.location.href = '/login'
         return Promise.reject(error)
@@ -126,24 +114,21 @@ api.interceptors.response.use(
       }
     }
 
-    // Network বা Timeout error — server-এ পৌঁছায়নি
     if (isNetworkError(error)) {
-      // submit/mutation request (GET ছাড়া সব) — duplicate এড়াতে toast দেখাও
       if (error.config?.method !== 'get') {
         toast.error('নেটওয়ার্ক সমস্যা। ডেটা পাঠানো যায়নি।')
       }
       return Promise.reject(error)
     }
 
-    // সাধারণ Error Handle
     const message = error.response?.data?.message || 'সার্ভারে সমস্যা হয়েছে।'
 
     if (error.response?.status === 403) {
       toast.error('এই কাজের অনুমতি নেই।')
     } else if (error.response?.status === 404) {
-      // 404 শান্তভাবে handle করো
+      // শান্তভাবে handle করো
     } else if (error.response?.status === 400) {
-      // 400 — আসল message component নিজে দেখাবে, interceptor চুপ থাকবে
+      // component নিজে দেখাবে
     } else if (error.response?.status >= 500) {
       toast.error('সার্ভারে সমস্যা হয়েছে। পরে চেষ্টা করুন।')
     }
