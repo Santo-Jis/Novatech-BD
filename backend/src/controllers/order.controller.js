@@ -558,14 +558,14 @@ const getStockStatus = async (req, res) => {
                                THEN o.items::jsonb
                                ELSE '[]'::jsonb END
                       ) AS item
-                 WHERE o.worker_id = $1
+                 WHERE o.worker_id = $1::uuid
                    AND (item->>'product_id')::int = l.product_id
                    AND o.status = 'approved'
                  ORDER BY o.approved_at DESC
                  LIMIT 1
                 )                                               AS price
              FROM sr_stock_ledger l
-             WHERE l.worker_id = $1
+             WHERE l.worker_id = $1::uuid
              GROUP BY l.product_id, l.product_name
              HAVING SUM(l.qty * l.direction) > 0
              ORDER BY l.product_name`,
