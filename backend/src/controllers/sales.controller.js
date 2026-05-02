@@ -1,6 +1,7 @@
 const { query, withTransaction } = require('../config/db');
 const { calcFromProduct }        = require('../services/price.utils');
 const { generateOTP }            = require('../config/encryption');
+const { addLedgerEntry }         = require('./ledger.controller');
 const {
     generateInvoiceNumber,
     sendInvoiceOTP,
@@ -334,6 +335,20 @@ const createSale = async (req, res) => {
                      VALUES ($1, 'out', $2, $3, 'sale', $4)`,
                     [item.product_id, item.qty, result.rows[0].id, req.user.id]
                 );
+
+                // ─── Ledger: বিক্রয় OUT ───────────────────
+                await addLedgerEntry(client, {
+                    worker_id:      req.user.id,
+                    product_id:     item.product_id,
+                    product_name:   item.product_name || item.name,
+                    txn_type:       'sale_out',
+                    direction:      -1,
+                    qty:            item.qty,
+                    reference_id:   result.rows[0].id,
+                    reference_type: 'sale',
+                    note:           `বিক্রয় — Invoice: ${invoiceNumber}`,
+                    created_by:     req.user.id,
+                });
             }
 
             // রিপ্লেসমেন্ট স্টক ফেরত
@@ -348,6 +363,20 @@ const createSale = async (req, res) => {
                      VALUES ($1, 'returned', $2, $3, 'sale', 'রিপ্লেসমেন্ট ফেরত', $4)`,
                     [item.product_id, item.qty, result.rows[0].id, req.user.id]
                 );
+
+                // ─── Ledger: রিপ্লেসমেন্ট ফেরত IN ────────
+                await addLedgerEntry(client, {
+                    worker_id:      req.user.id,
+                    product_id:     item.product_id,
+                    product_name:   item.product_name || item.name,
+                    txn_type:       'order_in',
+                    direction:      1,
+                    qty:            item.qty,
+                    reference_id:   result.rows[0].id,
+                    reference_type: 'sale',
+                    note:           'রিপ্লেসমেন্ট ফেরত',
+                    created_by:     req.user.id,
+                });
             }
 
             return result.rows[0];
