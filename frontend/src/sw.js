@@ -14,21 +14,18 @@ importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js'
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js')
 
 // ============================================================
-// ✅ FIX: Firebase config সরাসরি SW এ রাখো
+// ✅ Firebase config — সরাসরি SW এ রাখা হয়েছে
 // কারণ: app বন্ধ থাকলে postMessage কাজ করে না
-// তাই background push miss হতো — এখন হবে না
-//
-// 👇 এই values আপনার Firebase Console থেকে নিন:
-// Firebase Console → Project Settings → Your Apps → Config
+// এখন background push কখনো miss হবে না
 // ============================================================
 const FIREBASE_CONFIG = {
-  apiKey:            'YOUR_API_KEY',            // ← বসান
-  authDomain:        'YOUR_PROJECT_ID.firebaseapp.com',
-  databaseURL:       'YOUR_DATABASE_URL',        // ← বসান
-  projectId:         'YOUR_PROJECT_ID',          // ← বসান
-  storageBucket:     'YOUR_PROJECT_ID.appspot.com',
-  messagingSenderId: 'YOUR_MESSAGING_SENDER_ID', // ← বসান
-  appId:             'YOUR_APP_ID',              // ← বসান
+  apiKey:            'AIzaSyAHdK7zelJcBFc8fOFSgH8G_6jEjZdNoSI',
+  authDomain:        'novatech-bd-10421.firebaseapp.com',
+  databaseURL:       'https://novatech-bd-10421-default-rtdb.firebaseio.com',
+  projectId:         'novatech-bd-10421',
+  storageBucket:     'novatech-bd-10421.firebasestorage.app',
+  messagingSenderId: '1098950143887',
+  appId:             '1:1098950143887:web:bb7014007540c878b165fa',
 }
 
 // ── Firebase init — SW start হওয়ার সাথে সাথেই ──────────────
@@ -45,7 +42,7 @@ try {
 function setupMessaging() {
   const messaging = firebase.messaging()
 
-  // ✅ App বন্ধ বা background এ থাকলেও এখন notification আসবে
+  // ✅ App বন্ধ বা background এ থাকলেও notification আসবে
   messaging.onBackgroundMessage((payload) => {
     console.log('[SW] Background push received:', payload)
 
@@ -65,7 +62,7 @@ function setupMessaging() {
   })
 }
 
-// ── PWA skipWaiting (update হলে নতুন SW সাথে সাথে activate) ─
+// ── PWA skipWaiting ──────────────────────────────────────────
 self.addEventListener('message', (event) => {
   if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting()
