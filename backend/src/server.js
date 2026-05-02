@@ -86,6 +86,7 @@ const adminRoutes       = require('./routes/admin.routes');
 const noticeRoutes      = require('./routes/notice.routes');
 const recruitmentRoutes = require('./routes/recruitment.routes');
 const teamRoutes        = require('./routes/team.routes');
+const ledgerRoutes      = require('./routes/ledger.routes');
 const salaryRoutes      = require('./routes/salary.routes');
 const locationRoutes    = require('./routes/location.routes');
 
@@ -107,6 +108,7 @@ app.use('/api/recruitment', recruitmentRoutes);
 app.use('/api/teams',      teamRoutes);
 app.use('/api/salary',     salaryRoutes);
 app.use('/api/location',   locationRoutes);
+app.use('/api/ledger',     ledgerRoutes);
 
 // ============================================================
 // HEALTH CHECK
