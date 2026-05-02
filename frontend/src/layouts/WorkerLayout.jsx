@@ -80,8 +80,11 @@ export default function WorkerLayout() {
     '/worker/settlement',
   ]
 
-  // Mount হলে চেক-ইন স্ট্যাটাস টানো
+  // চেক-ইন স্ট্যাটাস টানো — mount-এ এবং route পরিবর্তনে
+  // ✅ FIX 1: [] → [location.pathname] — চেক-ইনের পর অন্য page-এ গেলে রিফ্রেশ হবে
+  // ✅ FIX 2: fetch শুরুতে null সেট — race condition এ popup না দেখানোর জন্য
   useEffect(() => {
+    setCheckedIn(null)
     const fetchCheckinStatus = async () => {
       try {
         const res = await api.get('/sales/today-summary')
@@ -91,7 +94,7 @@ export default function WorkerLayout() {
       }
     }
     fetchCheckinStatus()
-  }, [])
+  }, [location.pathname])
 
   // Route পরিবর্তনে চেক করো
   useEffect(() => {
