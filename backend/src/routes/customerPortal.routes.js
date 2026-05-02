@@ -14,6 +14,14 @@ const {
     getCustomerDashboard
 } = require('../controllers/customerPortal.controller');
 
+const { sendCreditReminder } = require('../controllers/creditReminder.controller');
+const {
+    getNotifications,
+    markAllRead,
+    markOneRead,
+    saveCustomerFCMToken,
+} = require('../controllers/customerNotification.controller');
+
 const { auth } = require('../middlewares/auth');
 
 // ── Portal JWT Middleware (কাস্টমার ড্যাশবোর্ডের জন্য) ──────
@@ -51,5 +59,21 @@ router.post('/google-auth', googleAuth);
 // ── কাস্টমার ড্যাশবোর্ড ডেটা ──────────────────────────────
 // GET /api/portal/dashboard
 router.get('/dashboard', portalAuth, getCustomerDashboard);
+
+// ── SR ম্যানুয়ালি reminder পাঠাবে ──────────────────────────
+// POST /api/portal/send-reminder/:customerId
+router.post('/send-reminder/:customerId', auth, sendCreditReminder);
+
+// ── Customer FCM Token (Web Push) ───────────────────────────
+// POST /api/portal/save-fcm-token
+router.post('/save-fcm-token', portalAuth, saveCustomerFCMToken);
+
+// ── Customer In-App Notifications ───────────────────────────
+// GET    /api/portal/notifications
+router.get('/notifications', portalAuth, getNotifications);
+// PATCH  /api/portal/notifications/read-all
+router.patch('/notifications/read-all', portalAuth, markAllRead);
+// PATCH  /api/portal/notifications/:id/read
+router.patch('/notifications/:id/read', portalAuth, markOneRead);
 
 module.exports = router;
