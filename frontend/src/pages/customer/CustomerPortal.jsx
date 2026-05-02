@@ -91,28 +91,16 @@ export default function CustomerPortal() {
   const [searchParams] = useSearchParams()
   const portalToken    = searchParams.get('token')
 
-  const [phase, setPhase]       = useState('loading')  // loading | invalid | login | dashboard
-  const [tokenInfo, setTokenInfo] = useState(null)
-  const [portalJWT, setPortalJWT] = useState(null)
-  const [dashboard, setDashboard] = useState(null)
-  const [activeTab, setActiveTab] = useState('summary') // summary | invoices | payments
-  const [error, setError]         = useState('')
-  const [loggingIn, setLoggingIn] = useState(false)
+  const [phase, setPhase]         = useState('loading')  // loading | invalid | login | dashboard
+  const [tokenInfo, setTokenInfo]   = useState(null)
+  const [portalJWT, setPortalJWT]   = useState(null)
+  const [dashboard, setDashboard]   = useState(null)
+  const [activeTab, setActiveTab]   = useState('summary') // summary | invoices | payments
+  const [error, setError]           = useState('')
+  const [loggingIn, setLoggingIn]   = useState(false)
 
-  // ── Token যাচাই ───────────────────────────────────────────
-  useEffect(() => {
-    if (!portalToken) { setPhase('invalid'); setError('লিংক পাওয়া যায়নি।'); return }
-
-    api.get(`/portal/verify-token?token=${portalToken}`)
-      .then(res => {
-        setTokenInfo(res.data.data)
-        setPhase('login')
-      })
-      .catch(err => {
-        setError(err.response?.data?.message || 'অবৈধ বা মেয়াদোত্তীর্ণ লিংক।')
-        setPhase('invalid')
-      })
-  }, [portalToken])
+  // ── localStorage key — customer_id ভিত্তিক ───────────────
+  const getStorageKey = (cid) => `portal_jwt_${cid}`
 
   // ── Dashboard লোড ─────────────────────────────────────────
   const loadDashboard = async (jwt) => {
@@ -123,9 +111,58 @@ export default function CustomerPortal() {
       setDashboard(res.data.data)
       setPhase('dashboard')
     } catch {
-      setError('ড্যাশবোর্ড লোড হয়নি।')
+      // JWT মেয়াদ শেষ হলে localStorage পরিষ্কার করে login-এ পাঠাও
+      localStorage.removeItem(`portal_jwt_auto`)
+      setError('Session শেষ হয়েছে। আবার লগইন করুন।')
+      setPhase('login')
     }
   }
+
+  // ── Mount: আগে saved JWT আছে কিনা চেক, তারপর token verify ─
+  useEffect(() => {
+    const init = async () => {
+      // ১. URL-এ token আছে কিনা
+      if (portalToken) {
+        // নতুন লিংক — token verify করো
+        try {
+          const res = await api.get(`/portal/verify-token?token=${portalToken}`)
+          const info = res.data.data
+          setTokenInfo(info)
+
+          // ২. এই customer-এর saved JWT আছে কিনা চেক করো
+          const savedJWT = localStorage.getItem(getStorageKey(info.customer_id))
+          if (savedJWT) {
+            // Saved JWT দিয়ে সরাসরি dashboard লোড করার চেষ্টা
+            setPortalJWT(savedJWT)
+            await loadDashboard(savedJWT)
+          } else {
+            setPhase('login')
+          }
+        } catch (err) {
+          setError(err.response?.data?.message || 'অবৈধ বা মেয়াদোত্তীর্ণ লিংক।')
+          setPhase('invalid')
+        }
+        return
+      }
+
+      // ৩. URL-এ token নেই — localStorage-এ saved JWT খোঁজো
+      const allKeys = Object.keys(localStorage).filter(k => k.startsWith('portal_jwt_'))
+      if (allKeys.length > 0) {
+        const savedJWT = localStorage.getItem(allKeys[0])
+        if (savedJWT) {
+          setPortalJWT(savedJWT)
+          await loadDashboard(savedJWT)
+          return
+        }
+      }
+
+      // ৪. কিছুই নেই
+      setError('লিংক পাওয়া যায়নি।')
+      setPhase('invalid')
+    }
+
+    init()
+  }, [portalToken])
 
   // ── Google Login ───────────────────────────────────────────
   const googleLogin = useGoogleLogin({
@@ -136,7 +173,14 @@ export default function CustomerPortal() {
           google_token:  tokenResponse.access_token,
           portal_token:  portalToken
         })
-        const jwt = res.data.data.portal_jwt
+        const jwt        = res.data.data.portal_jwt
+        const customerId = res.data.data.customer?.id
+
+        // ✅ JWT localStorage-এ save করো — পরের বার লিংক ছাড়াই খুলবে
+        if (customerId) {
+          localStorage.setItem(getStorageKey(customerId), jwt)
+        }
+
         setPortalJWT(jwt)
         await loadDashboard(jwt)
       } catch (err) {
@@ -245,9 +289,27 @@ export default function CustomerPortal() {
       <div className="min-h-screen bg-gray-50">
         {/* Header */}
         <div className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-5 pt-10 pb-16">
-          <p className="text-indigo-200 text-xs mb-1">কাস্টমার পোর্টাল</p>
-          <h1 className="text-xl font-bold">{customer.shop_name}</h1>
-          <p className="text-indigo-200 text-sm">{customer.owner_name} • {customer.customer_code}</p>
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-indigo-200 text-xs mb-1">কাস্টমার পোর্টাল</p>
+              <h1 className="text-xl font-bold">{customer.shop_name}</h1>
+              <p className="text-indigo-200 text-sm">{customer.owner_name} • {customer.customer_code}</p>
+            </div>
+            {/* লগআউট বাটন */}
+            <button
+              onClick={() => {
+                Object.keys(localStorage)
+                  .filter(k => k.startsWith('portal_jwt_'))
+                  .forEach(k => localStorage.removeItem(k))
+                setPhase('login')
+                setDashboard(null)
+                setPortalJWT(null)
+              }}
+              style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 10, padding: '6px 12px', color: 'white', fontSize: 12, cursor: 'pointer' }}
+            >
+              লগআউট
+            </button>
+          </div>
         </div>
 
         <div className="px-4 -mt-10 space-y-4 pb-10">
