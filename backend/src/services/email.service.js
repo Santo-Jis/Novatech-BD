@@ -1,5 +1,5 @@
-const nodemailer = require('nodemailer');
 const { query } = require('../config/db');
+// nodemailer বাদ — Render SMTP block করে, তাই Brevo HTTP API ব্যবহার করা হচ্ছে
 
 // ============================================================
 // Email Service — NovaTechBD Management System
@@ -77,24 +77,30 @@ const sendEmail = async (to, subject, html, text = '') => {
             return { success: true, dev: true };
         }
 
-        const transporter = nodemailer.createTransport({
-            host:   config.host,
-            port:   config.port,
-            secure: config.port === 465,
-            auth:   { user: config.user, pass: config.pass },
-            tls:    { rejectUnauthorized: false }
+        // ✅ Brevo HTTP API (SMTP এর বদলে — Render SMTP block করে)
+        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'api-key': config.pass
+            },
+            body: JSON.stringify({
+                sender:      { name: 'NovaTech BD', email: config.user },
+                to:          [{ email: to }],
+                subject,
+                htmlContent: html,
+                textContent: text || subject
+            })
         });
 
-        const info = await transporter.sendMail({
-            from:    config.from,
-            to,
-            subject,
-            html,
-            text: text || subject,
-        });
+        const result = await response.json();
 
-        console.log(`✅ Email সফল → ${to} [${info.messageId}]`);
-        return { success: true, messageId: info.messageId };
+        if (!response.ok) {
+            throw new Error(result.message || `Brevo API Error: ${response.status}`);
+        }
+
+        console.log(`✅ Email সফল → ${to} [${result.messageId}]`);
+        return { success: true, messageId: result.messageId };
 
     } catch (error) {
         console.error(`❌ Email Error → ${to}:`, error.message);
@@ -706,6 +712,45 @@ const sendWelcomeEmail = async (email, customer, worker) => {
           </td>
         </tr>
       </table>` : ''}
+
+      <!-- Credit Policy -->
+      <table width="100%" cellpadding="0" cellspacing="0"
+             style="background:#fff3e0;border-radius:10px;border:1px solid #ffe0b2;margin:0 0 22px;">
+        <tr>
+          <td style="padding:18px 22px;">
+            <p style="color:#e65100;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin:0 0 12px;font-weight:bold;">💳 বাকি ও ক্রেডিট নীতিমালা</p>
+            <table width="100%">
+              <tr>
+                <td style="padding:5px 0;vertical-align:top;width:20px;">✅</td>
+                <td style="padding:5px 0 5px 8px;color:#555;font-size:12.5px;line-height:1.7;">
+                  প্রথম অর্ডারে সর্বোচ্চ <strong style="color:#bf360c;">২০% বাকি</strong> রাখা যাবে — বাকি অংশ নগদে পরিশোধ করতে হবে।
+                </td>
+              </tr>
+              <tr><td colspan="2"><div style="border-top:1px dashed #ffe0b2;margin:4px 0;"></div></td></tr>
+              <tr>
+                <td style="padding:5px 0;vertical-align:top;">📅</td>
+                <td style="padding:5px 0 5px 8px;color:#555;font-size:12.5px;line-height:1.7;">
+                  বাকি পরিমাণ <strong style="color:#bf360c;">৩০ দিনের মধ্যে</strong> পরিশোধ করতে হবে।
+                </td>
+              </tr>
+              <tr><td colspan="2"><div style="border-top:1px dashed #ffe0b2;margin:4px 0;"></div></td></tr>
+              <tr>
+                <td style="padding:5px 0;vertical-align:top;">🔄</td>
+                <td style="padding:5px 0 5px 8px;color:#555;font-size:12.5px;line-height:1.7;">
+                  পরবর্তী অর্ডার থেকে <strong style="color:#bf360c;">ফুল পেমেন্ট</strong> প্রযোজ্য হবে।
+                </td>
+              </tr>
+              <tr><td colspan="2"><div style="border-top:1px dashed #ffe0b2;margin:4px 0;"></div></td></tr>
+              <tr>
+                <td style="padding:5px 0;vertical-align:top;">⚠️</td>
+                <td style="padding:5px 0 5px 8px;color:#555;font-size:12.5px;line-height:1.7;">
+                  বাকি পরিশোধ না হলে পরবর্তী অর্ডারে <strong style="color:#bf360c;">মাল সরবরাহ বন্ধ</strong> থাকবে।
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
 
       <!-- Message -->
       <div style="background:#f3e5f5;border-left:4px solid #7b1fa2;padding:14px 18px;border-radius:0 8px 8px 0;margin:0 0 10px;">
