@@ -1,10 +1,23 @@
-// frontend/src/pages/CustomerPortal.jsx
+// frontend/src/pages/customer/CustomerPortal.jsx
 // কাস্টমার পোর্টাল — WhatsApp লিংক → Google Login → Dashboard
 
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useGoogleLogin } from '@react-oauth/google'
-import api from '../../api/axios'
+
+// ── Backend URL ───────────────────────────────────────────────
+const BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+
+// ── axio ব্যবহার না করে সরাসরি fetch — interceptor bypass ────
+const portalFetch = async (path, options = {}) => {
+  const res = await fetch(`${BACKEND}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...options.headers },
+    ...options,
+  })
+  const data = await res.json()
+  if (!res.ok) throw { status: res.status, message: data.message || 'Error' }
+  return data
+}
 
 // ── Helpers ───────────────────────────────────────────────────
 const fmt = (n) => parseFloat(n || 0).toLocaleString('bn-BD', { minimumFractionDigits: 0 })
@@ -43,7 +56,6 @@ function InvoiceCard({ sale }) {
 
       {open && (
         <div className="border-t border-gray-100 px-4 py-3 bg-gray-50 space-y-2">
-          {/* Items */}
           <div className="space-y-1">
             {items.map((item, i) => (
               <div key={i} className="flex justify-between text-sm">
@@ -91,61 +103,54 @@ export default function CustomerPortal() {
   const [searchParams] = useSearchParams()
   const portalToken    = searchParams.get('token')
 
-  const [phase, setPhase]         = useState('loading')  // loading | invalid | login | dashboard
-  const [tokenInfo, setTokenInfo]   = useState(null)
-  const [portalJWT, setPortalJWT]   = useState(null)
-  const [dashboard, setDashboard]   = useState(null)
-  const [activeTab, setActiveTab]   = useState('summary') // summary | invoices | payments
-  const [error, setError]           = useState('')
-  const [loggingIn, setLoggingIn]   = useState(false)
+  const [phase, setPhase]       = useState('loading')
+  const [tokenInfo, setTokenInfo] = useState(null)
+  const [portalJWT, setPortalJWT] = useState(null)
+  const [dashboard, setDashboard] = useState(null)
+  const [activeTab, setActiveTab] = useState('summary')
+  const [error, setError]         = useState('')
+  const [loggingIn, setLoggingIn] = useState(false)
 
-  // ── localStorage key — customer_id ভিত্তিক ───────────────
   const getStorageKey = (cid) => `portal_jwt_${cid}`
 
-  // ── Dashboard লোড ─────────────────────────────────────────
+  // ── Dashboard লোড — সরাসরি fetch, axios interceptor bypass ──
   const loadDashboard = async (jwt) => {
     try {
-      const res = await api.get('/portal/dashboard', {
+      const data = await portalFetch('/portal/dashboard', {
         headers: { Authorization: `Bearer ${jwt}` }
       })
-      setDashboard(res.data.data)
+      setDashboard(data.data)
       setPhase('dashboard')
-    } catch {
-      // JWT মেয়াদ শেষ হলে localStorage পরিষ্কার করে login-এ পাঠাও
-      localStorage.removeItem(`portal_jwt_auto`)
+    } catch (err) {
+      console.error('Dashboard error:', err)
       setError('Session শেষ হয়েছে। আবার লগইন করুন।')
       setPhase('login')
     }
   }
 
-  // ── Mount: আগে saved JWT আছে কিনা চেক, তারপর token verify ─
+  // ── Mount ─────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
-      // ১. URL-এ token আছে কিনা
       if (portalToken) {
-        // নতুন লিংক — token verify করো
         try {
-          const res = await api.get(`/portal/verify-token?token=${portalToken}`)
-          const info = res.data.data
+          const data = await portalFetch(`/portal/verify-token?token=${portalToken}`)
+          const info = data.data
           setTokenInfo(info)
 
-          // ২. এই customer-এর saved JWT আছে কিনা চেক করো
           const savedJWT = localStorage.getItem(getStorageKey(info.customer_id))
           if (savedJWT) {
-            // Saved JWT দিয়ে সরাসরি dashboard লোড করার চেষ্টা
             setPortalJWT(savedJWT)
             await loadDashboard(savedJWT)
           } else {
             setPhase('login')
           }
         } catch (err) {
-          setError(err.response?.data?.message || 'অবৈধ বা মেয়াদোত্তীর্ণ লিংক।')
+          setError(err.message || 'অবৈধ বা মেয়াদোত্তীর্ণ লিংক।')
           setPhase('invalid')
         }
         return
       }
 
-      // ৩. URL-এ token নেই — localStorage-এ saved JWT খোঁজো
       const allKeys = Object.keys(localStorage).filter(k => k.startsWith('portal_jwt_'))
       if (allKeys.length > 0) {
         const savedJWT = localStorage.getItem(allKeys[0])
@@ -156,7 +161,6 @@ export default function CustomerPortal() {
         }
       }
 
-      // ৪. কিছুই নেই
       setError('লিংক পাওয়া যায়নি।')
       setPhase('invalid')
     }
@@ -164,19 +168,22 @@ export default function CustomerPortal() {
     init()
   }, [portalToken])
 
-  // ── Google Login ───────────────────────────────────────────
+  // ── Google Login ──────────────────────────────────────────
   const googleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       setLoggingIn(true)
       try {
-        const res = await api.post('/portal/google-auth', {
-          google_token:  tokenResponse.access_token,
-          portal_token:  portalToken
+        const data = await portalFetch('/portal/google-auth', {
+          method: 'POST',
+          body: JSON.stringify({
+            google_token: tokenResponse.access_token,
+            portal_token: portalToken
+          })
         })
-        const jwt        = res.data.data.portal_jwt
-        const customerId = res.data.data.customer?.id
 
-        // ✅ JWT localStorage-এ save করো — পরের বার লিংক ছাড়াই খুলবে
+        const jwt        = data.data.portal_jwt
+        const customerId = data.data.customer?.id
+
         if (customerId) {
           localStorage.setItem(getStorageKey(customerId), jwt)
         }
@@ -184,7 +191,7 @@ export default function CustomerPortal() {
         setPortalJWT(jwt)
         await loadDashboard(jwt)
       } catch (err) {
-        setError(err.response?.data?.message || 'লগইন ব্যর্থ হয়েছে।')
+        setError(err.message || 'লগইন ব্যর্থ হয়েছে।')
       } finally {
         setLoggingIn(false)
       }
@@ -195,8 +202,7 @@ export default function CustomerPortal() {
     }
   })
 
-  // ─────────────────────────────────────────────────────────
-  // RENDER: LOADING
+  // ── RENDER: LOADING ───────────────────────────────────────
   if (phase === 'loading') return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center">
       <div className="text-center">
@@ -206,7 +212,7 @@ export default function CustomerPortal() {
     </div>
   )
 
-  // RENDER: INVALID
+  // ── RENDER: INVALID ───────────────────────────────────────
   if (phase === 'invalid') return (
     <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center p-6">
       <div className="bg-white rounded-3xl shadow-xl p-8 max-w-sm w-full text-center">
@@ -218,11 +224,10 @@ export default function CustomerPortal() {
     </div>
   )
 
-  // RENDER: LOGIN
+  // ── RENDER: LOGIN ─────────────────────────────────────────
   if (phase === 'login') return (
     <div className="min-h-screen bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center p-6">
       <div className="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full">
-        {/* Logo & Brand */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
             <span className="text-white text-2xl font-bold">N</span>
@@ -231,7 +236,6 @@ export default function CustomerPortal() {
           <p className="text-xs text-gray-400 mt-1">কাস্টমার পোর্টাল</p>
         </div>
 
-        {/* Shop Info */}
         {tokenInfo && (
           <div className="bg-indigo-50 rounded-2xl p-4 mb-6 text-center">
             <p className="text-xs text-indigo-400 mb-1">আপনার দোকান</p>
@@ -241,14 +245,12 @@ export default function CustomerPortal() {
           </div>
         )}
 
-        {/* Error */}
         {error && (
           <div className="bg-red-50 border border-red-100 rounded-xl p-3 mb-4 text-sm text-red-600 text-center">
             {error}
           </div>
         )}
 
-        {/* Google Login Button */}
         <button
           onClick={() => { setError(''); googleLogin() }}
           disabled={loggingIn}
@@ -276,7 +278,7 @@ export default function CustomerPortal() {
     </div>
   )
 
-  // RENDER: DASHBOARD
+  // ── RENDER: DASHBOARD ─────────────────────────────────────
   if (phase === 'dashboard' && dashboard) {
     const { customer, sales, credit_payments, monthly_summary, total_summary } = dashboard
     const tabs = [
@@ -287,7 +289,6 @@ export default function CustomerPortal() {
 
     return (
       <div className="min-h-screen bg-gray-50">
-        {/* Header */}
         <div className="bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-5 pt-10 pb-16">
           <div className="flex justify-between items-start">
             <div>
@@ -295,7 +296,6 @@ export default function CustomerPortal() {
               <h1 className="text-xl font-bold">{customer.shop_name}</h1>
               <p className="text-indigo-200 text-sm">{customer.owner_name} • {customer.customer_code}</p>
             </div>
-            {/* লগআউট বাটন */}
             <button
               onClick={() => {
                 Object.keys(localStorage)
@@ -313,7 +313,6 @@ export default function CustomerPortal() {
         </div>
 
         <div className="px-4 -mt-10 space-y-4 pb-10">
-          {/* Credit Status Cards */}
           <div className="grid grid-cols-3 gap-3">
             <div className="bg-white rounded-2xl p-4 shadow-sm text-center">
               <p className="text-xs text-gray-400 mb-1">বর্তমান বাকি</p>
@@ -329,7 +328,6 @@ export default function CustomerPortal() {
             </div>
           </div>
 
-          {/* Tabs */}
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
             <div className="flex border-b border-gray-100">
               {tabs.map(t => (
@@ -344,7 +342,6 @@ export default function CustomerPortal() {
             </div>
 
             <div className="p-4">
-              {/* ── SUMMARY TAB ── */}
               {activeTab === 'summary' && (
                 <div className="space-y-4">
                   <div>
@@ -363,7 +360,6 @@ export default function CustomerPortal() {
                       ))}
                     </div>
                   </div>
-
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">সর্বমোট</p>
                     <div className="grid grid-cols-2 gap-3">
@@ -383,7 +379,6 @@ export default function CustomerPortal() {
                 </div>
               )}
 
-              {/* ── INVOICES TAB ── */}
               {activeTab === 'invoices' && (
                 <div className="space-y-3">
                   {sales.length === 0
@@ -393,7 +388,6 @@ export default function CustomerPortal() {
                 </div>
               )}
 
-              {/* ── PAYMENTS TAB ── */}
               {activeTab === 'payments' && (
                 <div className="space-y-3">
                   {credit_payments.length === 0
@@ -417,7 +411,6 @@ export default function CustomerPortal() {
             </div>
           </div>
 
-          {/* Footer */}
           <p className="text-center text-xs text-gray-400 pt-2">
             NovaTech BD • কাস্টমার পোর্টাল<br />
             তথ্য সংক্রান্ত সমস্যায় আপনার SR-এর সাথে যোগাযোগ করুন।
