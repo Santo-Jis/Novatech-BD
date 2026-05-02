@@ -37,6 +37,7 @@ import ManagerTeam        from './pages/manager/Team'
 import VisitLog           from './pages/manager/VisitLog'
 import ManagerOrders      from './pages/manager/Orders'
 import ManagerSettlements from './pages/manager/Settlements'
+import SRLedger           from './pages/manager/SRLedger'
 import ManagerAttendance  from './pages/manager/Attendance'
 import ManagerCustomers   from './pages/manager/Customers'
 import ManagerRoutes      from './pages/manager/Routes'
@@ -59,6 +60,7 @@ import SalaryHistory    from './pages/worker/SalaryHistory'
 import Profile          from './pages/worker/Profile'
 import SalesHistory     from './pages/worker/SalesHistory'
 import StockStatus      from './pages/worker/StockStatus'
+import LedgerHistory    from './pages/worker/LedgerHistory'
 
 // ============================================================
 // Protected Route Component
@@ -181,6 +183,7 @@ function AppWithPermissions() {
         <Route path="visit-order"  element={<VisitOrder />} />
         <Route path="live-tracking" element={<LiveTracking />} />
         <Route path="trail-history" element={<TrailHistory />} />
+        <Route path="sr-ledger"    element={<SRLedger />} />
         <Route path="ai-chat"      element={<AIChat />} />
         <Route path="notices"      element={<NoticesView />} />
       </Route>
@@ -206,6 +209,7 @@ function AppWithPermissions() {
         <Route path="profile"      element={<Profile />} />
         <Route path="sales-history" element={<SalesHistory />} />
         <Route path="stock-status"  element={<StockStatus />} />
+        <Route path="ledger-history" element={<LedgerHistory />} />
         <Route path="notices"      element={<NoticesView />} />
       </Route>
 
