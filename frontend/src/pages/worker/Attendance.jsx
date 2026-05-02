@@ -286,6 +286,12 @@ export default function WorkerAttendance() {
       if (mode === 'checkin' && res.data.data?.isLate) setLateInfo(res.data.data)
       toast.success(res.data.message)
       setStep('done')
+
+      // ✅ FIX: চেক-ইন/চেক-আউট সফলের পর todayAtt রিফ্রেশ করো
+      // না করলে CHECKIN_REQUIRED পপআপ আবার দেখায়
+      const m = new Date().getMonth() + 1
+      const y = new Date().getFullYear()
+      fetchHistory(m, y)
     } catch (err) {
       toast.error(err.response?.data?.message || err.message || 'সমস্যা হয়েছে')
       setStep('hold')
