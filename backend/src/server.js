@@ -189,6 +189,7 @@ const { startCommissionJob }       = require('./jobs/commission.job');
 const { startBonusJob }            = require('./jobs/bonus.job');
 const { startAIJob }               = require('./jobs/ai.job');
 const { startGpsTrailCleanupJob }  = require('./jobs/gpsTrail.job');
+const { scheduleCreditReminderJob } = require('./jobs/creditReminder.job');
 
 
 // ============================================================
@@ -231,6 +232,7 @@ app.listen(PORT, "0.0.0.0", () => {
     startBonusJob();
     startAIJob();
     startGpsTrailCleanupJob();
+    scheduleCreditReminderJob();
 
     console.log('✅ Background jobs চালু হয়েছে');
 });
