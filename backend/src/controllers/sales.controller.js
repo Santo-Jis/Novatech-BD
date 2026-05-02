@@ -428,7 +428,7 @@ const createSale = async (req, res) => {
                 discount_amount:      discountAmount,
                 credit_balance_used:  creditBalanceUsed,
                 credit_balance_added: creditBalanceAdded,
-                whatsapp_link:     `https://wa.me/${cust.whatsapp?.replace(/\D/g, '')}?text=${encodeURIComponent(waLink)}`
+                whatsapp_link:     `https://wa.me/${(() => { const r = cust.whatsapp?.replace(/\D/g, '') || ''; return r.startsWith('880') ? r : '880' + r.replace(/^0/, ''); })()}?text=${encodeURIComponent(waLink)}`
             }
         });
 
@@ -486,7 +486,7 @@ const sendInvoice = async (req, res) => {
             success:     true,
             message:    'Invoice পাঠানো হয়েছে।',
             whatsapp_link: s.whatsapp
-                ? `https://wa.me/${s.whatsapp.replace(/\D/g, '')}`
+                ? `https://wa.me/${(() => { const r = s.whatsapp.replace(/\D/g, ''); return r.startsWith('880') ? r : '880' + r.replace(/^0/, ''); })()}`
                 : null
         });
 
