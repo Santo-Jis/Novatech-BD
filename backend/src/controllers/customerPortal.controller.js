@@ -56,7 +56,11 @@ const sendPortalLink = async (req, res) => {
         const portalLink  = `${frontendUrl}/customer-portal?token=${token}`;
 
         // WhatsApp Custom Link Message
-        const phone   = cust.whatsapp.replace(/\D/g, ''); // শুধু নম্বর
+        // ✅ FIX: Bangladesh country code যোগ করো
+        // 01XXXXXXXX → 8801XXXXXXXX
+        // +8801XXXXXXXX → 8801XXXXXXXX
+        const rawPhone = cust.whatsapp.replace(/\D/g, ''); // শুধু সংখ্যা
+        const phone = rawPhone.startsWith('880') ? rawPhone : '880' + rawPhone.replace(/^0/, '');
         const message = encodeURIComponent(
             `আস্সালামু আলাইকুম ${cust.owner_name} ভাই,\n\n` +
             `আপনার *${cust.shop_name}* এর সকল ক্রয় তথ্য, বাকি ও পেমেন্ট ইতিহাস দেখতে নিচের লিংকে ক্লিক করুন:\n\n` +
