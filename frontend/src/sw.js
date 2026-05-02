@@ -13,42 +13,39 @@ precacheAndRoute(self.__WB_MANIFEST)
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js')
 importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js')
 
-// ── Firebase init ────────────────────────────────────────────
-// env variable সরাসরি SW এ কাজ করে না, তাই
-// main thread থেকে config নেওয়া হবে (postMessage)
-// fallback হিসেবে নিচে placeholder রাখা আছে
-
-let firebaseInitialized = false
-
-function tryInitFirebase(config) {
-  if (firebaseInitialized) return
-  try {
-    if (!firebase.apps.length) {
-      firebase.initializeApp(config)
-    }
-    firebaseInitialized = true
-    setupMessaging()
-  } catch (e) {
-    console.error('[SW] Firebase init error:', e)
-  }
+// ============================================================
+// ✅ FIX: Firebase config সরাসরি SW এ রাখো
+// কারণ: app বন্ধ থাকলে postMessage কাজ করে না
+// তাই background push miss হতো — এখন হবে না
+//
+// 👇 এই values আপনার Firebase Console থেকে নিন:
+// Firebase Console → Project Settings → Your Apps → Config
+// ============================================================
+const FIREBASE_CONFIG = {
+  apiKey:            'YOUR_API_KEY',            // ← বসান
+  authDomain:        'YOUR_PROJECT_ID.firebaseapp.com',
+  databaseURL:       'YOUR_DATABASE_URL',        // ← বসান
+  projectId:         'YOUR_PROJECT_ID',          // ← বসান
+  storageBucket:     'YOUR_PROJECT_ID.appspot.com',
+  messagingSenderId: 'YOUR_MESSAGING_SENDER_ID', // ← বসান
+  appId:             'YOUR_APP_ID',              // ← বসান
 }
 
-// ── Main thread থেকে Firebase config নাও ────────────────────
-self.addEventListener('message', (event) => {
-  if (event.data?.type === 'FIREBASE_CONFIG') {
-    tryInitFirebase(event.data.config)
+// ── Firebase init — SW start হওয়ার সাথে সাথেই ──────────────
+try {
+  if (!firebase.apps.length) {
+    firebase.initializeApp(FIREBASE_CONFIG)
   }
-  // PWA skipWaiting
-  if (event.data?.type === 'SKIP_WAITING') {
-    self.skipWaiting()
-  }
-})
+  setupMessaging()
+} catch (e) {
+  console.error('[SW] Firebase init error:', e)
+}
 
 // ── Firebase Messaging setup ─────────────────────────────────
 function setupMessaging() {
   const messaging = firebase.messaging()
 
-  // App বন্ধ বা background এ থাকলে এখানে notification আসে
+  // ✅ App বন্ধ বা background এ থাকলেও এখন notification আসবে
   messaging.onBackgroundMessage((payload) => {
     console.log('[SW] Background push received:', payload)
 
@@ -67,6 +64,13 @@ function setupMessaging() {
     })
   })
 }
+
+// ── PWA skipWaiting (update হলে নতুন SW সাথে সাথে activate) ─
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting()
+  }
+})
 
 // ── Notification click ───────────────────────────────────────
 self.addEventListener('notificationclick', (event) => {
