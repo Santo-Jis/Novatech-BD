@@ -197,7 +197,7 @@ const googleAuth = async (req, res) => {
                 type:          'customer_portal'
             },
             process.env.JWT_ACCESS_SECRET,
-            { expiresIn: '24h' }
+            { expiresIn: '30d' }  // ✅ FIX: 30 দিন — বারবার লিংক লাগবে না
         );
 
         // Login log
