@@ -2,6 +2,7 @@ const { query, withTransaction } = require('../config/db');
 const axios = require('axios');
 const { sendOrderNotificationEmail } = require('../services/email.service');
 const { sendPushNotification } = require('../services/fcm.service');
+const { addLedgerEntry } = require('./ledger.controller');
 
 // ============================================================
 // Firebase নোটিফিকেশন Helper
@@ -387,20 +388,21 @@ const approveOrder = async (req, res) => {
         console.log(`✅ Approve Order ${id}: totalAmount=${totalAmount}, items=${safeItems.length}`);
 
         await withTransaction(async (client) => {
-            // reserved_stock আপডেট
+            // stock কমাও এবং reserved_stock মুক্ত করো
             for (const item of safeItems) {
-                const original    = originalItems.find(o => o.product_id === item.product_id);
-                const origQty     = parseInt(original?.requested_qty) || parseInt(original?.approved_qty) || 0;
-                const diff        = origQty - item.approved_qty;
+                const original = originalItems.find(o => o.product_id === item.product_id);
+                const origQty  = parseInt(original?.requested_qty) || parseInt(original?.approved_qty) || 0;
 
-                if (diff !== 0) {
-                    await client.query(
-                        `UPDATE products
-                         SET reserved_stock = GREATEST(0, COALESCE(reserved_stock, 0) - $1), updated_at = NOW()
-                         WHERE id = $2`,
-                        [diff, item.product_id]
-                    );
-                }
+                // মূল stock থেকে approved_qty বাদ দাও
+                // reserved_stock থেকে পুরো original qty মুক্ত করো
+                await client.query(
+                    `UPDATE products
+                     SET stock          = GREATEST(0, stock - $1),
+                         reserved_stock = GREATEST(0, COALESCE(reserved_stock, 0) - $2),
+                         updated_at     = NOW()
+                     WHERE id = $3`,
+                    [item.approved_qty, origQty, item.product_id]
+                );
             }
 
             // অর্ডার আপডেট
@@ -415,6 +417,24 @@ const approveOrder = async (req, res) => {
                  WHERE id = $4`,
                 [req.user.id, JSON.stringify(safeItems), totalAmount, id]
             );
+
+            // ─── Ledger: প্রতিটি পণ্য IN হিসেবে রেকর্ড ─────
+            for (const item of safeItems) {
+                if (item.approved_qty > 0) {
+                    await addLedgerEntry(client, {
+                        worker_id:      order.rows[0].worker_id,
+                        product_id:     item.product_id,
+                        product_name:   item.product_name,
+                        txn_type:       'order_in',
+                        direction:      1,
+                        qty:            item.approved_qty,
+                        reference_id:   parseInt(id),
+                        reference_type: 'order',
+                        note:           `অর্ডার #${id} অনুমোদন`,
+                        created_by:     req.user.id,
+                    });
+                }
+            }
         });
 
         // SR কে Firebase নোটিফিকেশন
@@ -516,93 +536,87 @@ const rejectOrder = async (req, res) => {
 
 const getStockStatus = async (req, res) => {
     try {
-        const today    = new Date().toISOString().split('T')[0];
         const workerId = req.user.id;
 
-        // আজকের approved অর্ডার আনো
-        const orderResult = await query(
-            `SELECT id, items, total_amount, approved_at, requested_at, status
-             FROM orders
-             WHERE worker_id = $1
-               AND DATE(requested_at) = $2
-               AND status = 'approved'
-             ORDER BY approved_at DESC
-             LIMIT 1`,
-            [workerId, today]
+        // ─── Ledger থেকে হাতে থাকা স্টক (একাধিক দিনের সমন্বয়) ──
+        // SUM(qty * direction): +1=IN (order_in), -1=OUT (sale_out, return_out)
+        const ledgerResult = await query(
+            `SELECT
+                l.product_id,
+                l.product_name,
+                SUM(l.qty * l.direction)                        AS in_hand_qty,
+                SUM(CASE WHEN l.direction =  1 THEN l.qty ELSE 0 END) AS total_in,
+                SUM(CASE WHEN l.direction = -1 AND l.txn_type = 'sale_out'
+                         THEN l.qty ELSE 0 END)                AS total_sold,
+                SUM(CASE WHEN l.direction = -1 AND l.txn_type = 'return_out'
+                         THEN l.qty ELSE 0 END)                AS total_returned,
+                -- পণ্যের দাম orders টেবিল থেকে নেবো
+                (SELECT (item->>'price')::numeric
+                 FROM orders o,
+                      jsonb_array_elements(
+                          CASE WHEN jsonb_typeof(o.items::jsonb) = 'array'
+                               THEN o.items::jsonb
+                               ELSE '[]'::jsonb END
+                      ) AS item
+                 WHERE o.worker_id = $1
+                   AND (item->>'product_id')::int = l.product_id
+                   AND o.status = 'approved'
+                 ORDER BY o.approved_at DESC
+                 LIMIT 1
+                )                                               AS price
+             FROM sr_stock_ledger l
+             WHERE l.worker_id = $1
+             GROUP BY l.product_id, l.product_name
+             HAVING SUM(l.qty * l.direction) > 0
+             ORDER BY l.product_name`,
+            [workerId]
         );
 
-        if (orderResult.rows.length === 0) {
+        if (ledgerResult.rows.length === 0) {
             return res.status(200).json({
                 success: true,
-                has_approved_order: false,
-                message: 'আজকে কোনো অনুমোদিত অর্ডার নেই।',
-                items: []
+                has_stock: false,
+                message: 'হাতে কোনো পণ্য নেই।',
+                items: [],
+                summary: {
+                    total_in_hand: 0,
+                    total_sold: 0,
+                    in_hand_amount: 0,
+                    sold_amount: 0,
+                }
             });
         }
 
-        const order      = orderResult.rows[0];
-        let orderedItems = order.items;
-        if (typeof orderedItems === 'string') {
-            try { orderedItems = JSON.parse(orderedItems); } catch { orderedItems = []; }
-        }
-        if (!Array.isArray(orderedItems)) orderedItems = [];
-
-        // আজকের বিক্রয় থেকে প্রতিটি পণ্যের বিক্রিত পরিমাণ আনো
-        const salesResult = await query(
-            `SELECT items FROM sales_transactions
-             WHERE worker_id = $1 AND date = $2`,
-            [workerId, today]
-        );
-
-        // বিক্রয়ের সব items flatten করো
-        const soldMap = {};
-        for (const sale of salesResult.rows) {
-            let saleItems = sale.items;
-            if (typeof saleItems === 'string') {
-                try { saleItems = JSON.parse(saleItems); } catch { saleItems = []; }
-            }
-            if (!Array.isArray(saleItems)) continue;
-            for (const si of saleItems) {
-                const pid = si.product_id;
-                soldMap[pid] = (soldMap[pid] || 0) + (parseInt(si.qty) || 0);
-            }
-        }
-
-        // প্রতিটি ordered item-এ বিক্রয় ও বাকি যোগ করো
-        const statusItems = orderedItems.map(item => {
-            const ordered  = parseInt(item.approved_qty || item.requested_qty || 0);
-            const sold     = soldMap[item.product_id] || 0;
-            const inHand   = Math.max(0, ordered - sold);
+        const statusItems = ledgerResult.rows.map(row => {
+            const inHand  = parseInt(row.in_hand_qty)   || 0;
+            const totalIn = parseInt(row.total_in)       || 0;
+            const sold    = parseInt(row.total_sold)     || 0;
+            const price   = parseFloat(row.price)        || 0;
 
             return {
-                product_id:   item.product_id,
-                product_name: item.product_name || item.name || 'অজানা পণ্য',
-                price:        parseFloat(item.price || item.final_price || 0),
-                ordered_qty:  ordered,
-                sold_qty:     sold,
-                in_hand_qty:  inHand,
-                sell_percent: ordered > 0 ? Math.round((sold / ordered) * 100) : 0,
+                product_id:   row.product_id,
+                product_name: row.product_name || 'অজানা পণ্য',
+                price,
+                total_in_qty:  totalIn,   // মোট নেওয়া (সব দিন)
+                sold_qty:      sold,       // মোট বিক্রয়
+                in_hand_qty:   inHand,     // এখন হাতে
+                sell_percent:  totalIn > 0 ? Math.round((sold / totalIn) * 100) : 0,
             };
         });
 
-        // সামগ্রিক সারসংক্ষেপ
-        const totalOrdered  = statusItems.reduce((s, i) => s + i.ordered_qty, 0);
-        const totalSold     = statusItems.reduce((s, i) => s + i.sold_qty, 0);
-        const totalInHand   = statusItems.reduce((s, i) => s + i.in_hand_qty, 0);
-        const totalSoldAmt  = statusItems.reduce((s, i) => s + (i.sold_qty * i.price), 0);
-        const totalHandAmt  = statusItems.reduce((s, i) => s + (i.in_hand_qty * i.price), 0);
+        const totalInHand  = statusItems.reduce((s, i) => s + i.in_hand_qty, 0);
+        const totalSold    = statusItems.reduce((s, i) => s + i.sold_qty, 0);
+        const totalHandAmt = statusItems.reduce((s, i) => s + (i.in_hand_qty * i.price), 0);
+        const totalSoldAmt = statusItems.reduce((s, i) => s + (i.sold_qty    * i.price), 0);
 
         return res.status(200).json({
-            success:            true,
-            has_approved_order: true,
-            order_id:           order.id,
-            approved_at:        order.approved_at,
+            success:   true,
+            has_stock: true,
             summary: {
-                total_ordered:   totalOrdered,
-                total_sold:      totalSold,
-                total_in_hand:   totalInHand,
-                sold_amount:     totalSoldAmt,
-                in_hand_amount:  totalHandAmt,
+                total_in_hand:  totalInHand,
+                total_sold:     totalSold,
+                in_hand_amount: totalHandAmt,
+                sold_amount:    totalSoldAmt,
             },
             items: statusItems,
         });
