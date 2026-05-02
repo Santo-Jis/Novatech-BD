@@ -30,6 +30,7 @@ import AdminTeams from './pages/admin/Teams'
 import AIChat        from './pages/shared/AIChat'
 import NoticesView   from './pages/shared/NoticesView'
 import SRApplicationForm from './pages/SRApplicationForm'
+import CustomerPortal from './pages/customer/CustomerPortal'
 
 // Manager Pages
 import ManagerDashboard   from './pages/manager/Dashboard'
@@ -129,6 +130,7 @@ function AppWithPermissions() {
       {/* Public */}
       <Route path="/login" element={<Login />} />
       <Route path="/apply/sr" element={<SRApplicationForm />} />
+      <Route path="/customer-portal" element={<CustomerPortal />} />
       <Route path="/"      element={<HomeRedirect />} />
 
       {/* Unauthorized */}
