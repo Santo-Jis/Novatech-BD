@@ -4,8 +4,10 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
-  permissions:
+
+permissions:
   contents: write
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
@@ -25,19 +27,13 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      # ── Auto Version — github.run_number দিয়ে auto বাড়বে ──
       - name: Update version automatically
         run: |
           VERSION_CODE=${{ github.run_number }}
           VERSION_NAME="1.0.${{ github.run_number }}"
-
-          # app.routes.js এ version update করো
           sed -i "s/versionCode: [0-9]*/versionCode: $VERSION_CODE/" backend/src/routes/app.routes.js
           sed -i "s/versionName: '[^']*'/versionName: '$VERSION_NAME'/" backend/src/routes/app.routes.js
-
-          # useAppUpdate.js এ CURRENT_VERSION_CODE update করো
           sed -i "s/CURRENT_VERSION_CODE = [0-9]*/CURRENT_VERSION_CODE = $VERSION_CODE/" frontend/src/hooks/useAppUpdate.js
-
           echo "✅ Version updated: $VERSION_NAME (code: $VERSION_CODE)"
 
       - name: Install frontend dependencies
@@ -79,8 +75,6 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug --no-daemon
 
-      # ── APK কে GitHub Release এ upload করো ─────────────────
-      # এই URL থেকে App auto-download করবে
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -90,11 +84,10 @@ jobs:
             ## NovaTech BD App Update
             **Version:** 1.0.${{ github.run_number }}
             **Build:** ${{ github.run_number }}
-            
             ### পরিবর্তন
             - Latest code থেকে build করা হয়েছে
           files: frontend/android/app/build/outputs/apk/debug/app-debug.apk
-        
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
