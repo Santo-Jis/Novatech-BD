@@ -90,6 +90,7 @@ const ledgerRoutes      = require('./routes/ledger.routes');
 const salaryRoutes      = require('./routes/salary.routes');
 const locationRoutes    = require('./routes/location.routes');
 const portalRoutes      = require('./routes/customerPortal.routes');
+const appRoutes         = require('./routes/app.routes');       // ← নতুন
 
 app.use('/api/auth',        loginLimiter, authRoutes);
 app.use('/api/employees',   employeeRoutes);
@@ -111,6 +112,7 @@ app.use('/api/salary',     salaryRoutes);
 app.use('/api/location',   locationRoutes);
 app.use('/api/ledger',     ledgerRoutes);
 app.use('/api/portal',     portalRoutes);
+app.use('/api/app',        appRoutes);                         // ← নতুন
 
 // ============================================================
 // HEALTH CHECK
