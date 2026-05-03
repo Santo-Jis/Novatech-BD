@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './store/auth.store'
 import { FirebaseProvider } from './firebase/notifications'
 import PermissionSetup, { usePermissionSetup } from './components/PermissionSetup'
+import AppUpdateDialog from './components/AppUpdateDialog'   // ← নতুন
 
 // Layouts
 import AdminLayout   from './layouts/AdminLayout'
@@ -108,12 +109,7 @@ const HomeRedirect = () => {
 }
 
 // ============================================================
-// App Routes
-// ============================================================
-
-// ============================================================
-// Inner App — Permission hook-এর জন্য আলাদা component
-// (FirebaseProvider এর ভেতরে থাকতে হবে যাতে user পাওয়া যায়)
+// Inner App
 // ============================================================
 
 function AppWithPermissions() {
@@ -121,7 +117,10 @@ function AppWithPermissions() {
 
   return (
     <>
-      {/* Permission Setup Modal — Login করার পরে দেখায় */}
+      {/* Auto Update Dialog — Android App এ নতুন version থাকলে দেখাবে */}
+      <AppUpdateDialog />
+
+      {/* Permission Setup Modal */}
       {showPermissions && (
         <PermissionSetup onDone={closePermissions} />
       )}
