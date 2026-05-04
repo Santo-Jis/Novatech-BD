@@ -505,21 +505,23 @@ const checkEmailType = async (req, res) => {
         const cleanEmail = email.toLowerCase().trim();
 
         // ১. কর্মী কিনা দেখো
+        // users টেবিলে is_active কলাম নেই — status দিয়ে চেক করো
         const workerResult = await query(
             `SELECT id, role, name_bn, status
              FROM users
-             WHERE email = $1 AND is_active = true`,
+             WHERE email = $1
+               AND status NOT IN ('archived', 'suspended')`,
             [cleanEmail]
         );
 
         if (workerResult.rows.length > 0) {
             const worker = workerResult.rows[0];
 
-            if (worker.status === 'inactive' || worker.status === 'terminated') {
+            if (worker.status === 'pending') {
                 return res.status(403).json({
                     success: false,
                     type: 'blocked',
-                    message: 'এই অ্যাকাউন্ট নিষ্ক্রিয়। Admin এর সাথে যোগাযোগ করুন।'
+                    message: 'আপনার অ্যাকাউন্ট অনুমোদিত হয়নি। Admin এর সাথে যোগাযোগ করুন।'
                 });
             }
 
