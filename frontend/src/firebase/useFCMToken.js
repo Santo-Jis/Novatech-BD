@@ -7,7 +7,7 @@ import toast from 'react-hot-toast'
 // useFCMToken Hook — Web + Native Android উভয়ই সাপোর্ট করে
 //
 // Web (Browser/PWA):
-//   firebase/messaging + Service Worker দিয়ে FCM token নেয়
+//   firebase/messaging + Service Worker দিয়ে FCM token নেয
 //
 // Native (Android APK via Capacitor):
 //   @capacitor/push-notifications দিয়ে native FCM token নেয়
