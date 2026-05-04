@@ -484,6 +484,101 @@ const saveFCMToken = async (req, res) => {
     }
 };
 
+// ============================================================
+// POST /api/auth/check-email
+// Google Login এর পর email দিয়ে user type চেক করবে
+// কাস্টমার → portal_jwt দেবে
+// কর্মী    → পাসওয়ার্ড চাইবে
+// অচেনা   → 404
+// ============================================================
+const checkEmailType = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email দেওয়া হয়নি।'
+            });
+        }
+
+        const cleanEmail = email.toLowerCase().trim();
+
+        // ১. কর্মী কিনা দেখো
+        const workerResult = await query(
+            `SELECT id, role, name_bn, status
+             FROM users
+             WHERE email = $1 AND is_active = true`,
+            [cleanEmail]
+        );
+
+        if (workerResult.rows.length > 0) {
+            const worker = workerResult.rows[0];
+
+            if (worker.status === 'inactive' || worker.status === 'terminated') {
+                return res.status(403).json({
+                    success: false,
+                    type: 'blocked',
+                    message: 'এই অ্যাকাউন্ট নিষ্ক্রিয়। Admin এর সাথে যোগাযোগ করুন।'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                type: 'worker',
+                message: 'কর্মী পাওয়া গেছে।',
+                data: { name: worker.name_bn, role: worker.role }
+            });
+        }
+
+        // ২. কাস্টমার কিনা দেখো
+        const customerResult = await query(
+            `SELECT id, shop_name, owner_name, customer_code
+             FROM customers
+             WHERE email = $1 AND is_active = true`,
+            [cleanEmail]
+        );
+
+        if (customerResult.rows.length > 0) {
+            const customer = customerResult.rows[0];
+
+            const jwt = require('jsonwebtoken');
+            const portalJWT = jwt.sign(
+                { customer_id: customer.id, email: cleanEmail, type: 'customer_portal' },
+                process.env.JWT_ACCESS_SECRET,
+                { expiresIn: '30d' }
+            );
+
+            return res.status(200).json({
+                success: true,
+                type: 'customer',
+                message: 'কাস্টমার পাওয়া গেছে।',
+                data: {
+                    portal_jwt:    portalJWT,
+                    customer_id:   customer.id,
+                    shop_name:     customer.shop_name,
+                    owner_name:    customer.owner_name,
+                    customer_code: customer.customer_code
+                }
+            });
+        }
+
+        // ৩. অচেনা
+        return res.status(404).json({
+            success: false,
+            type: 'unknown',
+            message: 'এই Email দিয়ে কোনো অ্যাকাউন্ট পাওয়া যায়নি।'
+        });
+
+    } catch (error) {
+        console.error('❌ checkEmailType Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।'
+        });
+    }
+};
+
 module.exports = {
     login,
     refresh,
@@ -493,5 +588,6 @@ module.exports = {
     forgotPassword,
     verifyOtp,
     resetPasswordWithOtp,
-    saveFCMToken
+    saveFCMToken,
+    checkEmailType
 };
