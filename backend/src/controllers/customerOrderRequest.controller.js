@@ -6,7 +6,7 @@
 // ============================================================
 
 const { query }  = require('../config/db');
-const { sendPushToMany } = require('../services/fcm.service');
+const { sendPushToMany, sendCustomerPush } = require('../services/fcm.service');
 
 // ============================================================
 // HELPER — Admin ও Manager দের userId নাও
@@ -292,19 +292,18 @@ const updateOrderRequest = async (req, res) => {
                     [request.customer_id, notif.title, notif.body]
                 ).catch(e => console.error('[OrderRequest] Customer notif DB error:', e.message));
 
-                // Web Push — কাস্টমারের FCM token থাকলে
+                // Web Push — sendCustomerPush handles stale token cleanup automatically
                 const { rows: fcmRows } = await query(
                     `SELECT fcm_token FROM customers WHERE id = $1 AND fcm_token IS NOT NULL`,
                     [request.customer_id]
                 ).catch(() => ({ rows: [] }));
 
                 if (fcmRows.length && fcmRows[0].fcm_token) {
-                    const admin = require('firebase-admin');
-                    admin.messaging().send({
-                        token: fcmRows[0].fcm_token,
-                        notification: { title: notif.title, body: notif.body },
-                        webpush: { fcmOptions: { link: '/customer-portal' } }
-                    }).catch(e => console.error('[OrderRequest] Customer push error:', e.message));
+                    await sendCustomerPush(fcmRows[0].fcm_token, {
+                        title: notif.title,
+                        body:  notif.body,
+                        type:  'order_request',
+                    });
                 }
             }
         }
