@@ -143,9 +143,68 @@ function getClickUrl(type) {
   }
 }
 
+// ============================================================
+// clearStaleCustomerToken — কাস্টমারের expired FCM token মুছো
+// customers টেবিলে NULL করে — দুই জায়গায় আলাদা করে না লিখে
+// এই single function সব জায়গায় ব্যবহার করো
+// ============================================================
+
+const clearStaleCustomerToken = async (fcmToken) => {
+  try {
+    await query(
+      `UPDATE customers SET fcm_token = NULL, fcm_token_updated_at = NOW()
+       WHERE fcm_token = $1`,
+      [fcmToken]
+    )
+    console.log('[FCM] Stale customer token cleared')
+  } catch (e) {
+    console.error('[FCM] clearStaleCustomerToken error:', e.message)
+  }
+}
+
+// ============================================================
+// sendCustomerPush — একজন কাস্টমারের browser-এ push পাঠাও
+// stale token হলে automatically customers টেবিল থেকে মুছবে
+// ============================================================
+
+const STALE_TOKEN_CODES = new Set([
+  'messaging/registration-token-not-registered',
+  'messaging/invalid-registration-token',
+])
+
+const sendCustomerPush = async (fcmToken, { title, body, type = 'general' }) => {
+  if (!fcmToken) return
+
+  initializeFirebase()
+
+  try {
+    await admin.messaging().send({
+      token: fcmToken,
+      notification: { title, body },
+      data: { type },
+      webpush: {
+        notification: {
+          icon:    '/icon-192.png',
+          badge:   '/badge-72.png',
+          vibrate: [200, 100, 200],
+        },
+        fcmOptions: { link: '/customer-portal' },
+      },
+    })
+  } catch (e) {
+    if (STALE_TOKEN_CODES.has(e.code)) {
+      await clearStaleCustomerToken(fcmToken)
+    } else {
+      console.error('[FCM] sendCustomerPush error:', e.message)
+    }
+  }
+}
+
 module.exports = {
   saveFCMToken,
   getFCMTokens,
   sendPushNotification,
   sendPushToMany,
+  sendCustomerPush,
+  clearStaleCustomerToken,
 }
