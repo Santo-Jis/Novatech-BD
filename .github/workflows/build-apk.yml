@@ -61,6 +61,7 @@ jobs:
           echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env
           echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env
           echo "VITE_FIREBASE_VAPID_KEY=${{ secrets.VITE_FIREBASE_VAPID_KEY }}" >> .env
+          echo "VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}" >> .env
 
       - name: Build React app
         working-directory: frontend
@@ -93,6 +94,14 @@ jobs:
             sed -i "s/classpath 'com.android.tools.build:gradle/classpath 'com.google.gms:google-services:4.4.0'\n        classpath 'com.android.tools.build:gradle/" build.gradle
           fi
           echo "✅ build.gradle verified"
+
+      - name: Print SHA-1 Fingerprint
+        run: |
+          keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android -keypass android 2>/dev/null \
+            | grep "SHA1"
 
       - name: Build Debug APK
         working-directory: frontend/android
