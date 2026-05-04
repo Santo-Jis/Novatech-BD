@@ -8,7 +8,7 @@ import { useGoogleLogin } from '@react-oauth/google'
 // ── Backend URL ───────────────────────────────────────────────
 const BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
-// ── axio ব্যবহার না করে সরাসরি fetch — interceptor bypass ────
+// ── axios ব্যবহার না করে সরাসরি fetch — interceptor bypass ──
 const portalFetch = async (path, options = {}) => {
   const res = await fetch(`${BACKEND}${path}`, {
     headers: { 'Content-Type': 'application/json', ...options.headers },
@@ -20,7 +20,7 @@ const portalFetch = async (path, options = {}) => {
 }
 
 // ── Helpers ───────────────────────────────────────────────────
-const fmt = (n) => parseFloat(n || 0).toLocaleString('bn-BD', { minimumFractionDigits: 0 })
+const fmt     = (n) => parseFloat(n || 0).toLocaleString('bn-BD', { minimumFractionDigits: 0 })
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('bn-BD', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
 // ── Payment Badge ─────────────────────────────────────────────
@@ -32,6 +32,19 @@ const PayBadge = ({ method }) => {
   }
   const m = map[method] || { label: method, color: 'bg-gray-100 text-gray-600' }
   return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.color}`}>{m.label}</span>
+}
+
+// ── Order Status Badge ────────────────────────────────────────
+const StatusBadge = ({ status }) => {
+  const map = {
+    pending:   { label: '⏳ অপেক্ষমাণ',  color: 'bg-yellow-100 text-yellow-700' },
+    confirmed: { label: '✅ কনফার্ম',     color: 'bg-blue-100 text-blue-700' },
+    assigned:  { label: '🚶 SR আসছে',    color: 'bg-purple-100 text-purple-700' },
+    delivered: { label: '📦 সম্পন্ন',     color: 'bg-green-100 text-green-700' },
+    cancelled: { label: '❌ বাতিল',       color: 'bg-red-100 text-red-700' },
+  }
+  const s = map[status] || { label: status, color: 'bg-gray-100 text-gray-600' }
+  return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${s.color}`}>{s.label}</span>
 }
 
 // ── Invoice Card ──────────────────────────────────────────────
@@ -98,26 +111,284 @@ function InvoiceCard({ sale }) {
   )
 }
 
+// ── Order Request Tab ─────────────────────────────────────────
+function OrderRequestTab({ portalJWT }) {
+  const [phase,      setPhase]      = useState('list')
+  const [products,   setProducts]   = useState([])
+  const [requests,   setRequests]   = useState([])
+  const [cart,       setCart]       = useState({})
+  const [note,       setNote]       = useState('')
+  const [loading,    setLoading]    = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [successMsg, setSuccessMsg] = useState('')
+  const [errorMsg,   setErrorMsg]   = useState('')
+
+  const loadRequests = async () => {
+    setLoading(true)
+    try {
+      const data = await portalFetch('/portal/order-requests', {
+        headers: { Authorization: `Bearer ${portalJWT}` }
+      })
+      setRequests(data.data || [])
+    } catch { setErrorMsg('অর্ডার লিস্ট আনতে সমস্যা হয়েছে।') }
+    finally { setLoading(false) }
+  }
+
+  const loadProducts = async () => {
+    setLoading(true)
+    try {
+      const data = await portalFetch('/portal/products', {
+        headers: { Authorization: `Bearer ${portalJWT}` }
+      })
+      setProducts(data.data || [])
+    } catch { setErrorMsg('পণ্য তালিকা আনতে সমস্যা হয়েছে।') }
+    finally { setLoading(false) }
+  }
+
+  useEffect(() => { loadRequests() }, [])
+  useEffect(() => { if (phase === 'new' && products.length === 0) loadProducts() }, [phase])
+
+  const cartCount = Object.values(cart).filter(q => q > 0).length
+
+  const setQty = (productId, qty) => {
+    setCart(prev => ({ ...prev, [productId]: Math.max(0, parseInt(qty) || 0) }))
+  }
+
+  const handleSubmit = async () => {
+    const items = Object.entries(cart)
+      .filter(([, qty]) => qty > 0)
+      .map(([product_id, qty]) => ({ product_id, qty }))
+
+    if (items.length === 0) { setErrorMsg('কমপক্ষে একটি পণ্য সিলেক্ট করুন।'); return }
+
+    setSubmitting(true)
+    setErrorMsg('')
+    try {
+      await portalFetch('/portal/order-request', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${portalJWT}` },
+        body: JSON.stringify({ items, note })
+      })
+      setCart({})
+      setNote('')
+      setSuccessMsg('অর্ডার রিকোয়েস্ট পাঠানো হয়েছে! শীঘ্রই SR আসবে। 🎉')
+      setPhase('list')
+      loadRequests()
+    } catch (e) {
+      setErrorMsg(e.message || 'অর্ডার পাঠাতে সমস্যা হয়েছে।')
+    } finally { setSubmitting(false) }
+  }
+
+  // ── LIST VIEW ──────────────────────────────────────────────
+  if (phase === 'list') return (
+    <div className="space-y-4">
+      {successMsg && (
+        <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-start gap-3">
+          <span className="text-2xl">✅</span>
+          <p className="flex-1 text-green-800 font-semibold text-sm">{successMsg}</p>
+          <button onClick={() => setSuccessMsg('')} className="text-green-400 text-lg font-bold">✕</button>
+        </div>
+      )}
+
+      <button
+        onClick={() => { setPhase('new'); setErrorMsg('') }}
+        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold
+          py-4 rounded-2xl flex items-center justify-center gap-2 shadow-lg
+          transition-all active:scale-95"
+      >
+        <span className="text-xl">🛒</span>
+        নতুন অর্ডার রিকোয়েস্ট
+      </button>
+
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+        </div>
+      ) : requests.length === 0 ? (
+        <div className="text-center py-10">
+          <p className="text-4xl mb-3">📦</p>
+          <p className="text-gray-400 text-sm">এখনও কোনো অর্ডার রিকোয়েস্ট নেই।</p>
+          <p className="text-gray-300 text-xs mt-1">উপরের বাটনে ক্লিক করে প্রথম অর্ডার দিন।</p>
+        </div>
+      ) : (
+        requests.map(req => {
+          const items = typeof req.items === 'string' ? JSON.parse(req.items) : (req.items || [])
+          return (
+            <div key={req.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <p className="text-xs text-gray-400">
+                    {new Date(req.created_at).toLocaleDateString('bn-BD', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </p>
+                  <p className="text-sm font-semibold text-gray-700 mt-0.5">{items.length}টি পণ্য</p>
+                </div>
+                <StatusBadge status={req.status} />
+              </div>
+              <div className="space-y-1 mb-3">
+                {items.map((item, i) => (
+                  <div key={i} className="flex justify-between text-sm text-gray-600">
+                    <span>{item.product_name}</span>
+                    <span className="font-medium">× {item.qty}</span>
+                  </div>
+                ))}
+              </div>
+              {req.assigned_sr_name && (
+                <div className="bg-purple-50 rounded-xl px-3 py-2 text-xs text-purple-700">
+                  🚶 SR: {req.assigned_sr_name}
+                </div>
+              )}
+              {req.admin_note && (
+                <div className="bg-gray-50 rounded-xl px-3 py-2 text-xs text-gray-500 mt-2">
+                  📝 {req.admin_note}
+                </div>
+              )}
+              {req.note && (
+                <div className="bg-blue-50 rounded-xl px-3 py-2 text-xs text-blue-600 mt-2">
+                  💬 আপনার নোট: {req.note}
+                </div>
+              )}
+            </div>
+          )
+        })
+      )}
+    </div>
+  )
+
+  // ── NEW ORDER VIEW ─────────────────────────────────────────
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => { setPhase('list'); setCart({}); setNote(''); setErrorMsg('') }}
+          className="w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-xl flex items-center justify-center text-gray-600 font-bold transition-colors"
+        >
+          ←
+        </button>
+        <div>
+          <h3 className="font-bold text-gray-800">নতুন অর্ডার রিকোয়েস্ট</h3>
+          <p className="text-xs text-gray-400">পণ্য বেছে পরিমাণ দিন</p>
+        </div>
+      </div>
+
+      {errorMsg && (
+        <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-600 text-center">
+          {errorMsg}
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {products.map(prod => {
+            const qty = cart[prod.id] || 0
+            return (
+              <div key={prod.id}
+                className={`bg-white rounded-2xl border shadow-sm p-4 transition-all
+                  ${qty > 0 ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100'}`}>
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex-1 pr-3">
+                    <p className="font-semibold text-gray-800 text-sm">{prod.name}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      ৳{parseFloat(prod.price).toLocaleString('bn-BD')} / {prod.unit || 'পিস'}
+                    </p>
+                  </div>
+                  {qty > 0 && (
+                    <div className="bg-indigo-600 text-white text-xs px-2 py-1 rounded-full font-bold">
+                      × {qty}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setQty(prod.id, qty - 1)}
+                    disabled={qty === 0}
+                    className="w-9 h-9 bg-gray-100 hover:bg-gray-200 disabled:opacity-30
+                      rounded-xl font-bold text-gray-700 text-lg flex items-center justify-center transition-colors"
+                  >−</button>
+                  <input
+                    type="number"
+                    value={qty || ''}
+                    onChange={e => setQty(prod.id, e.target.value)}
+                    placeholder="০"
+                    min="0"
+                    className="flex-1 text-center border border-gray-200 rounded-xl py-2 text-sm font-semibold focus:outline-none focus:border-indigo-400"
+                  />
+                  <button
+                    onClick={() => setQty(prod.id, qty + 1)}
+                    className="w-9 h-9 bg-indigo-100 hover:bg-indigo-200 rounded-xl
+                      font-bold text-indigo-700 text-lg flex items-center justify-center transition-colors"
+                  >+</button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {cartCount > 0 && (
+        <div>
+          <label className="text-xs font-semibold text-gray-500 mb-1 block">
+            অতিরিক্ত নির্দেশনা (ঐচ্ছিক)
+          </label>
+          <textarea
+            value={note}
+            onChange={e => setNote(e.target.value)}
+            placeholder="যেমন: দ্রুত দরকার, বিকেলে আসুন..."
+            rows={2}
+            className="w-full border border-gray-200 rounded-2xl px-4 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none"
+          />
+        </div>
+      )}
+
+      <button
+        onClick={handleSubmit}
+        disabled={cartCount === 0 || submitting}
+        className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40
+          text-white font-bold py-4 rounded-2xl flex items-center justify-center
+          gap-2 shadow-lg transition-all active:scale-95"
+      >
+        {submitting ? (
+          <>
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            পাঠানো হচ্ছে...
+          </>
+        ) : (
+          <>
+            🛒 অর্ডার রিকোয়েস্ট পাঠান
+            {cartCount > 0 && (
+              <span className="bg-white text-indigo-600 text-xs font-bold px-2 py-0.5 rounded-full">
+                {cartCount}টি পণ্য
+              </span>
+            )}
+          </>
+        )}
+      </button>
+    </div>
+  )
+}
+
 // ── Main Component ────────────────────────────────────────────
 export default function CustomerPortal() {
   const [searchParams] = useSearchParams()
   const portalToken    = searchParams.get('token')
 
-  const [phase, setPhase]       = useState('loading')
-  const [tokenInfo, setTokenInfo] = useState(null)
-  const [portalJWT, setPortalJWT] = useState(null)
-  const [dashboard, setDashboard] = useState(null)
-  const [activeTab, setActiveTab] = useState('summary')
-  const [error, setError]         = useState('')
-  const [loggingIn, setLoggingIn] = useState(false)
-  const [notifications, setNotifications]   = useState([])
-  const [unreadCount, setUnreadCount]       = useState(0)
-  const [showBell, setShowBell]             = useState(false)
-  const [unreadBanner, setUnreadBanner]     = useState(null)
+  const [phase,       setPhase]       = useState('loading')
+  const [tokenInfo,   setTokenInfo]   = useState(null)
+  const [portalJWT,   setPortalJWT]   = useState(null)
+  const [dashboard,   setDashboard]   = useState(null)
+  const [activeTab,   setActiveTab]   = useState('summary')
+  const [error,       setError]       = useState('')
+  const [loggingIn,   setLoggingIn]   = useState(false)
+  const [notifications,  setNotifications]  = useState([])
+  const [unreadCount,    setUnreadCount]    = useState(0)
+  const [showBell,       setShowBell]       = useState(false)
+  const [unreadBanner,   setUnreadBanner]   = useState(null)
 
   const getStorageKey = (cid) => `portal_jwt_${cid}`
 
-  // ── Dashboard লোড — সরাসরি fetch, axios interceptor bypass ──
   const loadDashboard = async (jwt) => {
     try {
       const data = await portalFetch('/portal/dashboard', {
@@ -125,9 +396,7 @@ export default function CustomerPortal() {
       })
       setDashboard(data.data)
       setPhase('dashboard')
-      // Notification লোড করো (jwt param দরকার)
       loadNotifications(jwt)
-      // Web Push permission চাও (প্রথমবার popup আসবে)
       requestPushPermission(jwt)
     } catch (err) {
       console.error('Dashboard error:', err)
@@ -136,7 +405,6 @@ export default function CustomerPortal() {
     }
   }
 
-  // ── Notifications লোড ────────────────────────────────────
   const loadNotifications = async (jwt) => {
     try {
       const data = await portalFetch('/portal/notifications', {
@@ -145,12 +413,9 @@ export default function CustomerPortal() {
       const notifs = data.data.notifications || []
       setNotifications(notifs)
       setUnreadCount(data.data.unread_count || 0)
-      // সবচেয়ে নতুন অপঠিত টা banner এ দেখাও
       const newest = notifs.find(n => !n.is_read)
       if (newest) setUnreadBanner(newest)
-    } catch (e) {
-      console.error('Notification load error:', e)
-    }
+    } catch (e) { console.error('Notification load error:', e) }
   }
 
   const markAllAsRead = async (jwt) => {
@@ -165,24 +430,15 @@ export default function CustomerPortal() {
     } catch (e) { console.error(e) }
   }
 
-  // ── Web Push Permission + FCM Token (কাস্টমারের জন্য) ─────
   const requestPushPermission = async (jwt) => {
     try {
-      // Browser support চেক
       if (!('Notification' in window) || !('serviceWorker' in navigator)) return
       if (Notification.permission === 'denied') return
-
-      // Permission চাও
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') return
-
-      // Service Worker ready হওয়া পর্যন্ত অপেক্ষা
       const swReg = await navigator.serviceWorker.ready
-
-      // Firebase dynamically import (CustomerPortal এ firebase আলাদা load করি)
       const { initializeApp, getApps } = await import('firebase/app')
       const { getMessaging, getToken }  = await import('firebase/messaging')
-
       const firebaseConfig = {
         apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
         authDomain:        `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
@@ -192,37 +448,24 @@ export default function CustomerPortal() {
         messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
         appId:             import.meta.env.VITE_FIREBASE_APP_ID,
       }
-
       const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig)
       const messaging = getMessaging(app)
-
       const fcmToken = await getToken(messaging, {
         vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
         serviceWorkerRegistration: swReg,
       })
-
       if (!fcmToken) return
-
-      // Cache check — একই token আবার না পাঠাতে
       const cacheKey = 'portal_fcm_token'
       if (localStorage.getItem(cacheKey) === fcmToken) return
-
-      // Backend এ save করো
       await portalFetch('/portal/save-fcm-token', {
         method: 'POST',
         headers: { Authorization: `Bearer ${jwt}` },
         body: JSON.stringify({ fcm_token: fcmToken }),
       })
       localStorage.setItem(cacheKey, fcmToken)
-      console.log('[Portal FCM] Token saved ✅')
-
-    } catch (e) {
-      console.warn('[Portal FCM] Permission/token error:', e.message)
-      // silent fail — push না পেলেও in-app চলবে
-    }
+    } catch (e) { console.warn('[Portal FCM] Permission/token error:', e.message) }
   }
 
-  // ── Mount ─────────────────────────────────────────────────
   useEffect(() => {
     const init = async () => {
       if (portalToken) {
@@ -230,7 +473,6 @@ export default function CustomerPortal() {
           const data = await portalFetch(`/portal/verify-token?token=${portalToken}`)
           const info = data.data
           setTokenInfo(info)
-
           const savedJWT = localStorage.getItem(getStorageKey(info.customer_id))
           if (savedJWT) {
             setPortalJWT(savedJWT)
@@ -258,11 +500,9 @@ export default function CustomerPortal() {
       setError('লিংক পাওয়া যায়নি।')
       setPhase('invalid')
     }
-
     init()
   }, [portalToken])
 
-  // ── Google Login ──────────────────────────────────────────
   const googleLogin = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       setLoggingIn(true)
@@ -274,26 +514,16 @@ export default function CustomerPortal() {
             portal_token: portalToken
           })
         })
-
         const jwt        = data.data.portal_jwt
         const customerId = data.data.customer?.id
-
-        if (customerId) {
-          localStorage.setItem(getStorageKey(customerId), jwt)
-        }
-
+        if (customerId) localStorage.setItem(getStorageKey(customerId), jwt)
         setPortalJWT(jwt)
         await loadDashboard(jwt)
       } catch (err) {
         setError(err.message || 'লগইন ব্যর্থ হয়েছে।')
-      } finally {
-        setLoggingIn(false)
-      }
+      } finally { setLoggingIn(false) }
     },
-    onError: () => {
-      setError('Google লগইন ব্যর্থ হয়েছে।')
-      setLoggingIn(false)
-    }
+    onError: () => { setError('Google লগইন ব্যর্থ হয়েছে।'); setLoggingIn(false) }
   })
 
   // ── RENDER: LOADING ───────────────────────────────────────
@@ -377,6 +607,7 @@ export default function CustomerPortal() {
     const { customer, sales, credit_payments, monthly_summary, total_summary } = dashboard
     const tabs = [
       { id: 'summary',  label: 'সারসংক্ষেপ' },
+      { id: 'orders',   label: '🛒 অর্ডার' },
       { id: 'invoices', label: `ইনভয়েস (${sales.length})` },
       { id: 'payments', label: `পরিশোধ (${credit_payments.length})` },
     ]
@@ -399,25 +630,14 @@ export default function CustomerPortal() {
                 >
                   🔔
                   {unreadCount > 0 && (
-                    <span style={{
-                      position: 'absolute', top: -4, right: -4,
-                      background: '#ef4444', color: 'white',
-                      borderRadius: '50%', width: 18, height: 18,
-                      fontSize: 10, fontWeight: 'bold',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center'
-                    }}>
+                    <span style={{ position: 'absolute', top: -4, right: -4, background: '#ef4444', color: 'white', borderRadius: '50%', width: 18, height: 18, fontSize: 10, fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       {unreadCount > 9 ? '9+' : unreadCount}
                     </span>
                   )}
                 </button>
 
-                {/* Notification Dropdown */}
                 {showBell && (
-                  <div style={{
-                    position: 'absolute', right: 0, top: 44, width: 290, maxHeight: 380,
-                    background: 'white', borderRadius: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.18)',
-                    overflowY: 'auto', zIndex: 100
-                  }}>
+                  <div style={{ position: 'absolute', right: 0, top: 44, width: 290, maxHeight: 380, background: 'white', borderRadius: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.18)', overflowY: 'auto', zIndex: 100 }}>
                     <div style={{ padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <span style={{ color: '#1e1e1e', fontWeight: 700, fontSize: 14 }}>🔔 Notification</span>
                       <button onClick={() => setShowBell(false)} style={{ background: 'none', border: 'none', fontSize: 16, cursor: 'pointer', color: '#888' }}>✕</button>
@@ -426,15 +646,8 @@ export default function CustomerPortal() {
                       <p style={{ textAlign: 'center', color: '#aaa', fontSize: 13, padding: '24px 16px' }}>কোনো notification নেই।</p>
                     ) : (
                       notifications.map(n => (
-                        <div key={n.id} style={{
-                          padding: '12px 16px',
-                          borderBottom: '1px solid #f9f9f9',
-                          background: n.is_read ? 'white' : '#eff6ff',
-                          display: 'flex', gap: 10, alignItems: 'flex-start'
-                        }}>
-                          <span style={{ fontSize: 20, marginTop: 1 }}>
-                            {n.type === 'credit_reminder' ? '💳' : '🔔'}
-                          </span>
+                        <div key={n.id} style={{ padding: '12px 16px', borderBottom: '1px solid #f9f9f9', background: n.is_read ? 'white' : '#eff6ff', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                          <span style={{ fontSize: 20, marginTop: 1 }}>{n.type === 'credit_reminder' ? '💳' : '🔔'}</span>
                           <div style={{ flex: 1 }}>
                             <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#1e1e1e' }}>{n.title}</p>
                             <p style={{ margin: '3px 0 0', fontSize: 12, color: '#555', lineHeight: 1.5 }}>{n.body}</p>
@@ -442,9 +655,7 @@ export default function CustomerPortal() {
                               {new Date(n.created_at).toLocaleString('bn-BD', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                             </p>
                           </div>
-                          {!n.is_read && (
-                            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', marginTop: 5, flexShrink: 0 }} />
-                          )}
+                          {!n.is_read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', marginTop: 5, flexShrink: 0 }} />}
                         </div>
                       ))
                     )}
@@ -454,12 +665,8 @@ export default function CustomerPortal() {
 
               <button
                 onClick={() => {
-                  Object.keys(localStorage)
-                    .filter(k => k.startsWith('portal_jwt_'))
-                    .forEach(k => localStorage.removeItem(k))
-                  setPhase('login')
-                  setDashboard(null)
-                  setPortalJWT(null)
+                  Object.keys(localStorage).filter(k => k.startsWith('portal_jwt_')).forEach(k => localStorage.removeItem(k))
+                  setPhase('login'); setDashboard(null); setPortalJWT(null)
                 }}
                 style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 10, padding: '6px 12px', color: 'white', fontSize: 12, cursor: 'pointer' }}
               >
@@ -470,14 +677,9 @@ export default function CustomerPortal() {
         </div>
 
         <div className="px-4 -mt-10 space-y-4 pb-10">
-          {/* Unread Banner — Facebook-এর মতো */}
+          {/* Unread Banner */}
           {unreadBanner && (
-            <div style={{
-              background: 'linear-gradient(135deg, #1e3a8a, #1d4ed8)',
-              borderRadius: 16, padding: '14px 16px',
-              display: 'flex', gap: 12, alignItems: 'flex-start',
-              boxShadow: '0 4px 16px rgba(29,78,216,0.3)'
-            }}>
+            <div style={{ background: 'linear-gradient(135deg, #1e3a8a, #1d4ed8)', borderRadius: 16, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', boxShadow: '0 4px 16px rgba(29,78,216,0.3)' }}>
               <span style={{ fontSize: 24, flexShrink: 0 }}>💳</span>
               <div style={{ flex: 1 }}>
                 <p style={{ margin: 0, color: 'white', fontWeight: 700, fontSize: 14 }}>{unreadBanner.title}</p>
@@ -486,9 +688,7 @@ export default function CustomerPortal() {
               <button
                 onClick={() => { setUnreadBanner(null); markAllAsRead(portalJWT) }}
                 style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '4px 8px', color: 'white', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}
-              >
-                ✕
-              </button>
+              >✕</button>
             </div>
           )}
 
@@ -508,10 +708,10 @@ export default function CustomerPortal() {
           </div>
 
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
-            <div className="flex border-b border-gray-100">
+            <div className="flex border-b border-gray-100 overflow-x-auto">
               {tabs.map(t => (
                 <button key={t.id} onClick={() => setActiveTab(t.id)}
-                  className={`flex-1 py-3 text-xs font-semibold transition-colors
+                  className={`flex-1 py-3 text-xs font-semibold transition-colors whitespace-nowrap px-2
                     ${activeTab === t.id
                       ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50'
                       : 'text-gray-400 hover:text-gray-600'}`}>
@@ -521,6 +721,7 @@ export default function CustomerPortal() {
             </div>
 
             <div className="p-4">
+              {/* সারসংক্ষেপ */}
               {activeTab === 'summary' && (
                 <div className="space-y-4">
                   <div>
@@ -558,6 +759,12 @@ export default function CustomerPortal() {
                 </div>
               )}
 
+              {/* অর্ডার ট্যাব (নতুন) */}
+              {activeTab === 'orders' && (
+                <OrderRequestTab portalJWT={portalJWT} />
+              )}
+
+              {/* ইনভয়েস */}
               {activeTab === 'invoices' && (
                 <div className="space-y-3">
                   {sales.length === 0
@@ -567,6 +774,7 @@ export default function CustomerPortal() {
                 </div>
               )}
 
+              {/* পরিশোধ */}
               {activeTab === 'payments' && (
                 <div className="space-y-3">
                   {credit_payments.length === 0
