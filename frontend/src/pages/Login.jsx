@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
+import { useGoogleLogin } from '@react-oauth/google'
 import { FiEye, FiEyeOff, FiLock, FiMail, FiPhone, FiHash, FiArrowLeft, FiCheck } from 'react-icons/fi'
 import axios from '../api/axios'
 
@@ -36,13 +37,11 @@ const LOGIN_TYPES = [
 function NTLogo({ size = 56 }) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Orbit ring */}
       <ellipse cx="50" cy="50" rx="46" ry="22" stroke="#4ade80" strokeWidth="2.5" fill="none"
         strokeDasharray="4 3" opacity="0.7"
         style={{ transformOrigin: '50px 50px', animation: 'spin 8s linear infinite' }} />
       <ellipse cx="50" cy="50" rx="46" ry="22" stroke="#22c55e" strokeWidth="1" fill="none"
         style={{ transformOrigin: '50px 50px', animation: 'spin 8s linear infinite', transform: 'rotate(-15deg)' }} />
-      {/* NT Letters */}
       <text x="50" y="62" textAnchor="middle" fontFamily="'Georgia', serif" fontSize="38"
         fontWeight="bold" fill="white" letterSpacing="-1">NT</text>
     </svg>
@@ -85,11 +84,21 @@ export default function Login() {
   const navigate = useNavigate()
   const { login, user, loading } = useAuthStore()
 
-  const [activeTab,  setActiveTab]  = useState('email')
-  const [identifier, setIdentifier] = useState('')
-  const [password,   setPassword]   = useState('')
-  const [showPass,   setShowPass]   = useState(false)
-  const [loginError, setLoginError] = useState('')
+  const [activeTab,    setActiveTab]    = useState('email')
+  const [identifier,   setIdentifier]   = useState('')
+  const [password,     setPassword]     = useState('')
+  const [showPass,     setShowPass]     = useState(false)
+  const [loginError,   setLoginError]   = useState('')
+
+  // ── নতুন Google Login state ──────────────────────────────
+  const [googleStep,      setGoogleStep]      = useState('idle')
+  // idle | checking | need_password | customer_redirect | blocked | unknown
+  const [googleEmail,     setGoogleEmail]     = useState('')
+  const [googleName,      setGoogleName]      = useState('')
+  const [googlePassword,  setGooglePassword]  = useState('')
+  const [showGooglePass,  setShowGooglePass]  = useState(false)
+  const [googleError,     setGoogleError]     = useState('')
+  const [googleLoading,   setGoogleLoading]   = useState(false)
 
   const [step,        setStep]        = useState('login')
   const [fpEmail,     setFpEmail]     = useState('')
@@ -116,10 +125,16 @@ export default function Login() {
   }, [resendTimer])
 
   const redirectByRole = (role) => {
-    const map = { admin: '/admin/dashboard', manager: '/manager/dashboard', supervisor: '/manager/dashboard', asm: '/manager/dashboard', rsm: '/manager/dashboard', accountant: '/manager/dashboard', worker: '/worker/dashboard' }
+    const map = {
+      admin: '/admin/dashboard', manager: '/manager/dashboard',
+      supervisor: '/manager/dashboard', asm: '/manager/dashboard',
+      rsm: '/manager/dashboard', accountant: '/manager/dashboard',
+      worker: '/worker/dashboard'
+    }
     navigate(map[role] || '/', { replace: true })
   }
 
+  // ── সাধারণ লগইন ─────────────────────────────────────────
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoginError('')
@@ -129,6 +144,93 @@ export default function Login() {
     else setLoginError(result.message || 'লগইন ব্যর্থ হয়েছে।')
   }
 
+  // ── Google Login — Step 1: Email চেক ────────────────────
+  const googleLogin = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      setGoogleStep('checking')
+      setGoogleError('')
+      try {
+        // Google থেকে user info নাও
+        const googleRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+        })
+        const googleUser = await googleRes.json()
+        const email = googleUser.email
+        const name  = googleUser.name
+
+        setGoogleEmail(email)
+        setGoogleName(name)
+
+        // Backend-এ email type চেক করো
+        const checkRes = await axios.post('/auth/check-email', { email })
+        const { type, data } = checkRes.data
+
+        if (type === 'customer') {
+          // সরাসরি পোর্টালে — JWT সেভ করো
+          const cid = data.customer_id
+          localStorage.setItem(`portal_jwt_${cid}`, data.portal_jwt)
+          setGoogleStep('customer_redirect')
+          setTimeout(() => {
+            navigate('/customer-portal', { replace: true })
+          }, 1500)
+
+        } else if (type === 'worker') {
+          // পাসওয়ার্ড চাইবে
+          setGoogleStep('need_password')
+
+        } else {
+          setGoogleStep('unknown')
+        }
+
+      } catch (err) {
+        const msg = err?.response?.data?.message || 'সমস্যা হয়েছে।'
+        const type = err?.response?.data?.type
+
+        if (type === 'blocked') {
+          setGoogleStep('blocked')
+          setGoogleError(msg)
+        } else if (type === 'unknown') {
+          setGoogleStep('unknown')
+        } else {
+          setGoogleStep('idle')
+          setGoogleError(msg)
+        }
+      }
+    },
+    onError: () => {
+      setGoogleStep('idle')
+      setGoogleError('Google লগইন বাতিল হয়েছে।')
+    }
+  })
+
+  // ── Google Login — Step 2: পাসওয়ার্ড দিয়ে কর্মী লগইন ─
+  const handleGoogleWorkerLogin = async () => {
+    if (!googlePassword) {
+      setGoogleError('পাসওয়ার্ড দিন।')
+      return
+    }
+    setGoogleLoading(true)
+    setGoogleError('')
+    try {
+      const result = await login(googleEmail, googlePassword)
+      if (result.success) redirectByRole(result.user.role)
+      else setGoogleError(result.message || 'পাসওয়ার্ড ভুল।')
+    } catch {
+      setGoogleError('লগইন ব্যর্থ হয়েছে।')
+    } finally {
+      setGoogleLoading(false)
+    }
+  }
+
+  const resetGoogleFlow = () => {
+    setGoogleStep('idle')
+    setGoogleEmail('')
+    setGoogleName('')
+    setGooglePassword('')
+    setGoogleError('')
+  }
+
+  // ── Forgot Password handlers (আগের মতোই) ────────────────
   const handleForgotSubmit = async () => {
     setFpError('')
     if (!fpEmail) return setFpError('ইমেইল দিন।')
@@ -187,7 +289,6 @@ export default function Login() {
 
   const activeType = LOGIN_TYPES.find(t => t.id === activeTab)
 
-  /* ── Shared input style ── */
   const inputCls = `w-full pl-11 pr-4 py-3.5 rounded-xl text-sm text-white placeholder-gray-500
     border border-gray-700 bg-gray-900/80 focus:outline-none focus:border-green-500
     focus:ring-1 focus:ring-green-500/40 transition-all duration-200`
@@ -197,86 +298,36 @@ export default function Login() {
     bg-gradient-to-r from-green-500 to-emerald-400 text-gray-950
     hover:from-green-400 hover:to-emerald-300 hover:shadow-lg hover:shadow-green-500/25`
 
+  const googleBtnCls = `w-full flex items-center justify-center gap-3
+    bg-white hover:bg-gray-50 border-2 border-gray-200 hover:border-green-400
+    rounded-xl py-3.5 px-6 font-semibold text-gray-700 text-sm
+    transition-all active:scale-95 disabled:opacity-60 shadow-sm`
+
   return (
     <>
-      {/* ── Global Styles ── */}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Noto+Sans+Bengali:wght@400;500;600&display=swap');
-
-        @keyframes spin {
-          from { transform: rotate(0deg); }
-          to   { transform: rotate(360deg); }
-        }
-        @keyframes float {
-          from { transform: translateY(0px) scale(1); opacity: 0.2; }
-          to   { transform: translateY(-20px) scale(1.3); opacity: 0.5; }
-        }
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(24px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to   { opacity: 1; }
-        }
-        @keyframes scanline {
-          0%   { transform: translateY(-100%); }
-          100% { transform: translateY(400%); }
-        }
-        @keyframes pulse-green {
-          0%, 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0.0); }
-          50%       { box-shadow: 0 0 0 8px rgba(74,222,128,0.08); }
-        }
-        @keyframes logoGlow {
-          0%, 100% { filter: drop-shadow(0 0 8px rgba(74,222,128,0.4)); }
-          50%       { filter: drop-shadow(0 0 20px rgba(74,222,128,0.8)); }
-        }
-        @keyframes borderFlow {
-          0%   { background-position: 0% 50%; }
-          50%  { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes float { from { transform: translateY(0px) scale(1); opacity: 0.2; } to { transform: translateY(-20px) scale(1.3); opacity: 0.5; } }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes scanline { 0% { transform: translateY(-100%); } 100% { transform: translateY(400%); } }
+        @keyframes pulse-green { 0%, 100% { box-shadow: 0 0 0 0 rgba(74,222,128,0.0); } 50% { box-shadow: 0 0 0 8px rgba(74,222,128,0.08); } }
+        @keyframes logoGlow { 0%, 100% { filter: drop-shadow(0 0 8px rgba(74,222,128,0.4)); } 50% { filter: drop-shadow(0 0 20px rgba(74,222,128,0.8)); } }
+        @keyframes borderFlow { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         .fade-up { animation: fadeUp 0.5s ease both; }
         .fade-up-1 { animation: fadeUp 0.5s 0.1s ease both; }
         .fade-up-2 { animation: fadeUp 0.5s 0.2s ease both; }
         .fade-up-3 { animation: fadeUp 0.5s 0.3s ease both; }
         .fade-up-4 { animation: fadeUp 0.5s 0.4s ease both; }
         .logo-glow { animation: logoGlow 3s ease-in-out infinite; }
-
-        .card-border {
-          position: relative;
-        }
-        .card-border::before {
-          content: '';
-          position: absolute;
-          inset: -1px;
-          border-radius: 20px;
-          background: linear-gradient(135deg, #4ade80, #1f2937, #4ade80, #064e3b);
-          background-size: 300% 300%;
-          animation: borderFlow 6s ease infinite;
-          z-index: -1;
-        }
-
-        .tab-active {
-          background: linear-gradient(135deg, #16a34a, #059669);
-          color: #000 !important;
-          box-shadow: 0 2px 12px rgba(74,222,128,0.3);
-        }
-
-        .otp-input:focus {
-          border-color: #4ade80 !important;
-          box-shadow: 0 0 0 3px rgba(74,222,128,0.2);
-          background: rgba(74,222,128,0.05) !important;
-          color: #4ade80 !important;
-        }
-        .otp-filled {
-          border-color: #22c55e !important;
-          background: rgba(34,197,94,0.08) !important;
-          color: #4ade80 !important;
-        }
+        .card-border { position: relative; }
+        .card-border::before { content: ''; position: absolute; inset: -1px; border-radius: 20px; background: linear-gradient(135deg, #4ade80, #1f2937, #4ade80, #064e3b); background-size: 300% 300%; animation: borderFlow 6s ease infinite; z-index: -1; }
+        .tab-active { background: linear-gradient(135deg, #16a34a, #059669); color: #000 !important; box-shadow: 0 2px 12px rgba(74,222,128,0.3); }
+        .otp-input:focus { border-color: #4ade80 !important; box-shadow: 0 0 0 3px rgba(74,222,128,0.2); background: rgba(74,222,128,0.05) !important; color: #4ade80 !important; }
+        .otp-filled { border-color: #22c55e !important; background: rgba(34,197,94,0.08) !important; color: #4ade80 !important; }
       `}</style>
 
-      {/* ── Background ── */}
       <div style={{
         minHeight: '100vh',
         background: 'linear-gradient(135deg, #030712 0%, #0a0f1a 40%, #051a0e 100%)',
@@ -285,99 +336,79 @@ export default function Login() {
         position: 'relative', overflow: 'hidden',
       }}>
         <Particles />
-
-        {/* Grid overlay */}
-        <div style={{
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-          backgroundImage: 'linear-gradient(rgba(74,222,128,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(74,222,128,0.03) 1px, transparent 1px)',
-          backgroundSize: '40px 40px',
-        }} />
-
-        {/* Glow blobs */}
+        <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', backgroundImage: 'linear-gradient(rgba(74,222,128,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(74,222,128,0.03) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
         <div style={{ position: 'absolute', top: '-100px', right: '-100px', width: '400px', height: '400px', background: 'radial-gradient(circle, rgba(74,222,128,0.08) 0%, transparent 70%)', pointerEvents: 'none' }} />
         <div style={{ position: 'absolute', bottom: '-100px', left: '-100px', width: '350px', height: '350px', background: 'radial-gradient(circle, rgba(34,197,94,0.06) 0%, transparent 70%)', pointerEvents: 'none' }} />
 
-        {/* ── Card ── */}
-        <div className="card-border" style={{
-          width: '100%', maxWidth: '400px', position: 'relative', zIndex: 1,
-          opacity: mounted ? 1 : 0, transition: 'opacity 0.6s ease',
-        }}>
-          <div style={{
-            background: 'rgba(10,15,26,0.95)',
-            backdropFilter: 'blur(20px)',
-            borderRadius: '20px',
-            overflow: 'hidden',
-          }}>
+        <div className="card-border" style={{ width: '100%', maxWidth: '400px', position: 'relative', zIndex: 1, opacity: mounted ? 1 : 0, transition: 'opacity 0.6s ease' }}>
+          <div style={{ background: 'rgba(10,15,26,0.95)', backdropFilter: 'blur(20px)', borderRadius: '20px', overflow: 'hidden' }}>
 
-            {/* ── Header ── */}
-            <div style={{
-              padding: '32px 24px 24px',
-              textAlign: 'center',
-              borderBottom: '1px solid rgba(74,222,128,0.1)',
-              background: 'linear-gradient(180deg, rgba(74,222,128,0.04) 0%, transparent 100%)',
-              position: 'relative', overflow: 'hidden',
-            }}>
-              {/* Scanline effect */}
-              <div style={{
-                position: 'absolute', left: 0, right: 0, height: '2px',
-                background: 'linear-gradient(90deg, transparent, rgba(74,222,128,0.4), transparent)',
-                animation: 'scanline 4s linear infinite',
-              }} />
-
-              {/* Bismillah */}
+            {/* Header */}
+            <div style={{ padding: '32px 24px 24px', textAlign: 'center', borderBottom: '1px solid rgba(74,222,128,0.1)', background: 'linear-gradient(180deg, rgba(74,222,128,0.04) 0%, transparent 100%)', position: 'relative', overflow: 'hidden' }}>
+              <div style={{ position: 'absolute', left: 0, right: 0, height: '2px', background: 'linear-gradient(90deg, transparent, rgba(74,222,128,0.4), transparent)', animation: 'scanline 4s linear infinite' }} />
               <div style={{ minHeight: '28px', marginBottom: '6px' }} className="fade-up">
                 <p style={{ color: 'rgba(74,222,128,0.8)', fontSize: '15px', fontFamily: 'serif', letterSpacing: '2px' }} dir="rtl">
                   {bismillah.displayed}
                   {!bismillah.done && <span style={{ animation: 'fadeIn 0.5s ease infinite alternate' }}>|</span>}
                 </p>
               </div>
-
-              {/* Salam */}
               <div style={{ minHeight: '22px', marginBottom: '20px' }} className="fade-up-1">
                 <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px', letterSpacing: '1px' }}>
                   {salam.displayed}
                   {bismillah.done && !salam.done && <span style={{ animation: 'fadeIn 0.5s ease infinite alternate' }}>|</span>}
                 </p>
               </div>
-
-              {/* NT Logo */}
               <div className="logo-glow fade-up-2" style={{ display: 'inline-block', marginBottom: '12px' }}>
                 <NTLogo size={64} />
               </div>
-
               <div className="fade-up-3">
-                <h1 style={{ color: 'white', fontSize: '22px', fontWeight: '700', fontFamily: "'Rajdhani', sans-serif", letterSpacing: '3px', margin: '0 0 2px' }}>
-                  NOVATECH BD
-                </h1>
-                <p style={{ color: 'rgba(74,222,128,0.6)', fontSize: '11px', letterSpacing: '4px', textTransform: 'uppercase', margin: 0 }}>
-                  Management System
-                </p>
+                <h1 style={{ color: 'white', fontSize: '22px', fontWeight: '700', fontFamily: "'Rajdhani', sans-serif", letterSpacing: '3px', margin: '0 0 2px' }}>NOVATECH BD</h1>
+                <p style={{ color: 'rgba(74,222,128,0.6)', fontSize: '11px', letterSpacing: '4px', textTransform: 'uppercase', margin: 0 }}>Management System</p>
               </div>
             </div>
 
-            {/* ── Body ── */}
+            {/* Body */}
             <div style={{ padding: '28px 24px 24px' }}>
 
               {/* ══ LOGIN ══ */}
-              {step === 'login' && (
+              {step === 'login' && googleStep === 'idle' && (
                 <div>
                   <p className="fade-up" style={{ color: 'rgba(255,255,255,0.4)', fontSize: '11px', textAlign: 'center', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '20px' }}>
                     লগইন করুন
                   </p>
 
-                  {/* Tabs */}
+                  {/* ── Google Login বাটন (নতুন) ── */}
+                  <div className="fade-up" style={{ marginBottom: '20px' }}>
+                    <button
+                      onClick={() => googleLogin()}
+                      className={googleBtnCls}
+                    >
+                      <svg width="20" height="20" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                      </svg>
+                      Google দিয়ে লগইন করুন
+                    </button>
+                    {googleError && (
+                      <p style={{ color: '#f87171', fontSize: '12px', textAlign: 'center', marginTop: '8px' }}>{googleError}</p>
+                    )}
+                  </div>
+
+                  {/* Divider */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+                    <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
+                    <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '11px', letterSpacing: '2px' }}>অথবা</span>
+                    <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
+                  </div>
+
+                  {/* সাধারণ লগইন ট্যাব */}
                   <div className="fade-up-1" style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: '12px', padding: '4px', gap: '4px', marginBottom: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
                     {LOGIN_TYPES.map(tab => (
                       <button key={tab.id} type="button" onClick={() => setActiveTab(tab.id)}
                         className={activeTab === tab.id ? 'tab-active' : ''}
-                        style={{
-                          flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
-                          padding: '8px 4px', borderRadius: '9px', border: 'none', cursor: 'pointer',
-                          fontSize: '12px', fontWeight: '600', transition: 'all 0.2s',
-                          background: activeTab === tab.id ? undefined : 'transparent',
-                          color: activeTab === tab.id ? undefined : 'rgba(255,255,255,0.4)',
-                          fontFamily: "'Noto Sans Bengali', sans-serif",
-                        }}>
+                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px', padding: '8px 4px', borderRadius: '9px', border: 'none', cursor: 'pointer', fontSize: '12px', fontWeight: '600', transition: 'all 0.2s', background: activeTab === tab.id ? undefined : 'transparent', color: activeTab === tab.id ? undefined : 'rgba(255,255,255,0.4)', fontFamily: "'Noto Sans Bengali', sans-serif" }}>
                         <tab.icon style={{ fontSize: '13px' }} />
                         {tab.label}
                       </button>
@@ -386,32 +417,22 @@ export default function Login() {
 
                   <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                     <div className="fade-up-2">
-                      <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '11px', letterSpacing: '1px', marginBottom: '8px' }}>
-                        {activeType.label.toUpperCase()}
-                      </label>
+                      <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '11px', letterSpacing: '1px', marginBottom: '8px' }}>{activeType.label.toUpperCase()}</label>
                       <div style={{ position: 'relative' }}>
                         <activeType.icon style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(74,222,128,0.6)', fontSize: '16px' }} />
-                        <input type={activeType.type} value={identifier} onChange={e => setIdentifier(e.target.value)}
-                          placeholder={activeType.placeholder} required autoComplete="username"
-                          className={inputCls} />
+                        <input type={activeType.type} value={identifier} onChange={e => setIdentifier(e.target.value)} placeholder={activeType.placeholder} required autoComplete="username" className={inputCls} />
                       </div>
                     </div>
 
                     <div className="fade-up-3">
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                         <label style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', letterSpacing: '1px' }}>পাসওয়ার্ড</label>
-                        <button type="button" onClick={() => { setStep('forgot'); setFpError('') }}
-                          style={{ color: '#4ade80', fontSize: '11px', background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '0.5px' }}>
-                          ভুলে গেছেন?
-                        </button>
+                        <button type="button" onClick={() => { setStep('forgot'); setFpError('') }} style={{ color: '#4ade80', fontSize: '11px', background: 'none', border: 'none', cursor: 'pointer', letterSpacing: '0.5px' }}>ভুলে গেছেন?</button>
                       </div>
                       <div style={{ position: 'relative' }}>
                         <FiLock style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(74,222,128,0.6)', fontSize: '16px' }} />
-                        <input type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
-                          placeholder="পাসওয়ার্ড লিখুন" required autoComplete="current-password"
-                          className={inputCls} style={{ paddingRight: '44px' }} />
-                        <button type="button" onClick={() => setShowPass(!showPass)}
-                          style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                        <input type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="পাসওয়ার্ড লিখুন" required autoComplete="current-password" className={inputCls} style={{ paddingRight: '44px' }} />
+                        <button type="button" onClick={() => setShowPass(!showPass)} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', background: 'none', border: 'none', cursor: 'pointer' }}>
                           {showPass ? <FiEyeOff /> : <FiEye />}
                         </button>
                       </div>
@@ -436,19 +457,114 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ══ FORGOT: EMAIL ══ */}
-              {step === 'forgot' && (
+              {/* ══ GOOGLE: CHECKING ══ */}
+              {googleStep === 'checking' && (
+                <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                  <div style={{ width: '48px', height: '48px', border: '4px solid rgba(74,222,128,0.2)', borderTop: '4px solid #4ade80', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 16px' }} />
+                  <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '14px' }}>অ্যাকাউন্ট যাচাই হচ্ছে...</p>
+                  <p style={{ color: 'rgba(74,222,128,0.5)', fontSize: '12px', marginTop: '6px' }}>{googleEmail}</p>
+                </div>
+              )}
+
+              {/* ══ GOOGLE: পাসওয়ার্ড চাই (কর্মী) ══ */}
+              {googleStep === 'need_password' && (
+                <div>
+                  <button onClick={resetGoogleFlow} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'rgba(74,222,128,0.7)', fontSize: '12px', background: 'none', border: 'none', cursor: 'pointer', marginBottom: '20px', padding: 0 }}>
+                    <FiArrowLeft /> ফিরে যান
+                  </button>
+
+                  {/* কর্মীর নাম দেখাও */}
+                  <div style={{ background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.2)', borderRadius: '14px', padding: '14px', marginBottom: '20px', textAlign: 'center' }}>
+                    <p style={{ color: '#4ade80', fontSize: '12px', margin: '0 0 4px' }}>✅ অ্যাকাউন্ট পাওয়া গেছে</p>
+                    <p style={{ color: 'white', fontWeight: '700', fontSize: '16px', margin: '0 0 2px' }}>{googleName}</p>
+                    <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', margin: 0 }}>{googleEmail}</p>
+                  </div>
+
+                  <div style={{ marginBottom: '16px' }}>
+                    <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '11px', letterSpacing: '1px', marginBottom: '8px' }}>পাসওয়ার্ড</label>
+                    <div style={{ position: 'relative' }}>
+                      <FiLock style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(74,222,128,0.6)', fontSize: '16px' }} />
+                      <input
+                        type={showGooglePass ? 'text' : 'password'}
+                        value={googlePassword}
+                        onChange={e => setGooglePassword(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleGoogleWorkerLogin()}
+                        placeholder="পাসওয়ার্ড লিখুন"
+                        autoFocus
+                        className={inputCls}
+                        style={{ paddingRight: '44px' }}
+                      />
+                      <button type="button" onClick={() => setShowGooglePass(!showGooglePass)} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                        {showGooglePass ? <FiEyeOff /> : <FiEye />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {googleError && (
+                    <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
+                      <p style={{ color: '#f87171', fontSize: '12px', margin: 0, textAlign: 'center' }}>{googleError}</p>
+                    </div>
+                  )}
+
+                  <button onClick={handleGoogleWorkerLogin} disabled={googleLoading} className={btnCls}>
+                    {googleLoading
+                      ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><span style={{ width: '16px', height: '16px', border: '2px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />লগইন হচ্ছে...</span>
+                      : '→ লগইন করুন'
+                    }
+                  </button>
+
+                  <p style={{ textAlign: 'center', marginTop: '12px' }}>
+                    <button onClick={() => { resetGoogleFlow(); setStep('forgot') }} style={{ color: '#4ade80', fontSize: '11px', background: 'none', border: 'none', cursor: 'pointer' }}>
+                      পাসওয়ার্ড ভুলে গেছেন?
+                    </button>
+                  </p>
+                </div>
+              )}
+
+              {/* ══ GOOGLE: কাস্টমার রিডাইরেক্ট ══ */}
+              {googleStep === 'customer_redirect' && (
+                <div style={{ textAlign: 'center', padding: '32px 0' }}>
+                  <div style={{ fontSize: '56px', marginBottom: '16px' }}>🛍️</div>
+                  <p style={{ color: '#4ade80', fontWeight: '700', fontSize: '16px', margin: '0 0 8px' }}>স্বাগতম!</p>
+                  <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '13px' }}>আপনার পোর্টালে নিয়ে যাওয়া হচ্ছে...</p>
+                  <div style={{ width: '40px', height: '40px', border: '3px solid rgba(74,222,128,0.2)', borderTop: '3px solid #4ade80', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '16px auto 0' }} />
+                </div>
+              )}
+
+              {/* ══ GOOGLE: অচেনা ══ */}
+              {googleStep === 'unknown' && (
+                <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>🔒</div>
+                  <h3 style={{ color: 'white', fontSize: '17px', fontWeight: '700', marginBottom: '8px' }}>অ্যাকাউন্ট পাওয়া যায়নি</h3>
+                  <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '6px' }}>
+                    <span style={{ color: '#f87171' }}>{googleEmail}</span>
+                  </p>
+                  <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '12px', marginBottom: '24px' }}>
+                    এই Email দিয়ে কোনো অ্যাকাউন্ট নেই। Admin এর সাথে যোগাযোগ করুন।
+                  </p>
+                  <button onClick={resetGoogleFlow} className={btnCls}>← ফিরে যান</button>
+                </div>
+              )}
+
+              {/* ══ GOOGLE: ব্লক ══ */}
+              {googleStep === 'blocked' && (
+                <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                  <div style={{ fontSize: '48px', marginBottom: '16px' }}>⛔</div>
+                  <h3 style={{ color: '#f87171', fontSize: '17px', fontWeight: '700', marginBottom: '8px' }}>অ্যাকাউন্ট নিষ্ক্রিয়</h3>
+                  <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px', marginBottom: '24px' }}>{googleError}</p>
+                  <button onClick={resetGoogleFlow} className={btnCls}>← ফিরে যান</button>
+                </div>
+              )}
+
+              {/* ══ FORGOT / OTP / NEWPASS / DONE (আগের মতোই) ══ */}
+              {step === 'forgot' && googleStep === 'idle' && (
                 <div>
                   <button onClick={resetForgotFlow} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'rgba(74,222,128,0.7)', fontSize: '12px', background: 'none', border: 'none', cursor: 'pointer', marginBottom: '20px', padding: 0 }}>
                     <FiArrowLeft /> ফিরে যান
                   </button>
                   <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '700', textAlign: 'center', marginBottom: '6px', fontFamily: "'Rajdhani', sans-serif", letterSpacing: '1px' }}>পাসওয়ার্ড রিসেট</h2>
                   <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', textAlign: 'center', marginBottom: '24px' }}>রেজিস্টার্ড ইমেইলে OTP পাঠানো হবে।</p>
-
-                  {fpError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
-                    <p style={{ color: '#f87171', fontSize: '12px', margin: 0, textAlign: 'center' }}>{fpError}</p>
-                  </div>}
-
+                  {fpError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}><p style={{ color: '#f87171', fontSize: '12px', margin: 0, textAlign: 'center' }}>{fpError}</p></div>}
                   <div style={{ marginBottom: '16px' }}>
                     <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '11px', letterSpacing: '1px', marginBottom: '8px' }}>ইমেইল</label>
                     <div style={{ position: 'relative' }}>
@@ -462,89 +578,6 @@ export default function Login() {
                 </div>
               )}
 
-              {/* ══ OTP ══ */}
-              {step === 'otp' && (
-                <div>
-                  <button onClick={() => { setStep('forgot'); setFpError('') }} style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'rgba(74,222,128,0.7)', fontSize: '12px', background: 'none', border: 'none', cursor: 'pointer', marginBottom: '20px', padding: 0 }}>
-                    <FiArrowLeft /> ফিরে যান
-                  </button>
-                  <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '700', textAlign: 'center', marginBottom: '6px', fontFamily: "'Rajdhani', sans-serif", letterSpacing: '1px' }}>OTP যাচাই</h2>
-                  <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', textAlign: 'center', marginBottom: '4px' }}>
-                    <span style={{ color: '#4ade80' }}>{fpEmail}</span> এ কোড পাঠানো হয়েছে
-                  </p>
-                  <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px', textAlign: 'center', marginBottom: '24px' }}>১০ মিনিটের মধ্যে দিন</p>
-
-                  {fpError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
-                    <p style={{ color: '#f87171', fontSize: '12px', margin: 0, textAlign: 'center' }}>{fpError}</p>
-                  </div>}
-
-                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', marginBottom: '24px' }} onPaste={handleOtpPaste}>
-                    {otp.map((digit, i) => (
-                      <input key={i} id={`otp-${i}`} type="text" inputMode="numeric" maxLength={1} value={digit}
-                        onChange={e => handleOtpChange(i, e.target.value)}
-                        onKeyDown={e => handleOtpKeyDown(i, e)}
-                        className={`otp-input ${digit ? 'otp-filled' : ''}`}
-                        style={{
-                          width: '46px', height: '52px', textAlign: 'center',
-                          fontSize: '22px', fontWeight: '700',
-                          border: `2px solid ${digit ? '#22c55e' : 'rgba(255,255,255,0.1)'}`,
-                          borderRadius: '12px', background: digit ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.03)',
-                          color: digit ? '#4ade80' : 'white', outline: 'none', transition: 'all 0.2s',
-                        }} />
-                    ))}
-                  </div>
-
-                  <button onClick={handleOtpSubmit} disabled={fpLoading || otp.join('').length < 6} className={btnCls}>
-                    {fpLoading ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><span style={{ width: '16px', height: '16px', border: '2px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />যাচাই হচ্ছে...</span> : '→ যাচাই করুন'}
-                  </button>
-                  <div style={{ textAlign: 'center', marginTop: '16px' }}>
-                    {resendTimer > 0
-                      ? <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: '12px' }}>{resendTimer}s পর আবার পাঠাতে পারবেন</p>
-                      : <button onClick={handleForgotSubmit} disabled={fpLoading} style={{ color: '#4ade80', fontSize: '12px', background: 'none', border: 'none', cursor: 'pointer' }}>আবার OTP পাঠান</button>
-                    }
-                  </div>
-                </div>
-              )}
-
-              {/* ══ NEW PASSWORD ══ */}
-              {step === 'newpass' && (
-                <div>
-                  <h2 style={{ color: 'white', fontSize: '18px', fontWeight: '700', textAlign: 'center', marginBottom: '6px', fontFamily: "'Rajdhani', sans-serif", letterSpacing: '1px' }}>নতুন পাসওয়ার্ড</h2>
-                  <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: '12px', textAlign: 'center', marginBottom: '24px' }}>কমপক্ষে ৬ অক্ষরের পাসওয়ার্ড দিন।</p>
-
-                  {fpError && <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '10px', padding: '10px 14px', marginBottom: '14px' }}>
-                    <p style={{ color: '#f87171', fontSize: '12px', margin: 0, textAlign: 'center' }}>{fpError}</p>
-                  </div>}
-
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                    <div>
-                      <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '11px', letterSpacing: '1px', marginBottom: '8px' }}>নতুন পাসওয়ার্ড</label>
-                      <div style={{ position: 'relative' }}>
-                        <FiLock style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(74,222,128,0.6)', fontSize: '16px' }} />
-                        <input type={showNewPass ? 'text' : 'password'} value={newPass} onChange={e => setNewPass(e.target.value)} placeholder="নতুন পাসওয়ার্ড" className={inputCls} style={{ paddingRight: '44px' }} />
-                        <button type="button" onClick={() => setShowNewPass(!showNewPass)} style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'rgba(255,255,255,0.3)', background: 'none', border: 'none', cursor: 'pointer' }}>
-                          {showNewPass ? <FiEyeOff /> : <FiEye />}
-                        </button>
-                      </div>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', color: 'rgba(255,255,255,0.5)', fontSize: '11px', letterSpacing: '1px', marginBottom: '8px' }}>নিশ্চিত করুন</label>
-                      <div style={{ position: 'relative' }}>
-                        <FiLock style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: confirmPass && newPass !== confirmPass ? 'rgba(239,68,68,0.6)' : 'rgba(74,222,128,0.6)', fontSize: '16px' }} />
-                        <input type="password" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} placeholder="আবার লিখুন"
-                          className={inputCls}
-                          style={{ borderColor: confirmPass && newPass !== confirmPass ? 'rgba(239,68,68,0.5)' : undefined }} />
-                      </div>
-                      {confirmPass && newPass !== confirmPass && <p style={{ color: '#f87171', fontSize: '11px', marginTop: '6px' }}>পাসওয়ার্ড মিলছে না</p>}
-                    </div>
-                    <button onClick={handleNewPassSubmit} disabled={fpLoading} className={btnCls}>
-                      {fpLoading ? <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}><span style={{ width: '16px', height: '16px', border: '2px solid rgba(0,0,0,0.2)', borderTopColor: '#000', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />পরিবর্তন হচ্ছে...</span> : '→ পাসওয়ার্ড পরিবর্তন করুন'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* ══ DONE ══ */}
               {step === 'done' && (
                 <div style={{ textAlign: 'center', padding: '16px 0' }}>
                   <div style={{ width: '72px', height: '72px', borderRadius: '50%', background: 'rgba(74,222,128,0.1)', border: '2px solid rgba(74,222,128,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', animation: 'pulse-green 2s ease infinite' }}>
@@ -558,26 +591,11 @@ export default function Login() {
 
             </div>
 
-            {/* ── Footer ── */}
+            {/* Footer */}
             <div style={{ padding: '14px 24px 20px', borderTop: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}>
-              <p style={{ color: 'rgba(255,255,255,0.15)', fontSize: '11px', letterSpacing: '1px', margin: '0 0 2px' }}>
-                NOVATECH BD (LTD.) © {new Date().getFullYear()}
-              </p>
-              <p style={{ color: 'rgba(74,222,128,0.25)', fontSize: '10px', letterSpacing: '0.5px', margin: '0 0 14px' }}>
-                জানকি সিংহ রোড, বরিশাল সদর
-              </p>
-
-              {/* SR নিয়োগ বাটন */}
-              <a href="/apply/sr" style={{
-                display: 'inline-flex', alignItems: 'center', gap: '8px',
-                padding: '9px 20px', borderRadius: '12px',
-                background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)',
-                color: '#f87171', fontSize: '12px', fontWeight: '600',
-                textDecoration: 'none', transition: 'all 0.2s',
-                letterSpacing: '0.3px',
-              }}
-              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.25)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.7)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.15)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.4)'; }}>
+              <p style={{ color: 'rgba(255,255,255,0.15)', fontSize: '11px', letterSpacing: '1px', margin: '0 0 2px' }}>NOVATECH BD (LTD.) © {new Date().getFullYear()}</p>
+              <p style={{ color: 'rgba(74,222,128,0.25)', fontSize: '10px', letterSpacing: '0.5px', margin: '0 0 14px' }}>জানকি সিংহ রোড, বরিশাল সদর</p>
+              <a href="/apply/sr" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '9px 20px', borderRadius: '12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#f87171', fontSize: '12px', fontWeight: '600', textDecoration: 'none', transition: 'all 0.2s', letterSpacing: '0.3px' }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', animation: 'pulse-green 2s ease infinite', flexShrink: 0 }} />
                 SR পদে আবেদন করুন
                 <span style={{ fontSize: '14px' }}>→</span>
