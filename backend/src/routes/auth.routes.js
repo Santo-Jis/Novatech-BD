@@ -10,7 +10,8 @@ const {
     forgotPassword,
     verifyOtp,
     resetPasswordWithOtp,
-    saveFCMToken
+    saveFCMToken,
+    checkEmailType
 } = require('../controllers/auth.controller');
 
 const { auth } = require('../middlewares/auth');
@@ -55,5 +56,9 @@ router.post('/reset-password', resetPasswordWithOtp);
 // POST /api/auth/fcm-token
 // FCM Push Token সেভ করা (login করা user)
 router.post('/fcm-token', auth, saveFCMToken);
+
+// POST /api/auth/check-email
+// Google Login এর পর email দিয়ে কাস্টমার/কর্মী চেক
+router.post('/check-email', checkEmailType);
 
 module.exports = router;
