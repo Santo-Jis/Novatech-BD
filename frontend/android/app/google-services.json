@@ -1,1 +1,40 @@
-nun
+{
+  "project_info": {
+    "project_number": "1098950143887",
+    "firebase_url": "https://novatech-bd-10421-default-rtdb.firebaseio.com",
+    "project_id": "novatech-bd-10421",
+    "storage_bucket": "novatech-bd-10421.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1098950143887:android:1b0aa15f7157883cb165fa",
+        "android_client_info": {
+          "package_name": "com.novatech.bd"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1098950143887-0s1htavj6dh6p6vkrqumt62ljtce3qo2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQzhh_60D5w76fS62gQSiJ5rW9IW858rE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1098950143887-0s1htavj6dh6p6vkrqumt62ljtce3qo2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
