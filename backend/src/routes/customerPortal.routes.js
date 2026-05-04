@@ -22,6 +22,12 @@ const {
     saveCustomerFCMToken,
 } = require('../controllers/customerNotification.controller');
 
+const {
+    createOrderRequest,
+    getMyOrderRequests,
+    getPortalProducts,
+} = require('../controllers/customerOrderRequest.controller');
+
 const { auth } = require('../middlewares/auth');
 
 // ── Portal JWT Middleware (কাস্টমার ড্যাশবোর্ডের জন্য) ──────
@@ -75,5 +81,13 @@ router.get('/notifications', portalAuth, getNotifications);
 router.patch('/notifications/read-all', portalAuth, markAllRead);
 // PATCH  /api/portal/notifications/:id/read
 router.patch('/notifications/:id/read', portalAuth, markOneRead);
+
+// ── Customer Order Request (নতুন) ───────────────────────────
+// GET  /api/portal/products
+router.get('/products', portalAuth, getPortalProducts);
+// POST /api/portal/order-request
+router.post('/order-request', portalAuth, createOrderRequest);
+// GET  /api/portal/order-requests
+router.get('/order-requests', portalAuth, getMyOrderRequests);
 
 module.exports = router;
