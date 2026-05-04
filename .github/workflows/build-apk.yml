@@ -69,7 +69,8 @@ jobs:
       - name: Add Android & Sync
         working-directory: frontend
         run: |
-          npx cap add android || true
+          rm -rf android
+          npx cap add android
           npx cap sync android
 
       - name: Write google-services.json
