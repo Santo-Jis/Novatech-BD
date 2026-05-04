@@ -73,8 +73,14 @@ jobs:
           npx cap sync android
 
       - name: Write google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > frontend/android/app/google-services.json
+          echo "$GOOGLE_SERVICES_JSON" | base64 -d > frontend/android/app/google-services.json
+          # Verify JSON is valid
+          python3 -c "import json; json.load(open('frontend/android/app/google-services.json'))" \
+            && echo "✅ google-services.json valid" \
+            || (echo "❌ Invalid JSON in GOOGLE_SERVICES_JSON secret" && exit 1)
 
       - name: Verify google-services plugin in build.gradle
         working-directory: frontend/android
