@@ -5,6 +5,7 @@
 // ============================================================
 
 const { query } = require('../config/db');
+const { sendCustomerPush } = require('../services/fcm.service');
 
 // ============================================================
 // DB Table (Supabase এ একবার run করুন):
@@ -96,14 +97,6 @@ const markOneRead = async (req, res) => {
     }
 };
 
-// sendCustomerNotification — নিচে full version আছে (in-app + push)
-
-// ============================================================
-// POST /api/portal/save-fcm-token
-// কাস্টমারের browser FCM token save করো
-// DB: ALTER TABLE customers ADD COLUMN IF NOT EXISTS fcm_token TEXT;
-//     ALTER TABLE customers ADD COLUMN IF NOT EXISTS fcm_token_updated_at TIMESTAMP;
-// ============================================================
 const saveCustomerFCMToken = async (req, res) => {
     try {
         const customerId = getCustomerId(req);
@@ -127,40 +120,6 @@ const saveCustomerFCMToken = async (req, res) => {
     }
 };
 
-// ============================================================
-// INTERNAL — Push Notification সরাসরি customer browser-এ
-// sendCustomerPush(fcmToken, { title, body, type })
-// ============================================================
-const sendCustomerPush = async (fcmToken, { title, body, type = 'general' }) => {
-    try {
-        const admin = require('firebase-admin');
-        await admin.messaging().send({
-            token: fcmToken,
-            notification: { title, body },
-            data: { type },
-            webpush: {
-                notification: {
-                    icon:  '/icon-192.png',
-                    badge: '/badge-72.png',
-                    vibrate: [200, 100, 200],
-                },
-                fcmOptions: { link: '/customer-portal' },
-            },
-        });
-    } catch (e) {
-        // Stale token হলে DB থেকে সরাও
-        if (
-            e.code === 'messaging/registration-token-not-registered' ||
-            e.code === 'messaging/invalid-registration-token'
-        ) {
-            await query(
-                `UPDATE customers SET fcm_token = NULL WHERE fcm_token = $1`,
-                [fcmToken]
-            ).catch(() => {});
-        }
-        console.error('[CustomerPush] Error:', e.message);
-    }
-};
 
 // ============================================================
 // UPDATED sendCustomerNotification
