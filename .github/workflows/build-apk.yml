@@ -1,0 +1,136 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Update version automatically
+        run: |
+          VERSION_CODE=${{ github.run_number }}
+          VERSION_NAME="1.0.${{ github.run_number }}"
+          sed -i "s/versionCode: [0-9]*/versionCode: $VERSION_CODE/" backend/src/routes/app.routes.js
+          sed -i "s/versionName: '[^']*'/versionName: '$VERSION_NAME'/" backend/src/routes/app.routes.js
+          sed -i "s/CURRENT_VERSION_CODE = [0-9]*/CURRENT_VERSION_CODE = $VERSION_CODE/" frontend/src/hooks/useAppUpdate.js
+          echo "✅ Version: $VERSION_NAME (code: $VERSION_CODE)"
+
+      # ── সব package একসাথে install (build-এর আগে) ────────────
+      # @capacitor/push-notifications আগে install না হলে
+      # vite build-এ "external" হিসেবে ধরলেও type-check fail করতে পারে
+      - name: Install all frontend dependencies
+        working-directory: frontend
+        run: |
+          npm install
+          npm install --legacy-peer-deps \
+            @capacitor/core \
+            @capacitor/cli \
+            @capacitor/android \
+            @capacitor/push-notifications \
+            @codetrix-studio/capacitor-google-auth@3.3.1
+
+      - name: Create .env file
+        working-directory: frontend
+        run: |
+          echo "VITE_API_URL=${{ secrets.VITE_API_URL }}" > .env
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" >> .env
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env
+          echo "VITE_FIREBASE_DATABASE_URL=${{ secrets.VITE_FIREBASE_DATABASE_URL }}" >> .env
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env
+          echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env
+          echo "VITE_FIREBASE_VAPID_KEY=${{ secrets.VITE_FIREBASE_VAPID_KEY }}" >> .env
+          echo "VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}" >> .env
+
+      - name: Build React app
+        working-directory: frontend
+        run: npm run build
+
+      - name: Add Android & Sync
+        working-directory: frontend
+        run: |
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+
+      - name: Write google-services.json
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          echo "$GOOGLE_SERVICES_JSON" > frontend/android/app/google-services.json
+          # Verify JSON is valid
+          python3 -c "import json; json.load(open('frontend/android/app/google-services.json'))" \
+            && echo "✅ google-services.json valid" \
+            || (echo "❌ Invalid JSON in GOOGLE_SERVICES_JSON secret" && exit 1)
+
+      - name: Verify google-services plugin in build.gradle
+        working-directory: frontend/android
+        run: |
+          if ! grep -q "google-services" app/build.gradle; then
+            sed -i "/apply plugin: 'com.android.application'/a apply plugin: 'com.google.gms.google-services'" app/build.gradle
+          fi
+          if ! grep -q "google-services" build.gradle; then
+            sed -i "s/classpath 'com.android.tools.build:gradle/classpath 'com.google.gms:google-services:4.4.0'\n        classpath 'com.android.tools.build:gradle/" build.gradle
+          fi
+          echo "✅ build.gradle verified"
+
+      - name: Print SHA-1 Fingerprint
+        run: |
+          mkdir -p ~/.android
+          keytool -genkeypair -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 \
+            -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true
+          keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android -keypass android \
+            | grep "SHA1:"
+
+      - name: Build Debug APK
+        working-directory: frontend/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: NovaTech BD v1.0.${{ github.run_number }}
+          body: |
+            ## NovaTech BD App Update
+            **Version:** 1.0.${{ github.run_number }}
+          files: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaTech-BD-v1.0.${{ github.run_number }}
+          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
