@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
-import { useGoogleLogin } from '@react-oauth/google'
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
+import { Capacitor } from '@capacitor/core'
 import { FiEye, FiEyeOff, FiLock, FiMail, FiPhone, FiHash, FiArrowLeft, FiCheck } from 'react-icons/fi'
 import axios from '../api/axios'
 
@@ -144,64 +145,59 @@ export default function Login() {
     else setLoginError(result.message || 'লগইন ব্যর্থ হয়েছে।')
   }
 
-  // ── Google Login — Step 1: Email চেক ────────────────────
-  const googleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      setGoogleStep('checking')
-      setGoogleError('')
-      try {
-        // Google থেকে user info নাও
-        const googleRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${tokenResponse.access_token}` }
+  // ── Google Login — Native Capacitor (WebView-safe) ──────
+  const handleGoogleLogin = async () => {
+    setGoogleStep('checking')
+    setGoogleError('')
+    try {
+      let email, name
+
+      if (Capacitor.isNativePlatform()) {
+        // Android/iOS App → Native Google Sign-In SDK
+        await GoogleAuth.initialize({
+          clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+          scopes: ['profile', 'email'],
         })
-        const googleUser = await googleRes.json()
-        const email = googleUser.email
-        const name  = googleUser.name
-
-        setGoogleEmail(email)
-        setGoogleName(name)
-
-        // Backend-এ email type চেক করো
-        const checkRes = await axios.post('/auth/check-email', { email })
-        const { type, data } = checkRes.data
-
-        if (type === 'customer') {
-          // সরাসরি পোর্টালে — JWT সেভ করো
-          const cid = data.customer_id
-          localStorage.setItem(`portal_jwt_${cid}`, data.portal_jwt)
-          setGoogleStep('customer_redirect')
-          setTimeout(() => {
-            navigate('/customer-portal', { replace: true })
-          }, 1500)
-
-        } else if (type === 'worker') {
-          // পাসওয়ার্ড চাইবে
-          setGoogleStep('need_password')
-
-        } else {
-          setGoogleStep('unknown')
-        }
-
-      } catch (err) {
-        const msg = err?.response?.data?.message || 'সমস্যা হয়েছে।'
-        const type = err?.response?.data?.type
-
-        if (type === 'blocked') {
-          setGoogleStep('blocked')
-          setGoogleError(msg)
-        } else if (type === 'unknown') {
-          setGoogleStep('unknown')
-        } else {
-          setGoogleStep('idle')
-          setGoogleError(msg)
-        }
+        const googleUser = await GoogleAuth.signIn()
+        email = googleUser.email
+        name  = googleUser.name
+      } else {
+        // Browser fallback — Google One Tap / redirect flow
+        // (web-এ @react-oauth/google ব্যবহার করলে এখানে handle করুন)
+        throw new Error('Web Google login not configured.')
       }
-    },
-    onError: () => {
-      setGoogleStep('idle')
-      setGoogleError('Google লগইন বাতিল হয়েছে।')
+
+      setGoogleEmail(email)
+      setGoogleName(name)
+
+      // Backend-এ email type চেক করো (আগের মতোই)
+      const checkRes = await axios.post('/auth/check-email', { email })
+      const { type, data } = checkRes.data
+
+      if (type === 'customer') {
+        const cid = data.customer_id
+        localStorage.setItem(`portal_jwt_${cid}`, data.portal_jwt)
+        setGoogleStep('customer_redirect')
+        setTimeout(() => navigate('/customer-portal', { replace: true }), 1500)
+      } else if (type === 'worker') {
+        setGoogleStep('need_password')
+      } else {
+        setGoogleStep('unknown')
+      }
+
+    } catch (err) {
+      // User নিজে cancel করলে
+      if (err?.message?.includes('cancel') || err?.message?.includes('dismissed') || err?.code === 12501) {
+        setGoogleStep('idle')
+        return
+      }
+      const msg = err?.response?.data?.message || 'Google লগইন ব্যর্থ হয়েছে।'
+      const type = err?.response?.data?.type
+      if (type === 'blocked') { setGoogleStep('blocked'); setGoogleError(msg) }
+      else if (type === 'unknown') { setGoogleStep('unknown') }
+      else { setGoogleStep('idle'); setGoogleError(msg) }
     }
-  })
+  }
 
   // ── Google Login — Step 2: পাসওয়ার্ড দিয়ে কর্মী লগইন ─
   const handleGoogleWorkerLogin = async () => {
@@ -380,7 +376,7 @@ export default function Login() {
                   {/* ── Google Login বাটন (নতুন) ── */}
                   <div className="fade-up" style={{ marginBottom: '20px' }}>
                     <button
-                      onClick={() => googleLogin()}
+                      onClick={handleGoogleLogin}
                       className={googleBtnCls}
                     >
                       <svg width="20" height="20" viewBox="0 0 24 24">
