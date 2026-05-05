@@ -191,7 +191,9 @@ export default function Login() {
         setGoogleStep('idle')
         return
       }
-      const msg = err?.response?.data?.message || 'Google লগইন ব্যর্থ হয়েছে।'
+      // Debug: আসল error দেখাও
+      const debugMsg = err?.message || JSON.stringify(err) || 'Unknown error'
+      const msg = err?.response?.data?.message || debugMsg
       const type = err?.response?.data?.type
       if (type === 'blocked') { setGoogleStep('blocked'); setGoogleError(msg) }
       else if (type === 'unknown') { setGoogleStep('unknown') }
