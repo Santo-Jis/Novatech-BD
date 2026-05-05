@@ -3,7 +3,8 @@
 
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { useGoogleLogin } from '@react-oauth/google'
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
+import { Capacitor } from '@capacitor/core'
 
 // ── Backend URL ───────────────────────────────────────────────
 const BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
@@ -503,28 +504,41 @@ export default function CustomerPortal() {
     init()
   }, [portalToken])
 
-  const googleLogin = useGoogleLogin({
-    onSuccess: async (tokenResponse) => {
-      setLoggingIn(true)
-      try {
-        const data = await portalFetch('/portal/google-auth', {
-          method: 'POST',
-          body: JSON.stringify({
-            google_token: tokenResponse.access_token,
-            portal_token: portalToken
-          })
+  const googleLogin = async () => {
+    setLoggingIn(true)
+    setError('')
+    try {
+      let access_token
+
+      if (Capacitor.isNativePlatform()) {
+        await GoogleAuth.initialize({
+          clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+          scopes: ['profile', 'email'],
         })
-        const jwt        = data.data.portal_jwt
-        const customerId = data.data.customer?.id
-        if (customerId) localStorage.setItem(getStorageKey(customerId), jwt)
-        setPortalJWT(jwt)
-        await loadDashboard(jwt)
-      } catch (err) {
+        const googleUser = await GoogleAuth.signIn()
+        access_token = googleUser.authentication.accessToken
+      } else {
+        throw new Error('Web login not supported here.')
+      }
+
+      const data = await portalFetch('/portal/google-auth', {
+        method: 'POST',
+        body: JSON.stringify({
+          google_token: access_token,
+          portal_token: portalToken
+        })
+      })
+      const jwt        = data.data.portal_jwt
+      const customerId = data.data.customer?.id
+      if (customerId) localStorage.setItem(getStorageKey(customerId), jwt)
+      setPortalJWT(jwt)
+      await loadDashboard(jwt)
+    } catch (err) {
+      if (!err?.message?.includes('cancel') && !err?.message?.includes('dismissed')) {
         setError(err.message || 'লগইন ব্যর্থ হয়েছে।')
-      } finally { setLoggingIn(false) }
-    },
-    onError: () => { setError('Google লগইন ব্যর্থ হয়েছে।'); setLoggingIn(false) }
-  })
+      }
+    } finally { setLoggingIn(false) }
+  }
 
   // ── RENDER: LOADING ───────────────────────────────────────
   if (phase === 'loading') return (
@@ -576,7 +590,7 @@ export default function CustomerPortal() {
         )}
 
         <button
-          onClick={() => { setError(''); googleLogin() }}
+          onClick={googleLogin}
           disabled={loggingIn}
           className="w-full flex items-center justify-center gap-3 bg-white border-2 border-gray-200
             hover:border-indigo-300 hover:bg-indigo-50 rounded-2xl py-4 px-6
