@@ -47,7 +47,8 @@ jobs:
             @capacitor/core \
             @capacitor/cli \
             @capacitor/android \
-            @capacitor/push-notifications
+            @capacitor/push-notifications \
+            @codetrix-studio/capacitor-google-auth
 
       - name: Create .env file
         working-directory: frontend
