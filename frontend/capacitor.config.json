@@ -6,6 +6,11 @@
     "androidScheme": "https"
   },
   "plugins": {
+    "GoogleAuth": {
+      "scopes": ["profile", "email"],
+      "serverClientId": "1098950143887-0s1htavj6dh6p6vkrqumt62ljtce3qo2.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": false
+    },
     "PushNotifications": {
       "presentationOptions": ["badge", "sound", "alert"]
     },
