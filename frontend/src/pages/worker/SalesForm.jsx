@@ -295,6 +295,8 @@ export default function SalesForm() {
             replacement_items:  replacementItems,
             use_credit_balance: useCreditBalance,
             _receipt_photo_base64: receiptPhotoBase64 || undefined,
+            // Idempotency key — retry-তে duplicate invoice প্রতিরোধ
+            idempotency_key: `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
             // offline summary (UI তে দেখানোর জন্য)
             _customer_name: customer?.shop_name,
             _total:         netAmount,
@@ -348,6 +350,8 @@ export default function SalesForm() {
         replacement_items:  replacementItems,
         use_credit_balance: useCreditBalance,
         receipt_photo:      receiptPhotoUrl || undefined,
+        // Idempotency key — network retry-তে duplicate invoice প্রতিরোধ
+        idempotency_key: `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
       }
 
       const res = await api.post('/sales', payload)
