@@ -128,7 +128,8 @@ const createSale = async (req, res) => {
             items,
             payment_method,
             replacement_items,
-            use_credit_balance  // কাস্টমারের জমা ব্যালেন্স ব্যবহার
+            use_credit_balance,  // কাস্টমারের জমা ব্যালেন্স ব্যবহার
+            idempotency_key      // Offline duplicate প্রতিরোধ
         } = req.body;
 
         if (!customer_id || !items || !payment_method) {
@@ -136,6 +137,36 @@ const createSale = async (req, res) => {
                 success: false,
                 message: 'কাস্টমার, পণ্য এবং পেমেন্ট পদ্ধতি আবশ্যক।'
             });
+        }
+
+        // ── Idempotency Check — Offline duplicate প্রতিরোধ ─────────────
+        // Frontend প্রতিটি sale-এ একটি unique key পাঠাবে (যেমন: uuid বা timestamp+worker)
+        // Network retry-তে একই key আসলে আগের সফল response ফিরিয়ে দাও
+        if (idempotency_key) {
+            const existing = await query(
+                `SELECT id, invoice_number, total_amount, net_amount,
+                        payment_method, credit_balance_used, credit_balance_added
+                 FROM sales_transactions
+                 WHERE worker_id = $1 AND idempotency_key = $2`,
+                [req.user.id, idempotency_key]
+            );
+            if (existing.rows.length > 0) {
+                const prev = existing.rows[0];
+                return res.status(200).json({
+                    success:    true,
+                    duplicate:  true,
+                    message:    'এই বিক্রয় আগেই সম্পন্ন হয়েছে।',
+                    data: {
+                        sale_id:              prev.id,
+                        invoice_number:       prev.invoice_number,
+                        total_amount:         prev.total_amount,
+                        net_amount:           prev.net_amount,
+                        payment_method:       prev.payment_method,
+                        credit_balance_used:  prev.credit_balance_used,
+                        credit_balance_added: prev.credit_balance_added,
+                    }
+                });
+            }
         }
 
         // ── অনুমোদিত অর্ডার যাচাই (Server-side hard block) ──────
@@ -304,8 +335,9 @@ const createSale = async (req, res) => {
                   payment_method, cash_received, credit_used,
                   replacement_items, replacement_value,
                   credit_balance_used, credit_balance_added,
-                  invoice_number, otp_code, otp_expires_at)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+                  invoice_number, otp_code, otp_expires_at,
+                  idempotency_key)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
                  RETURNING *`,
                 [
                     req.user.id, customer_id, visit_id || null, order_id || null,
@@ -314,7 +346,8 @@ const createSale = async (req, res) => {
                     payment_method, cashReceived, creditUsed,
                     JSON.stringify(processedReplacement), replacementValue,
                     creditBalanceUsed, creditBalanceAdded,
-                    invoiceNumber, otp, otpExpiresAt
+                    invoiceNumber, otp, otpExpiresAt,
+                    idempotency_key || null
                 ]
             );
 
