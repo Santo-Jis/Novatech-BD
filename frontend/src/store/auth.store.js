@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import api from '../api/axios'
+import { clearAllData } from '../api/offlineQueue'
 import toast from 'react-hot-toast'
 
 // ============================================================
@@ -47,6 +48,7 @@ export const useAuthStore = create((set, get) => ({
       const refreshToken = get().refreshToken
       await api.post('/auth/logout', { refreshToken })
     } catch { /* silent */ } finally {
+      await clearAllData()   // IndexedDB সম্পূর্ণ মুছে ফেলো
       localStorage.clear()
       set({ user: null, token: null, refreshToken: null })
 
