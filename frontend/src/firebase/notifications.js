@@ -92,6 +92,12 @@ export function useFirebaseNotifications() {
 
         set(snapshot.ref, { ...data, read: true })
       }
+      onValue(settlementsRef, (snapshot) => {
+        snapshot.forEach(child => {
+          const data = child.val()
+          if (!data?.read) settlementHandler(child)
+        })
+      }, { onlyOnce: true })
       listenersRef.current.push({ ref: settlementsRef, handler: settlementHandler })
     }
 
@@ -122,6 +128,12 @@ export function useFirebaseNotifications() {
 
         set(snapshot.ref, { ...data, read: true })
       }
+      onValue(approvalsRef, (snapshot) => {
+        snapshot.forEach(child => {
+          const data = child.val()
+          if (!data?.read) approvalHandler(child)
+        })
+      }, { onlyOnce: true })
       listenersRef.current.push({ ref: approvalsRef, handler: approvalHandler })
     }
 
@@ -152,6 +164,12 @@ export function useFirebaseNotifications() {
 
         set(snapshot.ref, { ...data, read: true })
       }
+      onValue(settlementRef, (snapshot) => {
+        snapshot.forEach(child => {
+          const data = child.val()
+          if (!data?.read) settlWorkerHandler(child)
+        })
+      }, { onlyOnce: true })
       listenersRef.current.push({ ref: settlementRef, handler: settlWorkerHandler })
     }
 
@@ -179,6 +197,12 @@ export function useFirebaseNotifications() {
 
         set(snapshot.ref, { ...data, read: true })
       }
+      onValue(bonusRef, (snapshot) => {
+        snapshot.forEach(child => {
+          const data = child.val()
+          if (!data?.read) bonusHandler(child)
+        })
+      }, { onlyOnce: true })
       listenersRef.current.push({ ref: bonusRef, handler: bonusHandler })
     }
 
@@ -201,6 +225,7 @@ export function useFirebaseNotifications() {
           })
         }
       }
+      onValue(liveAttRef, liveAttHandler)
       listenersRef.current.push({ ref: liveAttRef, handler: liveAttHandler })
     }
 
