@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
@@ -356,7 +356,14 @@ export default function Login() {
                   {bismillah.done && !salam.done && <span style={{ animation: 'fadeIn 0.5s ease infinite alternate' }}>|</span>}
                 </p>
               </div>
-              <div className="logo-glow fade-up-2" style={{ display: 'inline-block', marginBottom: '12px' }}>
+              <div className="logo-glow fade-up-2" style={{ display: 'inline-block', marginBottom: '12px' }}
+                onClick={() => {
+                  window.__erudaTap = (window.__erudaTap || 0) + 1
+                  if (window.__erudaTap >= 5) {
+                    window.__erudaTap = 0
+                    if (typeof window.__showEruda === 'function') window.__showEruda()
+                  }
+                }}>
                 <NTLogo size={64} />
               </div>
               <div className="fade-up-3">
