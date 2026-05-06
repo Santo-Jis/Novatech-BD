@@ -15,7 +15,7 @@ const getAdminManagerIds = async () => {
     const { rows } = await query(
         `SELECT id FROM users
          WHERE role IN ('admin', 'manager', 'supervisor')
-           AND is_active = true`,
+           AND status = 'active'`,
         []
     );
     return rows.map(r => r.id);
