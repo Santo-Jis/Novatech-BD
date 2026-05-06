@@ -7,7 +7,7 @@ const {
     verifyRefreshToken,
     deleteRefreshToken
 } = require('../services/auth.service');
-const { saveFCMToken: saveFCMTokenToDB } = require('../services/fcm.service');
+const { saveFCMToken: saveFCMTokenToDB, clearFCMToken } = require('../services/fcm.service');
 
 // ============================================================
 // LOGIN
@@ -161,6 +161,12 @@ const refresh = async (req, res) => {
 const logout = async (req, res) => {
     try {
         const { refreshToken } = req.body;
+        const userId = req.user?.id;
+
+        // FCM token DB থেকে মুছে ফেলো — পরের user যেন notification না পায়
+        if (userId) {
+            await clearFCMToken(userId);
+        }
 
         if (refreshToken) {
             await deleteRefreshToken(refreshToken);
