@@ -153,3 +153,22 @@ export async function getPendingCount() {
   const items = await getPendingQueue()
   return items.filter(i => i.status === 'pending' || i.status === 'failed').length
 }
+
+
+// ── Logout এ সব data মুছে ফেলা ──────────────────────────────
+// user পরিবর্তন হলে অবশ্যই call করতে হবে
+export async function clearAllData() {
+  // in-memory reference বন্ধ করো
+  if (db) {
+    db.close()
+    db = null
+  }
+
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(DB_NAME)
+    req.onsuccess = () => resolve()
+    req.onerror   = () => reject(req.error)
+    // blocked হলে অন্য tab DB ধরে আছে — তবু resolve করো
+    req.onblocked = () => resolve()
+  })
+}
