@@ -200,8 +200,21 @@ const sendCustomerPush = async (fcmToken, { title, body, type = 'general' }) => 
   }
 }
 
+// ============================================================
+// clearFCMToken — Logout-এ user-এর FCM token মুছে ফেলো
+// ============================================================
+
+const clearFCMToken = async (userId) => {
+  if (!userId) return
+  await query(
+    `UPDATE users SET fcm_token = NULL, fcm_token_updated_at = NOW() WHERE id = $1`,
+    [userId]
+  )
+}
+
 module.exports = {
   saveFCMToken,
+  clearFCMToken,
   getFCMTokens,
   sendPushNotification,
   sendPushToMany,
