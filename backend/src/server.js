@@ -17,9 +17,23 @@ app.set('trust proxy', 1);
 
 app.use(helmet());
 
+// ── CORS ─────────────────────────────────────────────────────
+// Render-এ FRONTEND_URL env variable সেট করুন, যেমন:
+//   https://novatech-bd.vercel.app
+// একাধিক URL দিতে চাইলে comma দিয়ে আলাদা করুন:
+//   https://novatech-bd.vercel.app,https://novatech-bd-git-main.vercel.app
+const ALLOWED_ORIGINS = (process.env.FRONTEND_URL || 'http://localhost:3000')
+    .split(',')
+    .map(url => url.trim());
+
 app.use(cors({
-    origin: '*',
-credentials: false,
+    origin: (origin, callback) => {
+        // Mobile app / Postman / Server-to-server — origin থাকে না
+        if (!origin) return callback(null, true);
+        if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+        callback(new Error(`CORS blocked: ${origin}`));
+    },
+    credentials: true,
     methods:        ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
