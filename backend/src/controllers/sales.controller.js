@@ -598,12 +598,13 @@ const getMySales = async (req, res) => {
         let paramCount = 1;
 
         if (from && to) {
+            // ✅ FIX: BETWEEN এর দুইটা parameter একসাথে একটাই condition-এ রাখো
             paramCount++;
-            conditions.push(`st.date BETWEEN $${paramCount}`);
-            params.push(from);
+            const fromParam = paramCount;
             paramCount++;
-            conditions[conditions.length - 1] += ` AND $${paramCount}`;
-            params.push(to);
+            const toParam   = paramCount;
+            conditions.push(`st.date BETWEEN $${fromParam} AND $${toParam}`);
+            params.push(from, to);
         } else {
             paramCount++;
             conditions.push(`st.date = $${paramCount}`);

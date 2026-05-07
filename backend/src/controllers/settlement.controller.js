@@ -596,31 +596,54 @@ const payShortage = async (req, res) => {
             return res.status(404).json({ success: false, message: 'হিসাব পাওয়া যায়নি।' });
         }
 
-        await query(
-            `INSERT INTO shortage_payments
-             (worker_id, settlement_id, amount, payment_method, note, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [
-                settlement.rows[0].worker_id,
-                id, amount,
-                payment_method || 'cash_paid',
-                note || null,
-                req.user.id
-            ]
-        );
+        const workerId = settlement.rows[0].worker_id;
 
-        const worker = await query(
-            'SELECT outstanding_dues FROM users WHERE id = $1',
-            [settlement.rows[0].worker_id]
-        );
+        // ✅ FIX: সব কাজ একটা transaction-এ করো
+        // আগে শুধু shortage_payments-এ INSERT হত, outstanding_dues কখনো কমত না
+        let settlementFullyPaid = false;
+        let settlementDate      = null;
 
-        if (parseFloat(worker.rows[0].outstanding_dues) <= 0) {
-            const settlementData = await query(
-                'SELECT settlement_date FROM daily_settlements WHERE id = $1',
-                [id]
+        await withTransaction(async (client) => {
+            // ১. পরিশোধ রেকর্ড করো
+            await client.query(
+                `INSERT INTO shortage_payments
+                 (worker_id, settlement_id, amount, payment_method, note, created_by)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [
+                    workerId,
+                    id, amount,
+                    payment_method || 'cash_paid',
+                    note || null,
+                    req.user.id
+                ]
             );
 
-            await withTransaction(async (client) => {
+            // ✅ FIX: ২. outstanding_dues থেকে পরিশোধ করা amount বাদ দাও
+            await client.query(
+                `UPDATE users
+                 SET outstanding_dues = GREATEST(0, outstanding_dues - $1),
+                     updated_at       = NOW()
+                 WHERE id = $2`,
+                [parseFloat(amount), workerId]
+            );
+
+            // ৩. বাকি dues চেক করো (update-এর পরে)
+            const workerRes = await client.query(
+                'SELECT outstanding_dues FROM users WHERE id = $1',
+                [workerId]
+            );
+            const remainingDues = parseFloat(workerRes.rows[0].outstanding_dues);
+
+            // ৪. বকেয়া শূন্য হলে settlement approve করো
+            if (remainingDues <= 0) {
+                settlementFullyPaid = true;
+
+                const settlementRes = await client.query(
+                    'SELECT settlement_date FROM daily_settlements WHERE id = $1',
+                    [id]
+                );
+                settlementDate = settlementRes.rows[0].settlement_date;
+
                 await client.query(
                     `UPDATE daily_settlements
                      SET status = 'approved', approved_at = NOW(), updated_at = NOW()
@@ -631,20 +654,22 @@ const payShortage = async (req, res) => {
                     `UPDATE attendance
                      SET settlement_approved = true, updated_at = NOW()
                      WHERE user_id = $1 AND date = $2`,
-                    [settlement.rows[0].worker_id, settlementData.rows[0].settlement_date]
+                    [workerId, settlementDate]
                 );
-            });
+            }
+        });
 
+        // ৫. Notification (transaction-এর বাইরে)
+        if (settlementFullyPaid) {
             await firebaseNotify(
-                `notifications/${settlement.rows[0].worker_id}/settlement`,
+                `notifications/${workerId}/settlement`,
                 {
                     settlementId: id,
                     status:       'approved',
                     message:      '✅ ঘাটতি পরিশোধ সম্পন্ন। এখন চেক-আউট করুন।'
                 }
             );
-            // FCM Push
-            sendPushNotification(settlement.rows[0].worker_id, {
+            sendPushNotification(workerId, {
                 title: '✅ ঘাটতি পরিশোধ সম্পন্ন',
                 body:  'ঘাটতি পরিশোধ সম্পন্ন। এখন চেক-আউট করুন।',
                 type:  'settlement_result',
@@ -653,8 +678,11 @@ const payShortage = async (req, res) => {
         }
 
         return res.status(200).json({
-            success: true,
-            message: `৳${amount} পরিশোধ রেকর্ড হয়েছে।`
+            success:            true,
+            fully_paid:         settlementFullyPaid,
+            message: settlementFullyPaid
+                ? `৳${amount} পরিশোধ সম্পন্ন। বকেয়া শূন্য হয়েছে, settlement অনুমোদিত হয়েছে।`
+                : `৳${amount} পরিশোধ রেকর্ড হয়েছে।`
         });
 
     } catch (error) {
