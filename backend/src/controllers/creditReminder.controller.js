@@ -2,6 +2,7 @@
 // ============================================================
 // SR ম্যানুয়ালি একজন কাস্টমারকে বাকি reminder পাঠাবে
 // POST /api/portal/send-reminder/:customerId
+// ✅ Throttle: প্রতিদিন একই customer-কে সর্বোচ্চ ১ বার
 // ============================================================
 
 const { query }      = require('../config/db');
@@ -13,6 +14,21 @@ const sendCreditReminder = async (req, res) => {
     try {
         const { customerId } = req.params;
         const srId = req.user.id; // auth middleware থেকে
+
+        // ✅ Throttle Check — আজকে কি এই customer-কে reminder পাঠানো হয়েছে?
+        const { rows: throttleRows } = await query(`
+            SELECT id FROM credit_reminder_logs
+            WHERE customer_id = $1
+              AND sent_at::date = CURRENT_DATE
+            LIMIT 1
+        `, [customerId]);
+
+        if (throttleRows.length > 0) {
+            return res.status(429).json({
+                success: false,
+                message: '⚠️ আজকে এই কাস্টমারকে ইতিমধ্যে reminder পাঠানো হয়েছে। আগামীকাল আবার চেষ্টা করুন।'
+            });
+        }
 
         // কাস্টমার তথ্য
         const { rows } = await query(`
@@ -142,12 +158,11 @@ const sendCreditReminder = async (req, res) => {
             type:  'credit_reminder',
         }).catch(() => {});
 
-        // ── Log reminder ─────────────────────────────────────
+        // ✅ Log reminder — throttle check পাস করার পরেই insert
         await query(`
             INSERT INTO credit_reminder_logs (customer_id, sr_id, method, sent_at)
             VALUES ($1, $2, 'email', NOW())
-            ON CONFLICT DO NOTHING
-        `, [customer.id, srId]).catch(() => {}); // table না থাকলে skip
+        `, [customer.id, srId]);
 
         return res.json({
             success: true,
