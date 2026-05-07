@@ -44,15 +44,33 @@ export const useAuthStore = create((set, get) => ({
 
   // ── LOGOUT ──
   logout: async () => {
+    const refreshToken = get().refreshToken
+
+    // ✅ FCM token clear — network না থাকলেও retry করো
+    // beacon API ব্যবহার করি যাতে page unload-এও request যায়
     try {
-      const refreshToken = get().refreshToken
       await api.post('/auth/logout', { refreshToken })
-    } catch { /* silent */ } finally {
-      await clearAllData()   // IndexedDB সম্পূর্ণ মুছে ফেলো
+    } catch {
+      // API fail হলে beacon দিয়ে best-effort চেষ্টা
+      // (page close / network off হলেও browser পাঠানোর চেষ্টা করে)
+      try {
+        const token = get().token
+        if (token && navigator.sendBeacon) {
+          const blob = new Blob(
+            [JSON.stringify({ refreshToken })],
+            { type: 'application/json' }
+          )
+          navigator.sendBeacon(
+            `${import.meta.env.VITE_API_URL}/auth/logout`,
+            blob
+          )
+        }
+      } catch { /* beacon ও fail হলে কিছু করার নেই */ }
+    } finally {
+      await clearAllData()
       localStorage.clear()
       set({ user: null, token: null, refreshToken: null })
 
-      // লগআউটে Eruda লুকাও
       if (typeof window.__hideEruda === 'function') window.__hideEruda()
 
       window.location.href = '/login'
