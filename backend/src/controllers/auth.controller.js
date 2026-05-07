@@ -160,7 +160,13 @@ const refresh = async (req, res) => {
 
 const logout = async (req, res) => {
     try {
-        const { refreshToken } = req.body;
+        // ✅ sendBeacon থেকে আসলে body text/plain হয় — parse করতে হবে
+        let body = req.body;
+        if (typeof body === 'string') {
+            try { body = JSON.parse(body); } catch { body = {}; }
+        }
+
+        const { refreshToken } = body;
         const userId = req.user?.id;
 
         // FCM token DB থেকে মুছে ফেলো — পরের user যেন notification না পায়
