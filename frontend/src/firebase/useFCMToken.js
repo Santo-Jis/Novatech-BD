@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import api from '../api/axios'
 import toast from 'react-hot-toast'
@@ -77,7 +78,7 @@ async function saveTokenToBackend(fcmToken) {
 // Service Worker নেই, VAPID নেই, Notification API নেই
 // ============================================================
 
-async function setupNativeFCM(cancelledRef) {
+async function setupNativeFCM(cancelledRef, navigate) {
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications')
 
@@ -130,8 +131,12 @@ async function setupNativeFCM(cancelledRef) {
         if (cancelledRef.current) return
         const type = action.notification?.data?.type
         const url  = getClickUrl(type)
-        // useNavigate এই scope-এ নেই, তাই hash route দিয়ে navigate
-        if (url && url !== '/') window.location.href = url
+        // ✅ React Router navigate — killed state থেকে খুললেও safe
+        // App mount হওয়ার পরে navigate call হয়, white screen হয় না
+        if (url && url !== '/') {
+          // App just launched — Router mount হতে সামান্য সময় দাও
+          setTimeout(() => navigate(url, { replace: true }), 300)
+        }
       }
     )
 
@@ -232,6 +237,7 @@ async function setupWebFCM(cancelledRef) {
 
 export function useFCMToken() {
   const { user, token: authToken } = useAuthStore()
+  const navigate     = useNavigate()
   const cleanupRef   = useRef(null)
   const cancelledRef = useRef(false)
 
@@ -242,8 +248,8 @@ export function useFCMToken() {
 
     const setup = async () => {
       const cleanupFn = IS_NATIVE()
-        ? await setupNativeFCM(cancelledRef)   // Android APK
-        : await setupWebFCM(cancelledRef)      // Web / PWA
+        ? await setupNativeFCM(cancelledRef, navigate)  // Android APK — navigate pass করা হলো
+        : await setupWebFCM(cancelledRef)               // Web / PWA
 
       if (!cancelledRef.current) {
         cleanupRef.current = cleanupFn
