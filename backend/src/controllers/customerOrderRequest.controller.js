@@ -49,6 +49,15 @@ const createOrderRequest = async (req, res) => {
             }
         }
 
+        // ✅ Pending check — block নয়, শুধু frontend-কে জানাও
+        const pendingCheck = await query(
+            `SELECT id FROM customer_order_requests
+             WHERE customer_id = $1 AND status = 'pending'
+             LIMIT 1`,
+            [customer_id]
+        );
+        const hasPendingOrder = pendingCheck.rows.length > 0;
+
         // কাস্টমার তথ্য নাও
         const custResult = await query(
             `SELECT shop_name, owner_name, customer_code FROM customers WHERE id = $1`,
@@ -116,7 +125,10 @@ const createOrderRequest = async (req, res) => {
 
         return res.status(201).json({
             success: true,
-            message: 'অর্ডার রিকোয়েস্ট পাঠানো হয়েছে! শীঘ্রই SR আসবে।',
+            message: hasPendingOrder
+                ? '✅ অর্ডার পাঠানো হয়েছে। তবে আপনার আগের একটি অর্ডার এখনো pending আছে।'
+                : 'অর্ডার রিকোয়েস্ট পাঠানো হয়েছে! শীঘ্রই SR আসবে।',
+            has_pending_order: hasPendingOrder,
             data: {
                 request_id: newRequest.id,
                 created_at: newRequest.created_at,
