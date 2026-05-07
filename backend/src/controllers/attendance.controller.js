@@ -55,12 +55,16 @@ const checkIn = async (req, res) => {
             });
         }
 
-        // ৪. Location পার্স
-        const { latitude, longitude } = req.body;
-        let locationPoint = null;
-        if (latitude && longitude) {
-            locationPoint = `POINT(${longitude} ${latitude})`;
-        }
+        // ৪. Location যাচাই ও parse
+        // ✅ FIX: কখনোই latitude/longitude সরাসরি SQL string-এ রাখা যাবে না।
+        // parseFloat + isFinite দিয়ে validate করে parameterized ST_MakePoint ব্যবহার করো।
+        const rawLat = req.body.latitude;
+        const rawLng = req.body.longitude;
+        const lat    = parseFloat(rawLat);
+        const lng    = parseFloat(rawLng);
+        const hasLocation = isFinite(lat) && isFinite(lng)
+                         && lat >= -90  && lat <= 90
+                         && lng >= -180 && lng <= 180;
 
         // ৫. সেলফি Cloudinary তে আপলোড
         let selfieUrl = null;
@@ -88,18 +92,15 @@ const checkIn = async (req, res) => {
                 `UPDATE attendance
                  SET check_in_time     = $1,
                      check_in_selfie   = $2,
-                     check_in_location = ST_GeogFromText($3),
-                     status            = $4,
-                     late_minutes      = $5,
-                     salary_deduction  = $6,
+                     check_in_location = ${hasLocation ? 'ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography' : 'NULL'},
+                     status            = ${hasLocation ? '$5' : '$3'},
+                     late_minutes      = ${hasLocation ? '$6' : '$4'},
+                     salary_deduction  = ${hasLocation ? '$7' : '$5'},
                      updated_at        = NOW()
-                 WHERE user_id = $7 AND date = $8`,
-                [
-                    checkInTime, selfieUrl,
-                    locationPoint ? locationPoint : null,
-                    status, lateMinutes, deduction,
-                    userId, today
-                ]
+                 WHERE user_id = ${hasLocation ? '$8' : '$6'} AND date = ${hasLocation ? '$9' : '$7'}`,
+                hasLocation
+                    ? [checkInTime, selfieUrl, lng, lat, status, lateMinutes, deduction, userId, today]
+                    : [checkInTime, selfieUrl,          status, lateMinutes, deduction, userId, today]
             );
         } else {
             // নতুন রেকর্ড
@@ -108,12 +109,11 @@ const checkIn = async (req, res) => {
                  (user_id, date, check_in_time, check_in_selfie,
                   check_in_location, status, late_minutes, salary_deduction)
                  VALUES ($1, $2, $3, $4,
-                  ${locationPoint ? `ST_GeogFromText('${locationPoint}')` : 'NULL'},
-                  $5, $6, $7)`,
-                [
-                    userId, today, checkInTime, selfieUrl,
-                    status, lateMinutes, deduction
-                ]
+                  ${hasLocation ? 'ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography' : 'NULL'},
+                  ${hasLocation ? '$7, $8, $9' : '$5, $6, $7'})`,
+                hasLocation
+                    ? [userId, today, checkInTime, selfieUrl, lng, lat, status, lateMinutes, deduction]
+                    : [userId, today, checkInTime, selfieUrl,          status, lateMinutes, deduction]
             );
         }
 
@@ -198,12 +198,15 @@ const checkOut = async (req, res) => {
             }
         }
 
-        // ৩. Location পার্স
-        const { latitude, longitude } = req.body;
-        let locationPoint = null;
-        if (latitude && longitude) {
-            locationPoint = `POINT(${longitude} ${latitude})`;
-        }
+        // ৩. Location যাচাই ও parse
+        // ✅ FIX: latitude/longitude validate করে parameterized ST_MakePoint ব্যবহার
+        const rawLat = req.body.latitude;
+        const rawLng = req.body.longitude;
+        const lat    = parseFloat(rawLat);
+        const lng    = parseFloat(rawLng);
+        const hasLocation = isFinite(lat) && isFinite(lng)
+                         && lat >= -90  && lat <= 90
+                         && lng >= -180 && lng <= 180;
 
         // ৪. সেলফি আপলোড
         let selfieUrl = null;
@@ -222,10 +225,12 @@ const checkOut = async (req, res) => {
             `UPDATE attendance
              SET check_out_time     = $1,
                  check_out_selfie   = $2,
-                 check_out_location = ${locationPoint ? `ST_GeogFromText('${locationPoint}')` : 'NULL'},
+                 check_out_location = ${hasLocation ? 'ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography' : 'NULL'},
                  updated_at         = NOW()
-             WHERE user_id = $3 AND date = $4`,
-            [checkOutTime, selfieUrl, userId, today]
+             WHERE user_id = ${hasLocation ? '$5' : '$3'} AND date = ${hasLocation ? '$6' : '$4'}`,
+            hasLocation
+                ? [checkOutTime, selfieUrl, lng, lat, userId, today]
+                : [checkOutTime, selfieUrl,          userId, today]
         );
 
         // ৬. Firebase আপডেট

@@ -55,13 +55,20 @@ const createVisit = async (req, res) => {
         let locationMatched = false;
         let distance        = null;
 
-        if (latitude && longitude && customer.rows[0].location) {
+        // ✅ FIX: latitude/longitude validate করো, তারপর parameterized query-তে পাঠাও
+        const rawLat = parseFloat(latitude);
+        const rawLng = parseFloat(longitude);
+        const hasLocation = isFinite(rawLat) && isFinite(rawLng)
+                         && rawLat >= -90  && rawLat <= 90
+                         && rawLng >= -180 && rawLng <= 180;
+
+        if (hasLocation && customer.rows[0].location) {
             const distResult = await query(
                 `SELECT ROUND(ST_Distance(
                     $1::geography,
-                    ST_MakePoint($2::float, $3::float)::geography
+                    ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography
                 )::numeric, 0) AS distance`,
-                [customer.rows[0].location, longitude, latitude]
+                [customer.rows[0].location, rawLng, rawLat]
             );
             distance        = distResult.rows[0]?.distance;
             locationMatched = distance <= 5; // ৫ মিটার
@@ -84,14 +91,16 @@ const createVisit = async (req, res) => {
               no_sell_reason, closed_shop_photo,
               worker_location, location_matched, location_distance)
              VALUES ($1, $2, $3, $4, $5, $6,
-              ${latitude && longitude ? `ST_GeogFromText('POINT(${longitude} ${latitude})')` : 'NULL'},
-              $7, $8)
+              ${hasLocation ? 'ST_SetSRID(ST_MakePoint($7, $8), 4326)::geography' : 'NULL'},
+              ${hasLocation ? '$9, $10' : '$7, $8'})
              RETURNING id`,
-            [
-                req.user.id, customer_id, route_id || null,
-                will_sell !== false, no_sell_reason || null,
-                closedShopPhoto, locationMatched, distance
-            ]
+            hasLocation
+                ? [req.user.id, customer_id, route_id || null,
+                   will_sell !== false, no_sell_reason || null,
+                   closedShopPhoto, rawLng, rawLat, locationMatched, distance]
+                : [req.user.id, customer_id, route_id || null,
+                   will_sell !== false, no_sell_reason || null,
+                   closedShopPhoto, locationMatched, distance]
         );
 
         // লোকেশন warning (৫ মিটারের বাইরে)
