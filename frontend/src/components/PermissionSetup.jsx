@@ -10,6 +10,9 @@ import { useAuthStore } from '../store/auth.store'
 
 const STORAGE_KEY = 'novatech_permissions_asked'
 
+// ✅ Native App (Android/iOS) detection
+const isNative = () => !!(window?.Capacitor?.isNativePlatform?.())
+
 // Permission এর স্ট্যাটাস
 const STATUS = {
   IDLE: 'idle',
@@ -167,6 +170,18 @@ export default function PermissionSetup({ onDone }) {
   const checkAllStatuses = useCallback(async () => {
     const next = { ...statuses }
 
+    // ✅ Native App-এ Capacitor plugin ছাড়া Web Permission API নেই
+    // Native-এ OS নিজেই permission চায় (install/first launch-এ)
+    // তাই সব GRANTED ধরা হয় — modal দেখানোর দরকার নেই
+    if (isNative()) {
+      next.location     = STATUS.GRANTED
+      next.camera       = STATUS.GRANTED
+      next.notification = STATUS.GRANTED
+      setStatuses(next)
+      return
+    }
+
+    // Web Browser — স্বাভাবিক Permission API চেক
     // Geolocation
     if (required.includes('location')) {
       if (!navigator.geolocation) {
@@ -180,7 +195,7 @@ export default function PermissionSetup({ onDone }) {
         } catch { next.location = STATUS.IDLE }
       }
     } else {
-      next.location = STATUS.GRANTED // এই role-এ লাগে না, skip
+      next.location = STATUS.GRANTED
     }
 
     // Camera
@@ -196,7 +211,7 @@ export default function PermissionSetup({ onDone }) {
         } catch { next.camera = STATUS.IDLE }
       }
     } else {
-      next.camera = STATUS.GRANTED // এই role-এ লাগে না
+      next.camera = STATUS.GRANTED
     }
 
     // Notification
@@ -445,10 +460,14 @@ export function usePermissionSetup() {
     const required = ROLE_PERMISSIONS[role] || ['notification']
 
     const checkNeeded = async () => {
+      // ✅ Native App-এ এই modal দেখানো অর্থহীন
+      // Android/iOS-এ OS নিজেই permission চায় — Web API নেই
+      if (isNative()) return
+
       const checks = await Promise.all(required.map(async (type) => {
         if (type === 'location') {
           if (!navigator.geolocation) return false
-          if (!navigator.permissions) return true // unknown → show modal
+          if (!navigator.permissions) return true
           try {
             const r = await navigator.permissions.query({ name: 'geolocation' })
             return r.state !== 'granted'
@@ -471,7 +490,6 @@ export function usePermissionSetup() {
 
       // যেকোনো একটাও না থাকলে modal দেখাও
       if (checks.some(Boolean)) {
-        // Login-এর পরে ০.৫ সেকেন্ড delay দিয়ে দেখাও — জেনো মসৃণ লাগে
         setTimeout(() => setShow(true), 500)
       }
     }
