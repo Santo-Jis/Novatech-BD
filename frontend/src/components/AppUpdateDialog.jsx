@@ -6,18 +6,35 @@ export default function AppUpdateDialog() {
 
   if (!updateInfo) return null
 
+  // Backdrop click handler — forceUpdate হলে কিছু করব না
+  const handleBackdropClick = () => {
+    if (updateInfo.forceUpdate) return
+    dismissUpdate()
+  }
+
+  // Dialog নিজে click করলে backdrop-এ bubble যেন না যায়
+  const handleDialogClick = (e) => {
+    e.stopPropagation()
+  }
+
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 9999,
-      background: 'rgba(0,0,0,0.6)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '0 24px',
-    }}>
-      <div style={{
-        background: '#fff', borderRadius: 16, padding: 24,
-        width: '100%', maxWidth: 340,
-        boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
-      }}>
+    <div
+      onClick={handleBackdropClick}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 9999,
+        background: 'rgba(0,0,0,0.6)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 24px',
+      }}
+    >
+      <div
+        onClick={handleDialogClick}
+        style={{
+          background: '#fff', borderRadius: 16, padding: 24,
+          width: '100%', maxWidth: 340,
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+        }}
+      >
         <div style={{ textAlign: 'center', marginBottom: 16 }}>
           <div style={{
             width: 64, height: 64, borderRadius: 16,
