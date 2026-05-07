@@ -39,6 +39,17 @@ const auth = async (req, res, next) => {
             });
         }
 
+        // ✅ FIX: Customer portal token দিয়ে employee route access block করো।
+        // portalJWT আলাদা secret দিয়ে sign হয়, তাই এখানে verify-ই হবে না।
+        // তবুও decoded payload-এ type চেক করে double-layer protection দেওয়া হলো।
+        if (decoded.type === 'customer_portal') {
+            return res.status(403).json({
+                success: false,
+                message: 'Customer portal token দিয়ে এই route access করা যাবে না।',
+                code: 'WRONG_TOKEN_TYPE'
+            });
+        }
+
         // ৩. DB থেকে ইউজার যাচাই করো
         const result = await query(
             `SELECT id, role, employee_code, name_bn, name_en, 
