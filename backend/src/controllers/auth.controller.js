@@ -557,9 +557,16 @@ const checkEmailType = async (req, res) => {
             const customer = customerResult.rows[0];
 
             const jwt = require('jsonwebtoken');
+            // ✅ FIX: Employee JWT_ACCESS_SECRET থেকে আলাদা secret ব্যবহার করো।
+            // একই secret হলে customer token দিয়ে employee route access সম্ভব।
+            const portalSecret = process.env.JWT_PORTAL_SECRET;
+            if (!portalSecret) {
+                console.error('❌ JWT_PORTAL_SECRET environment variable সেট নেই!');
+                return res.status(500).json({ success: false, message: 'Server configuration error.' });
+            }
             const portalJWT = jwt.sign(
                 { customer_id: customer.id, email: cleanEmail, type: 'customer_portal' },
-                process.env.JWT_ACCESS_SECRET,
+                portalSecret,
                 { expiresIn: '30d' }
             );
 
