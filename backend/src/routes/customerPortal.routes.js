@@ -11,7 +11,8 @@ const {
     sendPortalLink,
     verifyPortalToken,
     googleAuth,
-    getCustomerDashboard
+    getCustomerDashboard,
+    getCustomerInvoices
 } = require('../controllers/customerPortal.controller');
 
 const { sendCreditReminder } = require('../controllers/creditReminder.controller');
@@ -65,6 +66,10 @@ router.post('/google-auth', googleAuth);
 // ── কাস্টমার ড্যাশবোর্ড ডেটা ──────────────────────────────
 // GET /api/portal/dashboard
 router.get('/dashboard', portalAuth, getCustomerDashboard);
+
+// ── কাস্টমারের Paginated Invoice List ──────────────────────
+// GET /api/portal/invoices?page=1&limit=15
+router.get('/invoices', portalAuth, getCustomerInvoices);
 
 // ── SR ম্যানুয়ালি reminder পাঠাবে ──────────────────────────
 // POST /api/portal/send-reminder/:customerId
