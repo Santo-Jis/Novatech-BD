@@ -618,11 +618,35 @@ export default function CustomerPortal() {
 
   // ── RENDER: DASHBOARD ─────────────────────────────────────
   if (phase === 'dashboard' && dashboard) {
-    const { customer, sales, credit_payments, monthly_summary, total_summary } = dashboard
+    const { customer, sales: initialSales, credit_payments, monthly_summary, total_summary } = dashboard
+
+    // ── Invoice Pagination state ──────────────────────────
+    const [invoices,      setInvoices]      = useState(initialSales)
+    const [invPage,       setInvPage]       = useState(1)
+    const [invTotalPages, setInvTotalPages] = useState(Math.ceil(total_summary.total_invoices / 15) || 1)
+    const [invTotal,      setInvTotal]      = useState(parseInt(total_summary.total_invoices) || initialSales.length)
+    const [invLoading,    setInvLoading]    = useState(false)
+
+    const loadInvoicePage = async (page) => {
+      setInvLoading(true)
+      try {
+        const res = await fetch(
+          `${BACKEND}/portal/invoices?page=${page}&limit=15`,
+          { headers: { Authorization: `Bearer ${portalJWT}` } }
+        )
+        const data = await res.json()
+        setInvoices(data.data.invoices)
+        setInvPage(data.data.pagination.page)
+        setInvTotalPages(data.data.pagination.totalPages)
+        setInvTotal(data.data.pagination.total)
+      } catch (e) { console.error(e) }
+      finally { setInvLoading(false) }
+    }
+
     const tabs = [
       { id: 'summary',  label: 'সারসংক্ষেপ' },
       { id: 'orders',   label: '🛒 অর্ডার' },
-      { id: 'invoices', label: `ইনভয়েস (${sales.length})` },
+      { id: 'invoices', label: `ইনভয়েস (${invTotal})` },
       { id: 'payments', label: `পরিশোধ (${credit_payments.length})` },
     ]
 
@@ -778,13 +802,39 @@ export default function CustomerPortal() {
                 <OrderRequestTab portalJWT={portalJWT} />
               )}
 
-              {/* ইনভয়েস */}
+              {/* ইনভয়েস — Paginated */}
               {activeTab === 'invoices' && (
                 <div className="space-y-3">
-                  {sales.length === 0
-                    ? <p className="text-center text-gray-400 text-sm py-8">কোনো ইনভয়েস নেই।</p>
-                    : sales.map(sale => <InvoiceCard key={sale.invoice_number} sale={sale} />)
-                  }
+                  {invLoading ? (
+                    <div className="flex justify-center py-8">
+                      <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin" />
+                    </div>
+                  ) : invoices.length === 0 ? (
+                    <p className="text-center text-gray-400 text-sm py-8">কোনো ইনভয়েস নেই।</p>
+                  ) : (
+                    invoices.map(sale => <InvoiceCard key={sale.invoice_number} sale={sale} />)
+                  )}
+
+                  {/* Pagination Controls */}
+                  {invTotalPages > 1 && (
+                    <div className="flex items-center justify-center gap-3 pt-4 pb-2">
+                      <button
+                        onClick={() => loadInvoicePage(invPage - 1)}
+                        disabled={invPage <= 1 || invLoading}
+                        className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-medium text-gray-600 disabled:opacity-40 active:bg-gray-50"
+                      >← আগে</button>
+
+                      <span className="text-sm text-gray-500">
+                        {invPage} / {invTotalPages}
+                      </span>
+
+                      <button
+                        onClick={() => loadInvoicePage(invPage + 1)}
+                        disabled={invPage >= invTotalPages || invLoading}
+                        className="px-4 py-2 rounded-xl bg-white border border-gray-200 text-sm font-medium text-gray-600 disabled:opacity-40 active:bg-gray-50"
+                      >পরে →</button>
+                    </div>
+                  )}
                 </div>
               )}
 
