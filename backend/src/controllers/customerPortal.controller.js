@@ -337,9 +337,62 @@ const getCustomerDashboard = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET /api/portal/invoices?page=1&limit=15
+// কাস্টমারের paginated invoice list
+// ============================================================
+const getCustomerInvoices = async (req, res) => {
+    try {
+        const customer_id = req.portalUser.customerId;
+        const page        = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit       = Math.min(50, parseInt(req.query.limit) || 15);
+        const offset      = (page - 1) * limit;
+
+        // মোট invoice count
+        const countResult = await query(
+            `SELECT COUNT(*) AS total
+             FROM sales_transactions
+             WHERE customer_id = $1 AND otp_verified = true`,
+            [customer_id]
+        );
+        const total      = parseInt(countResult.rows[0].total);
+        const totalPages = Math.ceil(total / limit);
+
+        // Paginated invoice list
+        const sales = await query(
+            `SELECT st.invoice_number, st.items, st.total_amount,
+                    st.discount_amount, st.net_amount,
+                    st.payment_method, st.cash_received, st.credit_used,
+                    st.replacement_value, st.credit_balance_used,
+                    st.created_at,
+                    u.name_bn AS sr_name
+             FROM sales_transactions st
+             JOIN users u ON st.worker_id = u.id
+             WHERE st.customer_id = $1
+               AND st.otp_verified = true
+             ORDER BY st.created_at DESC
+             LIMIT $2 OFFSET $3`,
+            [customer_id, limit, offset]
+        );
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                invoices:   sales.rows,
+                pagination: { page, limit, total, totalPages }
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Invoice List Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     sendPortalLink,
     verifyPortalToken,
     googleAuth,
-    getCustomerDashboard
+    getCustomerDashboard,
+    getCustomerInvoices
 };
