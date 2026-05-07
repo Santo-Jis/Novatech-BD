@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import api from '../api/axios'
 
 // ✅ GitHub Actions automatically এই number আপডেট করবে
-const CURRENT_VERSION_CODE = 73
+const CURRENT_VERSION_CODE = 72
 
 export function useAppUpdate() {
   const [updateInfo, setUpdateInfo] = useState(null)
@@ -12,10 +12,33 @@ export function useAppUpdate() {
     checkForUpdate()
   }, [])
 
+  // ✅ forceUpdate চলাকালীন Android back button block করা
+  useEffect(() => {
+    if (!updateInfo?.forceUpdate) return
+
+    let listenerHandle = null
+
+    const registerBackHandler = async () => {
+      try {
+        const { App } = await import('@capacitor/app')
+        listenerHandle = await App.addListener('backButton', () => {
+          // কিছু করব না — dialog বন্ধ হবে না
+        })
+      } catch (err) {
+        console.log('Back button handler registration failed:', err)
+      }
+    }
+
+    registerBackHandler()
+
+    return () => {
+      // cleanup: listener সরিয়ে দাও
+      listenerHandle?.remove?.()
+    }
+  }, [updateInfo?.forceUpdate])
+
   const checkForUpdate = async () => {
     try {
-      // ✅ Capacitor static import করা হয়নি
-      // Web এ window.Capacitor থাকে না — তাই Web এ কিছু হবে না
       const isNative = window?.Capacitor?.isNativePlatform?.() ?? false
       if (!isNative) return
 
@@ -38,7 +61,7 @@ export function useAppUpdate() {
   }
 
   const dismissUpdate = () => {
-    if (updateInfo?.forceUpdate) return
+    if (updateInfo?.forceUpdate) return // forceUpdate হলে dismiss করতে দেবে না
     setUpdateInfo(null)
   }
 
