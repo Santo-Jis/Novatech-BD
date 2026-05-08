@@ -105,20 +105,52 @@ const checkTeamAccess = async (req, res, next) => {
 // ============================================================
 // ৪. SELF OR ADMIN CHECK
 // নিজের ডাটা দেখতে পারবে, Admin সব দেখতে পারবে
+// Manager শুধু নিজের টিমের member-এর ডাটা দেখতে পারবে
 // ============================================================
 
-const selfOrAdmin = (req, res, next) => {
-    const user      = req.user;
-    const targetId  = req.params.id;
+// ─── FIX #5: আগের সমস্যা ────────────────────────────────────
+// আগে manager/supervisor যেকোনো user-এর ডাটা দেখতে পারত —
+//   if (['manager', 'supervisor'].includes(user.role)) return next();
+// এটা role check, কিন্তু team check নয়।
+// Manager A, Manager B-এর SR-এর profile/PDF দেখতে পারত।
+//
+// এখন: DB থেকে target user-এর manager_id বের করে verify করা হচ্ছে।
+// নিজের টিমের সদস্য হলেই access, অন্যথায় 403।
+// ────────────────────────────────────────────────────────────
+
+const { query: dbQuery } = require('../config/db');
+
+const selfOrAdmin = async (req, res, next) => {
+    const user     = req.user;
+    const targetId = req.params.id;
 
     // Admin সব দেখতে পারবে
     if (user.role === 'admin') return next();
 
-    // নিজের ডাটা দেখতে পারবে
+    // নিজের ডাটা — সবাই দেখতে পারবে
     if (user.id === targetId) return next();
 
-    // Manager নিজের টিমের ডাটা দেখতে পারবে
-    if (['manager', 'supervisor'].includes(user.role)) return next();
+    // Manager/Supervisor — শুধু নিজের টিমের সদস্য
+    if (['manager', 'supervisor'].includes(user.role)) {
+        try {
+            const result = await dbQuery(
+                'SELECT manager_id FROM users WHERE id = $1',
+                [targetId]
+            );
+            // Target user পাওয়া না গেলে controller-এ 404 দেবে
+            if (result.rows.length === 0) return next();
+
+            if (result.rows[0].manager_id === user.id) return next();
+
+            return res.status(403).json({
+                success: false,
+                message: 'এই কর্মচারী আপনার টিমের সদস্য নন।'
+            });
+        } catch (err) {
+            console.error('❌ selfOrAdmin DB Error:', err.message);
+            return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+        }
+    }
 
     return res.status(403).json({
         success: false,
