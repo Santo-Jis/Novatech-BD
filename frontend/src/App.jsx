@@ -46,6 +46,7 @@ import ManagerRoutes      from './pages/manager/Routes'
 import VisitOrder         from './pages/manager/VisitOrder'
 import LiveTracking       from './pages/manager/LiveTracking'
 import TrailHistory      from './pages/manager/TrailHistory'
+import ExpenseApprovals  from './pages/manager/ExpenseApprovals'
 
 // Worker Pages
 import WorkerDashboard  from './pages/worker/Dashboard'
@@ -63,6 +64,8 @@ import Profile          from './pages/worker/Profile'
 import SalesHistory     from './pages/worker/SalesHistory'
 import StockStatus      from './pages/worker/StockStatus'
 import LedgerHistory    from './pages/worker/LedgerHistory'
+import ExpenseForm      from './pages/worker/ExpenseForm'
+import ExpenseHistory   from './pages/worker/ExpenseHistory'
 
 // ============================================================
 // Protected Route Component
@@ -185,6 +188,7 @@ function AppWithPermissions() {
         <Route path="live-tracking" element={<LiveTracking />} />
         <Route path="trail-history" element={<TrailHistory />} />
         <Route path="sr-ledger"    element={<SRLedger />} />
+        <Route path="expense"      element={<ExpenseApprovals />} />
         <Route path="ai-chat"      element={<AIChat />} />
         <Route path="notices"      element={<NoticesView />} />
       </Route>
@@ -211,6 +215,8 @@ function AppWithPermissions() {
         <Route path="sales-history" element={<SalesHistory />} />
         <Route path="stock-status"  element={<StockStatus />} />
         <Route path="ledger-history" element={<LedgerHistory />} />
+        <Route path="expense"          element={<ExpenseForm />} />
+        <Route path="expense-history"  element={<ExpenseHistory />} />
         <Route path="notices"      element={<NoticesView />} />
       </Route>
 
