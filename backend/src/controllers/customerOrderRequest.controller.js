@@ -338,7 +338,7 @@ const updateOrderRequest = async (req, res) => {
 const getPortalProducts = async (req, res) => {
     try {
         const { rows } = await query(
-            `SELECT id, name, price, unit, description, image_url,
+            `SELECT id, name, price, vat, tax, unit, description, image_url,
                     (stock - COALESCE(reserved_stock, 0)) AS available_stock
              FROM products
              WHERE is_active = true
@@ -347,7 +347,26 @@ const getPortalProducts = async (req, res) => {
             []
         );
 
-        return res.status(200).json({ success: true, data: rows });
+        // কাস্টমার যা দেবে সেটা final_price (VAT + Tax সহ)
+        const { calcFinalPrice } = require('../services/price.utils');
+        const enriched = rows.map(p => {
+            const { vatAmount, taxAmount, finalPrice } = calcFinalPrice(p.price, p.vat, p.tax);
+            return {
+                id:              p.id,
+                name:            p.name,
+                unit:            p.unit,
+                description:     p.description,
+                image_url:       p.image_url,
+                available_stock: p.available_stock,
+                base_price:      parseFloat(p.price),   // মূল দাম
+                vat_amount:      vatAmount,              // VAT টাকা
+                tax_amount:      taxAmount,              // Tax টাকা
+                final_price:     finalPrice,             // কাস্টমার যা দেবে
+                has_extra:       vatAmount > 0 || taxAmount > 0,
+            };
+        });
+
+        return res.status(200).json({ success: true, data: enriched });
 
     } catch (error) {
         console.error('❌ getPortalProducts Error:', error.message);
