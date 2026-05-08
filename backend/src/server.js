@@ -253,6 +253,14 @@ app.listen(PORT, "0.0.0.0", () => {
     scheduleCreditReminderJob();
 
     console.log('✅ Background jobs চালু হয়েছে');
+
+    // ✅ FIX: keepAlive call করা হয়নি — Render free tier ঘুমিয়ে পড়ত।
+    // Server সম্পূর্ণ উঠে যাওয়ার পর (listen callback-এ) call করা হচ্ছে
+    // যাতে /api/health ping করার সময় server ready থাকে।
+    if (process.env.NODE_ENV === 'production') {
+        keepAlive();
+        console.log('✅ Keep-alive চালু হয়েছে (প্রতি ১৪ মিনিট)');
+    }
 });
 
 module.exports = app;
