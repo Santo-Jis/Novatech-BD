@@ -763,9 +763,19 @@ const getSettlementDetail = async (req, res) => {
 
         const settlement = result.rows[0];
 
-        // Manager শুধু নিজের টিমের settlement দেখতে পারবে
-        if (req.user.role === 'manager' && settlement.manager_id !== req.user.id) {
-            return res.status(403).json({ success: false, message: 'এই হিসাব আপনার টিমের নয়।' });
+        // Manager শুধু নিজের টিমের settlement দেখতে পারবে।
+        // ✅ FIX: settlement.manager_id ব্যবহার করা ভুল — pending settlement-এ
+        // manager_id = NULL, তাই সব manager 403 পেত।
+        // সঠিক check: worker-এর users.manager_id দিয়ে টিম যাচাই করো।
+        if (req.user.role === 'manager') {
+            const workerCheck = await query(
+                'SELECT manager_id FROM users WHERE id = $1',
+                [settlement.worker_id]
+            );
+            const workerManagerId = workerCheck.rows[0]?.manager_id;
+            if (workerManagerId !== req.user.id) {
+                return res.status(403).json({ success: false, message: 'এই হিসাব আপনার টিমের নয়।' });
+            }
         }
 
         const shortagePayments = await query(
