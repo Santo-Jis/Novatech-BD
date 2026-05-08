@@ -1,4 +1,5 @@
 const bcrypt    = require('bcryptjs');
+const crypto    = require('crypto');
 const { query } = require('../config/db');
 const {
     generateAccessToken,
@@ -8,6 +9,17 @@ const {
     deleteRefreshToken
 } = require('../services/auth.service');
 const { saveFCMToken: saveFCMTokenToDB, clearFCMToken } = require('../services/fcm.service');
+const { generateOTP } = require('../config/encryption');
+
+// ──────────────────────────────────────────────────────────────
+// OTP HASH HELPER
+// Plain OTP ইমেইলে পাঠানো হয়, DB-তে শুধু hash রাখা হয়।
+// DB leak হলেও attacker সরাসরি OTP ব্যবহার করতে পারবে না।
+// SHA-256 ব্যবহার — bcrypt এর মতো slow হওয়ার দরকার নেই
+// কারণ OTP ১০ মিনিটেই expire হয় এবং ৬ সংখ্যার।
+// ──────────────────────────────────────────────────────────────
+const hashOTP = (otp) =>
+    crypto.createHash('sha256').update(otp).digest('hex');
 
 // ============================================================
 // LOGIN
@@ -328,15 +340,19 @@ const forgotPassword = async (req, res) => {
             return res.status(403).json({ success: false, message: 'এই অ্যাকাউন্ট সক্রিয় নয়।' });
         }
 
-        // ৬ সংখ্যার OTP তৈরি
-        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        // ─── FIX #3a: Secure OTP তৈরি ────────────────────────────
+        // আগে: Math.random() — cryptographically insecure
+        // এখন: generateOTP() — crypto.randomBytes() ব্যবহার করে,
+        //       encryption.js-এ আগে থেকেই আছে
+        const otp       = generateOTP(6);
+        const otpHash   = hashOTP(otp);          // DB-তে শুধু hash যাবে
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // ১০ মিনিট
 
-        // OTP DB তে সেভ করো (আগেরটা মুছে)
+        // OTP DB তে সেভ করো (আগেরটা মুছে) — plain OTP নয়, hash রাখো
         await query(`DELETE FROM password_reset_otps WHERE user_id = $1`, [user.id]);
         await query(
             `INSERT INTO password_reset_otps (user_id, otp, expires_at) VALUES ($1, $2, $3)`,
-            [user.id, otp, expiresAt]
+            [user.id, otpHash, expiresAt]
         );
 
         // Email পাঠাও
@@ -390,9 +406,14 @@ const verifyOtp = async (req, res) => {
 
         const userId = userResult.rows[0].id;
 
+        // ─── FIX #3b: Plain OTP নয়, hash দিয়ে DB compare করো ──
+        // আগে: WHERE otp = $2 (plain text match — DB leak = instant compromise)
+        // এখন: OTP-এর hash বের করে hash column-এর সাথে মেলাও
+        const otpHash = hashOTP(otp);
+
         const otpResult = await query(
             `SELECT * FROM password_reset_otps WHERE user_id = $1 AND otp = $2 AND expires_at > NOW() AND used = false`,
-            [userId, otp]
+            [userId, otpHash]
         );
 
         if (otpResult.rows.length === 0) {
@@ -400,12 +421,12 @@ const verifyOtp = async (req, res) => {
         }
 
         // OTP সঠিক — reset_token তৈরি করো
-        const resetToken = require('crypto').randomBytes(32).toString('hex');
+        const resetToken  = crypto.randomBytes(32).toString('hex');
         const tokenExpiry = new Date(Date.now() + 15 * 60 * 1000); // ১৫ মিনিট
 
         await query(
             `UPDATE password_reset_otps SET used = true, reset_token = $1, token_expires_at = $2 WHERE user_id = $3 AND otp = $4`,
-            [resetToken, tokenExpiry, userId, otp]
+            [resetToken, tokenExpiry, userId, otpHash]
         );
 
         return res.status(200).json({ success: true, message: 'OTP সঠিক।', data: { reset_token: resetToken } });

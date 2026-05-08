@@ -503,6 +503,23 @@ const rejectOrder = async (req, res) => {
             return res.status(404).json({ success: false, message: 'অর্ডার পাওয়া যায়নি।' });
         }
 
+        // ─── FIX #4: Team Check — approveOrder-এর মতো ──────────
+        // আগে কোনো team check ছিল না — যেকোনো manager যেকোনো SR-এর
+        // order reject করতে পারত। এখন manager শুধু নিজের টিমের order
+        // reject করতে পারবে।
+        if (req.user.role === 'manager') {
+            const workerCheck = await query(
+                'SELECT manager_id FROM users WHERE id = $1',
+                [order.rows[0].worker_id]
+            );
+            if (workerCheck.rows[0]?.manager_id !== req.user.id) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'এই অর্ডার আপনার টিমের নয়।'
+                });
+            }
+        }
+
         // রিজার্ভ মুক্ত করো
         for (const item of order.rows[0].items) {
             await query(

@@ -184,66 +184,77 @@ const createSettlement = async (req, res) => {
             ? ordersResult.rows[ordersResult.rows.length - 1].id
             : null;
 
-        const result = await query(
-            `INSERT INTO daily_settlements
-             (worker_id, order_id, settlement_date,
-              items_taken, total_sales_amount,
-              cash_collected, cash_difference,
-              credit_given,
-              old_credit_collected, replacement_value,
-              shortage_qty_value, shortage_note, mismatch_explanation)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-             RETURNING id`,
-            [
-                workerId,
-                lastOrderId,
-                today,
-                JSON.stringify(itemsReport),
-                sales.total_sales,
-                srCash,
-                cashDifference,
-                sales.credit_given,
-                sales.old_credit_collected,
-                sales.replacement_value,
-                totalShortageValue,
-                shortage_note || null,
-                mismatch_explanation?.trim() || null
-            ]
-        );
+        // ─── FIX #2 — Settlement INSERT + Ledger একই Transaction-এ ────
+        // আগে settlement INSERT আলাদা query()-এ এবং ledger entries null client দিয়ে
+        // আলাদাভাবে করা হত। ফলে settlement save হলে কিন্তু ledger fail করলে
+        // data inconsistent হত — ledger ছাড়া settlement থাকত।
+        // এখন সবকিছু একটি withTransaction()-এ, যেকোনো failure-এ সব rollback হবে।
+        const result = await withTransaction(async (client) => {
+            const insertResult = await client.query(
+                `INSERT INTO daily_settlements
+                 (worker_id, order_id, settlement_date,
+                  items_taken, total_sales_amount,
+                  cash_collected, cash_difference,
+                  credit_given,
+                  old_credit_collected, replacement_value,
+                  shortage_qty_value, shortage_note, mismatch_explanation)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                 RETURNING id`,
+                [
+                    workerId,
+                    lastOrderId,
+                    today,
+                    JSON.stringify(itemsReport),
+                    sales.total_sales,
+                    srCash,
+                    cashDifference,
+                    sales.credit_given,
+                    sales.old_credit_collected,
+                    sales.replacement_value,
+                    totalShortageValue,
+                    shortage_note || null,
+                    mismatch_explanation?.trim() || null
+                ]
+            );
 
-        // ─── Ledger: ফেরত দেওয়া পণ্য OUT হিসেবে রেকর্ড ────
-        for (const item of itemsReport) {
-            // ফেরত দেওয়া পণ্য
-            if (item.returned_qty > 0) {
-                await addLedgerEntry(null, {
-                    worker_id:      workerId,
-                    product_id:     item.product_id,
-                    product_name:   item.name,
-                    txn_type:       'return_out',
-                    direction:      -1,
-                    qty:            item.returned_qty,
-                    reference_id:   result.rows[0].id,
-                    reference_type: 'settlement',
-                    note:           `Settlement ফেরত — ${today}`,
-                    created_by:     workerId,
-                });
+            const settlementId = insertResult.rows[0].id;
+
+            // ─── Ledger: ফেরত ও ঘাটতি — একই transaction client দিয়ে ────
+            for (const item of itemsReport) {
+                // ফেরত দেওয়া পণ্য
+                if (item.returned_qty > 0) {
+                    await addLedgerEntry(client, {
+                        worker_id:      workerId,
+                        product_id:     item.product_id,
+                        product_name:   item.name,
+                        txn_type:       'return_out',
+                        direction:      -1,
+                        qty:            item.returned_qty,
+                        reference_id:   settlementId,
+                        reference_type: 'settlement',
+                        note:           `Settlement ফেরত — ${today}`,
+                        created_by:     workerId,
+                    });
+                }
+                // ঘাটতি পণ্যও OUT হিসেবে রেকর্ড (হারিয়ে গেছে বা দায় নেওয়া হয়েছে)
+                if (item.shortage_qty > 0) {
+                    await addLedgerEntry(client, {
+                        worker_id:      workerId,
+                        product_id:     item.product_id,
+                        product_name:   item.name,
+                        txn_type:       'return_out',
+                        direction:      -1,
+                        qty:            item.shortage_qty,
+                        reference_id:   settlementId,
+                        reference_type: 'settlement',
+                        note:           `ঘাটতি — ${today}`,
+                        created_by:     workerId,
+                    });
+                }
             }
-            // ঘাটতি পণ্যও OUT হিসেবে রেকর্ড (হারিয়ে গেছে বা দায় নেওয়া হয়েছে)
-            if (item.shortage_qty > 0) {
-                await addLedgerEntry(null, {
-                    worker_id:      workerId,
-                    product_id:     item.product_id,
-                    product_name:   item.name,
-                    txn_type:       'return_out',
-                    direction:      -1,
-                    qty:            item.shortage_qty,
-                    reference_id:   result.rows[0].id,
-                    reference_type: 'settlement',
-                    note:           `ঘাটতি — ${today}`,
-                    created_by:     workerId,
-                });
-            }
-        }
+
+            return insertResult;
+        });
 
         // ─── Manager কে Firebase নোটিফিকেশন ────────────────
         if (req.user.manager_id) {

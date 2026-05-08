@@ -360,19 +360,13 @@ const createSale = async (req, res) => {
                 ]
             );
 
-            // স্টক কমাও
+            // ─── স্টক আন্দোলন রেকর্ড ───────────────────────────
+            // ⚠️ FIX #1 — Double Deduction সমস্যা সমাধান:
+            // approveOrder()-এ products.stock ইতোমধ্যে কমানো হয়েছে।
+            // এখানে আবার stock কমালে একই পণ্য দুইবার বাদ যায় — এটা ছিল মূল বাগ।
+            // তাই এখানে শুধু audit trail হিসেবে stock_movements রেকর্ড করা হচ্ছে,
+            // products টেবিলের stock কলাম আর স্পর্শ করা হচ্ছে না।
             for (const item of processedItems) {
-                await client.query(
-                    `UPDATE products
-                     SET stock      = stock - $1,
-                         updated_at = NOW()
-                     -- ✅ FIX: reserved_stock এখানে কমানো হচ্ছে না।
-                     -- Order approval-এ আগেই reserved_stock মুক্ত হয়েছে।
-                     -- এখানে কমালে double deduction হয়।
-                     WHERE id = $2`,
-                    [item.qty, item.product_id]
-                );
-
                 await client.query(
                     `INSERT INTO stock_movements
                      (product_id, movement_type, quantity, reference_id, reference_type, created_by)
