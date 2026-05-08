@@ -33,6 +33,23 @@ import NoticesView   from './pages/shared/NoticesView'
 import SRApplicationForm from './pages/SRApplicationForm'
 import CustomerPortal from './pages/customer/CustomerPortal'
 
+// ── Google OAuth Popup Callback ──────────────────────────────
+// Web login-এ popup redirect হয়ে এখানে আসবে
+// token URL hash-এ থাকবে, opener window polling করে নেবে
+const PortalOAuthCallback = () => {
+  // এই page-এ কিছু render করার দরকার নেই
+  // webGoogleLogin() এর polling এই page-এর URL থেকে token নেবে
+  return (
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+      minHeight:'100vh', background:'#f0f4ff', flexDirection:'column', gap:12 }}>
+      <div style={{ width:40, height:40, border:'4px solid #c7d2fe',
+        borderTop:'4px solid #4f46e5', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
+      <p style={{ color:'#4f46e5', fontWeight:600, fontSize:14 }}>লগইন সম্পন্ন হচ্ছে...</p>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
+}
+
 // Manager Pages
 import ManagerDashboard   from './pages/manager/Dashboard'
 import ManagerTeam        from './pages/manager/Team'
@@ -133,6 +150,7 @@ function AppWithPermissions() {
       <Route path="/login" element={<Login />} />
       <Route path="/apply/sr" element={<SRApplicationForm />} />
       <Route path="/customer-portal" element={<CustomerPortal />} />
+      <Route path="/portal-oauth-callback" element={<PortalOAuthCallback />} />
       <Route path="/"      element={<HomeRedirect />} />
 
       {/* Unauthorized */}
