@@ -7,6 +7,7 @@ const helmet        = require('helmet');
 const morgan        = require('morgan');
 const compression   = require('compression');
 const rateLimit     = require('express-rate-limit');
+const cookieParser  = require('cookie-parser');
 const path          = require('path');
 
 const app = express();
@@ -16,6 +17,7 @@ app.set('trust proxy', 1);
 // ============================================================
 
 app.use(helmet());
+app.use(cookieParser());   // HttpOnly cookie পড়ার জন্য
 
 // ── CORS ─────────────────────────────────────────────────────
 // Render-এ FRONTEND_URL env variable সেট করুন, যেমন:
