@@ -14,6 +14,7 @@ const REPORT_TABS = [
   { key: 'attendance', label: '📅 হাজিরা' },
   { key: 'commission', label: '💰 কমিশন' },
   { key: 'credit',     label: '💳 ক্রেডিট' },
+  { key: 'expense',    label: '🧾 খরচ' },
   { key: 'pl',         label: '📈 P&L' },
   { key: 'ledger',     label: '📒 লেজার' },
   { key: 'archive',    label: '🗄️ Archive' },
@@ -41,6 +42,7 @@ export default function AdminReports() {
       else if (tab === 'attendance') res = await api.get(`/reports/attendance?year=${year}&month=${month}`)
       else if (tab === 'commission') res = await api.get(`/reports/commission?year=${year}&month=${month}`)
       else if (tab === 'credit')     res = await api.get('/reports/credit')
+      else if (tab === 'expense')    res = await api.get(`/reports/expense?year=${year}&month=${month}`)
       else if (tab === 'pl')         res = await api.get(`/reports/pl?from=${from}&to=${to}`)
       else if (tab === 'ledger')     res = await api.get(`/reports/ledger?from=${from}&to=${to}`)
       else if (tab === 'archive')    res = await api.get(`/reports/archive?year=${year}&month=${month}`)
@@ -62,6 +64,7 @@ export default function AdminReports() {
       if (tab === 'attendance') url = `/reports/attendance?year=${year}&month=${month}&export=excel`
       if (tab === 'commission') url = `/reports/commission?year=${year}&month=${month}&export=excel`
       if (tab === 'credit')     url = '/reports/credit?export=excel'
+      if (tab === 'expense')    url = `/reports/expense?year=${year}&month=${month}&export=excel`
       if (!url) { toast('এই রিপোর্টে Excel নেই।'); return }
       const res = await api.get(url, { responseType: 'blob' })
       const a   = document.createElement('a')
@@ -84,7 +87,7 @@ export default function AdminReports() {
         <Select label="গ্রুপ" value={groupBy} onChange={e => setGroupBy(e.target.value)}
           options={[{ value: 'day', label: 'দিন' }, { value: 'worker', label: 'SR' }]} className="w-28" />
       )}
-      {['attendance','commission','archive'].includes(tab) && (
+      {['attendance','commission','archive', 'expense'].includes(tab) && (
         <>
           <Select label="মাস" options={months} value={month} onChange={e => setMonth(e.target.value)} className="w-36" />
           <Select label="বছর" options={years}  value={year}  onChange={e => setYear(e.target.value)}  className="w-28" />
@@ -92,7 +95,7 @@ export default function AdminReports() {
       )}
       <div className="flex gap-2">
         <Button onClick={fetchReport} loading={loading} icon={<FiBarChart2 />}>দেখুন</Button>
-        {data && ['sales','attendance','commission','credit'].includes(tab) && (
+        {data && ['sales','attendance','commission','credit','expense'].includes(tab) && (
           <Button variant="outline" onClick={exportExcel} icon={<FiDownload />}>Excel</Button>
         )}
       </div>
@@ -310,7 +313,45 @@ export default function AdminReports() {
         { title: 'ব্যবহার', dataIndex: 'usage_pct', render: v => <span className={parseFloat(v) >= 80 ? 'text-red-600 font-bold' : 'text-gray-600'}>{v}%</span> },
       ]} data={data.customers} compact /></Card>
     }
-    return null
+    if (tab === 'expense' && data) {
+      const workers  = data.workers  || []
+      const summary  = data.summary  || {}
+      const byStatus = data.by_status || {}
+      return (
+        <div className="space-y-4">
+          {/* Summary cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              ['মোট খরচ',    `৳${parseInt(summary.total_amount || 0).toLocaleString()}`, 'text-primary'],
+              ['অনুমোদিত',  `৳${parseInt(summary.approved_amount || 0).toLocaleString()}`, 'text-secondary'],
+              ['অপেক্ষমাণ', byStatus.pending  || 0, 'text-yellow-600'],
+              ['বাতিল',     byStatus.rejected || 0, 'text-red-500'],
+            ].map(([l, v, c]) => (
+              <Card key={l} className="text-center">
+                <p className="text-xs text-gray-500 dark:text-gray-400">{l}</p>
+                <p className={`text-xl font-bold mt-1 ${c}`}>{v}</p>
+              </Card>
+            ))}
+          </div>
+          {/* Per-SR breakdown */}
+          <Card title="SR ভিত্তিক খরচ">
+            <Table
+              columns={[
+                { title: 'SR নাম',     dataIndex: 'name_bn' },
+                { title: 'যাতায়াত',  dataIndex: 'transport_total', render: v => `৳${parseInt(v || 0).toLocaleString()}` },
+                { title: 'খাবার',     dataIndex: 'food_total',      render: v => `৳${parseInt(v || 0).toLocaleString()}` },
+                { title: 'অন্যান্য', dataIndex: 'misc_total',       render: v => `৳${parseInt(v || 0).toLocaleString()}` },
+                { title: 'মোট',       dataIndex: 'total',           render: v => <span className="font-bold text-primary">৳{parseInt(v || 0).toLocaleString()}</span> },
+                { title: 'অনুমোদিত', dataIndex: 'approved_count',  render: v => <span className="text-green-600 font-semibold">{v}</span> },
+                { title: 'অপেক্ষমাণ',dataIndex: 'pending_count',   render: v => <span className="text-yellow-600 font-semibold">{v}</span> },
+              ]}
+              data={workers}
+              compact
+            />
+          </Card>
+        </div>
+      )
+    }
   }
 
   return (
@@ -335,7 +376,7 @@ export default function AdminReports() {
       {tab === 'ledger'  && renderLedger()}
       {tab === 'archive' && renderArchive()}
       {tab === 'top'     && renderTop()}
-      {['sales','attendance','commission','credit'].includes(tab) && renderExisting()}
+      {['sales','attendance','commission','credit','expense'].includes(tab) && renderExisting()}
     </div>
   )
 }
