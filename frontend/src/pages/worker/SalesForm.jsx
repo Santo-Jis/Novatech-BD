@@ -538,6 +538,97 @@ export default function SalesForm() {
             </button>
           )}
 
+          {/* ── ক্রেডিট লিমিট স্ট্যাটাস কার্ড ── */}
+          {(() => {
+            const limit  = parseFloat(customer?.credit_limit  || 0)
+            const used   = parseFloat(customer?.current_credit || 0)
+            const pct    = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0
+            const remaining = Math.max(0, limit - used)
+            const isFull = limit > 0 && used >= limit
+            const isHigh = pct >= 80 && !isFull
+            const willExceed = paymentMethod === 'credit' && (used + netAmount) > limit
+
+            if (limit === 0) return null
+
+            return (
+              <div className={`rounded-2xl border-2 p-4 space-y-3 ${
+                isFull        ? 'bg-red-50 border-red-300'
+                : willExceed  ? 'bg-red-50 border-red-200'
+                : isHigh      ? 'bg-amber-50 border-amber-200'
+                : 'bg-white border-gray-100'
+              }`}>
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">{isFull || willExceed ? '🚫' : isHigh ? '⚠️' : '📊'}</span>
+                    <p className={`text-sm font-bold ${isFull || willExceed ? 'text-red-700' : isHigh ? 'text-amber-700' : 'text-gray-700'}`}>
+                      {customer?.shop_name}-এর বাকি স্ট্যাটাস
+                    </p>
+                  </div>
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                    isFull || willExceed ? 'bg-red-100 text-red-700'
+                    : isHigh ? 'bg-amber-100 text-amber-700'
+                    : 'bg-emerald-100 text-emerald-700'
+                  }`}>
+                    {pct}% ব্যবহার
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                <div>
+                  <div className="w-full h-3 bg-gray-200 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        isFull || willExceed ? 'bg-red-500' : isHigh ? 'bg-amber-400' : 'bg-emerald-400'
+                      }`}
+                      style={{ width: `${paymentMethod === 'credit' ? Math.min(100, Math.round(((used + netAmount) / limit) * 100)) : pct}%` }}
+                    />
+                  </div>
+                  {paymentMethod === 'credit' && !isFull && (
+                    <p className="text-[10px] text-gray-400 mt-0.5 text-right">
+                      এই বিক্রয়ের পর: {Math.min(100, Math.round(((used + netAmount) / limit) * 100))}%
+                    </p>
+                  )}
+                </div>
+
+                {/* Stats row */}
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-white/70 rounded-xl py-2 px-1">
+                    <p className="text-[10px] text-gray-400 mb-0.5">বর্তমান বাকি</p>
+                    <p className="text-sm font-bold text-red-500">৳{parseInt(used).toLocaleString()}</p>
+                  </div>
+                  <div className="bg-white/70 rounded-xl py-2 px-1">
+                    <p className="text-[10px] text-gray-400 mb-0.5">মোট লিমিট</p>
+                    <p className="text-sm font-bold text-gray-700">৳{parseInt(limit).toLocaleString()}</p>
+                  </div>
+                  <div className="bg-white/70 rounded-xl py-2 px-1">
+                    <p className="text-[10px] text-gray-400 mb-0.5">আরো দিতে পারবেন</p>
+                    <p className={`text-sm font-bold ${remaining === 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                      ৳{parseInt(remaining).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Warning messages */}
+                {isFull && (
+                  <div className="bg-red-100 rounded-xl px-3 py-2 text-xs text-red-800 font-semibold text-center">
+                    🚫 এই কাস্টমারের ক্রেডিট লিমিট পূর্ণ। শুধুমাত্র নগদে বিক্রয় করুন।
+                  </div>
+                )}
+                {willExceed && !isFull && (
+                  <div className="bg-red-100 rounded-xl px-3 py-2 text-xs text-red-800 font-semibold text-center">
+                    ⚠️ এই বিক্রয়ে লিমিট পার হয়ে যাবে! নগদে নিন অথবা পরিমাণ কমান।
+                  </div>
+                )}
+                {isHigh && !willExceed && paymentMethod === 'credit' && (
+                  <div className="bg-amber-100 rounded-xl px-3 py-2 text-xs text-amber-800 font-semibold text-center">
+                    ⚠️ লিমিটের ৮০% পার হয়েছে। সতর্কতার সাথে বাকি দিন।
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
           {/* Payment method */}
           <div className="space-y-2">
             <p className="text-sm font-semibold text-gray-700">পেমেন্ট পদ্ধতি:</p>
