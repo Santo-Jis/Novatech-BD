@@ -404,12 +404,54 @@ export default function CustomerList() {
                   </p>
                 )}
 
-                {/* ── বকেয়া ── */}
-                {parseFloat(c.current_credit || 0) > 0 && (
-                  <p className="text-xs text-red-500 mt-1 font-semibold">
-                    💰 বকেয়া: ৳{parseInt(c.current_credit).toLocaleString()}
-                  </p>
-                )}
+                {/* ── ক্রেডিট লিমিট ── */}
+                {(() => {
+                  const limit = parseFloat(c.credit_limit || 0)
+                  const used  = parseFloat(c.current_credit || 0)
+                  const pct   = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0
+                  const isFull = limit > 0 && used >= limit
+                  const isHigh = pct >= 80 && !isFull
+                  if (limit === 0 && used === 0) return null
+                  return (
+                    <div className="mt-2 space-y-1">
+                      {limit > 0 && (
+                        <div>
+                          <div className="flex justify-between items-center mb-0.5">
+                            <span className="text-[10px] text-gray-400">বাকির লিমিট</span>
+                            <span className={`text-[10px] font-bold ${isFull ? 'text-red-600' : isHigh ? 'text-amber-600' : 'text-gray-500'}`}>
+                              {pct}% ব্যবহার
+                            </span>
+                          </div>
+                          <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${isFull ? 'bg-red-500' : isHigh ? 'bg-amber-400' : 'bg-emerald-400'}`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between mt-0.5">
+                            <span className="text-[10px] text-gray-400">বাকি: <span className={`font-semibold ${isFull ? 'text-red-500' : 'text-gray-600'}`}>৳{parseInt(used).toLocaleString()}</span></span>
+                            <span className="text-[10px] text-gray-400">লিমিট: ৳{parseInt(limit).toLocaleString()}</span>
+                          </div>
+                        </div>
+                      )}
+                      {isFull && (
+                        <div className="flex items-center gap-1 bg-red-50 border border-red-200 rounded-lg px-2 py-1">
+                          <span className="text-[11px]">🚫</span>
+                          <span className="text-[11px] text-red-700 font-bold">লিমিট শেষ — আর বাকি দেওয়া যাবে না</span>
+                        </div>
+                      )}
+                      {isHigh && (
+                        <div className="flex items-center gap-1 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1">
+                          <span className="text-[11px]">⚠️</span>
+                          <span className="text-[11px] text-amber-700 font-semibold">লিমিটের কাছাকাছি</span>
+                        </div>
+                      )}
+                      {!isFull && !isHigh && used > 0 && (
+                        <p className="text-[10px] text-gray-400">আরো দিতে পারবেন: <span className="text-emerald-600 font-semibold">৳{parseInt(limit - used).toLocaleString()}</span></p>
+                      )}
+                    </div>
+                  )
+                })()}
               </div>
               <div className="flex flex-col items-end gap-2 ml-3 flex-shrink-0">
                 {c.visited_today
