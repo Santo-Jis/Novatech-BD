@@ -9,24 +9,23 @@ import toast from 'react-hot-toast'
 // ============================================================
 
 export const useAuthStore = create((set, get) => ({
-  user:         JSON.parse(localStorage.getItem('user')  || 'null'),
-  token:        localStorage.getItem('accessToken')      || null,
-  refreshToken: localStorage.getItem('refreshToken')     || null,
-  loading:      false,
+  user:    JSON.parse(localStorage.getItem('user')  || 'null'),
+  token:   localStorage.getItem('accessToken')      || null,
+  // refreshToken: HttpOnly cookie-তে — JS দিয়ে পড়া যায় না, store-এ রাখা হয় না
+  loading: false,
 
   // ── LOGIN ──
   login: async (identifier, password) => {
     set({ loading: true })
     try {
       const response = await api.post('/auth/login', { identifier, password })
-      const { user, accessToken, refreshToken } = response.data.data
+      const { user, accessToken } = response.data.data
+      // refreshToken: server HttpOnly cookie-তে সেট করেছে — JS-এ দেখা যাবে না
 
-      // LocalStorage এ সেভ
-      localStorage.setItem('user',         JSON.stringify(user))
-      localStorage.setItem('accessToken',  accessToken)
-      localStorage.setItem('refreshToken', refreshToken)
+      localStorage.setItem('user',        JSON.stringify(user))
+      localStorage.setItem('accessToken', accessToken)
 
-      set({ user, token: accessToken, refreshToken, loading: false })
+      set({ user, token: accessToken, loading: false })
 
       // লগইনের পর Eruda দেখাও
       if (typeof window.__showEruda === 'function') window.__showEruda()
@@ -44,32 +43,25 @@ export const useAuthStore = create((set, get) => ({
 
   // ── LOGOUT ──
   logout: async () => {
-    const refreshToken = get().refreshToken
-
-    // ✅ FCM token clear — network না থাকলেও retry করো
-    // beacon API ব্যবহার করি যাতে page unload-এও request যায়
+    // ✅ FIX: refreshToken body-তে পাঠানোর দরকার নেই —
+    // browser automatically HttpOnly cookie পাঠাবে (withCredentials: true)।
+    // sendBeacon fallback-এও cookie যায়, তাই body empty রাখা হচ্ছে।
     try {
-      await api.post('/auth/logout', { refreshToken })
+      await api.post('/auth/logout', {})
     } catch {
-      // API fail হলে beacon দিয়ে best-effort চেষ্টা
-      // (page close / network off হলেও browser পাঠানোর চেষ্টা করে)
+      // API fail হলে beacon দিয়ে best-effort — cookie browser নিজেই attach করে
       try {
-        const token = get().token
-        if (token && navigator.sendBeacon) {
-          const blob = new Blob(
-            [JSON.stringify({ refreshToken })],
-            { type: 'application/json' }
-          )
+        if (navigator.sendBeacon) {
           navigator.sendBeacon(
             `${import.meta.env.VITE_API_URL}/auth/logout`,
-            blob
+            new Blob(['{}'], { type: 'application/json' })
           )
         }
       } catch { /* beacon ও fail হলে কিছু করার নেই */ }
     } finally {
       await clearAllData()
       localStorage.clear()
-      set({ user: null, token: null, refreshToken: null })
+      set({ user: null, token: null })
 
       if (typeof window.__hideEruda === 'function') window.__hideEruda()
 
