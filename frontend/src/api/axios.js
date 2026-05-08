@@ -51,11 +51,22 @@ api.interceptors.response.use(
       return Promise.reject(error)
     }
 
+    // ✅ FIX: আগে !code দিয়ে check করা হত — code না থাকলেই redirect।
+    // কিন্তু WRONG_TOKEN_TYPE, invalid credentials, OTP fail — এগুলোতেও
+    // code থাকে না বা আলাদা code থাকে, তখন legitimate error হারিয়ে যেত।
+    // সঠিক logic: শুধু TOKEN_EXPIRED হলে refresh করো,
+    // বাকি সব 401 (INVALID_TOKEN, WRONG_TOKEN_TYPE, code নেই) = logout।
+    const code = error.response?.data?.code
+
     if (
       error.response?.status === 401 &&
-      !error.response?.data?.code &&
+      code !== 'TOKEN_EXPIRED' &&
       !originalRequest._retry
     ) {
+      // TOKEN_EXPIRED ছাড়া সব 401 — token নেই বা invalid — logout
+      if (code === 'WRONG_TOKEN_TYPE') {
+        toast.error('অ্যাক্সেস অননুমোদিত। আবার লগইন করুন।')
+      }
       localStorage.clear()
       window.location.href = '/login'
       return Promise.reject(error)
@@ -63,7 +74,7 @@ api.interceptors.response.use(
 
     if (
       error.response?.status === 401 &&
-      error.response?.data?.code === 'TOKEN_EXPIRED' &&
+      code === 'TOKEN_EXPIRED' &&
       !originalRequest._retry
     ) {
       if (isRefreshing) {
