@@ -331,7 +331,10 @@ const approveOrder = async (req, res) => {
         const { items, note }  = req.body;
 
         const order = await query(
-            "SELECT * FROM orders WHERE id = $1 AND status = 'pending'",
+            `SELECT o.*
+             FROM orders o
+             JOIN users w ON o.worker_id = w.id
+             WHERE o.id = $1 AND o.status = 'pending'`,
             [id]
         );
 
@@ -340,6 +343,21 @@ const approveOrder = async (req, res) => {
                 success: false,
                 message: 'পেন্ডিং অর্ডার পাওয়া যায়নি।'
             });
+        }
+
+        // ✅ FIX: Manager শুধু নিজের টিমের order approve করতে পারবে।
+        // আগে কোনো team check ছিল না — যেকোনো manager যেকোনো order approve করতে পারত।
+        if (req.user.role === 'manager') {
+            const workerCheck = await query(
+                'SELECT manager_id FROM users WHERE id = $1',
+                [order.rows[0].worker_id]
+            );
+            if (workerCheck.rows[0]?.manager_id !== req.user.id) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'এই অর্ডার আপনার টিমের নয়।'
+                });
+            }
         }
 
         // items কলাম TEXT হলে parse করো, JSONB হলে already object
