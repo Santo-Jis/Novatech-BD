@@ -55,7 +55,8 @@ const getSmsConfig = async () => {
         deviceId:  raw.sms_device_id  || process.env.SMS_DEVICE_ID  || '',
         senderId:  raw.sms_sender_id || process.env.SMS_SENDER_ID || '',
         customUrl: raw.sms_custom_url || '',
-        deviceId:  raw.sms_device_id  || '',          // SoftBarta device ID (optional)
+        // ✅ FIX: duplicate deviceId সরানো হয়েছে — নিচেরটা উপরেরটা override করত,
+        // ফলে SMS_DEVICE_ID env fallback হারিয়ে যেত।
         enabled:   raw.sms_enabled !== 'false',
     };
     _configCacheAt = Date.now();
