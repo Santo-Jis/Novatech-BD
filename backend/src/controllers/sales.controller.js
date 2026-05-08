@@ -364,9 +364,11 @@ const createSale = async (req, res) => {
             for (const item of processedItems) {
                 await client.query(
                     `UPDATE products
-                     SET stock          = stock - $1,
-                         reserved_stock = GREATEST(0, reserved_stock - $1),
-                         updated_at     = NOW()
+                     SET stock      = stock - $1,
+                         updated_at = NOW()
+                     -- ✅ FIX: reserved_stock এখানে কমানো হচ্ছে না।
+                     -- Order approval-এ আগেই reserved_stock মুক্ত হয়েছে।
+                     -- এখানে কমালে double deduction হয়।
                      WHERE id = $2`,
                     [item.qty, item.product_id]
                 );
