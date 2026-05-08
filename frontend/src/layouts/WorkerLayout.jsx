@@ -5,7 +5,7 @@ import { useAppStore }  from '../store/app.store'
 import {
   FiHome, FiMapPin, FiShoppingBag, FiDollarSign, FiUser,
   FiBell, FiMoon, FiSun, FiUsers, FiMenu, FiX, FiLogOut,
-  FiClipboard, FiAlertTriangle, FiRefreshCw, FiTrendingUp, FiPackage, FiCreditCard
+  FiClipboard, FiAlertTriangle, FiRefreshCw, FiTrendingUp, FiPackage, FiCreditCard, FiFileText
 } from 'react-icons/fi'
 import OfflineStatusBar from '../components/OfflineStatusBar'
 import { useOffline } from '../store/useOffline'
@@ -50,6 +50,16 @@ const menuItems = [
     icon: <FiTrendingUp />,
     label: 'বিক্রয় ইতিহাস',
     path: '/worker/sales-history',
+  },
+  {
+    icon: <FiFileText />,
+    label: 'দৈনিক খরচ জমা',
+    path: '/worker/expense',
+  },
+  {
+    icon: <FiFileText />,
+    label: 'খরচের ইতিহাস',
+    path: '/worker/expense-history',
   },
   {
     icon: <FiBell />,
