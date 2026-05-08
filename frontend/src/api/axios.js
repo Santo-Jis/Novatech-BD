@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
   timeout: 12000,
+  withCredentials: true,   // HttpOnly cookie cross-origin পাঠাতে হলে লাগবে
   headers: {
     'Content-Type': 'application/json'
   }
@@ -91,18 +92,13 @@ api.interceptors.response.use(
       originalRequest._retry = true
       isRefreshing           = true
 
-      const refreshToken = localStorage.getItem('refreshToken')
-
-      if (!refreshToken) {
-        localStorage.clear()
-        window.location.href = '/login'
-        return Promise.reject(error)
-      }
-
       try {
+        // ✅ FIX: refreshToken body-তে নেই — browser HttpOnly cookie
+        // withCredentials: true থাকায় automatically পাঠাবে
         const response = await axios.post(
           `${import.meta.env.VITE_API_URL || 'http://localhost:5000/api'}/auth/refresh`,
-          { refreshToken }
+          {},
+          { withCredentials: true }
         )
 
         const { accessToken } = response.data.data
@@ -135,7 +131,11 @@ api.interceptors.response.use(
     const message = error.response?.data?.message || 'সার্ভারে সমস্যা হয়েছে।'
 
     if (error.response?.status === 403) {
-      toast.error('এই কাজের অনুমতি নেই।')
+      // component-handled 403 codes — interceptor চুপ থাকবে, double toast হবে না
+      const SILENT_403 = ['CHECKIN_REQUIRED']
+      if (!SILENT_403.includes(code)) {
+        toast.error(error.response?.data?.message || 'এই কাজের অনুমতি নেই।')
+      }
     } else if (error.response?.status === 404) {
       // শান্তভাবে handle করো
     } else if (error.response?.status === 400) {
