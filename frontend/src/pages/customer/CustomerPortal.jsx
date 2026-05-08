@@ -3,8 +3,64 @@
 
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
 import { Capacitor } from '@capacitor/core'
+
+// ── Google OAuth Web Helper ───────────────────────────────────
+// Web browser-এ popup দিয়ে Google Login করার জন্য
+const webGoogleLogin = (clientId) => new Promise((resolve, reject) => {
+  const width  = 500
+  const height = 600
+  const left   = window.screenX + (window.outerWidth  - width)  / 2
+  const top    = window.screenY + (window.outerHeight - height) / 2
+
+  const redirectUri = `${window.location.origin}/portal-oauth-callback`
+  const scope       = 'openid email profile'
+  const state       = Math.random().toString(36).slice(2)
+
+  const oauthUrl = [
+    'https://accounts.google.com/o/oauth2/v2/auth',
+    `?client_id=${encodeURIComponent(clientId)}`,
+    `&redirect_uri=${encodeURIComponent(redirectUri)}`,
+    `&response_type=token`,
+    `&scope=${encodeURIComponent(scope)}`,
+    `&state=${state}`,
+  ].join('')
+
+  const popup = window.open(oauthUrl, 'GoogleLogin', `width=${width},height=${height},left=${left},top=${top}`)
+
+  if (!popup) {
+    reject(new Error('Popup block হয়েছে। Browser-এ popup allow করুন।'))
+    return
+  }
+
+  const timer = setInterval(() => {
+    try {
+      if (popup.closed) {
+        clearInterval(timer)
+        reject(new Error('লগইন বাতিল করা হয়েছে।'))
+        return
+      }
+      const url = popup.location.href
+      if (url.includes('access_token')) {
+        clearInterval(timer)
+        popup.close()
+        const hash   = new URL(url).hash.slice(1)
+        const params = new URLSearchParams(hash)
+        const token  = params.get('access_token')
+        if (token) resolve(token)
+        else reject(new Error('Token পাওয়া যায়নি।'))
+      }
+    } catch {
+      // cross-origin — popup এখনো Google page-এ, wait করো
+    }
+  }, 300)
+
+  setTimeout(() => {
+    clearInterval(timer)
+    if (!popup.closed) popup.close()
+    reject(new Error('লগইন timeout হয়েছে।'))
+  }, 5 * 60 * 1000)
+})
 
 // ── Backend URL ───────────────────────────────────────────────
 const BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
@@ -298,21 +354,71 @@ function OrderRequestTab({ portalJWT }) {
             const qty = cart[prod.id] || 0
             return (
               <div key={prod.id}
-                className={`bg-white rounded-2xl border shadow-sm p-4 transition-all
-                  ${qty > 0 ? 'border-indigo-300 bg-indigo-50' : 'border-gray-100'}`}>
-                <div className="flex justify-between items-start mb-3">
-                  <div className="flex-1 pr-3">
-                    <p className="font-semibold text-gray-800 text-sm">{prod.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      ৳{parseFloat(prod.price).toLocaleString('bn-BD')} / {prod.unit || 'পিস'}
-                    </p>
-                  </div>
-                  {qty > 0 && (
-                    <div className="bg-indigo-600 text-white text-xs px-2 py-1 rounded-full font-bold">
-                      × {qty}
+                className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all
+                  ${qty > 0 ? 'border-indigo-300' : 'border-gray-100'}`}>
+
+                {/* পণ্যের ছবি */}
+                {prod.image_url ? (
+                  <div className="relative w-full h-32 bg-gray-100">
+                    <img
+                      src={prod.image_url}
+                      alt={prod.name}
+                      className="w-full h-full object-cover"
+                      onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }}
+                    />
+                    <div className="absolute inset-0 bg-gray-100 items-center justify-center text-3xl hidden">
+                      📦
                     </div>
-                  )}
-                </div>
+                    {qty > 0 && (
+                      <div className="absolute top-2 right-2 bg-indigo-600 text-white text-xs px-2 py-1 rounded-full font-bold shadow">
+                        × {qty}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className={`w-full h-20 flex items-center justify-center text-4xl
+                    ${qty > 0 ? 'bg-indigo-50' : 'bg-gray-50'}`}>
+                    📦
+                    {qty > 0 && (
+                      <span className="absolute top-2 right-2 bg-indigo-600 text-white text-xs px-2 py-1 rounded-full font-bold">
+                        × {qty}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className={`p-3 ${qty > 0 ? 'bg-indigo-50' : ''}`}>
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1 pr-2">
+                      <p className="font-semibold text-gray-800 text-sm leading-tight">{prod.name}</p>
+                      {/* final_price = base + VAT + Tax — কাস্টমার এটাই দেবে */}
+                      <p className="text-sm font-bold text-indigo-700 mt-0.5">
+                        ৳{parseFloat(prod.final_price ?? prod.price).toLocaleString('bn-BD')}
+                        <span className="text-xs font-normal text-gray-400 ml-1">/ {prod.unit || 'পিস'}</span>
+                      </p>
+                      {/* VAT/Tax breakdown দেখাও যদি থাকে */}
+                      {prod.has_extra && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          <span className="text-xs text-gray-400 line-through">
+                            মূল: ৳{parseFloat(prod.base_price).toLocaleString('bn-BD')}
+                          </span>
+                          {prod.vat_amount > 0 && (
+                            <span className="text-xs bg-orange-50 text-orange-500 px-1.5 py-0.5 rounded-full">
+                              +VAT ৳{parseFloat(prod.vat_amount).toLocaleString('bn-BD')}
+                            </span>
+                          )}
+                          {prod.tax_amount > 0 && (
+                            <span className="text-xs bg-red-50 text-red-400 px-1.5 py-0.5 rounded-full">
+                              +Tax ৳{parseFloat(prod.tax_amount).toLocaleString('bn-BD')}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {prod.description && (
+                        <p className="text-xs text-gray-400 mt-1 line-clamp-2">{prod.description}</p>
+                      )}
+                    </div>
+                  </div>
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setQty(prod.id, qty - 1)}
@@ -333,6 +439,7 @@ function OrderRequestTab({ portalJWT }) {
                     className="w-9 h-9 bg-indigo-100 hover:bg-indigo-200 rounded-xl
                       font-bold text-indigo-700 text-lg flex items-center justify-center transition-colors"
                   >+</button>
+                </div>
                 </div>
               </div>
             )
@@ -520,16 +627,18 @@ export default function CustomerPortal() {
     setError('')
     try {
       let access_token
+      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
       if (Capacitor.isNativePlatform()) {
-        await GoogleAuth.initialize({
-          clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-          scopes: ['profile', 'email'],
-        })
+        // APK — Capacitor Google Auth plugin ব্যবহার করো
+        const { GoogleAuth } = await import('@codetrix-studio/capacitor-google-auth')
+        await GoogleAuth.initialize({ clientId, scopes: ['profile', 'email'] })
         const googleUser = await GoogleAuth.signIn()
         access_token = googleUser.authentication.accessToken
       } else {
-        throw new Error('Web login not supported here.')
+        // Web / PWA — popup দিয়ে OAuth token নাও
+        if (!clientId) throw new Error('VITE_GOOGLE_CLIENT_ID .env-এ সেট করা হয়নি।')
+        access_token = await webGoogleLogin(clientId)
       }
 
       const data = await portalFetch('/portal/google-auth', {
