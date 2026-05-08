@@ -1,18 +1,11 @@
 const { sendEmail } = require('../services/email.service');
-const generatePassword = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  let pass = 'NTB@';
-  for(let i=0;i<4;i++) pass += chars[Math.floor(Math.random()*chars.length)];
-  return pass;
-};
-
 const bcrypt            = require('bcryptjs');
 const { query, withTransaction } = require('../config/db');
 const {
     generateEmployeeCode,
     uploadToCloudinary,
     uploadToDrive,
-    generateTempPassword,
+    generateTempPassword,   // একটিমাত্র পাসওয়ার্ড জেনারেটর — service থেকে import
     sendWelcomeSMS,
     generateEmployeePDF
 } = require('../services/employee.service');
@@ -302,7 +295,7 @@ const getPendingEmployees = async (req, res) => {
 const approveEmployee = async (req, res) => {
     try {
         const { id }         = req.params;
-        const temp_password = generatePassword(); // auto-generate
+        const temp_password = generateTempPassword(); // auto-generate
         const passwordHash  = await bcrypt.hash(temp_password, 10); // ✅ DB তে save করার জন্য hash
 
         // Employee তথ্য নাও
@@ -837,7 +830,7 @@ const resetPassword = async (req, res) => {
     const { id } = req.params;
     const { send_email } = req.body;
     const bcrypt = require('bcryptjs');
-    const newPass = generatePassword();
+    const newPass = generateTempPassword();
     const hashed = await bcrypt.hash(newPass, 10);
     const emp = await query(`UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2 RETURNING name_bn, email`, [hashed, id]);
     if (emp.rows.length === 0) return res.status(404).json({ success: false, message: 'কর্মচারী পাওয়া যায়নি।' });
@@ -874,13 +867,7 @@ const reactivateEmployee = async (req, res) => {
         const employee = empResult.rows[0];
 
         // নতুন পাসওয়ার্ড তৈরি
-        const generatePassword = () => {
-            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-            let pass = 'NTB@';
-            for (let i = 0; i < 4; i++) pass += chars[Math.floor(Math.random() * chars.length)];
-            return pass;
-        };
-        const newPassword  = generatePassword();
+        const newPassword  = generateTempPassword();
         const passwordHash = await bcrypt.hash(newPassword, 10);
 
         // নতুন employee code তৈরি

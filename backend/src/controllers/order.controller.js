@@ -61,20 +61,29 @@ const createOrder = async (req, res) => {
         let totalAmount  = 0;
         const orderItems = [];
 
-        for (const item of items) {
-            const product = await query(
-                'SELECT id, name, price, stock, reserved_stock FROM products WHERE id = $1 AND is_active = true',
-                [item.product_id]
-            );
+        // ─── FIX: N+1 সমস্যা সমাধান ─────────────────────────────
+        // আগে প্রতিটি item-এর জন্য আলাদা SELECT query ছিল।
+        // এখন একটিমাত্র WHERE id = ANY($1) query দিয়ে সব পণ্য একবারে আনা হচ্ছে।
+        const productIds   = items.map(i => i.product_id);
+        const productsRes  = await query(
+            `SELECT id, name, price, stock, reserved_stock, vat, tax
+             FROM products
+             WHERE id = ANY($1) AND is_active = true`,
+            [productIds]
+        );
+        const productMap = {};
+        productsRes.rows.forEach(p => { productMap[p.id] = p; });
 
-            if (product.rows.length === 0) {
+        for (const item of items) {
+            const p = productMap[item.product_id];
+
+            if (!p) {
                 return res.status(400).json({
                     success: false,
                     message: `পণ্য পাওয়া যায়নি: ${item.product_id}`
                 });
             }
 
-            const p             = product.rows[0];
             const availableStock = p.stock - (p.reserved_stock || 0);
             const itemQty = item.qty || item.requested_qty || 0;
 

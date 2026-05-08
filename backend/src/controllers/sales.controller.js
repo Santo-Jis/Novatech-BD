@@ -417,6 +417,19 @@ const createSale = async (req, res) => {
                 });
             }
 
+            // ─── Customer credit_balance আপডেট ───────────────────
+            // ⚠️ FIX #2 — credit_balance_used রেকর্ড হতো কিন্তু customers টেবিলে
+            // balance কমানো হতো না, ফলে একই balance বারবার ব্যবহারযোগ্য ছিল।
+            if (creditBalanceUsed > 0 || creditBalanceAdded > 0) {
+                await client.query(
+                    `UPDATE customers
+                     SET credit_balance = GREATEST(0, credit_balance - $1) + $2,
+                         updated_at = NOW()
+                     WHERE id = $3`,
+                    [creditBalanceUsed, creditBalanceAdded, customer_id]
+                );
+            }
+
             return result.rows[0];
         });
 

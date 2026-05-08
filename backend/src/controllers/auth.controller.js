@@ -107,13 +107,24 @@ const login = async (req, res) => {
         // password_hash বাদ দিয়ে response পাঠাও
         const { password_hash, ...userData } = user;
 
+        // ✅ FIX: refreshToken HttpOnly cookie-তে — XSS attack-এ JS দিয়ে
+        // পড়া সম্ভব নয়। accessToken memory/localStorage-এ থাকে (short-lived, 15m)।
+        const isProduction = process.env.NODE_ENV === 'production';
+        res.cookie('refreshToken', refreshToken, {
+            httpOnly:  true,                      // JS দিয়ে পড়া যাবে না
+            secure:    isProduction,              // production-এ HTTPS only
+            sameSite:  isProduction ? 'none' : 'lax', // cross-origin Render+Vercel
+            maxAge:    7 * 24 * 60 * 60 * 1000,  // ৭ দিন (ms)
+            path:      '/api/auth'                // শুধু auth route-এ যাবে
+        });
+
         return res.status(200).json({
             success: true,
             message: 'লগইন সফল।',
             data: {
-                user:         userData,
-                accessToken,
-                refreshToken
+                user:        userData,
+                accessToken
+                // refreshToken body-তে নেই — HttpOnly cookie-তে আছে
             }
         });
 
@@ -134,12 +145,13 @@ const login = async (req, res) => {
 
 const refresh = async (req, res) => {
     try {
-        const { refreshToken } = req.body;
+        // ✅ FIX: refreshToken cookie থেকে নাও — body-তে নেই
+        const refreshToken = req.cookies?.refreshToken;
 
         if (!refreshToken) {
             return res.status(400).json({
                 success: false,
-                message: 'Refresh Token দিন।'
+                message: 'Refresh Token পাওয়া যায়নি। আবার লগইন করুন।'
             });
         }
 
@@ -172,13 +184,10 @@ const refresh = async (req, res) => {
 
 const logout = async (req, res) => {
     try {
-        // ✅ sendBeacon থেকে আসলে body text/plain হয় — parse করতে হবে
-        let body = req.body;
-        if (typeof body === 'string') {
-            try { body = JSON.parse(body); } catch { body = {}; }
-        }
-
-        const { refreshToken } = body;
+        // ✅ FIX: refreshToken cookie থেকে নাও।
+        // sendBeacon fallback-এ cookie automatically যায় (same-site request),
+        // তাই body parse করার দরকার নেই।
+        const refreshToken = req.cookies?.refreshToken;
         const userId = req.user?.id;
 
         // FCM token DB থেকে মুছে ফেলো — পরের user যেন notification না পায়
@@ -189,6 +198,15 @@ const logout = async (req, res) => {
         if (refreshToken) {
             await deleteRefreshToken(refreshToken);
         }
+
+        // cookie clear করো
+        const isProduction = process.env.NODE_ENV === 'production';
+        res.clearCookie('refreshToken', {
+            httpOnly: true,
+            secure:   isProduction,
+            sameSite: isProduction ? 'none' : 'lax',
+            path:     '/api/auth'
+        });
 
         return res.status(200).json({
             success: true,

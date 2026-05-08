@@ -122,32 +122,48 @@ const createSettlement = async (req, res) => {
         const itemsReport      = [];
         let   totalShortageValue = 0;
 
+        // ─── FIX: N+1 সমস্যা সমাধান ─────────────────────────────
+        // আগে প্রতিটি orderItem-এর জন্য আলাদা sold_qty ও replaced_qty query ছিল।
+        // allOrderItems-এ N টি পণ্য থাকলে 2×N টি query হতো।
+        // এখন দুটো bulk query দিয়ে সব পণ্যের qty একবারে এনে Map-এ রাখা হচ্ছে।
+        const allProductIds = allOrderItems.map(o => String(o.product_id));
+
+        const soldBulkRes = await query(
+            `SELECT
+                (item->>'product_id') AS product_id,
+                COALESCE(SUM((item->>'qty')::int), 0) AS qty
+             FROM sales_transactions,
+                  jsonb_array_elements(COALESCE(items, '[]'::jsonb)) AS item
+             WHERE worker_id = $1
+               AND date = $2
+               AND (item->>'product_id') = ANY($3)
+             GROUP BY (item->>'product_id')`,
+            [workerId, today, allProductIds]
+        );
+
+        const replacedBulkRes = await query(
+            `SELECT
+                (item->>'product_id') AS product_id,
+                COALESCE(SUM((item->>'qty')::int), 0) AS qty
+             FROM sales_transactions,
+                  jsonb_array_elements(COALESCE(replacement_items, '[]'::jsonb)) AS item
+             WHERE worker_id = $1
+               AND date = $2
+               AND (item->>'product_id') = ANY($3)
+             GROUP BY (item->>'product_id')`,
+            [workerId, today, allProductIds]
+        );
+
+        // product_id → qty lookup Map
+        const soldMap     = {};
+        const replacedMap = {};
+        soldBulkRes.rows.forEach(r     => { soldMap[r.product_id]     = parseInt(r.qty) || 0; });
+        replacedBulkRes.rows.forEach(r => { replacedMap[r.product_id] = parseInt(r.qty) || 0; });
+
         for (const orderItem of allOrderItems) {
-            // এই পণ্যের মোট বিক্রয়
-            const soldQtyRes = await query(
-                `SELECT COALESCE(SUM((item->>'qty')::int), 0) AS qty
-                 FROM sales_transactions,
-                      jsonb_array_elements(COALESCE(items, '[]'::jsonb)) AS item
-                 WHERE worker_id = $1
-                   AND date = $2
-                   AND item->>'product_id' = $3`,
-                [workerId, today, orderItem.product_id]
-            );
-
-            // রিপ্লেসমেন্টে ফেরত আসা পণ্য
-            const replacedQtyRes = await query(
-                `SELECT COALESCE(SUM((item->>'qty')::int), 0) AS qty
-                 FROM sales_transactions,
-                      jsonb_array_elements(COALESCE(replacement_items, '[]'::jsonb)) AS item
-                 WHERE worker_id = $1
-                   AND date = $2
-                   AND item->>'product_id' = $3`,
-                [workerId, today, orderItem.product_id]
-            );
-
-            const takenQty       = parseInt(orderItem.approved_qty || orderItem.requested_qty) || 0;
-            const soldQty        = parseInt(soldQtyRes.rows[0].qty)    || 0;
-            const replacedQty    = parseInt(replacedQtyRes.rows[0].qty) || 0;
+            const takenQty    = parseInt(orderItem.approved_qty || orderItem.requested_qty) || 0;
+            const soldQty     = soldMap[String(orderItem.product_id)]     || 0;
+            const replacedQty = replacedMap[String(orderItem.product_id)] || 0;
 
             // SR-এর জানানো ফেরত পরিমাণ (frontend থেকে পাঠানো)
             const returnedItem   = Array.isArray(returned_items)
@@ -400,7 +416,12 @@ const approveSettlement = async (req, res) => {
         }
 
         const s              = settlement.rows[0];
+        // DB schema:
+        //   cash_collected  = SR-এর জমা দেওয়া নগদ (srCash)
+        //   cash_difference = srCash − systemCash  (+ বেশি, − কম)
+        const srCash         = parseFloat(s.cash_collected  || 0);
         const cashDiff       = parseFloat(s.cash_difference || 0);
+        const systemCash     = srCash - cashDiff;   // সিস্টেমে বিক্রয় অনুযায়ী প্রত্যাশিত নগদ
         // cashDiff < 0 → SR কম জমা দিয়েছে → বকেয়া বাড়বে
         const cashShortfall  = cashDiff < 0 ? Math.abs(cashDiff) : 0;
 
@@ -441,7 +462,7 @@ const approveSettlement = async (req, res) => {
                      VALUES ($1, $2, 'cash_mismatch', $3, $4, $5)`,
                     [
                         s.worker_id, id, cashShortfall,
-                        `নগদ ঘাটতি: সিস্টেম ৳${parseFloat(s.cash_collected) - cashDiff} — জমা ৳${s.cash_collected}`,
+                        `নগদ ঘাটতি: সিস্টেম ৳${systemCash.toFixed(0)} — SR জমা ৳${srCash.toFixed(0)}`,
                         req.user.id
                     ]
                 );
