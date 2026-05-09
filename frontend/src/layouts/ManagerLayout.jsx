@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
-import { FiHome, FiUsers, FiShoppingCart, FiCheckSquare, FiCalendar, FiMapPin, FiUser, FiBell, FiMenu, FiX, FiLogOut, FiMessageSquare, FiList, FiFileText } from 'react-icons/fi'
+import { FiHome, FiUsers, FiShoppingCart, FiCheckSquare, FiCalendar, FiMapPin, FiUser, FiBell, FiMenu, FiX, FiLogOut, FiMessageSquare, FiList, FiFileText, FiRefreshCw } from 'react-icons/fi'
 
 const navItems = [
   { path: '/manager/dashboard',     icon: <FiHome />,         label: 'ড্যাশবোর্ড' },
@@ -12,6 +12,7 @@ const navItems = [
   { path: '/manager/orders',        icon: <FiShoppingCart />, label: 'অর্ডার' },
   { path: '/manager/settlements',   icon: <FiCheckSquare />,  label: 'হিসাব' },
   { path: '/manager/expense',       icon: <FiFileText />,     label: 'খরচ অনুমোদন' },
+  { path: '/manager/returns',       icon: <FiRefreshCw />,    label: 'রিটার্ন অনুমোদন' },
   { path: '/manager/attendance',    icon: <FiCalendar />,     label: 'হাজিরা' },
   { path: '/manager/customers',     icon: <FiUser />,         label: 'কাস্টমার' },
   { path: '/manager/routes',        icon: <FiMapPin />,       label: 'রুট' },
