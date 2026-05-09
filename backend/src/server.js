@@ -109,6 +109,7 @@ const portalRoutes              = require('./routes/customerPortal.routes');
 const customerOrderReqRoutes    = require('./routes/customerOrderRequest.routes');
 const appRoutes                 = require('./routes/app.routes');       // ← নতুন
 const expenseRoutes             = require('./routes/expense.routes');
+const returnRoutes              = require('./routes/return.routes');
 
 app.use('/api/auth',        loginLimiter, authRoutes);
 app.use('/api/employees',   employeeRoutes);
@@ -133,6 +134,7 @@ app.use('/api/portal',                  portalRoutes);
 app.use('/api/customer-order-requests', customerOrderReqRoutes);
 app.use('/api/app',                     appRoutes);            // ← নতুন
 app.use('/api/expense',                 expenseRoutes);
+app.use('/api/return',                  returnRoutes);
 
 // ============================================================
 // HEALTH CHECK
