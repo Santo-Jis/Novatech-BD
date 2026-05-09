@@ -25,7 +25,7 @@ const submitReturn = async (req, res) => {
 
         // কাস্টমার SR-এর কিনা যাচাই
         const custCheck = await query(
-            `SELECT id FROM customers WHERE id = $1 AND sr_id = $2`,
+            `SELECT id FROM customers WHERE id = $1 AND created_by = $2`,
             [customer_id, srId]
         );
         if (custCheck.rows.length === 0) {
@@ -41,7 +41,7 @@ const submitReturn = async (req, res) => {
 
         for (const item of items) {
             const prodRes = await query(
-                `SELECT id, name, price, vat, tax, unit FROM products WHERE id = $1`,
+                `SELECT id, name, price, vat, tax, unit FROM products WHERE id = $1 AND is_active = true`,
                 [item.product_id]
             );
             if (prodRes.rows.length === 0) continue;
@@ -115,7 +115,7 @@ const getMyReturns = async (req, res) => {
         const result = await query(
             `SELECT
                 rr.*,
-                c.name     AS customer_name,
+                c.owner_name AS customer_name,
                 c.shop_name,
                 rv.name_bn AS reviewed_by_name
              FROM return_requests rr
@@ -173,7 +173,7 @@ const getTeamReturns = async (req, res) => {
                 rr.*,
                 u.name_bn      AS sr_name,
                 u.employee_code,
-                c.name         AS customer_name,
+                c.owner_name AS customer_name,
                 c.shop_name,
                 rv.name_bn     AS reviewed_by_name
              FROM return_requests rr
@@ -310,7 +310,7 @@ const getReturnReport = async (req, res) => {
                 u.name_bn       AS sr_name,
                 u.employee_code,
                 mgr.name_bn     AS manager_name,
-                c.name          AS customer_name,
+                c.owner_name AS customer_name,
                 c.shop_name,
                 rv.name_bn      AS reviewed_by_name
              FROM return_requests rr
