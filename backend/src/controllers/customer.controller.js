@@ -65,12 +65,27 @@ const getCustomers = async (req, res) => {
         // ক্রম: visit_order → GPS দূরত্ব → নাম
         let orderBy = 'ca.visit_order ASC NULLS LAST, c.shop_name ASC';
 
-        if (lat && lng) {
+        // ✅ FIX: lat/lng parameterized query-তে পাঠাও — SQL injection ঠেকাও
+        const parsedLat = parseFloat(lat);
+        const parsedLng = parseFloat(lng);
+        const hasValidCoords = lat && lng
+            && isFinite(parsedLat) && isFinite(parsedLng)
+            && parsedLat >= -90  && parsedLat <= 90
+            && parsedLng >= -180 && parsedLng <= 180;
+
+        if (hasValidCoords) {
+            paramCount++;
+            params.push(parsedLng);  // ST_MakePoint(lng, lat) — longitude প্রথমে
+            const lngParam = paramCount;
+            paramCount++;
+            params.push(parsedLat);
+            const latParam = paramCount;
+
             distanceSelect = `,
                 ROUND(
                     ST_Distance(
                         c.location::geography,
-                        ST_GeogFromText('POINT(${lng} ${lat})')
+                        ST_SetSRID(ST_MakePoint($${lngParam}, $${latParam}), 4326)::geography
                     )::numeric, 0
                 ) AS distance_meters`;
             orderBy = 'ca.visit_order ASC NULLS LAST, distance_meters ASC NULLS LAST';
@@ -216,28 +231,52 @@ const createCustomer = async (req, res) => {
         // Customer Code জেনারেট
         const customerCode = await generateCustomerCode(new Date());
 
-        // Location
-        const locationPoint = (latitude && longitude)
-            ? `ST_GeogFromText('POINT(${longitude} ${latitude})')`
-            : 'NULL';
+        // ✅ FIX: Location — parameterized ST_MakePoint ব্যবহার করো
+        const parsedLat = parseFloat(latitude);
+        const parsedLng = parseFloat(longitude);
+        const hasValidCoords = latitude && longitude
+            && isFinite(parsedLat) && isFinite(parsedLng)
+            && parsedLat >= -90  && parsedLat <= 90
+            && parsedLng >= -180 && parsedLng <= 180;
 
-        const result = await query(
-            `INSERT INTO customers
-             (customer_code, shop_name, owner_name, shop_photo,
-              business_type, whatsapp, sms_phone, email, route_id,
-              credit_limit, location, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-              ${locationPoint}, $11)
-             RETURNING *`,
-            [
-                customerCode, shop_name, owner_name, shopPhotoUrl,
-                business_type || null, whatsapp || null,
-                sms_phone || null, email || null,
-                route_id || null,
-                credit_limit ? parseFloat(credit_limit) : 5000,
-                req.user.id
-            ]
-        );
+        let result;
+        if (hasValidCoords) {
+            result = await query(
+                `INSERT INTO customers
+                 (customer_code, shop_name, owner_name, shop_photo,
+                  business_type, whatsapp, sms_phone, email, route_id,
+                  credit_limit, location, created_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                  ST_SetSRID(ST_MakePoint($11, $12), 4326)::geography, $13)
+                 RETURNING *`,
+                [
+                    customerCode, shop_name, owner_name, shopPhotoUrl,
+                    business_type || null, whatsapp || null,
+                    sms_phone || null, email || null,
+                    route_id || null,
+                    credit_limit ? parseFloat(credit_limit) : 5000,
+                    parsedLng, parsedLat,  // ST_MakePoint(lng, lat)
+                    req.user.id
+                ]
+            );
+        } else {
+            result = await query(
+                `INSERT INTO customers
+                 (customer_code, shop_name, owner_name, shop_photo,
+                  business_type, whatsapp, sms_phone, email, route_id,
+                  credit_limit, created_by)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                 RETURNING *`,
+                [
+                    customerCode, shop_name, owner_name, shopPhotoUrl,
+                    business_type || null, whatsapp || null,
+                    sms_phone || null, email || null,
+                    route_id || null,
+                    credit_limit ? parseFloat(credit_limit) : 5000,
+                    req.user.id
+                ]
+            );
+        }
 
         // SR নিজেই তৈরি করলে তাকে অ্যাসাইন করো
         if (req.user.role === 'worker') {
@@ -317,29 +356,56 @@ const updateCustomer = async (req, res) => {
             latitude, longitude
         } = req.body;
 
-        const locationPoint = (latitude && longitude)
-            ? `ST_GeogFromText('POINT(${longitude} ${latitude})')`
-            : null;
+        // ✅ FIX: Location — parameterized ST_MakePoint ব্যবহার করো
+        const parsedLat = parseFloat(latitude);
+        const parsedLng = parseFloat(longitude);
+        const hasValidCoords = latitude && longitude
+            && isFinite(parsedLat) && isFinite(parsedLng)
+            && parsedLat >= -90  && parsedLat <= 90
+            && parsedLng >= -180 && parsedLng <= 180;
 
-        await query(
-            `UPDATE customers SET
-                shop_name     = COALESCE($1, shop_name),
-                owner_name    = COALESCE($2, owner_name),
-                business_type = COALESCE($3, business_type),
-                whatsapp      = COALESCE($4, whatsapp),
-                sms_phone     = COALESCE($5, sms_phone),
-                email         = COALESCE($6, email),
-                route_id      = COALESCE($7, route_id),
-                shop_photo    = COALESCE($8, shop_photo),
-                location      = COALESCE(${locationPoint ? locationPoint : 'location'}, location),
-                updated_at    = NOW()
-             WHERE id = $9`,
-            [
-                shop_name, owner_name, business_type,
-                whatsapp, sms_phone, email || null,
-                route_id, shopPhotoUrl, id
-            ]
-        );
+        if (hasValidCoords) {
+            await query(
+                `UPDATE customers SET
+                    shop_name     = COALESCE($1, shop_name),
+                    owner_name    = COALESCE($2, owner_name),
+                    business_type = COALESCE($3, business_type),
+                    whatsapp      = COALESCE($4, whatsapp),
+                    sms_phone     = COALESCE($5, sms_phone),
+                    email         = COALESCE($6, email),
+                    route_id      = COALESCE($7, route_id),
+                    shop_photo    = COALESCE($8, shop_photo),
+                    location      = ST_SetSRID(ST_MakePoint($9, $10), 4326)::geography,
+                    updated_at    = NOW()
+                 WHERE id = $11`,
+                [
+                    shop_name, owner_name, business_type,
+                    whatsapp, sms_phone, email || null,
+                    route_id, shopPhotoUrl,
+                    parsedLng, parsedLat,  // ST_MakePoint(lng, lat)
+                    id
+                ]
+            );
+        } else {
+            await query(
+                `UPDATE customers SET
+                    shop_name     = COALESCE($1, shop_name),
+                    owner_name    = COALESCE($2, owner_name),
+                    business_type = COALESCE($3, business_type),
+                    whatsapp      = COALESCE($4, whatsapp),
+                    sms_phone     = COALESCE($5, sms_phone),
+                    email         = COALESCE($6, email),
+                    route_id      = COALESCE($7, route_id),
+                    shop_photo    = COALESCE($8, shop_photo),
+                    updated_at    = NOW()
+                 WHERE id = $9`,
+                [
+                    shop_name, owner_name, business_type,
+                    whatsapp, sms_phone, email || null,
+                    route_id, shopPhotoUrl, id
+                ]
+            );
+        }
 
         return res.status(200).json({ success: true, message: 'কাস্টমার আপডেট সফল।' });
 
