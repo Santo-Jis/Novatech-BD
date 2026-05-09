@@ -471,6 +471,13 @@ export default function CustomerPortal() {
   const [showBell,       setShowBell]       = useState(false)
   const [unreadBanner,   setUnreadBanner]   = useState(null)
 
+  // ── Invoice Pagination State ───────────────────────────────
+  const [invoices,        setInvoices]        = useState([])
+  const [invoicePage,     setInvoicePage]     = useState(1)
+  const [invoiceTotalPages, setInvoiceTotalPages] = useState(1)
+  const [invoiceTotal,    setInvoiceTotal]    = useState(0)
+  const [invoiceLoading,  setInvoiceLoading]  = useState(false)
+
   const getStorageKey = (cid) => `portal_jwt_${cid}`
 
   const loadDashboard = async (jwt) => {
@@ -486,6 +493,28 @@ export default function CustomerPortal() {
       console.error('Dashboard error:', err)
       setError('Session শেষ হয়েছে। আবার লগইন করুন।')
       setPhase('login')
+    }
+  }
+
+  // ── Paginated invoice loader ───────────────────────────────
+  const loadInvoices = async (jwt, page = 1) => {
+    setInvoiceLoading(true)
+    try {
+      const data = await portalFetch(`/portal/invoices?page=${page}&limit=15`, {
+        headers: { Authorization: `Bearer ${jwt}` }
+      })
+      if (page === 1) {
+        setInvoices(data.data || [])
+      } else {
+        setInvoices(prev => [...prev, ...(data.data || [])])
+      }
+      setInvoicePage(data.pagination?.page || page)
+      setInvoiceTotalPages(data.pagination?.totalPages || 1)
+      setInvoiceTotal(data.pagination?.total || 0)
+    } catch (err) {
+      console.error('Invoice load error:', err)
+    } finally {
+      setInvoiceLoading(false)
     }
   }
 
@@ -707,9 +736,17 @@ export default function CustomerPortal() {
     const tabs = [
       { id: 'summary',  label: 'সারসংক্ষেপ' },
       { id: 'orders',   label: '🛒 অর্ডার' },
-      { id: 'invoices', label: `ইনভয়েস (${sales.length})` },
+      { id: 'invoices', label: `ইনভয়েস (${invoiceTotal || sales.length})` },
       { id: 'payments', label: `পরিশোধ (${credit_payments.length})` },
     ]
+
+    // invoices ট্যাব প্রথমবার খুললে লোড করো
+    const handleTabChange = (tabId) => {
+      setActiveTab(tabId)
+      if (tabId === 'invoices' && invoices.length === 0 && !invoiceLoading) {
+        loadInvoices(portalJWT, 1)
+      }
+    }
 
     return (
       <div className="min-h-screen bg-gray-50">
@@ -809,7 +846,7 @@ export default function CustomerPortal() {
           <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
             <div className="flex border-b border-gray-100 overflow-x-auto">
               {tabs.map(t => (
-                <button key={t.id} onClick={() => setActiveTab(t.id)}
+                <button key={t.id} onClick={() => handleTabChange(t.id)}
                   className={`flex-1 py-3 text-xs font-semibold transition-colors whitespace-nowrap px-2
                     ${activeTab === t.id
                       ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50'
@@ -863,13 +900,39 @@ export default function CustomerPortal() {
                 <OrderRequestTab portalJWT={portalJWT} />
               )}
 
-              {/* ইনভয়েস */}
+              {/* ইনভয়েস — Paginated */}
               {activeTab === 'invoices' && (
                 <div className="space-y-3">
-                  {sales.length === 0
-                    ? <p className="text-center text-gray-400 text-sm py-8">কোনো ইনভয়েস নেই।</p>
-                    : sales.map(sale => <InvoiceCard key={sale.invoice_number} sale={sale} />)
-                  }
+                  {invoiceLoading && invoices.length === 0 ? (
+                    <div className="space-y-3">
+                      {[...Array(3)].map((_, i) => (
+                        <div key={i} className="h-20 bg-white rounded-2xl animate-pulse border border-gray-100" />
+                      ))}
+                    </div>
+                  ) : invoices.length === 0 ? (
+                    <p className="text-center text-gray-400 text-sm py-8">কোনো ইনভয়েস নেই।</p>
+                  ) : (
+                    <>
+                      {invoices.map(sale => <InvoiceCard key={sale.invoice_number} sale={sale} />)}
+
+                      {/* Load More */}
+                      {invoicePage < invoiceTotalPages && (
+                        <button
+                          onClick={() => loadInvoices(portalJWT, invoicePage + 1)}
+                          disabled={invoiceLoading}
+                          className="w-full py-3 bg-white border border-gray-200 rounded-2xl text-sm text-indigo-600 font-semibold hover:bg-indigo-50 transition-colors disabled:opacity-50"
+                        >
+                          {invoiceLoading ? '⏳ লোড হচ্ছে...' : `আরো দেখুন (${invoices.length}/${invoiceTotal})`}
+                        </button>
+                      )}
+
+                      {invoicePage >= invoiceTotalPages && invoices.length > 0 && (
+                        <p className="text-center text-xs text-gray-400 py-2">
+                          সব {invoiceTotal}টি ইনভয়েস দেখানো হয়েছে।
+                        </p>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
 
