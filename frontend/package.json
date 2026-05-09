@@ -23,7 +23,9 @@
     "firebase":             "^10.7.1",
     "date-fns":             "^3.0.6",
     "react-hook-form":      "^7.49.2",
-    "clsx":                 "^2.0.0"
+    "clsx":                 "^2.0.0",
+    "leaflet":              "^1.9.4",
+    "react-leaflet":        "^4.2.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
