@@ -52,6 +52,11 @@ const menuItems = [
     path: '/worker/sales-history',
   },
   {
+    icon: <FiRefreshCw />,
+    label: 'রিটার্ন / রিপ্লেসমেন্ট',
+    path: '/worker/return-history',
+  },
+  {
     icon: <FiFileText />,
     label: 'দৈনিক খরচ জমা',
     path: '/worker/expense',
