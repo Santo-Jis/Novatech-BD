@@ -190,18 +190,12 @@ function OrderRequestTab({ portalJWT }) {
 
   const handleSubmit = async () => {
     const items = Object.entries(cart)
-      .filter(([, qty]) => qty > 0)
-      .map(([product_id, qty]) => ({ product_id, qty }))
+      .filter(([, qty]) => parseInt(qty) > 0)
+      .map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
 
     if (items.length === 0) { setErrorMsg('কমপক্ষে একটি পণ্য সিলেক্ট করুন।'); return }
 
-    // ✅ Submit-এর আগে pending warning — submit block হবে না
-    const hasPending = requests.some(r => r.status === 'pending')
-    if (hasPending) {
-      setErrorMsg('⚠️ মনে রাখবেন — আপনার আগের একটি অর্ডার এখনো pending আছে।')
-      // warning দেখিয়েও submit হবে — ২ সেকেন্ড পরে error clear
-      setTimeout(() => setErrorMsg(''), 4000)
-    }
+    setErrorMsg('')
 
     setSubmitting(true)
     try {
