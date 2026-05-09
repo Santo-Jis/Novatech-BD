@@ -4,6 +4,7 @@ const { auth } = require('../middlewares/auth');
 const { allowRoles, checkTeamAccess } = require('../middlewares/roleCheck');
 const { getSalesReport, getAttendanceReport, getCommissionReport, getCreditReport, getEmployeePDFReport, getDashboardKPI, getPLStatement, getLedger, getMonthlyArchive, getTopProducts, getTopShops } = require('../controllers/report.controller');
 const { getExpenseReport } = require('../controllers/expense.controller');
+const { getReturnReport }  = require('../controllers/return.controller');
 router.get('/kpi', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getDashboardKPI);
 router.get('/sales', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getSalesReport);
 router.get('/attendance', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getAttendanceReport);
@@ -16,4 +17,5 @@ router.get('/archive', auth, allowRoles('admin','manager','supervisor','asm','rs
 router.get('/top-products', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getTopProducts);
 router.get('/top-shops', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getTopShops);
 router.get('/expense',  auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), getExpenseReport);
+router.get('/return',   auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), getReturnReport);
 module.exports = router;
