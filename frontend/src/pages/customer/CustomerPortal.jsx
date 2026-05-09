@@ -5,61 +5,38 @@ import { useState, useEffect } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 
-// ── Google OAuth Web Helper ───────────────────────────────────
-// Web browser-এ popup দিয়ে Google Login করার জন্য
-const webGoogleLogin = (clientId) => new Promise((resolve, reject) => {
-  const width  = 500
-  const height = 600
-  const left   = window.screenX + (window.outerWidth  - width)  / 2
-  const top    = window.screenY + (window.outerHeight - height) / 2
+// ── Google Identity Services (GSI) — redirect URI লাগে না ──
+// Google এর নতুন recommended approach
+const loadGSI = () => new Promise((resolve, reject) => {
+  if (window.google?.accounts) { resolve(window.google.accounts); return }
+  const script = document.createElement('script')
+  script.src   = 'https://accounts.google.com/gsi/client'
+  script.async = true
+  script.defer = true
+  script.onload = () => resolve(window.google.accounts)
+  script.onerror = () => reject(new Error('Google login library load হয়নি।'))
+  document.head.appendChild(script)
+})
 
-  const redirectUri = `${window.location.origin}/portal-oauth-callback`
-  const scope       = 'openid email profile'
-  const state       = Math.random().toString(36).slice(2)
-
-  const oauthUrl = [
-    'https://accounts.google.com/o/oauth2/v2/auth',
-    `?client_id=${encodeURIComponent(clientId)}`,
-    `&redirect_uri=${encodeURIComponent(redirectUri)}`,
-    `&response_type=token`,
-    `&scope=${encodeURIComponent(scope)}`,
-    `&state=${state}`,
-  ].join('')
-
-  const popup = window.open(oauthUrl, 'GoogleLogin', `width=${width},height=${height},left=${left},top=${top}`)
-
-  if (!popup) {
-    reject(new Error('Popup block হয়েছে। Browser-এ popup allow করুন।'))
-    return
+const webGoogleLogin = (clientId) => new Promise(async (resolve, reject) => {
+  try {
+    const accounts = await loadGSI()
+    accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope:     'openid email profile',
+      callback:  (response) => {
+        if (response.error) {
+          reject(new Error(response.error === 'access_denied'
+            ? 'লগইন বাতিল করা হয়েছে।'
+            : `Google error: ${response.error}`))
+        } else {
+          resolve(response.access_token)
+        }
+      },
+    }).requestAccessToken()
+  } catch (err) {
+    reject(err)
   }
-
-  const timer = setInterval(() => {
-    try {
-      if (popup.closed) {
-        clearInterval(timer)
-        reject(new Error('লগইন বাতিল করা হয়েছে।'))
-        return
-      }
-      const url = popup.location.href
-      if (url.includes('access_token')) {
-        clearInterval(timer)
-        popup.close()
-        const hash   = new URL(url).hash.slice(1)
-        const params = new URLSearchParams(hash)
-        const token  = params.get('access_token')
-        if (token) resolve(token)
-        else reject(new Error('Token পাওয়া যায়নি।'))
-      }
-    } catch {
-      // cross-origin — popup এখনো Google page-এ, wait করো
-    }
-  }, 300)
-
-  setTimeout(() => {
-    clearInterval(timer)
-    if (!popup.closed) popup.close()
-    reject(new Error('লগইন timeout হয়েছে।'))
-  }, 5 * 60 * 1000)
 })
 
 // ── Backend URL ───────────────────────────────────────────────
