@@ -32,8 +32,8 @@ export default function ReturnForm() {
     const load = async () => {
       try {
         const [custRes, prodRes] = await Promise.all([
-          api.get('/customers/my'),
-          api.get('/products/active'),
+          api.get('/customers'),
+          api.get('/products?is_active=true'),
         ])
         setCustomers(custRes.data?.data || [])
         setProducts(prodRes.data?.data  || [])
