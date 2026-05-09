@@ -335,62 +335,56 @@ function OrderRequestTab({ portalJWT }) {
                   ${qty > 0 ? 'border-indigo-300' : 'border-gray-100'}`}>
 
                 {/* পণ্যের ছবি */}
-                {prod.image_url ? (
-                  <div className="relative w-full h-32 bg-gray-100">
+                <div className={`relative w-full bg-gray-50 flex items-center justify-center
+                  border-b ${qty > 0 ? 'border-indigo-100' : 'border-gray-100'}`}
+                  style={{ height: '160px' }}>
+                  {prod.image_url ? (
                     <img
                       src={prod.image_url}
                       alt={prod.name}
-                      className="w-full h-full object-cover"
-                      onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex' }}
+                      className="w-full h-full object-contain p-2"
+                      style={{ maxHeight: '160px' }}
+                      onError={e => {
+                        e.target.style.display = 'none'
+                        e.target.parentNode.querySelector('.img-fallback').style.display = 'flex'
+                      }}
                     />
-                    <div className="absolute inset-0 bg-gray-100 items-center justify-center text-3xl hidden">
-                      📦
-                    </div>
-                    {qty > 0 && (
-                      <div className="absolute top-2 right-2 bg-indigo-600 text-white text-xs px-2 py-1 rounded-full font-bold shadow">
-                        × {qty}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className={`w-full h-20 flex items-center justify-center text-4xl
-                    ${qty > 0 ? 'bg-indigo-50' : 'bg-gray-50'}`}>
+                  ) : null}
+                  <div className={`img-fallback w-full h-full items-center justify-center text-5xl
+                    ${prod.image_url ? 'hidden' : 'flex'}`}>
                     📦
-                    {qty > 0 && (
-                      <span className="absolute top-2 right-2 bg-indigo-600 text-white text-xs px-2 py-1 rounded-full font-bold">
-                        × {qty}
-                      </span>
-                    )}
                   </div>
-                )}
+                  {qty > 0 && (
+                    <div className="absolute top-2 right-2 bg-indigo-600 text-white text-xs px-2.5 py-1 rounded-full font-bold shadow-md">
+                      × {qty}
+                    </div>
+                  )}
+                </div>
 
                 <div className={`p-3 ${qty > 0 ? 'bg-indigo-50' : ''}`}>
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex-1 pr-2">
                       <p className="font-semibold text-gray-800 text-sm leading-tight">{prod.name}</p>
-                      {/* final_price = base + VAT + Tax — কাস্টমার এটাই দেবে */}
+                      {/* চূড়ান্ত মূল্য (VAT + Tax সহ) */}
                       <p className="text-sm font-bold text-indigo-700 mt-0.5">
                         ৳{parseFloat(prod.final_price ?? prod.price).toLocaleString('bn-BD')}
                         <span className="text-xs font-normal text-gray-400 ml-1">/ {prod.unit || 'পিস'}</span>
                       </p>
-                      {/* VAT/Tax breakdown দেখাও যদি থাকে */}
                       {prod.has_extra && (
                         <div className="mt-1 flex flex-wrap gap-1">
-                          <span className="text-xs text-gray-400 line-through">
-                            মূল: ৳{parseFloat(prod.base_price).toLocaleString('bn-BD')}
-                          </span>
                           {prod.vat_amount > 0 && (
                             <span className="text-xs bg-orange-50 text-orange-500 px-1.5 py-0.5 rounded-full">
-                              +VAT ৳{parseFloat(prod.vat_amount).toLocaleString('bn-BD')}
+                              VAT ৳{parseFloat(prod.vat_amount).toLocaleString('bn-BD')}
                             </span>
                           )}
                           {prod.tax_amount > 0 && (
                             <span className="text-xs bg-red-50 text-red-400 px-1.5 py-0.5 rounded-full">
-                              +Tax ৳{parseFloat(prod.tax_amount).toLocaleString('bn-BD')}
+                              Tax ৳{parseFloat(prod.tax_amount).toLocaleString('bn-BD')}
                             </span>
                           )}
                         </div>
                       )}
+
                       {prod.description && (
                         <p className="text-xs text-gray-400 mt-1 line-clamp-2">{prod.description}</p>
                       )}
