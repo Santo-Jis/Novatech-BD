@@ -1,7 +1,7 @@
 // frontend/src/pages/worker/ReturnForm.jsx
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiArrowLeft, FiPlus, FiTrash2, FiCamera, FiCheck } from 'react-icons/fi'
+import { FiArrowLeft, FiPlus, FiTrash2, FiCamera, FiCheck, FiChevronDown } from 'react-icons/fi'
 import api from '../../api/axios'
 import { toast } from 'react-hot-toast'
 
@@ -27,21 +27,24 @@ export default function ReturnForm() {
   const [photos,      setPhotos]      = useState([])
   const [submitting,  setSubmitting]  = useState(false)
   const [loading,     setLoading]     = useState(true)
+  const [openDropIdx, setOpenDropIdx] = useState(null)
 
   useEffect(() => {
     const load = async () => {
       try {
         const [custRes, prodRes] = await Promise.all([
-          api.get('/customers'),
+          api.get('/customers?limit=200&page=1'),
           api.get('/products?is_active=true'),
         ])
-        setCustomers(custRes.data?.data || [])
+        setCustomers(Array.isArray(custRes.data?.data) ? custRes.data.data : [])
         setProducts(prodRes.data?.data  || [])
       } catch { toast.error('তথ্য লোড হয়নি।') }
       finally { setLoading(false) }
     }
     load()
   }, [])
+
+  const [openPicker, setOpenPicker] = useState(null) // index of open product picker
 
   const addItem = () =>
     setItems(prev => [...prev, { product_id: '', qty: 1, reason: '' }])
@@ -142,7 +145,7 @@ export default function ReturnForm() {
             className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-400">
             <option value="">-- কাস্টমার সিলেক্ট করুন --</option>
             {customers.map(c => (
-              <option key={c.id} value={c.id}>{c.shop_name || c.name}</option>
+              <option key={c.id} value={c.id}>{c.shop_name || c.owner_name || c.name}</option>
             ))}
           </select>
         </div>
@@ -192,19 +195,40 @@ export default function ReturnForm() {
           <div className="space-y-3">
             {items.map((item, i) => (
               <div key={i} className="bg-gray-50 rounded-2xl p-3 border border-gray-100">
-                <div className="flex gap-2 mb-2">
-                  <select value={item.product_id}
-                    onChange={e => updateItem(i, 'product_id', e.target.value)}
-                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400 bg-white">
-                    <option value="">-- পণ্য --</option>
-                    {products.map(p => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
+                {/* পণ্য সিলেক্টর */}
+                <div className="mb-2">
+                  <button type="button"
+                    onClick={() => setOpenDropIdx(openDropIdx === i ? null : i)}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm bg-white text-left
+                      ${item.product_id ? 'border-indigo-300 text-gray-800' : 'border-gray-200 text-gray-400'}`}>
+                    <span className="truncate">
+                      {item.product_id
+                        ? products.find(p => p.id === item.product_id)?.name || 'পণ্য বেছে নিন'
+                        : 'পণ্য বেছে নিন'}
+                    </span>
+                    <FiChevronDown className={`flex-shrink-0 ml-2 transition-transform ${openDropIdx === i ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {openDropIdx === i && (
+                    <div className="mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-48 overflow-y-auto z-20 relative">
+                      {products.map(p => (
+                        <button key={p.id} type="button"
+                          onClick={() => { updateItem(i, 'product_id', p.id); setOpenDropIdx(null) }}
+                          className={`w-full px-4 py-3 text-sm text-left border-b border-gray-50 last:border-0 hover:bg-indigo-50
+                            ${item.product_id === p.id ? 'bg-indigo-50 text-indigo-700 font-semibold' : 'text-gray-700'}`}>
+                          {p.name}
+                          <span className="text-xs text-gray-400 ml-2">৳{parseFloat(p.price).toFixed(0)}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
                   <input type="number" min="1" value={item.qty}
                     onChange={e => updateItem(i, 'qty', e.target.value)}
-                    className="w-20 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-center focus:outline-none focus:border-indigo-400 bg-white"
-                    placeholder="Qty" />
+                    className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-center focus:outline-none focus:border-indigo-400 bg-white"
+                    placeholder="পরিমাণ" />
                   {items.length > 1 && (
                     <button onClick={() => removeItem(i)}
                       className="p-2.5 text-red-400 hover:bg-red-50 rounded-xl">
@@ -263,6 +287,37 @@ export default function ReturnForm() {
             className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-400 resize-none" />
         </div>
       </div>
+
+      {/* Product Picker Modal */}
+      {openPicker !== null && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end"
+          onClick={() => setOpenPicker(null)}>
+          <div className="bg-white w-full rounded-t-3xl max-h-[70vh] flex flex-col"
+            onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <span className="font-bold text-gray-800">পণ্য বেছে নিন</span>
+              <button onClick={() => setOpenPicker(null)}
+                className="text-gray-400 text-2xl leading-none">×</button>
+            </div>
+            <div className="overflow-y-auto flex-1 py-2">
+              {products.map(p => {
+                const selected = items[openPicker]?.product_id === p.id
+                return (
+                  <button key={p.id} type="button"
+                    onClick={() => { updateItem(openPicker, 'product_id', p.id); setOpenPicker(null) }}
+                    className={`w-full px-4 py-3 text-left flex justify-between items-center
+                      ${selected ? 'bg-indigo-50' : 'hover:bg-gray-50'}`}>
+                    <span className={`text-sm ${selected ? 'text-indigo-700 font-semibold' : 'text-gray-700'}`}>
+                      {p.name}
+                    </span>
+                    {selected && <span className="text-indigo-600">✓</span>}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Submit */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-white border-t">
