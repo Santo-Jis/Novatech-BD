@@ -30,9 +30,9 @@ const useTypingEffect = (text, speed = 70, delay = 0) => {
 function InstallGuideModal({ onClose }) {
   const steps = [
     { icon: '📥', title: 'ডাউনলোড শেষ হলে', desc: 'নিচে notification bar-এ ফাইলটা দেখাবে। সেখানে tap করুন।' },
-    { icon: '🛡️', title: 'Google স্ক্যান আসলে', desc: '"Send app" বা "Scan" বাটন আসবে — "Don't send" বা "Install anyway" চাপুন।' },
-    { icon: '⚙️', title: '"Unknown source" warning আসলে', desc: 'Settings → Install unknown apps → Chrome → Allow চালু করুন।' },
-    { icon: '✅', title: 'Install করুন', desc: '"Install" বাটন চাপুন। কিছুক্ষণ পর App ready!' },
+    { icon: "🛡️", title: "Google স্ক্যান আসলে", desc: "Send app বা Scan বাটন আসবে — Don't send বা Install anyway চাপুন।" },
+    { icon: '⚙️', title: 'Unknown source warning আসলে', desc: 'Settings এ যান → Install unknown apps → Chrome → Allow চালু করুন।' },
+    { icon: '✅', title: 'Install করুন', desc: 'Install বাটন চাপুন। কিছুক্ষণ পর App ready!' },
   ]
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
