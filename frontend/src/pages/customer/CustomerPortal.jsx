@@ -455,7 +455,7 @@ function OrderRequestTab({ portalJWT }) {
 }
 
 // ── Main Component ────────────────────────────────────────────
-export default function CustomerPortal() {
+export default function CustomerPortal({ defaultTab = 'summary' }) {
   const [searchParams] = useSearchParams()
   const portalToken    = searchParams.get('token')
 
@@ -463,7 +463,7 @@ export default function CustomerPortal() {
   const [tokenInfo,   setTokenInfo]   = useState(null)
   const [portalJWT,   setPortalJWT]   = useState(null)
   const [dashboard,   setDashboard]   = useState(null)
-  const [activeTab,   setActiveTab]   = useState('summary')
+  const [activeTab,   setActiveTab]   = useState(defaultTab)
   const [error,       setError]       = useState('')
   const [loggingIn,   setLoggingIn]   = useState(false)
   const [notifications,  setNotifications]  = useState([])
