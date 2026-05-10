@@ -32,9 +32,17 @@ jobs:
         run: |
           VERSION_CODE=${{ github.run_number }}
           VERSION_NAME="1.0.${{ github.run_number }}"
+
+          # versionCode ও versionName আপডেট
           sed -i "s/versionCode: [0-9]*/versionCode: $VERSION_CODE/" backend/src/routes/app.routes.js
-          sed -i "s/versionName: '[^']*'/versionName: '$VERSION_NAME'/" backend/src/routes/app.routes.js
+          sed -i "s/versionName: \'[^\']*\'/versionName: \'$VERSION_NAME\'/" backend/src/routes/app.routes.js
+
+          # B2 filename আপডেট → NovaTech-BD-v1.0.X.apk
+          sed -i "s/NovaTech-BD-v[0-9.]*\.apk/NovaTech-BD-v${VERSION_NAME}.apk/g" backend/src/routes/app.routes.js
+
+          # frontend version আপডেট
           sed -i "s/CURRENT_VERSION_CODE = [0-9]*/CURRENT_VERSION_CODE = $VERSION_CODE/" frontend/src/hooks/useAppUpdate.js
+
           echo "✅ Version: $VERSION_NAME (code: $VERSION_CODE)"
 
       # ── Commit version bump so Render gets updated version ────
