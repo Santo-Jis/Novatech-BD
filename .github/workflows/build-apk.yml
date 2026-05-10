@@ -283,7 +283,7 @@ jobs:
 
 
       # ── Upload APK to Backblaze B2 ────────────────────────────
-      # curl + B2 Native HTTP API — b2sdk নেই, reliable
+      # curl + B2 v2 API — সবচেয়ে stable, b2sdk নেই
       - name: Upload APK to Backblaze B2
         env:
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
@@ -294,37 +294,44 @@ jobs:
           APK_PATH="frontend/android/app/build/outputs/apk/release/app-release.apk"
           FILE_NAME="NovaTech-BD-v1.0.${{ github.run_number }}.apk"
 
-          # Step 1: authorize_account → apiUrl + authToken নাও
+          # Step 1: authorize_account (v2)
           AUTH=$(curl -s -u "${B2_KEY_ID}:${B2_APPLICATION_KEY}" \
-            https://api.backblazeb2.com/b2api/v3/b2_authorize_account)
+            https://api.backblazeb2.com/b2api/v2/b2_authorize_account)
 
-          API_URL=$(echo "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['apiInfo']['storageApi']['apiUrl'])")
+          echo "AUTH response: $AUTH"
+
+          API_URL=$(echo "$AUTH"    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['apiUrl'])")
           AUTH_TOKEN=$(echo "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['authorizationToken'])")
-          DOWNLOAD_URL=$(echo "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['apiInfo']['storageApi']['downloadUrl'])")
+          DL_URL=$(echo "$AUTH"     | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['downloadUrl'])")
 
-          echo "✅ Authorized. API URL: $API_URL"
+          echo "✅ Authorized. API: $API_URL"
 
-          # Step 2: get_upload_url → uploadUrl + uploadAuthToken নাও
-          UPLOAD_URL_RES=$(curl -s -H "Authorization: $AUTH_TOKEN" \
+          # Step 2: get_upload_url
+          UPLOAD_RES=$(curl -s \
+            -H "Authorization: $AUTH_TOKEN" \
             -d "{\"bucketId\": \"${B2_BUCKET_ID}\"}" \
-            "${API_URL}/b2api/v3/b2_get_upload_url")
+            "${API_URL}/b2api/v2/b2_get_upload_url")
 
-          UPLOAD_URL=$(echo "$UPLOAD_URL_RES" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['uploadUrl'])")
-          UPLOAD_TOKEN=$(echo "$UPLOAD_URL_RES" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['authorizationToken'])")
+          echo "Upload URL response: $UPLOAD_RES"
+
+          UPLOAD_URL=$(echo "$UPLOAD_RES"   | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['uploadUrl'])")
+          UPLOAD_TOKEN=$(echo "$UPLOAD_RES" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['authorizationToken'])")
 
           echo "✅ Upload URL ready"
 
-          # Step 3: versioned নামে upload করো
+          # Step 3: upload APK
           SHA1=$(sha1sum "$APK_PATH" | cut -d' ' -f1)
-          curl -s \
+          UPLOAD_RESULT=$(curl -s \
             -H "Authorization: $UPLOAD_TOKEN" \
             -H "X-Bz-File-Name: $FILE_NAME" \
             -H "Content-Type: application/vnd.android.package-archive" \
             -H "X-Bz-Content-Sha1: $SHA1" \
             --data-binary "@$APK_PATH" \
-            "$UPLOAD_URL" | python3 -c "import sys,json; d=json.load(sys.stdin); print('✅ Uploaded:', d.get('fileName','?'))"
+            "$UPLOAD_URL")
 
-          echo "📦 Download URL: ${DOWNLOAD_URL}/file/${B2_BUCKET_NAME}/${FILE_NAME}"
+          echo "Upload result: $UPLOAD_RESULT"
+          echo "$UPLOAD_RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print('✅ Uploaded:', d.get('fileName','unknown'))"
+          echo "📦 URL: ${DL_URL}/file/${B2_BUCKET_NAME}/${FILE_NAME}"
 
       # ── Artifact Upload ────────────────────────────────────────
       - name: Upload APK artifact
