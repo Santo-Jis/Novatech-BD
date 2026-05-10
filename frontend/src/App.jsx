@@ -5,9 +5,13 @@ import PermissionSetup, { usePermissionSetup } from './components/PermissionSetu
 import AppUpdateDialog from './components/AppUpdateDialog'   // ← নতুন
 
 // Layouts
-import AdminLayout   from './layouts/AdminLayout'
-import ManagerLayout from './layouts/ManagerLayout'
-import WorkerLayout  from './layouts/WorkerLayout'
+import AdminLayout    from './layouts/AdminLayout'
+import ManagerLayout  from './layouts/ManagerLayout'
+import WorkerLayout   from './layouts/WorkerLayout'
+import CustomerLayout from './layouts/CustomerLayout'
+
+// Customer Pages
+import CustomerDashboard from './pages/customer/CustomerDashboard'
 
 // Auth
 import Login from './pages/Login'
@@ -112,6 +116,10 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 const HomeRedirect = () => {
   const { user } = useAuthStore()
 
+  // portal_jwt থাকলে → customer dashboard
+  const hasPortalJWT = Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
+  if (hasPortalJWT && !user) return <Navigate to="/customer/dashboard" replace />
+
   if (!user) return <Navigate to="/login" replace />
 
   switch (user.role) {
@@ -129,6 +137,18 @@ const HomeRedirect = () => {
     default:
       return <Navigate to="/login" replace />
   }
+}
+
+// ============================================================
+// Customer Guard — portal_jwt চেক করে
+// ============================================================
+
+import { Outlet } from 'react-router-dom'
+
+const CustomerGuard = () => {
+  const hasPortalJWT = Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
+  if (!hasPortalJWT) return <Navigate to="/login" replace />
+  return <Outlet />
 }
 
 // ============================================================
@@ -150,11 +170,23 @@ function AppWithPermissions() {
 
       <Routes>
       {/* Public */}
-      <Route path="/login" element={<Login />} />
-      <Route path="/apply/sr" element={<SRApplicationForm />} />
-      <Route path="/customer-portal" element={<CustomerPortal />} />
+      <Route path="/login"                element={<Login />} />
+      <Route path="/apply/sr"             element={<SRApplicationForm />} />
+      <Route path="/customer-portal"      element={<Navigate to="/customer/dashboard" replace />} />
       <Route path="/portal-oauth-callback" element={<PortalOAuthCallback />} />
-      <Route path="/"      element={<HomeRedirect />} />
+      <Route path="/"                     element={<HomeRedirect />} />
+
+      {/* ── CUSTOMER ROUTES ── */}
+      <Route element={<CustomerGuard />}>
+        <Route path="/customer" element={<CustomerLayout />}>
+          <Route index                  element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard"       element={<CustomerDashboard />} />
+          <Route path="orders"          element={<CustomerPortal defaultTab="orders"   />} />
+          <Route path="invoices"        element={<CustomerPortal defaultTab="invoices" />} />
+          <Route path="payments"        element={<CustomerPortal defaultTab="payments" />} />
+          <Route path="notifications"   element={<CustomerPortal defaultTab="summary"  />} />
+        </Route>
+      </Route>
 
       {/* Unauthorized */}
       <Route path="/unauthorized" element={
