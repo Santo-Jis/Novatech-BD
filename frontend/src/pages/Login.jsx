@@ -32,24 +32,76 @@ function AppDownloadButton() {
   const [version,     setVersion]     = useState('')
   const [loading,     setLoading]     = useState(true)
   const [downloading, setDownloading] = useState(false)
+  const [apiError,    setApiError]    = useState(false)
 
   useEffect(() => {
-    fetch(`${import.meta.env.VITE_API_URL || '/api'}/app/version`)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 5000) // 5s timeout
+
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/app/version`, { signal: controller.signal })
       .then(r => r.json())
       .then(data => {
-        setApkUrl(data.data.apkUrl)
-        setVersion(data.data.versionName)
+        if (data?.data?.apkUrl) {
+          setApkUrl(data.data.apkUrl)
+          setVersion(data.data.versionName || '')
+        } else {
+          setApiError(true)
+        }
       })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+      .catch(() => setApiError(true))
+      .finally(() => {
+        clearTimeout(timeout)
+        setLoading(false)
+      })
   }, [])
 
-  if (loading || !apkUrl) return null
+  // লোড হচ্ছে — শুধু তখনই কিছু দেখাবো না
+  if (loading) return null
 
   const handleDownload = () => {
+    if (!apkUrl) return
     setDownloading(true)
     window.open(apkUrl, '_blank')
     setTimeout(() => setDownloading(false), 3000)
+  }
+
+  // API error হলে — disabled বাটন দেখাই, ক্লিক হবে না
+  if (apiError || !apkUrl) {
+    return (
+      <button
+        disabled
+        title="APK লিংক লোড হয়নি, পরে চেষ্টা করুন"
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '10px',
+          padding: '12px 22px',
+          borderRadius: '14px',
+          background: 'rgba(74,222,128,0.05)',
+          border: '1px solid rgba(74,222,128,0.15)',
+          color: 'rgba(74,222,128,0.35)',
+          fontSize: '13px',
+          fontWeight: '700',
+          cursor: 'not-allowed',
+          transition: 'all 0.2s',
+          letterSpacing: '0.3px',
+          marginBottom: '10px',
+          width: '100%',
+          justifyContent: 'center',
+          fontFamily: "'Noto Sans Bengali', sans-serif",
+        }}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        App ডাউনলোড করুন
+        <span style={{ fontSize: '10px', background: 'rgba(74,222,128,0.08)', padding: '2px 7px', borderRadius: '20px', fontWeight: '600', letterSpacing: '0.5px' }}>
+          unavailable
+        </span>
+      </button>
+    )
   }
 
   return (
