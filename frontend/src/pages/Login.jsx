@@ -26,6 +26,41 @@ const useTypingEffect = (text, speed = 70, delay = 0) => {
   return { displayed, done }
 }
 
+// ── Install Guide Modal ───────────────────────────────────
+function InstallGuideModal({ onClose }) {
+  const steps = [
+    { icon: '📥', title: 'ডাউনলোড শেষ হলে', desc: 'নিচে notification bar-এ ফাইলটা দেখাবে। সেখানে tap করুন।' },
+    { icon: '🛡️', title: 'Google স্ক্যান আসলে', desc: '"Send app" বা "Scan" বাটন আসবে — "Don't send" বা "Install anyway" চাপুন।' },
+    { icon: '⚙️', title: '"Unknown source" warning আসলে', desc: 'Settings → Install unknown apps → Chrome → Allow চালু করুন।' },
+    { icon: '✅', title: 'Install করুন', desc: '"Install" বাটন চাপুন। কিছুক্ষণ পর App ready!' },
+  ]
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
+      <div style={{ background: '#0f1a0f', border: '1px solid rgba(74,222,128,0.3)', borderRadius: '20px', padding: '24px', width: '100%', maxWidth: '360px', fontFamily: "'Noto Sans Bengali', sans-serif" }}>
+        <div style={{ textAlign: 'center', marginBottom: '20px' }}>
+          <div style={{ fontSize: '36px', marginBottom: '8px' }}>📲</div>
+          <h3 style={{ color: '#4ade80', fontSize: '16px', fontWeight: '700', margin: '0 0 4px' }}>ডাউনলোড শুরু হয়েছে!</h3>
+          <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: '12px', margin: 0 }}>নিচের ধাপগুলো অনুসরণ করুন</p>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+          {steps.map((s, i) => (
+            <div key={i} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', background: 'rgba(74,222,128,0.05)', border: '1px solid rgba(74,222,128,0.12)', borderRadius: '12px', padding: '12px' }}>
+              <span style={{ fontSize: '20px', flexShrink: 0 }}>{s.icon}</span>
+              <div>
+                <p style={{ color: '#4ade80', fontSize: '12px', fontWeight: '700', margin: '0 0 3px' }}>{s.title}</p>
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '11px', margin: 0, lineHeight: '1.5' }}>{s.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+        <button onClick={onClose} style={{ width: '100%', padding: '12px', borderRadius: '12px', background: 'rgba(74,222,128,0.15)', border: '1px solid rgba(74,222,128,0.35)', color: '#4ade80', fontSize: '13px', fontWeight: '700', cursor: 'pointer' }}>
+          বুঝেছি ✓
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── App Download Button ────────────────────────────────────
 function AppDownloadButton() {
   const [apkUrl,      setApkUrl]      = useState(null)
@@ -33,10 +68,11 @@ function AppDownloadButton() {
   const [loading,     setLoading]     = useState(true)
   const [downloading, setDownloading] = useState(false)
   const [apiError,    setApiError]    = useState(false)
+  const [showGuide,   setShowGuide]   = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 5000) // 5s timeout
+    const timeout = setTimeout(() => controller.abort(), 5000)
 
     fetch(`${import.meta.env.VITE_API_URL || '/api'}/app/version`, { signal: controller.signal })
       .then(r => r.json())
@@ -55,98 +91,65 @@ function AppDownloadButton() {
       })
   }, [])
 
-  // লোড হচ্ছে — শুধু তখনই কিছু দেখাবো না
   if (loading) return null
 
   const handleDownload = () => {
     if (!apkUrl) return
     setDownloading(true)
-    window.open(apkUrl, '_blank')
-    setTimeout(() => setDownloading(false), 3000)
+    const a = document.createElement('a')
+    a.href = apkUrl
+    a.download = `NovaTech-BD-v${version}.apk`
+    a.style.display = 'none'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    // ডাউনলোড শুরু হলে guide দেখাও
+    setTimeout(() => {
+      setDownloading(false)
+      setShowGuide(true)
+    }, 1500)
   }
 
-  // API error হলে — disabled বাটন দেখাই, ক্লিক হবে না
   if (apiError || !apkUrl) {
     return (
-      <button
-        disabled
-        title="APK লিংক লোড হয়নি, পরে চেষ্টা করুন"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '10px',
-          padding: '12px 22px',
-          borderRadius: '14px',
-          background: 'rgba(74,222,128,0.05)',
-          border: '1px solid rgba(74,222,128,0.15)',
-          color: 'rgba(74,222,128,0.35)',
-          fontSize: '13px',
-          fontWeight: '700',
-          cursor: 'not-allowed',
-          transition: 'all 0.2s',
-          letterSpacing: '0.3px',
-          marginBottom: '10px',
-          width: '100%',
-          justifyContent: 'center',
-          fontFamily: "'Noto Sans Bengali', sans-serif",
-        }}
-      >
+      <button disabled style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', padding: '12px 22px', borderRadius: '14px', background: 'rgba(74,222,128,0.05)', border: '1px solid rgba(74,222,128,0.15)', color: 'rgba(74,222,128,0.35)', fontSize: '13px', fontWeight: '700', cursor: 'not-allowed', marginBottom: '10px', width: '100%', justifyContent: 'center', fontFamily: "'Noto Sans Bengali', sans-serif" }}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
           <polyline points="7 10 12 15 17 10"/>
           <line x1="12" y1="15" x2="12" y2="3"/>
         </svg>
         App ডাউনলোড করুন
-        <span style={{ fontSize: '10px', background: 'rgba(74,222,128,0.08)', padding: '2px 7px', borderRadius: '20px', fontWeight: '600', letterSpacing: '0.5px' }}>
-          unavailable
-        </span>
+        <span style={{ fontSize: '10px', background: 'rgba(74,222,128,0.08)', padding: '2px 7px', borderRadius: '20px', fontWeight: '600' }}>unavailable</span>
       </button>
     )
   }
 
   return (
-    <button
-      onClick={handleDownload}
-      disabled={downloading}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: '10px',
-        padding: '12px 22px',
-        borderRadius: '14px',
-        background: downloading ? 'rgba(74,222,128,0.08)' : 'rgba(74,222,128,0.12)',
-        border: '1px solid rgba(74,222,128,0.35)',
-        color: '#4ade80',
-        fontSize: '13px',
-        fontWeight: '700',
-        cursor: downloading ? 'default' : 'pointer',
-        transition: 'all 0.2s',
-        letterSpacing: '0.3px',
-        marginBottom: '10px',
-        width: '100%',
-        justifyContent: 'center',
-        fontFamily: "'Noto Sans Bengali', sans-serif",
-      }}
-    >
-      {downloading ? (
-        <>
-          <span style={{ width: '16px', height: '16px', border: '2px solid rgba(74,222,128,0.2)', borderTop: '2px solid #4ade80', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block', flexShrink: 0 }} />
-          ডাউনলোড শুরু হচ্ছে...
-        </>
-      ) : (
-        <>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          App ডাউনলোড করুন
-          <span style={{ fontSize: '10px', background: 'rgba(74,222,128,0.15)', padding: '2px 7px', borderRadius: '20px', fontWeight: '600', letterSpacing: '0.5px' }}>
-            v{version}
-          </span>
-        </>
-      )}
-    </button>
+    <>
+      {showGuide && <InstallGuideModal onClose={() => setShowGuide(false)} />}
+      <button
+        onClick={handleDownload}
+        disabled={downloading}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', padding: '12px 22px', borderRadius: '14px', background: downloading ? 'rgba(74,222,128,0.08)' : 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.35)', color: '#4ade80', fontSize: '13px', fontWeight: '700', cursor: downloading ? 'default' : 'pointer', transition: 'all 0.2s', marginBottom: '10px', width: '100%', justifyContent: 'center', fontFamily: "'Noto Sans Bengali', sans-serif" }}
+      >
+        {downloading ? (
+          <>
+            <span style={{ width: '16px', height: '16px', border: '2px solid rgba(74,222,128,0.2)', borderTop: '2px solid #4ade80', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block', flexShrink: 0 }} />
+            ডাউনলোড শুরু হচ্ছে...
+          </>
+        ) : (
+          <>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+            App ডাউনলোড করুন
+            <span style={{ fontSize: '10px', background: 'rgba(74,222,128,0.15)', padding: '2px 7px', borderRadius: '20px', fontWeight: '600' }}>v{version}</span>
+          </>
+        )}
+      </button>
+    </>
   )
 }
 
