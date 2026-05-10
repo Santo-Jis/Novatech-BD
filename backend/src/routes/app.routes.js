@@ -10,8 +10,8 @@ const router  = express.Router()
 const GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/latest/download/app-release.apk'
 
 const APP_VERSION = {
-  versionCode: 157,
-  versionName: '1.0.157',
+  versionCode: 158,
+  versionName: '1.0.158',
   apkUrl: GITHUB_APK_URL,   // ← সরাসরি GitHub, backend-এর ভেতর দিয়ে নয়
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
