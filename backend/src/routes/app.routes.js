@@ -2,15 +2,14 @@
 const express = require('express')
 const path    = require('path')
 const fs      = require('fs')
-const https   = require('https')
 const router  = express.Router()
 
 // ─── Current APK version ──────────────────────────────────────
 // নতুন APK বানালে এই দুটো বাড়ান, Render auto-deploy করবে
 // তারপর সব user এর App এ update notification আসবে
 const APP_VERSION = {
-  versionCode: 151,
-  versionName: '1.0.151',
+  versionCode: 150,
+  versionName: '1.0.150',
   apkUrl: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:5000'}/api/app/download`,
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
@@ -25,7 +24,7 @@ router.get('/version', (req, res) => {
 })
 
 // GET /api/app/download
-// Backend থেকে সরাসরি APK দেবে — ZIP হবে না, সঠিক নামে নামবে
+// সঠিক নামে APK download হবে
 router.get('/download', (req, res) => {
   const fileName = `NovaTech-BD-v${APP_VERSION.versionName}.apk`
 
@@ -37,28 +36,11 @@ router.get('/download', (req, res) => {
     return res.sendFile(localPath)
   }
 
-  // Local না থাকলে GitHub থেকে proxy করে দাও
-  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
-  res.setHeader('Content-Type', 'application/vnd.android.package-archive')
-
-  const request = https.get(GITHUB_APK_URL, (githubRes) => {
-    // GitHub redirect follow করো
-    if (githubRes.statusCode === 302 || githubRes.statusCode === 301) {
-      const redirectUrl = githubRes.headers.location
-      https.get(redirectUrl, (redirectRes) => {
-        redirectRes.pipe(res)
-      }).on('error', () => {
-        res.status(500).json({ success: false, message: 'APK ডাউনলোড করা যায়নি।' })
-      })
-    } else {
-      githubRes.pipe(res)
-    }
-  })
-
-  request.on('error', () => {
-    res.status(500).json({ success: false, message: 'APK ডাউনলোড করা যায়নি।' })
-  })
+  // Local না থাকলে GitHub-এ সরাসরি redirect করো।
+  // আগে proxy করা হতো (https.get → pipe) কিন্তু GitHub multiple 302 redirect
+  // করে — শুধু একটা follow করলে download fail হয়।
+  // তাই client-কেই GitHub-এ পাঠিয়ে দিচ্ছি, browser নিজেই সব redirect follow করবে।
+  return res.redirect(302, GITHUB_APK_URL)
 })
 
 module.exports = router
-
