@@ -9,8 +9,8 @@ const router  = express.Router()
 // নতুন APK বানালে এই দুটো বাড়ান, Render auto-deploy করবে
 // তারপর সব user এর App এ update notification আসবে
 const APP_VERSION = {
-  versionCode: 149,
-  versionName: '1.0.149',
+  versionCode: 150,
+  versionName: '1.0.150',
   apkUrl: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:5000'}/api/app/download`,
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
