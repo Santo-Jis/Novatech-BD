@@ -5,18 +5,17 @@ const fs      = require('fs')
 const router  = express.Router()
 
 // ─── Current APK version ──────────────────────────────────────
-// নতুন APK বানালে এই দুটো বাড়ান, Render auto-deploy করবে
-// তারপর সব user এর App এ update notification আসবে
+// নতুন APK বানালে GitHub Actions auto-update করবে (versionCode ও versionName)
+// apkUrl সরাসরি GitHub release — backend proxy বাদ দেওয়া হয়েছে
+const GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/latest/download/app-release.apk'
+
 const APP_VERSION = {
-  versionCode: 152,
-  versionName: '1.0.152',
-  apkUrl: `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:5000'}/api/app/download`,
+  versionCode: 150,
+  versionName: '1.0.150',
+  apkUrl: GITHUB_APK_URL,   // ← সরাসরি GitHub, backend-এর ভেতর দিয়ে নয়
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
 }
-
-// GitHub থেকে APK-এর direct download URL
-const GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/latest/download/app-release.apk'
 
 // GET /api/app/version
 router.get('/version', (req, res) => {
@@ -24,22 +23,17 @@ router.get('/version', (req, res) => {
 })
 
 // GET /api/app/download
-// সঠিক নামে APK download হবে
+// Local APK থাকলে সেটা serve করো, না থাকলে GitHub-এ redirect
 router.get('/download', (req, res) => {
   const fileName = `NovaTech-BD-v${APP_VERSION.versionName}.apk`
-
-  // প্রথমে local uploads ফোল্ডারে দেখো
   const localPath = path.join(__dirname, '../../uploads/app-release.apk')
+
   if (fs.existsSync(localPath)) {
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
     res.setHeader('Content-Type', 'application/vnd.android.package-archive')
     return res.sendFile(localPath)
   }
 
-  // Local না থাকলে GitHub-এ সরাসরি redirect করো।
-  // আগে proxy করা হতো (https.get → pipe) কিন্তু GitHub multiple 302 redirect
-  // করে — শুধু একটা follow করলে download fail হয়।
-  // তাই client-কেই GitHub-এ পাঠিয়ে দিচ্ছি, browser নিজেই সব redirect follow করবে।
   return res.redirect(302, GITHUB_APK_URL)
 })
 
