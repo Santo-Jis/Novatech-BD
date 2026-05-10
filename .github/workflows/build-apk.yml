@@ -295,7 +295,10 @@ jobs:
           FILE_NAME="NovaTech-BD-v1.0.${{ github.run_number }}.apk"
 
           # Step 1: authorize_account (v2)
-          AUTH=$(curl -s -u "${B2_KEY_ID}:${B2_APPLICATION_KEY}" \
+          # -u এর বদলে base64 header — / থাকলে -u ভেঙে যায়
+          B2_CREDENTIALS=$(echo -n "${B2_KEY_ID}:${B2_APPLICATION_KEY}" | base64 -w 0)
+          AUTH=$(curl -s \
+            -H "Authorization: Basic ${B2_CREDENTIALS}" \
             https://api.backblazeb2.com/b2api/v2/b2_authorize_account)
 
           echo "AUTH response: $AUTH"
