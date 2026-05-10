@@ -117,7 +117,8 @@ const HomeRedirect = () => {
   const { user } = useAuthStore()
 
   // portal_jwt থাকলে → customer dashboard
-  const hasPortalJWT = Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
+  const hasPortalJWT = typeof window !== 'undefined' &&
+    Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
   if (hasPortalJWT && !user) return <Navigate to="/customer/dashboard" replace />
 
   if (!user) return <Navigate to="/login" replace />
@@ -146,7 +147,8 @@ const HomeRedirect = () => {
 import { Outlet } from 'react-router-dom'
 
 const CustomerGuard = () => {
-  const hasPortalJWT = Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
+  const hasPortalJWT = typeof window !== 'undefined' &&
+    Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
   if (!hasPortalJWT) return <Navigate to="/login" replace />
   return <Outlet />
 }
