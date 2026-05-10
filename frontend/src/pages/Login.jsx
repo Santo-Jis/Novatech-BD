@@ -26,6 +26,78 @@ const useTypingEffect = (text, speed = 70, delay = 0) => {
   return { displayed, done }
 }
 
+// ── App Download Button ────────────────────────────────────
+function AppDownloadButton() {
+  const [apkUrl,      setApkUrl]      = useState(null)
+  const [version,     setVersion]     = useState('')
+  const [loading,     setLoading]     = useState(true)
+  const [downloading, setDownloading] = useState(false)
+
+  useEffect(() => {
+    fetch(`${import.meta.env.VITE_API_URL || '/api'}/app/version`)
+      .then(r => r.json())
+      .then(data => {
+        setApkUrl(data.data.apkUrl)
+        setVersion(data.data.versionName)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
+
+  if (loading || !apkUrl) return null
+
+  const handleDownload = () => {
+    setDownloading(true)
+    window.open(apkUrl, '_blank')
+    setTimeout(() => setDownloading(false), 3000)
+  }
+
+  return (
+    <button
+      onClick={handleDownload}
+      disabled={downloading}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '10px',
+        padding: '12px 22px',
+        borderRadius: '14px',
+        background: downloading ? 'rgba(74,222,128,0.08)' : 'rgba(74,222,128,0.12)',
+        border: '1px solid rgba(74,222,128,0.35)',
+        color: '#4ade80',
+        fontSize: '13px',
+        fontWeight: '700',
+        cursor: downloading ? 'default' : 'pointer',
+        transition: 'all 0.2s',
+        letterSpacing: '0.3px',
+        marginBottom: '10px',
+        width: '100%',
+        justifyContent: 'center',
+        fontFamily: "'Noto Sans Bengali', sans-serif",
+      }}
+    >
+      {downloading ? (
+        <>
+          <span style={{ width: '16px', height: '16px', border: '2px solid rgba(74,222,128,0.2)', borderTop: '2px solid #4ade80', borderRadius: '50%', animation: 'spin 0.8s linear infinite', display: 'inline-block', flexShrink: 0 }} />
+          ডাউনলোড শুরু হচ্ছে...
+        </>
+      ) : (
+        <>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          App ডাউনলোড করুন
+          <span style={{ fontSize: '10px', background: 'rgba(74,222,128,0.15)', padding: '2px 7px', borderRadius: '20px', fontWeight: '600', letterSpacing: '0.5px' }}>
+            v{version}
+          </span>
+        </>
+      )}
+    </button>
+  )
+}
+
 const LOGIN_TYPES = [
   { id: 'email', label: 'ইমেইল',     icon: FiMail,  placeholder: 'ইমেইল লিখুন',      type: 'email' },
   { id: 'phone', label: 'ফোন',       icon: FiPhone, placeholder: 'ফোন নম্বর লিখুন', type: 'tel'   },
@@ -178,7 +250,7 @@ export default function Login() {
         const cid = data.customer_id
         localStorage.setItem(`portal_jwt_${cid}`, data.portal_jwt)
         setGoogleStep('customer_redirect')
-        setTimeout(() => navigate('/customer-portal', { replace: true }), 1500)
+        setTimeout(() => navigate('/customer/dashboard', { replace: true }), 1500)
       } else if (type === 'worker') {
         setGoogleStep('need_password')
       } else {
@@ -600,6 +672,7 @@ export default function Login() {
             <div style={{ padding: '14px 24px 20px', borderTop: '1px solid rgba(255,255,255,0.05)', textAlign: 'center' }}>
               <p style={{ color: 'rgba(255,255,255,0.15)', fontSize: '11px', letterSpacing: '1px', margin: '0 0 2px' }}>NOVATECH BD (LTD.) © {new Date().getFullYear()}</p>
               <p style={{ color: 'rgba(74,222,128,0.25)', fontSize: '10px', letterSpacing: '0.5px', margin: '0 0 14px' }}>জানকি সিংহ রোড, বরিশাল সদর</p>
+              <AppDownloadButton />
               <a href="/apply/sr" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '9px 20px', borderRadius: '12px', background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.4)', color: '#f87171', fontSize: '12px', fontWeight: '600', textDecoration: 'none', transition: 'all 0.2s', letterSpacing: '0.3px' }}>
                 <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#ef4444', animation: 'pulse-green 2s ease infinite', flexShrink: 0 }} />
                 SR পদে আবেদন করুন
