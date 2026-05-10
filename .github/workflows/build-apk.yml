@@ -283,40 +283,48 @@ jobs:
 
 
       # ── Upload APK to Backblaze B2 ────────────────────────────
-      # B2-তে upload করলে নিজের server থেকে serve হবে
-      # GitHub CDN-এর বদলে b2.backblazeb2.com — scan কম হবে
+      # curl + B2 Native HTTP API — b2sdk নেই, reliable
       - name: Upload APK to Backblaze B2
         env:
           B2_KEY_ID: ${{ secrets.B2_KEY_ID }}
           B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
+          B2_BUCKET_ID: ${{ secrets.B2_BUCKET_ID }}
           B2_BUCKET_NAME: ${{ secrets.B2_BUCKET_NAME }}
-          B2_ENDPOINT: ${{ secrets.B2_ENDPOINT }}
         run: |
           APK_PATH="frontend/android/app/build/outputs/apk/release/app-release.apk"
           FILE_NAME="NovaTech-BD-v1.0.${{ github.run_number }}.apk"
-          
-          pip install b2sdk --quiet
-          
-          python3 << 'EOF'
-          import os
-          from b2sdk.v2 import InMemoryAccountInfo, B2Api
-          
-          info = InMemoryAccountInfo()
-          api = B2Api(info)
-          api.authorize_account("production", os.environ["B2_KEY_ID"], os.environ["B2_APPLICATION_KEY"])
-          
-          bucket = api.get_bucket_by_name(os.environ["B2_BUCKET_NAME"])
-          
-          apk_path = "frontend/android/app/build/outputs/apk/release/app-release.apk"
-          file_name = f"NovaTech-BD-v1.0.${{ github.run_number }}.apk"
-          
-          # latest.apk নামেও রাখো — সবসময় এই URL কাজ করবে
-          bucket.upload_local_file(local_file=apk_path, file_name="app-release.apk")
-          bucket.upload_local_file(local_file=apk_path, file_name=file_name)
-          
-          print(f"✅ Uploaded: {file_name}")
-          print(f"✅ Uploaded: app-release.apk")
-          EOF
+
+          # Step 1: authorize_account → apiUrl + authToken নাও
+          AUTH=$(curl -s -u "${B2_KEY_ID}:${B2_APPLICATION_KEY}" \
+            https://api.backblazeb2.com/b2api/v3/b2_authorize_account)
+
+          API_URL=$(echo "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['apiInfo']['storageApi']['apiUrl'])")
+          AUTH_TOKEN=$(echo "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['authorizationToken'])")
+          DOWNLOAD_URL=$(echo "$AUTH" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['apiInfo']['storageApi']['downloadUrl'])")
+
+          echo "✅ Authorized. API URL: $API_URL"
+
+          # Step 2: get_upload_url → uploadUrl + uploadAuthToken নাও
+          UPLOAD_URL_RES=$(curl -s -H "Authorization: $AUTH_TOKEN" \
+            -d "{\"bucketId\": \"${B2_BUCKET_ID}\"}" \
+            "${API_URL}/b2api/v3/b2_get_upload_url")
+
+          UPLOAD_URL=$(echo "$UPLOAD_URL_RES" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['uploadUrl'])")
+          UPLOAD_TOKEN=$(echo "$UPLOAD_URL_RES" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['authorizationToken'])")
+
+          echo "✅ Upload URL ready"
+
+          # Step 3: versioned নামে upload করো
+          SHA1=$(sha1sum "$APK_PATH" | cut -d' ' -f1)
+          curl -s \
+            -H "Authorization: $UPLOAD_TOKEN" \
+            -H "X-Bz-File-Name: $FILE_NAME" \
+            -H "Content-Type: application/vnd.android.package-archive" \
+            -H "X-Bz-Content-Sha1: $SHA1" \
+            --data-binary "@$APK_PATH" \
+            "$UPLOAD_URL" | python3 -c "import sys,json; d=json.load(sys.stdin); print('✅ Uploaded:', d.get('fileName','?'))"
+
+          echo "📦 Download URL: ${DOWNLOAD_URL}/file/${B2_BUCKET_NAME}/${FILE_NAME}"
 
       # ── Artifact Upload ────────────────────────────────────────
       - name: Upload APK artifact
