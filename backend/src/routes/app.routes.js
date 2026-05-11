@@ -2,52 +2,19 @@
 const express = require('express')
 const https   = require('https')
 const http    = require('http')
-const axios   = require('axios')
 const router  = express.Router()
 
 // ─── Current APK version ──────────────────────────────────────
-// GitHub Actions auto-update করবে: versionCode, versionName, B2_FILE_NAME
-const B2_FILE_NAME = 'NovaTech-BD-v1.0.169.apk'
+// GitHub Actions auto-update করবে: versionCode, versionName
+// latest URL ব্যবহার করায় সবসময় সর্বশেষ APK পাবে
+const GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/latest/download/app-release.apk'
 
 const APP_VERSION = {
-  versionCode: 169,
+  versionCode: 158,
   versionName: '1.0.158',
-  apkUrl: 'https://novatechbd-backend.onrender.com/api/app/download',  // Render backend proxy → সঠিক নামে download
+  apkUrl: 'https://novatechbd-backend.onrender.com/api/app/download',
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
-}
-
-// B2 authorize করে download URL + token নেয়
-const getB2DownloadAuth = async () => {
-  const keyId  = process.env.B2_KEY_ID
-  const appKey = process.env.B2_APPLICATION_KEY
-  const bucketName = process.env.B2_BUCKET_NAME
-
-  // Step 1: authorize_account
-  const authRes = await axios.get('https://api.backblazeb2.com/b2api/v3/b2_authorize_account', {
-    auth: { username: keyId, password: appKey },
-  })
-
-  const { authorizationToken, apiInfo } = authRes.data
-  const apiUrl = apiInfo.storageApi.apiUrl
-
-  // Step 2: get_download_authorization (private bucket용 token)
-  const dlAuthRes = await axios.post(
-    `${apiUrl}/b2api/v3/b2_get_download_authorization`,
-    {
-      bucketId:               process.env.B2_BUCKET_ID,
-      fileNamePrefix:         B2_FILE_NAME,
-      validDurationInSeconds: 3600,
-    },
-    { headers: { Authorization: authorizationToken } }
-  )
-
-  const downloadUrl = apiInfo.storageApi.downloadUrl
-
-  return {
-    downloadUrl,
-    downloadToken: dlAuthRes.data.authorizationToken,
-  }
 }
 
 // GET /api/app/version
@@ -56,35 +23,44 @@ router.get('/version', (req, res) => {
 })
 
 // GET /api/app/download
-// B2 private bucket থেকে authorized download → সঠিক নামে serve
-router.get('/download', async (req, res) => {
-  const fileName = B2_FILE_NAME
+// GitHub থেকে APK pipe করে সঠিক নামে serve করে
+router.get('/download', (req, res) => {
+  const fileName = `NovaTech-BD-v${APP_VERSION.versionName}.apk`
 
-  try {
-    const { downloadUrl, downloadToken } = await getB2DownloadAuth()
+  const fetchAndPipe = (url, redirectCount = 0) => {
+    if (redirectCount > 5) {
+      return res.status(500).json({ error: 'Too many redirects' })
+    }
 
-    const fileUrl = `${downloadUrl}/file/${process.env.B2_BUCKET_NAME}/${fileName}`
+    const lib = url.startsWith('https') ? https : http
 
-    const b2Res = await axios.get(fileUrl, {
-      headers:      { Authorization: downloadToken },
-      responseType: 'stream',
+    lib.get(url, (apkRes) => {
+      // redirect follow করো
+      if (apkRes.statusCode === 301 || apkRes.statusCode === 302 || apkRes.statusCode === 307) {
+        return fetchAndPipe(apkRes.headers.location, redirectCount + 1)
+      }
+
+      if (apkRes.statusCode !== 200) {
+        return res.status(502).json({ error: 'APK fetch failed', status: apkRes.statusCode })
+      }
+
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive')
+
+      if (apkRes.headers['content-length']) {
+        res.setHeader('Content-Length', apkRes.headers['content-length'])
+      }
+
+      apkRes.pipe(res)
+    }).on('error', (err) => {
+      console.error('APK download error:', err)
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Download failed' })
+      }
     })
-
-    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`)
-    res.setHeader('Content-Type', 'application/vnd.android.package-archive')
-
-    if (b2Res.headers['content-length']) {
-      res.setHeader('Content-Length', b2Res.headers['content-length'])
-    }
-
-    b2Res.data.pipe(res)
-
-  } catch (err) {
-    console.error('B2 download error:', err?.response?.data || err.message)
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'APK download failed' })
-    }
   }
+
+  fetchAndPipe(GITHUB_APK_URL)
 })
 
 module.exports = router
