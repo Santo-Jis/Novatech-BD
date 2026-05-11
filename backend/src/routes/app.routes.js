@@ -7,10 +7,10 @@ const router  = express.Router()
 
 // ─── Current APK version ──────────────────────────────────────
 // GitHub Actions auto-update করবে: versionCode, versionName, B2_FILE_NAME
-const B2_FILE_NAME = 'NovaTech-BD-v1.0.158.apk'
+const B2_FILE_NAME = 'NovaTech-BD-v1.0.169.apk'
 
 const APP_VERSION = {
-  versionCode: 158,
+  versionCode: 169,
   versionName: '1.0.158',
   apkUrl: 'https://novatechbd-backend.onrender.com/api/app/download',  // Render backend proxy → সঠিক নামে download
   forceUpdate: false,
