@@ -280,7 +280,15 @@ export default function Login() {
       let email, name
 
       if (Capacitor.isNativePlatform()) {
-        // Android/iOS App → Native Google Sign-In SDK
+        // Android App → capacitor.config.json-এর serverClientId ব্যবহার হয়
+        await GoogleAuth.initialize({
+          scopes: ['profile', 'email'],
+        })
+        const googleUser = await GoogleAuth.signIn()
+        email = googleUser.email
+        name  = googleUser.name
+      } else {
+        // Web Browser → Web client ID দিয়ে initialize
         await GoogleAuth.initialize({
           clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
           scopes: ['profile', 'email'],
@@ -288,10 +296,6 @@ export default function Login() {
         const googleUser = await GoogleAuth.signIn()
         email = googleUser.email
         name  = googleUser.name
-      } else {
-        // Browser fallback — Google One Tap / redirect flow
-        // (web-এ @react-oauth/google ব্যবহার করলে এখানে handle করুন)
-        throw new Error('Web Google login not configured.')
       }
 
       setGoogleEmail(email)
