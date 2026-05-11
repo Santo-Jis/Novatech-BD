@@ -27,6 +27,17 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      # ── Print Debug SHA-1 ──────────────────────────────────────
+      - name: Print Debug Keystore SHA-1
+        run: |
+          keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android \
+            2>/dev/null | grep "SHA1:"
+          echo "✅ Debug SHA-1 printed above"
+
       # ── Auto Version ──────────────────────────────────────────
       - name: Update version automatically
         run: |
@@ -197,6 +208,16 @@ jobs:
         run: |
           echo "$KEYSTORE_BASE64" | base64 --decode > frontend/android/app/release.keystore
           echo "✅ Keystore decoded"
+
+      # ── Print Release SHA-1 ────────────────────────────────────
+      - name: Print Release Keystore SHA-1
+        run: |
+          keytool -list -v \
+            -keystore frontend/android/app/release.keystore \
+            -alias ${{ secrets.KEY_ALIAS }} \
+            -storepass ${{ secrets.STORE_PASSWORD }} \
+            2>/dev/null | grep "SHA1:"
+          echo "✅ Release SHA-1 printed above"
 
       # ── Signing Config Patch ───────────────────────────────────
       - name: Add signing config to build.gradle
