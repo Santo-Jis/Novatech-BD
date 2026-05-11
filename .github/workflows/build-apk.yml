@@ -29,6 +29,7 @@ jobs:
 
       # ── Print Debug SHA-1 ──────────────────────────────────────
       - name: Print Debug Keystore SHA-1
+        continue-on-error: true
         run: |
           mkdir -p ~/.android
           echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 --decode > ~/.android/debug.keystore
