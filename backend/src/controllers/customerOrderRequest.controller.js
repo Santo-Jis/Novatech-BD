@@ -178,7 +178,7 @@ const getMyOrderRequests = async (req, res) => {
 // ============================================================
 const getAllOrderRequests = async (req, res) => {
     try {
-        const { status = 'pending', limit = 50, offset = 0 } = req.query;
+        const { status = 'pending', limit = 50, offset = 0, route_id, worker_id, from, to } = req.query;
 
         const conditions = [];
         const params     = [];
@@ -189,6 +189,17 @@ const getAllOrderRequests = async (req, res) => {
             params.push(status);
         }
 
+        // Team Filter: Manager শুধু নিজের রুটের customer দেখবে
+        if (req.teamFilter) {
+            conditions.push(`r.manager_id = $${pIdx++}`);
+            params.push(req.teamFilter);
+        }
+
+        if (route_id) { conditions.push(`c.route_id = $${pIdx++}`); params.push(parseInt(route_id)); }
+        if (worker_id) { conditions.push(`cor.assigned_to = $${pIdx++}`); params.push(worker_id); }
+        if (from) { conditions.push(`DATE(cor.created_at) >= $${pIdx++}`); params.push(from); }
+        if (to)   { conditions.push(`DATE(cor.created_at) <= $${pIdx++}`); params.push(to); }
+
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
         params.push(parseInt(limit));
@@ -198,10 +209,13 @@ const getAllOrderRequests = async (req, res) => {
             `SELECT
                 cor.id, cor.items, cor.note, cor.status,
                 cor.admin_note, cor.created_at, cor.updated_at,
+                cor.customer_id,
                 c.shop_name, c.owner_name, c.customer_code, c.whatsapp,
+                r.name AS route_name,
                 u.name_bn AS assigned_sr_name
              FROM customer_order_requests cor
              JOIN customers c ON cor.customer_id = c.id
+             LEFT JOIN routes r ON c.route_id = r.id
              LEFT JOIN users u ON cor.assigned_to = u.id
              ${whereClause}
              ORDER BY cor.created_at DESC
@@ -209,23 +223,50 @@ const getAllOrderRequests = async (req, res) => {
             params
         );
 
-        // মোট সংখ্যা
+        // প্রতিটা order এর items এ stock তথ্য যোগ করো
+        const enriched = await Promise.all(rows.map(async (row) => {
+            let items = row.items;
+            if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
+            if (!Array.isArray(items)) items = [];
+
+            const itemsWithStock = await Promise.all(items.map(async (item) => {
+                const stockRes = await query(
+                    `SELECT name, (stock - COALESCE(reserved_stock,0)) AS available_stock
+                     FROM products WHERE id = $1`,
+                    [item.product_id]
+                );
+                const p = stockRes.rows[0];
+                const available = p ? parseInt(p.available_stock) : 0;
+                return {
+                    ...item,
+                    product_name:    p?.name || item.product_name || 'অজানা পণ্য',
+                    available_stock: available,
+                    stock_ok:        available >= parseInt(item.qty || 1),
+                };
+            }));
+
+            const hasStockIssue = itemsWithStock.some(i => !i.stock_ok);
+            return { ...row, items: itemsWithStock, has_stock_issue: hasStockIssue };
+        }));
+
         const countResult = await query(
             `SELECT COUNT(*) AS total
              FROM customer_order_requests cor
+             JOIN customers c ON cor.customer_id = c.id
+             LEFT JOIN routes r ON c.route_id = r.id
              ${whereClause}`,
             params.slice(0, -2)
         );
 
         return res.status(200).json({
             success: true,
-            data: rows,
+            data: enriched,
             total: parseInt(countResult.rows[0].total)
         });
 
     } catch (error) {
-        console.error('❌ getAllOrderRequests Error:', error.message);
-        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+        console.error('\u274c getAllOrderRequests Error:', error.message);
+        return res.status(500).json({ success: false, message: '\u09a4\u09a5\u09cd\u09af \u0986\u09a8\u09a4\u09c7 \u09b8\u09ae\u09b8\u09cd\u09af\u09be \u09b9\u09af\u09bc\u09c7\u099b\u09c7\u0964' });
     }
 };
 
@@ -379,5 +420,75 @@ module.exports = {
     getMyOrderRequests,
     getAllOrderRequests,
     updateOrderRequest,
+    notifyAdminStockWarning,
     getPortalProducts,
+};
+
+// ============================================================
+// STOCK WARNING → Admin Notify
+// POST /api/customer-order-requests/:id/stock-warning
+// Manager ক্লিক করলে Admin কে notification যাবে
+// ============================================================
+const notifyAdminStockWarning = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { items } = req.body; // stock কম এমন items
+
+        // Order info নাও
+        const orderRes = await query(
+            `SELECT cor.id, c.shop_name, c.customer_code
+             FROM customer_order_requests cor
+             JOIN customers c ON cor.customer_id = c.id
+             WHERE cor.id = $1`,
+            [id]
+        );
+        if (orderRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'অর্ডার পাওয়া যায়নি।' });
+        }
+        const order = orderRes.rows[0];
+
+        // Admin দের ID নাও
+        const adminRes = await query(
+            `SELECT id FROM users WHERE role = 'admin' AND status = 'active'`
+        );
+        const adminIds = adminRes.rows.map(r => r.id);
+
+        if (adminIds.length === 0) {
+            return res.status(200).json({ success: true, message: 'কোনো Admin নেই।' });
+        }
+
+        // প্রতিটা Admin এর জন্য notification সেভ করো
+        const lowItems = Array.isArray(items) ? items : [];
+        const itemText = lowItems.map(i => `${i.product_name} (চাই: ${i.qty}, আছে: ${i.available_stock})`).join(', ');
+
+        const title = `⚠️ স্টক সংকট — ${order.shop_name}`;
+        const body  = `অর্ডার #${order.customer_code}: ${itemText || 'কিছু পণ্যের স্টক কম।'}`;
+
+        for (const adminId of adminIds) {
+            await query(
+                `INSERT INTO notifications (user_id, title, body, type, reference_id)
+                 VALUES ($1, $2, $3, 'stock_warning', $4)
+                 ON CONFLICT DO NOTHING`,
+                [adminId, title, body, id]
+            ).catch(() => {}); // notifications table না থাকলেও চলবে
+        }
+
+        // FCM Push — Admin দের কাছে
+        const { sendPushToMany } = require('../services/fcm.service');
+        const fcmRes = await query(
+            `SELECT fcm_token FROM users WHERE id = ANY($1) AND fcm_token IS NOT NULL`,
+            [adminIds]
+        ).catch(() => ({ rows: [] }));
+
+        const tokens = fcmRes.rows.map(r => r.fcm_token).filter(Boolean);
+        if (tokens.length > 0) {
+            await sendPushToMany(tokens, { title, body, type: 'stock_warning' }).catch(() => {});
+        }
+
+        return res.status(200).json({ success: true, message: 'Admin কে সতর্কতা পাঠানো হয়েছে।' });
+
+    } catch (error) {
+        console.error('❌ notifyAdminStockWarning Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
 };
