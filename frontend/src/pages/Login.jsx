@@ -282,18 +282,32 @@ export default function Login() {
       let email, name
 
       if (Capacitor.isNativePlatform()) {
-        // Android App → Capacitor Google Auth plugin
+        // Android APK → Capacitor Google Auth
         await GoogleAuth.initialize({ scopes: ['profile', 'email'] })
         const googleUser = await GoogleAuth.signIn()
-        email = googleUser.email
-        name  = googleUser.name
+
+        // Capacitor GoogleAuth response: googleUser.email, googleUser.givenName
+        // authentication.accessToken দিয়ে userinfo নেওয়া যায়
+        const accessToken = googleUser.authentication?.accessToken
+        if (accessToken) {
+          // access_token দিয়ে Google userinfo থেকে email নিই
+          const infoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          })
+          const info = await infoResp.json()
+          email = info.email
+          name  = info.name
+        } else {
+          // fallback: plugin থেকে সরাসরি নিই
+          email = googleUser.email
+          name  = googleUser.displayName || googleUser.name || googleUser.givenName
+        }
+
       } else {
         // Web Browser → GSI (Google Identity Services) popup
-        // Capacitor plugin web এ কাজ করে না, তাই GSI ব্যবহার করি
         const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
         if (!clientId) throw new Error('VITE_GOOGLE_CLIENT_ID সেট নেই।')
 
-        // GSI script load করি
         const access_token = await new Promise((resolve, reject) => {
           const existingScript = document.querySelector('script[src*="accounts.google.com/gsi"]')
           const initGSI = () => {
@@ -320,7 +334,6 @@ export default function Login() {
           }
         })
 
-        // access_token দিয়ে userinfo নাও
         const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers: { Authorization: `Bearer ${access_token}` }
         })
@@ -349,17 +362,22 @@ export default function Login() {
 
     } catch (err) {
       // User নিজে cancel করলে
-      if (err?.message?.includes('cancel') || err?.message?.includes('dismissed') || err?.code === 12501) {
+      if (
+        err?.message?.includes('cancel') ||
+        err?.message?.includes('dismissed') ||
+        err?.message?.includes('closed') ||
+        err?.code === 12501
+      ) {
         setGoogleStep('idle')
         return
       }
-      // Debug: আসল error দেখাও
-      const debugMsg = err?.message || JSON.stringify(err) || 'Unknown error'
-      const msg = err?.response?.data?.message || debugMsg
-      const type = err?.response?.data?.type
-      if (type === 'blocked') { setGoogleStep('blocked'); setGoogleError(msg) }
-      else if (type === 'unknown') { setGoogleStep('unknown') }
-      else { setGoogleStep('idle'); setGoogleError(msg) }
+      const backendMsg = err?.response?.data?.message
+      const backendType = err?.response?.data?.type
+      const debugMsg = backendMsg || err?.message || JSON.stringify(err) || 'Unknown error'
+
+      if (backendType === 'blocked') { setGoogleStep('blocked'); setGoogleError(debugMsg) }
+      else if (backendType === 'unknown') { setGoogleStep('unknown') }
+      else { setGoogleStep('idle'); setGoogleError(debugMsg) }
     }
   }
 
