@@ -55,7 +55,7 @@ export default function ManagerLayout() {
         </nav>
 
         <div className="p-4 border-t border-white/10">
-          <button onClick={logout} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/70 hover:bg-white/10 hover:text-white text-sm">
+          <button onClick={() => logout()} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/70 hover:bg-white/10 hover:text-white text-sm">
             <FiLogOut className="text-lg" />
             <span>লগআউট</span>
           </button>
