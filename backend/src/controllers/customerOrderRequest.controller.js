@@ -415,15 +415,6 @@ const getPortalProducts = async (req, res) => {
     }
 };
 
-module.exports = {
-    createOrderRequest,
-    getMyOrderRequests,
-    getAllOrderRequests,
-    updateOrderRequest,
-    notifyAdminStockWarning,
-    getPortalProducts,
-};
-
 // ============================================================
 // STOCK WARNING → Admin Notify
 // POST /api/customer-order-requests/:id/stock-warning
@@ -491,4 +482,14 @@ const notifyAdminStockWarning = async (req, res) => {
         console.error('❌ notifyAdminStockWarning Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
+};
+
+
+module.exports = {
+    createOrderRequest,
+    getMyOrderRequests,
+    getAllOrderRequests,
+    updateOrderRequest,
+    notifyAdminStockWarning,
+    getPortalProducts,
 };
