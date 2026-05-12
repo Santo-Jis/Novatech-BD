@@ -25,7 +25,9 @@ export function useFirebaseNotifications() {
     if (!user?.id) return
 
     // সব পুরনো listener বন্ধ করো
-    listenersRef.current.forEach(({ ref: r, handler }) => off(r, 'child_added', handler))
+    // ✅ FIX: subscribe হয়েছে 'value' event-এ, তাই off() ও 'value' দিয়ে।
+    // আগে 'child_added' লেখা ছিল — wrong event, listener detach হত না।
+    listenersRef.current.forEach(({ ref: r, handler }) => off(r, 'value', handler))
     listenersRef.current = []
 
     // ── ১. অর্ডার নোটিফিকেশন (Manager এর জন্য) ──
@@ -230,6 +232,10 @@ export function useFirebaseNotifications() {
     }
 
     // Cleanup
+    // ✅ FIX: onlyOnce listener গুলো (orders/settlements/approvals/bonus)
+    // একবার fire করেই auto-detach হয় — এদের off() করার দরকার নেই।
+    // listenersRef-এ শুধু persistent listener (liveAttHandler) থাকে।
+    // সেটার জন্য off(r, 'value', handler) সঠিক।
     return () => {
       listenersRef.current.forEach(({ ref: r, handler }) => {
         try { off(r, 'value', handler) } catch {}
@@ -277,7 +283,11 @@ export function useOnlinePresence() {
     })
 
     return () => {
-      off(connectedRef, 'value', unsubscribe)
+      // ✅ FIX: onValue() একটি unsubscribe function return করে।
+      // off(ref, event, fn) এ সেটাকে handler হিসেবে দেওয়া ভুল —
+      // listener detach হয় না, memory leak হয়।
+      // সঠিক পদ্ধতি: unsubscribe() সরাসরি call করো।
+      unsubscribe()
       set(presenceRef, {
         online:   false,
         name:     user.name_bn,
