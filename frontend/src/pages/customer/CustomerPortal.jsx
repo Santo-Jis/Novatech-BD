@@ -42,6 +42,25 @@ const webGoogleLogin = (clientId) => new Promise(async (resolve, reject) => {
 // ── Backend URL ───────────────────────────────────────────────
 const BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
+// ── Device Fingerprint — browser info থেকে consistent ID তৈরি ─
+// Server-side hash করা হবে, তাই raw string পাঠানো হয়
+const getDeviceFingerprint = () => {
+  try {
+    const parts = [
+      navigator.userAgent,
+      navigator.language,
+      `${screen.width}x${screen.height}`,
+      screen.colorDepth,
+      new Date().getTimezoneOffset(),
+      navigator.hardwareConcurrency || '',
+      navigator.platform || '',
+    ]
+    return btoa(parts.join('|')).replace(/[/+=]/g, '').slice(0, 64)
+  } catch {
+    return 'unknown-device'
+  }
+}
+
 // ── axios ব্যবহার না করে সরাসরি fetch — interceptor bypass ──
 const portalFetch = async (path, options = {}) => {
   const res = await fetch(`${BACKEND}${path}`, {
@@ -478,7 +497,13 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
   const [invoiceTotal,    setInvoiceTotal]    = useState(0)
   const [invoiceLoading,  setInvoiceLoading]  = useState(false)
 
+  // ── সমস্যা ২ FIX: localStorage → sessionStorage (XSS ঝুঁকি কমানো) ──
+  // sessionStorage ব্রাউজার ট্যাব বন্ধ হলে মুছে যায়, অন্য ট্যাবে শেয়ার হয় না
   const getStorageKey = (cid) => `portal_jwt_${cid}`
+  const storageGet = (key) => sessionStorage.getItem(key)
+  const storageSet = (key, val) => sessionStorage.setItem(key, val)
+  const storageRemove = (key) => sessionStorage.removeItem(key)
+  const storageKeys = () => Object.keys(sessionStorage).filter(k => k.startsWith('portal_jwt_'))
 
   const loadDashboard = async (jwt) => {
     try {
@@ -486,6 +511,9 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
         headers: { Authorization: `Bearer ${jwt}` }
       })
       setDashboard(data.data)
+      // সমস্যা ৩ FIX: dashboard-এর sales count দিয়েই invoiceTotal initialize করো
+      const totalFromDashboard = data.data?.total_summary?.total_invoices
+      if (totalFromDashboard) setInvoiceTotal(parseInt(totalFromDashboard))
       setPhase('dashboard')
       loadNotifications(jwt)
       requestPushPermission(jwt)
@@ -510,6 +538,7 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
       }
       setInvoicePage(data.pagination?.page || page)
       setInvoiceTotalPages(data.pagination?.totalPages || 1)
+      // সমস্যা ৩ FIX: API response-এর সঠিক field নাম ব্যবহার (total, totalPages)
       setInvoiceTotal(data.pagination?.total || 0)
     } catch (err) {
       console.error('Invoice load error:', err)
@@ -569,40 +598,73 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
       })
       if (!fcmToken) return
       const cacheKey = 'portal_fcm_token'
-      if (localStorage.getItem(cacheKey) === fcmToken) return
+      if (sessionStorage.getItem(cacheKey) === fcmToken) return
       await portalFetch('/portal/save-fcm-token', {
         method: 'POST',
         headers: { Authorization: `Bearer ${jwt}` },
         body: JSON.stringify({ fcm_token: fcmToken }),
       })
-      localStorage.setItem(cacheKey, fcmToken)
+      sessionStorage.setItem(cacheKey, fcmToken)
     } catch (e) { console.warn('[Portal FCM] Permission/token error:', e.message) }
   }
 
   useEffect(() => {
     const init = async () => {
+      const deviceId = getDeviceFingerprint()
+
       if (portalToken) {
         try {
-          const data = await portalFetch(`/portal/verify-token?token=${portalToken}`)
+          // device_id পাঠাই — server চেক করবে এই device lock আছে কিনা
+          const data = await portalFetch(
+            `/portal/verify-token?token=${portalToken}&device_id=${encodeURIComponent(deviceId)}`
+          )
           const info = data.data
           setTokenInfo(info)
-          const savedJWT = localStorage.getItem(getStorageKey(info.customer_id))
+
+          // ── নতুন: এই ডিভাইস আগে lock হয়েছে → Google login দরকার নেই
+          if (info.can_skip_google) {
+            // Device re-login — Google ছাড়াই JWT নাও
+            try {
+              const loginData = await portalFetch('/portal/device-login', {
+                method: 'POST',
+                body: JSON.stringify({ portal_token: portalToken, device_id: deviceId })
+              })
+              const jwt        = loginData.data.portal_jwt
+              const customerId = loginData.data.customer?.id
+              if (customerId) storageSet(getStorageKey(customerId), jwt)
+              setPortalJWT(jwt)
+              await loadDashboard(jwt)
+            } catch (err) {
+              // device login ব্যর্থ → Google login দেখাও
+              setPhase('login')
+            }
+            return
+          }
+
+          // sessionStorage-এ JWT আছে → সরাসরি dashboard
+          const savedJWT = storageGet(getStorageKey(info.customer_id))
           if (savedJWT) {
             setPortalJWT(savedJWT)
             await loadDashboard(savedJWT)
           } else {
-            setPhase('welcome')  // নতুন customer → আগে Welcome দেখাও
+            setPhase('welcome')
           }
         } catch (err) {
-          setError(err.message || 'অবৈধ বা মেয়াদোত্তীর্ণ লিংক।')
+          // DEVICE_LOCKED error — বিশেষ বার্তা দেখাও
+          if (err.status === 403) {
+            setError(err.message || 'এই লিংক অন্য ডিভাইসে lock করা আছে।')
+          } else {
+            setError(err.message || 'অবৈধ বা মেয়াদোত্তীর্ণ লিংক।')
+          }
           setPhase('invalid')
         }
         return
       }
 
-      const allKeys = Object.keys(localStorage).filter(k => k.startsWith('portal_jwt_'))
+      // URL-এ token নেই → sessionStorage চেক
+      const allKeys = storageKeys()
       if (allKeys.length > 0) {
-        const savedJWT = localStorage.getItem(allKeys[0])
+        const savedJWT = storageGet(allKeys[0])
         if (savedJWT) {
           setPortalJWT(savedJWT)
           await loadDashboard(savedJWT)
@@ -639,12 +701,13 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
         method: 'POST',
         body: JSON.stringify({
           google_token: access_token,
-          portal_token: portalToken
+          portal_token: portalToken,
+          device_id:    getDeviceFingerprint()   // ← device lock এর জন্য
         })
       })
       const jwt        = data.data.portal_jwt
       const customerId = data.data.customer?.id
-      if (customerId) localStorage.setItem(getStorageKey(customerId), jwt)
+      if (customerId) storageSet(getStorageKey(customerId), jwt)
       setPortalJWT(jwt)
       await loadDashboard(jwt)
     } catch (err) {
@@ -668,8 +731,12 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
   if (phase === 'invalid') return (
     <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center p-6">
       <div className="bg-white rounded-3xl shadow-xl p-8 max-w-sm w-full text-center">
-        <div className="text-5xl mb-4">⚠️</div>
-        <h2 className="text-xl font-bold text-gray-800 mb-2">লিংক অকার্যকর</h2>
+        <div className="text-5xl mb-4">
+          {error.includes('অন্য') || error.includes('lock') ? '🔒' : '⚠️'}
+        </div>
+        <h2 className="text-xl font-bold text-gray-800 mb-2">
+          {error.includes('অন্য') || error.includes('lock') ? 'অ্যাক্সেস নেই' : 'লিংক অকার্যকর'}
+        </h2>
         <p className="text-gray-500 text-sm">{error}</p>
         <p className="text-xs text-gray-400 mt-4">নতুন লিংকের জন্য আপনার SR-এর সাথে যোগাযোগ করুন।</p>
       </div>
@@ -815,7 +882,7 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
     const tabs = [
       { id: 'summary',  label: 'সারসংক্ষেপ' },
       { id: 'orders',   label: '🛒 অর্ডার' },
-      { id: 'invoices', label: `ইনভয়েস (${invoiceTotal || sales.length})` },
+      { id: 'invoices', label: `ইনভয়েস (${invoiceTotal > 0 ? invoiceTotal : total_summary?.total_invoices || 0})` },
       { id: 'payments', label: `পরিশোধ (${credit_payments.length})` },
     ]
 
@@ -880,7 +947,8 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
 
               <button
                 onClick={() => {
-                  Object.keys(localStorage).filter(k => k.startsWith('portal_jwt_')).forEach(k => localStorage.removeItem(k))
+                  storageKeys().forEach(k => storageRemove(k))
+                  storageRemove('portal_fcm_token')
                   setPhase('login'); setDashboard(null); setPortalJWT(null)
                 }}
                 style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 10, padding: '6px 12px', color: 'white', fontSize: 12, cursor: 'pointer' }}
