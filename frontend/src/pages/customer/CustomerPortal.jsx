@@ -591,7 +591,7 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
             setPortalJWT(savedJWT)
             await loadDashboard(savedJWT)
           } else {
-            setPhase('login')
+            setPhase('welcome')  // নতুন customer → আগে Welcome দেখাও
           }
         } catch (err) {
           setError(err.message || 'অবৈধ বা মেয়াদোত্তীর্ণ লিংক।')
@@ -673,6 +673,85 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
         <p className="text-gray-500 text-sm">{error}</p>
         <p className="text-xs text-gray-400 mt-4">নতুন লিংকের জন্য আপনার SR-এর সাথে যোগাযোগ করুন।</p>
       </div>
+    </div>
+  )
+
+  // ── RENDER: WELCOME ──────────────────────────────────────
+  if (phase === 'welcome') return (
+    <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #1d4ed8 100%)' }}>
+      {/* Top wave decoration */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+
+        {/* Logo */}
+        <div style={{ width: 80, height: 80, borderRadius: 24, background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(10px)', border: '2px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+          <span style={{ color: 'white', fontSize: 36, fontWeight: 800, fontFamily: 'Georgia, serif' }}>N</span>
+        </div>
+
+        <h1 style={{ color: 'white', fontSize: 26, fontWeight: 800, margin: '0 0 6px', textAlign: 'center', fontFamily: "'Hind Siliguri', sans-serif" }}>
+          NovaTech BD
+        </h1>
+        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, margin: '0 0 32px', letterSpacing: 1 }}>
+          কাস্টমার পোর্টাল
+        </p>
+
+        {/* Customer info card */}
+        {tokenInfo && (
+          <div style={{ background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 20, padding: '20px 24px', width: '100%', maxWidth: 360, marginBottom: 28, textAlign: 'center' }}>
+            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, marginBottom: 6, letterSpacing: 1 }}>আপনার দোকান</p>
+            <p style={{ color: 'white', fontSize: 20, fontWeight: 700, margin: '0 0 4px', fontFamily: "'Hind Siliguri', sans-serif" }}>
+              🏪 {tokenInfo.shop_name}
+            </p>
+            <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: 14, margin: '0 0 8px' }}>{tokenInfo.owner_name}</p>
+            <span style={{ background: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.8)', fontSize: 11, padding: '3px 12px', borderRadius: 20 }}>
+              কোড: {tokenInfo.customer_code}
+            </span>
+          </div>
+        )}
+
+        {/* Features list */}
+        <div style={{ width: '100%', maxWidth: 360, marginBottom: 32, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[
+            { icon: '📊', title: 'হিসাবের সারসংক্ষেপ', desc: 'আপনার মোট কেনাকাটা ও বাকির তথ্য' },
+            { icon: '📦', title: 'অর্ডার ট্র্যাকিং', desc: 'অর্ডার করুন ও স্ট্যাটাস দেখুন' },
+            { icon: '🧾', title: 'ইনভয়েস ইতিহাস', desc: 'সকল ক্রয়ের বিবরণ একজায়গায়' },
+          ].map(f => (
+            <div key={f.icon} style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'rgba(255,255,255,0.08)', borderRadius: 14, padding: '12px 16px' }}>
+              <span style={{ fontSize: 24, flexShrink: 0 }}>{f.icon}</span>
+              <div>
+                <p style={{ color: 'white', fontSize: 13, fontWeight: 600, margin: 0, fontFamily: "'Hind Siliguri', sans-serif" }}>{f.title}</p>
+                <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, margin: 0 }}>{f.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* CTA Button */}
+        <button
+          onClick={() => setPhase('login')}
+          style={{ width: '100%', maxWidth: 360, padding: '16px', borderRadius: 16, background: 'white', border: 'none', color: '#1e3a8a', fontSize: 16, fontWeight: 700, cursor: 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontFamily: "'Hind Siliguri', sans-serif", display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, transition: 'transform 0.15s' }}
+          onMouseDown={e => e.currentTarget.style.transform = 'scale(0.97)'}
+          onMouseUp={e => e.currentTarget.style.transform = 'scale(1)'}
+          onTouchStart={e => e.currentTarget.style.transform = 'scale(0.97)'}
+          onTouchEnd={e => e.currentTarget.style.transform = 'scale(1)'}
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          Google দিয়ে প্রবেশ করুন
+        </button>
+
+        <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 11, marginTop: 16, textAlign: 'center' }}>
+          আপনার Gmail অ্যাকাউন্ট দিয়ে নিরাপদে প্রবেশ করুন
+        </p>
+      </div>
+
+      {/* Bottom */}
+      <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: 11, padding: '16px', letterSpacing: 0.5 }}>
+        © {new Date().getFullYear()} NovaTech BD Ltd.
+      </p>
     </div>
   )
 
