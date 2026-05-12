@@ -149,8 +149,20 @@ import { Outlet } from 'react-router-dom'
 const CustomerGuard = () => {
   const hasPortalJWT = typeof window !== 'undefined' &&
     Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
-  if (!hasPortalJWT) return <Navigate to="/login" replace />
-  return <Outlet />
+
+  // portal_jwt আছে → ভেতরে যাও
+  if (hasPortalJWT) return <Outlet />
+
+  // portal_jwt নেই কিন্তু URL-এ ?token= আছে (WhatsApp লিংক)
+  // token টা preserve করে dashboard-এ পাঠাও — CustomerPortal Google login দেখাবে
+  const params = new URLSearchParams(window.location.search)
+  const token  = params.get('token')
+  if (token) {
+    return <Navigate to={`/customer/dashboard?token=${token}`} replace />
+  }
+
+  // কোনো token নেই → login পেজে
+  return <Navigate to="/login" replace />
 }
 
 // ============================================================
@@ -182,7 +194,7 @@ function AppWithPermissions() {
       <Route element={<CustomerGuard />}>
         <Route path="/customer" element={<CustomerLayout />}>
           <Route index                  element={<Navigate to="dashboard" replace />} />
-          <Route path="dashboard"       element={<CustomerDashboard />} />
+          <Route path="dashboard"       element={<CustomerPortal defaultTab="summary"  />} />
           <Route path="orders"          element={<CustomerPortal defaultTab="orders"   />} />
           <Route path="invoices"        element={<CustomerPortal defaultTab="invoices" />} />
           <Route path="payments"        element={<CustomerPortal defaultTab="payments" />} />
