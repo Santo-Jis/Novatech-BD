@@ -64,12 +64,27 @@ api.interceptors.response.use(
       code !== 'TOKEN_EXPIRED' &&
       !originalRequest._retry
     ) {
-      // TOKEN_EXPIRED ছাড়া সব 401 — token নেই বা invalid — logout
+      // TOKEN_EXPIRED ছাড়া সব 401 — token নেই বা invalid
+      // শুধু তখনই /login এ পাঠাবো যখন user আসলে logged-in ছিল
+      const hadToken = !!localStorage.getItem('accessToken')
+
       if (code === 'WRONG_TOKEN_TYPE') {
         toast.error('অ্যাক্সেস অননুমোদিত। আবার লগইন করুন।')
       }
+
+      // portal_jwt_* keys save করো, clear-এর পরে restore করবো
+      const portalKeys = Object.keys(localStorage).filter(k => k.startsWith('portal_jwt_'))
+      const portalData = {}
+      portalKeys.forEach(k => { portalData[k] = localStorage.getItem(k) })
+
       localStorage.clear()
-      window.location.href = '/login'
+      Object.entries(portalData).forEach(([k, v]) => localStorage.setItem(k, v))
+
+      // LandingPage visitor বা Customer কে /login এ পাঠাবো না
+      // শুধু আগে logged-in ছিলেন তাদের পাঠাবো
+      if (hadToken) {
+        window.location.href = '/login'
+      }
       return Promise.reject(error)
     }
 
@@ -112,7 +127,15 @@ api.interceptors.response.use(
 
       } catch (refreshError) {
         processQueue(refreshError, null)
+
+        // portal_jwt_* keys save করো
+        const portalKeys2 = Object.keys(localStorage).filter(k => k.startsWith('portal_jwt_'))
+        const portalData2 = {}
+        portalKeys2.forEach(k => { portalData2[k] = localStorage.getItem(k) })
+
         localStorage.clear()
+        Object.entries(portalData2).forEach(([k, v]) => localStorage.setItem(k, v))
+
         window.location.href = '/login'
         return Promise.reject(refreshError)
 
