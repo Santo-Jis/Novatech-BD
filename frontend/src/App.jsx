@@ -10,9 +10,6 @@ import ManagerLayout  from './layouts/ManagerLayout'
 import WorkerLayout   from './layouts/WorkerLayout'
 import CustomerLayout from './layouts/CustomerLayout'
 
-// Customer Pages
-import CustomerDashboard from './pages/customer/CustomerDashboard'
-
 // Auth
 import Login from './pages/Login'
 import LandingPage from './pages/LandingPage'
@@ -119,7 +116,7 @@ const HomeRedirect = () => {
 
   // portal_jwt থাকলে → customer dashboard
   const hasPortalJWT = typeof window !== 'undefined' &&
-    Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
+    Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
   if (hasPortalJWT && !user) return <Navigate to="/customer/dashboard" replace />
 
   // login নেই → LandingPage দেখাও
@@ -151,7 +148,7 @@ import { Outlet } from 'react-router-dom'
 
 const CustomerGuard = () => {
   const hasPortalJWT = typeof window !== 'undefined' &&
-    Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
+    Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
 
   // portal_jwt আছে → ভেতরে যাও
   if (hasPortalJWT) return <Outlet />
