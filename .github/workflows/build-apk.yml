@@ -122,8 +122,7 @@ jobs:
           if perm not in content:
               content = content.replace(
                   '<application',
-                  perm + '
-    <application',
+                  perm + '\n    <application',
                   1
               )
               with open('AndroidManifest.xml', 'w') as f:
