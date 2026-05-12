@@ -53,7 +53,7 @@ const sendPortalLink = async (req, res) => {
         );
 
         const frontendUrl = process.env.FRONTEND_URL || 'https://novatech-bd-kqrn.vercel.app';
-        const portalLink  = `${frontendUrl}/customer-portal?token=${token}`;
+        const portalLink  = `${frontendUrl}/customer/dashboard?token=${token}`;
 
         // WhatsApp Custom Link Message
         // ✅ FIX: Bangladesh country code যোগ করো
@@ -343,7 +343,7 @@ const getCustomerDashboard = async (req, res) => {
 // ============================================================
 const getCustomerInvoices = async (req, res) => {
     try {
-        const customer_id = req.portalUser.customerId;
+        const customer_id = req.portalUser.customer_id;
         const page        = Math.max(1, parseInt(req.query.page)  || 1);
         const limit       = Math.min(50, parseInt(req.query.limit) || 15);
         const offset      = (page - 1) * limit;
@@ -377,10 +377,8 @@ const getCustomerInvoices = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: {
-                invoices:   sales.rows,
-                pagination: { page, limit, total, totalPages }
-            }
+            data: sales.rows,
+            pagination: { page, limit, total, totalPages }
         });
 
     } catch (error) {
