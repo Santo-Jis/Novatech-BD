@@ -13,19 +13,19 @@ const bottomNav = [
 ]
 
 function clearCustomerSession() {
-  Object.keys(localStorage)
+  Object.keys(sessionStorage)
     .filter(k => k.startsWith('portal_jwt_') || k === 'portal_fcm_token')
-    .forEach(k => localStorage.removeItem(k))
+    .forEach(k => sessionStorage.removeItem(k))
 }
 
 export default function CustomerLayout() {
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
 
-  const portalKey = Object.keys(localStorage).find(k => k.startsWith('portal_jwt_'))
+  const portalKey = Object.keys(sessionStorage).find(k => k.startsWith('portal_jwt_'))
   let customerInfo = {}
   try {
-    const jwt = localStorage.getItem(portalKey)
+    const jwt = sessionStorage.getItem(portalKey)
     customerInfo = JSON.parse(atob(jwt.split('.')[1]))
   } catch { /* silent */ }
 
