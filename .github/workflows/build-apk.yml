@@ -110,6 +110,29 @@ jobs:
           npx cap add android
           npx cap sync android
 
+      # ── POST_NOTIFICATIONS Permission (Android 13+) ────────────
+      - name: Add POST_NOTIFICATIONS permission to AndroidManifest
+        working-directory: frontend/android/app/src/main
+        run: |
+          python3 << 'PYEOF'
+          import re
+          with open('AndroidManifest.xml', 'r') as f:
+              content = f.read()
+          perm = '<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>'
+          if perm not in content:
+              content = content.replace(
+                  '<application',
+                  perm + '
+    <application',
+                  1
+              )
+              with open('AndroidManifest.xml', 'w') as f:
+                  f.write(content)
+              print('✅ POST_NOTIFICATIONS permission added')
+          else:
+              print('✅ Permission already exists')
+          PYEOF
+
       # ── google-services.json ───────────────────────────────────
       - name: Write google-services.json
         env:
