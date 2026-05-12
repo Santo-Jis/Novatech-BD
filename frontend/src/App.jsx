@@ -10,6 +10,9 @@ import ManagerLayout  from './layouts/ManagerLayout'
 import WorkerLayout   from './layouts/WorkerLayout'
 import CustomerLayout from './layouts/CustomerLayout'
 
+// Customer Pages
+import CustomerDashboard from './pages/customer/CustomerDashboard'
+
 // Auth
 import Login from './pages/Login'
 import LandingPage from './pages/LandingPage'
@@ -59,6 +62,7 @@ import VisitLog           from './pages/manager/VisitLog'
 import ManagerOrders      from './pages/manager/Orders'
 import ManagerSettlements from './pages/manager/Settlements'
 import SRLedger           from './pages/manager/SRLedger'
+import SalesOrderLedger   from './pages/manager/SalesOrderLedger'
 import ManagerAttendance  from './pages/manager/Attendance'
 import ManagerCustomers   from './pages/manager/Customers'
 import ManagerRoutes      from './pages/manager/Routes'
@@ -116,7 +120,7 @@ const HomeRedirect = () => {
 
   // portal_jwt থাকলে → customer dashboard
   const hasPortalJWT = typeof window !== 'undefined' &&
-    Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
+    Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
   if (hasPortalJWT && !user) return <Navigate to="/customer/dashboard" replace />
 
   // login নেই → LandingPage দেখাও
@@ -148,7 +152,7 @@ import { Outlet } from 'react-router-dom'
 
 const CustomerGuard = () => {
   const hasPortalJWT = typeof window !== 'undefined' &&
-    Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
+    Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
 
   // portal_jwt আছে → ভেতরে যাও
   if (hasPortalJWT) return <Outlet />
@@ -253,6 +257,7 @@ function AppWithPermissions() {
         <Route path="live-tracking" element={<LiveTracking />} />
         <Route path="trail-history" element={<TrailHistory />} />
         <Route path="sr-ledger"    element={<SRLedger />} />
+        <Route path="order-ledger"  element={<SalesOrderLedger />} />
         <Route path="expense"      element={<ExpenseApprovals />} />
         <Route path="returns"      element={<ReturnApprovals />} />
         <Route path="ai-chat"      element={<AIChat />} />
