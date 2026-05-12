@@ -150,7 +150,7 @@ export default function WorkerLayout() {
 
   const handleLogout = () => {
     logout()
-    navigate('/login')
+    // auth.store logout() নিজেই window.location.href = '/login' করে
   }
 
   return (
