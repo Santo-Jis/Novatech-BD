@@ -40,7 +40,7 @@ const portalAuth = (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
     try {
-        const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+        const decoded = jwt.verify(token, process.env.JWT_PORTAL_SECRET || process.env.JWT_ACCESS_SECRET);
         if (decoded.type !== 'customer_portal') {
             return res.status(403).json({ success: false, message: 'অবৈধ টোকেন।' });
         }
