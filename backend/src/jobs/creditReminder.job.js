@@ -170,7 +170,7 @@ const runCreditReminderJob = async () => {
             // ── Email to Customer ────────────────────────────
             try {
                 const portalLink = customer.portal_token
-                    ? `${FRONTEND_URL}/customer-portal?token=${customer.portal_token}`
+                    ? `${FRONTEND_URL}/customer/dashboard?token=${customer.portal_token}`
                     : null;
 
                 const { subject, html, text } = buildReminderEmail(customer, portalLink);
