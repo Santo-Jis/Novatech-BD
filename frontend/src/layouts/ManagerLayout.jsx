@@ -10,6 +10,7 @@ const navItems = [
   { path: '/manager/trail-history', icon: <FiMapPin />,       label: 'Trail History' },
   { path: '/manager/team',          icon: <FiUsers />,        label: 'আমার টিম' },
   { path: '/manager/orders',        icon: <FiShoppingCart />, label: 'অর্ডার' },
+  { path: '/manager/order-ledger',   icon: <FiFileText />,     label: 'অর্ডার লেজার' },
   { path: '/manager/settlements',   icon: <FiCheckSquare />,  label: 'হিসাব' },
   { path: '/manager/expense',       icon: <FiFileText />,     label: 'খরচ অনুমোদন' },
   { path: '/manager/returns',       icon: <FiRefreshCw />,    label: 'রিটার্ন অনুমোদন' },
