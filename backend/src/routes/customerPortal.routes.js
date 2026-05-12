@@ -10,6 +10,7 @@ const jwt     = require('jsonwebtoken');
 const {
     sendPortalLink,
     verifyPortalToken,
+    deviceLogin,
     googleAuth,
     getCustomerDashboard,
     getCustomerInvoices
@@ -59,9 +60,13 @@ router.post('/send-link/:customerId', auth, sendPortalLink);
 // GET /api/portal/verify-token?token=xxx
 router.get('/verify-token', verifyPortalToken);
 
-// ── Google OAuth → কাস্টমার লগইন ──────────────────────────
+// ── Google OAuth → কাস্টমার লগইন (প্রথমবার — device lock হয়) ─
 // POST /api/portal/google-auth
 router.post('/google-auth', googleAuth);
+
+// ── Device Re-login (Google ছাড়া, fingerprint দিয়ে) ─────────
+// POST /api/portal/device-login
+router.post('/device-login', deviceLogin);
 
 // ── কাস্টমার ড্যাশবোর্ড ডেটা ──────────────────────────────
 // GET /api/portal/dashboard
