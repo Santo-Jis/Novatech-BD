@@ -282,20 +282,49 @@ export default function Login() {
       let email, name
 
       if (Capacitor.isNativePlatform()) {
-        // Android App → capacitor.config.json-এর serverClientId ব্যবহার হয়
-        await GoogleAuth.initialize({
-          scopes: ['profile', 'email'],
-        })
+        // Android App → Capacitor Google Auth plugin
+        await GoogleAuth.initialize({ scopes: ['profile', 'email'] })
         const googleUser = await GoogleAuth.signIn()
         email = googleUser.email
         name  = googleUser.name
       } else {
-        // Web Browser → Web client ID দিয়ে initialize
-        await GoogleAuth.initialize({
-          clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-          scopes: ['profile', 'email'],
+        // Web Browser → GSI (Google Identity Services) popup
+        // Capacitor plugin web এ কাজ করে না, তাই GSI ব্যবহার করি
+        const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
+        if (!clientId) throw new Error('VITE_GOOGLE_CLIENT_ID সেট নেই।')
+
+        // GSI script load করি
+        const access_token = await new Promise((resolve, reject) => {
+          const existingScript = document.querySelector('script[src*="accounts.google.com/gsi"]')
+          const initGSI = () => {
+            window.google.accounts.oauth2.initTokenClient({
+              client_id: clientId,
+              scope: 'openid email profile',
+              callback: (resp) => {
+                if (resp.error) reject(new Error(resp.error))
+                else resolve(resp.access_token)
+              },
+            }).requestAccessToken()
+          }
+          if (window.google?.accounts) {
+            initGSI()
+          } else if (existingScript) {
+            existingScript.onload = initGSI
+          } else {
+            const script = document.createElement('script')
+            script.src = 'https://accounts.google.com/gsi/client'
+            script.async = true
+            script.onload = initGSI
+            script.onerror = () => reject(new Error('Google login লোড হয়নি।'))
+            document.head.appendChild(script)
+          }
         })
-        const googleUser = await GoogleAuth.signIn()
+
+        // access_token দিয়ে userinfo নাও
+        const resp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${access_token}` }
+        })
+        const googleUser = await resp.json()
         email = googleUser.email
         name  = googleUser.name
       }
