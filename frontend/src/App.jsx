@@ -122,20 +122,22 @@ const HomeRedirect = () => {
     Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
   if (hasPortalJWT && !user) return <Navigate to="/customer/dashboard" replace />
 
-  if (!user) return <Navigate to="/login" replace />
+  // login নেই → LandingPage দেখাও
+  if (!user) return <LandingPage />
 
+  // logged-in → dashboard-এ পাঠাও, কিন্তু history তে /landing রেখে যাও
+  // যাতে back বাটনে LandingPage দেখা যায়
   switch (user.role) {
     case 'admin':
-      return <Navigate to="/admin/dashboard" replace />
+      return <Navigate to="/admin/dashboard" replace={false} />
     case 'manager':
     case 'supervisor':
     case 'asm':
     case 'rsm':
-      return <Navigate to="/manager/dashboard" replace />
     case 'accountant':
-      return <Navigate to="/manager/dashboard" replace />
+      return <Navigate to="/manager/dashboard" replace={false} />
     case 'worker':
-      return <Navigate to="/worker/dashboard" replace />
+      return <Navigate to="/worker/dashboard" replace={false} />
     default:
       return <Navigate to="/login" replace />
   }
@@ -154,16 +156,13 @@ const CustomerGuard = () => {
   // portal_jwt আছে → ভেতরে যাও
   if (hasPortalJWT) return <Outlet />
 
-  // portal_jwt নেই কিন্তু URL-এ ?token= আছে (WhatsApp লিংক)
-  // token টা preserve করে dashboard-এ পাঠাও — CustomerPortal Google login দেখাবে
+  // URL-এ ?token= আছে (WhatsApp লিংক) → CustomerPortal নিজেই handle করবে
   const params = new URLSearchParams(window.location.search)
-  const token  = params.get('token')
-  if (token) {
-    return <Navigate to={`/customer/dashboard?token=${token}`} replace />
-  }
+  const urlToken = params.get('token')
+  if (urlToken) return <Outlet />
 
-  // কোনো token নেই → login পেজে
-  return <Navigate to="/login" replace />
+  // কোনো token নেই → LandingPage এ পাঠাও
+  return <Navigate to="/landing" replace />
 }
 
 // ============================================================
@@ -185,7 +184,8 @@ function AppWithPermissions() {
 
       <Routes>
       {/* Public */}
-      <Route path="/"                      element={<LandingPage />} />
+      <Route path="/"                      element={<HomeRedirect />} />
+      <Route path="/landing"              element={<LandingPage />} />
       <Route path="/login"                element={<Login />} />
       <Route path="/apply/sr"             element={<SRApplicationForm />} />
       <Route path="/customer-portal"      element={<Navigate to="/customer/dashboard" replace />} />
