@@ -61,7 +61,7 @@ const sendCreditReminder = async (req, res) => {
 
         const FRONTEND_URL = process.env.FRONTEND_URL || 'https://novatech-bd-kqrn.vercel.app';
         const portalLink   = customer.portal_token
-            ? `${FRONTEND_URL}/customer-portal?token=${customer.portal_token}`
+            ? `${FRONTEND_URL}/customer/dashboard?token=${customer.portal_token}`
             : null;
 
         const credit = parseFloat(customer.current_credit).toLocaleString('bn-BD');
