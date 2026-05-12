@@ -43,30 +43,24 @@ export const useAuthStore = create((set, get) => ({
 
   // ── LOGOUT ──
   logout: async () => {
-    // ✅ FIX: refreshToken body-তে পাঠানোর দরকার নেই —
-    // browser automatically HttpOnly cookie পাঠাবে (withCredentials: true)।
-    // sendBeacon fallback-এও cookie যায়, তাই body empty রাখা হচ্ছে।
+    // ১. আগেই UI clear করো — ইউজার সাথে সাথে লগইন পেজে যাবে
+    localStorage.clear()
+    set({ user: null, token: null })
+    if (typeof window.__hideEruda === 'function') window.__hideEruda()
+
+    // ২. ব্যাকগ্রাউন্ডে server logout (3s timeout — আটকাবে না)
     try {
-      await api.post('/auth/logout', {})
-    } catch {
-      // API fail হলে beacon দিয়ে best-effort — cookie browser নিজেই attach করে
-      try {
-        if (navigator.sendBeacon) {
-          navigator.sendBeacon(
-            `${import.meta.env.VITE_API_URL}/auth/logout`,
-            new Blob(['{}'], { type: 'application/json' })
-          )
-        }
-      } catch { /* beacon ও fail হলে কিছু করার নেই */ }
-    } finally {
-      await clearAllData()
-      localStorage.clear()
-      set({ user: null, token: null })
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 3000)
+      await api.post('/auth/logout', {}, { signal: controller.signal })
+      clearTimeout(timer)
+    } catch { /* timeout বা network error — কিছু করার নেই */ }
 
-      if (typeof window.__hideEruda === 'function') window.__hideEruda()
+    // ৩. IndexedDB ব্যাকগ্রাউন্ডে clear (block করবে না)
+    clearAllData().catch(() => {})
 
-      window.location.href = '/login'
-    }
+    // ৪. Hard redirect
+    window.location.href = '/login'
   },
 
   // ── UPDATE USER ──
