@@ -15,6 +15,7 @@ import CustomerDashboard from './pages/customer/CustomerDashboard'
 
 // Auth
 import Login from './pages/Login'
+import LandingPage from './pages/LandingPage'
 
 // Admin Pages
 import AdminDashboard   from './pages/admin/Dashboard'
@@ -184,11 +185,11 @@ function AppWithPermissions() {
 
       <Routes>
       {/* Public */}
+      <Route path="/"                      element={<LandingPage />} />
       <Route path="/login"                element={<Login />} />
       <Route path="/apply/sr"             element={<SRApplicationForm />} />
       <Route path="/customer-portal"      element={<Navigate to="/customer/dashboard" replace />} />
       <Route path="/portal-oauth-callback" element={<PortalOAuthCallback />} />
-      <Route path="/"                     element={<HomeRedirect />} />
 
       {/* ── CUSTOMER ROUTES ── */}
       <Route element={<CustomerGuard />}>
