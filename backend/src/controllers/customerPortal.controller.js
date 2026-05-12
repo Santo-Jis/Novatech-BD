@@ -339,9 +339,9 @@ const googleAuth = async (req, res) => {
                     bound_device_id = $2,
                     bound_at        = NOW(),
                     last_login      = NOW(),
-                    google_email    = $1
+                    google_email    = $4
                  WHERE token = $3`,
-                [email.toLowerCase(), hashedDeviceId, portal_token]
+                [email.toLowerCase(), hashedDeviceId, portal_token, email.toLowerCase()]
             );
 
             // কাস্টমারের email DB-তে সেভ (প্রথমবার)
