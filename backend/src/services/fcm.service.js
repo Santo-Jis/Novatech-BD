@@ -188,7 +188,7 @@ const sendCustomerPush = async (fcmToken, { title, body, type = 'general' }) => 
           badge:   '/badge-72.png',
           vibrate: [200, 100, 200],
         },
-        fcmOptions: { link: '/customer-portal' },
+        fcmOptions: { link: '/customer/dashboard' },
       },
     })
   } catch (e) {
