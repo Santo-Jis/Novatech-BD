@@ -259,7 +259,9 @@ export default function Login() {
       rsm: '/manager/dashboard', accountant: '/manager/dashboard',
       worker: '/worker/dashboard'
     }
-    navigate(map[role] || '/', { replace: true })
+    // /landing history তে রেখে যাই — back বাটনে LandingPage দেখা যাবে
+    navigate('/landing', { replace: true })
+    navigate(map[role] || '/landing')
   }
 
   // ── সাধারণ লগইন ─────────────────────────────────────────
