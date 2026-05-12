@@ -464,17 +464,11 @@ const notifyAdminStockWarning = async (req, res) => {
             ).catch(() => {}); // notifications table না থাকলেও চলবে
         }
 
-        // FCM Push — Admin দের কাছে
-        const { sendPushToMany } = require('../services/fcm.service');
-        const fcmRes = await query(
-            `SELECT fcm_token FROM users WHERE id = ANY($1) AND fcm_token IS NOT NULL`,
-            [adminIds]
-        ).catch(() => ({ rows: [] }));
-
-        const tokens = fcmRes.rows.map(r => r.fcm_token).filter(Boolean);
-        if (tokens.length > 0) {
-            await sendPushToMany(tokens, { title, body, type: 'stock_warning' }).catch(() => {});
-        }
+        // ✅ FIX: sendPushToMany() চায় userIds (int[]), tokens নয়।
+        // আগে fcm_token গুলো আলাদা query করে tokens array পাঠানো হচ্ছিল —
+        // কিন্তু sendPushToMany() নিজেই ভেতরে getFCMTokens(userIds) call করে।
+        // তাই সরাসরি adminIds পাঠাও; duplicate query ও বাদ যায়।
+        await sendPushToMany(adminIds, { title, body, type: 'stock_warning' }).catch(() => {});
 
         return res.status(200).json({ success: true, message: 'Admin কে সতর্কতা পাঠানো হয়েছে।' });
 
