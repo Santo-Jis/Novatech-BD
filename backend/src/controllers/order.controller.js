@@ -1,20 +1,22 @@
 const { query, withTransaction } = require('../config/db');
-const axios = require('axios');
 const { sendOrderNotificationEmail } = require('../services/email.service');
 const { sendPushNotification } = require('../services/fcm.service');
 const { addLedgerEntry } = require('./ledger.controller');
+const { getDB } = require('../config/firebase');
 
 // ============================================================
 // Firebase নোটিফিকেশন Helper
+// ✅ FIX: axios REST API (unauthenticated) → Admin SDK (getDB())
+// আগে Firebase REST API call হতো auth token ছাড়া, তাই DB rules
+// auth != null থাকলে write নীরবে fail হত।
+// এখন Admin SDK ব্যবহার করা হচ্ছে — কোনো auth token লাগে না।
 // ============================================================
 
 const firebaseNotify = async (path, data) => {
     try {
-        const firebaseUrl = process.env.FIREBASE_DATABASE_URL;
-        if (!firebaseUrl) return;
-        await axios.post(`${firebaseUrl}/${path}.json`, {
+        await getDB().ref(path).push({
             ...data,
-            timestamp: new Date().toISOString()
+            timestamp: Date.now()
         });
     } catch (err) {
         console.error('⚠️ Firebase Notify Error:', err.message);
