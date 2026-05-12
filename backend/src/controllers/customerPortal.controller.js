@@ -200,8 +200,8 @@ const googleAuth = async (req, res) => {
                 google_picture: picture,
                 type:          'customer_portal'
             },
-            process.env.JWT_ACCESS_SECRET,
-            { expiresIn: '30d' }  // ✅ FIX: 30 দিন — বারবার লিংক লাগবে না
+            process.env.JWT_PORTAL_SECRET || process.env.JWT_ACCESS_SECRET,
+            { expiresIn: '30d' }
         );
 
         // Login log
