@@ -37,6 +37,14 @@ const createVisit = async (req, res) => {
             latitude, longitude
         } = req.body;
 
+        // ✅ FIX: will_sell normalize — string "false"/"0" সহ সব falsy value সঠিকভাবে handle করো
+        const willSell = will_sell === false
+            || will_sell === 'false'
+            || will_sell === 0
+            || will_sell === '0'
+            ? false
+            : true;
+
         if (!customer_id) {
             return res.status(400).json({ success: false, message: 'কাস্টমার সিলেক্ট করুন।' });
         }
@@ -76,7 +84,7 @@ const createVisit = async (req, res) => {
 
         // বন্ধ দোকানের ছবি আপলোড
         let closedShopPhoto = null;
-        if (!will_sell && req.file) {
+        if (!willSell && req.file) {
             closedShopPhoto = await uploadToCloudinary(
                 req.file.buffer,
                 'closed_shops',
@@ -96,10 +104,10 @@ const createVisit = async (req, res) => {
              RETURNING id`,
             hasLocation
                 ? [req.user.id, customer_id, route_id || null,
-                   will_sell !== false, no_sell_reason || null,
+                   willSell, no_sell_reason || null,
                    closedShopPhoto, rawLng, rawLat, locationMatched, distance]
                 : [req.user.id, customer_id, route_id || null,
-                   will_sell !== false, no_sell_reason || null,
+                   willSell, no_sell_reason || null,
                    closedShopPhoto, locationMatched, distance]
         );
 
