@@ -6,6 +6,18 @@ const { query } = require('../config/db');
 // প্রতিটি protected route এ এই middleware চলবে
 // ============================================================
 
+// ✅ OPT: auth middleware-এ DB query বাদ দেওয়া হলো।
+// Token-এ এখন status, role, manager_id, employee_code সব আছে।
+// req.user token থেকে সরাসরি তৈরি হয় — প্রতি request-এ SELECT নেই।
+//
+// basic_salary শুধু attendance controller-এ লাগে।
+// সেখানে lazy fetch করা হয়েছে (auth.enrichUser দেখুন)।
+//
+// Trade-off:
+//   role বা status পরিবর্তন হলে সর্বোচ্চ ১৫ মিনিট পুরনো token চলবে।
+//   suspend করলে admin চাইলে deleteAllUserSessions() দিয়ে
+//   refresh token বাতিল করতে পারবে — নতুন access token তৈরি হবে না।
+
 const auth = async (req, res, next) => {
     try {
         // ১. Header থেকে token নাও
@@ -39,9 +51,7 @@ const auth = async (req, res, next) => {
             });
         }
 
-        // ✅ FIX: Customer portal token দিয়ে employee route access block করো।
-        // portalJWT আলাদা secret দিয়ে sign হয়, তাই এখানে verify-ই হবে না।
-        // তবুও decoded payload-এ type চেক করে double-layer protection দেওয়া হলো।
+        // Customer portal token দিয়ে employee route access block
         if (decoded.type === 'customer_portal') {
             return res.status(403).json({
                 success: false,
@@ -50,49 +60,41 @@ const auth = async (req, res, next) => {
             });
         }
 
-        // ৩. DB থেকে ইউজার যাচাই করো
-        const result = await query(
-            `SELECT id, role, employee_code, name_bn, name_en, 
-                    email, phone, status, manager_id, basic_salary,
-                    outstanding_dues
-             FROM users 
-             WHERE id = $1`,
-            [decoded.userId]
-        );
+        // ৩. Token payload থেকে সরাসরি req.user তৈরি — DB query নেই
+        const status = decoded.status;
 
-        if (result.rows.length === 0) {
-            return res.status(401).json({
-                success: false,
-                message: 'ব্যবহারকারী পাওয়া যায়নি।'
-            });
-        }
-
-        const user = result.rows[0];
-
-        // ৪. অ্যাকাউন্ট স্ট্যাটাস যাচাই
-        if (user.status === 'suspended') {
+        if (status === 'suspended') {
             return res.status(403).json({
                 success: false,
                 message: 'আপনার অ্যাকাউন্ট সাময়িকভাবে বন্ধ করা হয়েছে। Admin এর সাথে যোগাযোগ করুন।'
             });
         }
 
-        if (user.status === 'pending') {
+        if (status === 'pending') {
             return res.status(403).json({
                 success: false,
                 message: 'আপনার অ্যাকাউন্ট এখনো অনুমোদিত হয়নি।'
             });
         }
 
-        if (user.status === 'archived') {
+        if (status === 'archived') {
             return res.status(403).json({
                 success: false,
                 message: 'এই অ্যাকাউন্ট নিষ্ক্রিয় করা হয়েছে।'
             });
         }
 
-        // ৫. Request এ user যোগ করো
-        req.user = user;
+        req.user = {
+            id:            decoded.userId,
+            role:          decoded.role,
+            status:        decoded.status,
+            name_bn:       decoded.name_bn,
+            name_en:       decoded.name_en       || null,
+            manager_id:    decoded.manager_id    || null,
+            employee_code: decoded.employee_code || null,
+            phone:         decoded.phone         || null,
+        };
+
         next();
 
     } catch (error) {
@@ -105,11 +107,37 @@ const auth = async (req, res, next) => {
 };
 
 // ============================================================
+// LAZY ENRICHMENT — শুধু basic_salary দরকার এমন route-এ ব্যবহার করুন
+// যেমন: attendance controller-এ check-in-এর সময়
+// ============================================================
+
+// ✅ OPT: basic_salary token-এ রাখা হয়নি (sensitive data)।
+// শুধু attendance check-in route-এ লাগে।
+// auth middleware-এর পরে, সেই route-এ এই middleware দিন:
+//   router.post('/check-in', auth, enrichUserSalary, requireCheckin, ...)
+const enrichUserSalary = async (req, res, next) => {
+    try {
+        const result = await query(
+            'SELECT basic_salary, outstanding_dues FROM users WHERE id = $1',
+            [req.user.id]
+        );
+        if (result.rows.length > 0) {
+            req.user.basic_salary     = result.rows[0].basic_salary;
+            req.user.outstanding_dues = result.rows[0].outstanding_dues;
+        }
+        next();
+    } catch (error) {
+        console.error('❌ enrichUserSalary Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // OPTIONAL AUTH
 // লগইন না থাকলেও চলবে, থাকলে user set হবে
 // ============================================================
 
-const optionalAuth = async (req, res, next) => {
+const optionalAuth = (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -120,12 +148,13 @@ const optionalAuth = async (req, res, next) => {
         const token = authHeader.split(' ')[1];
         const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
 
-        const result = await query(
-            'SELECT id, role, name_bn, name_en, status, manager_id FROM users WHERE id = $1',
-            [decoded.userId]
-        );
-
-        req.user = result.rows[0] || null;
+        req.user = {
+            id:         decoded.userId,
+            role:       decoded.role,
+            status:     decoded.status,
+            name_bn:    decoded.name_bn,
+            manager_id: decoded.manager_id || null,
+        };
         next();
     } catch {
         req.user = null;
@@ -133,4 +162,4 @@ const optionalAuth = async (req, res, next) => {
     }
 };
 
-module.exports = { auth, optionalAuth };
+module.exports = { auth, optionalAuth, enrichUserSalary };
