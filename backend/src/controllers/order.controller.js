@@ -42,12 +42,15 @@ const createOrder = async (req, res) => {
         }
 
         // আজকে কতটি অর্ডার আছে (সর্বোচ্চ ৩টি)
+        // ✅ FIX: rejected ও cancelled উভয় বাদ দেওয়া হচ্ছে।
+        // আগে শুধু rejected বাদ ছিল — cancelled order count-এ পড়ত,
+        // ফলে SR ৩টির কম order দিতে পারত।
         const today    = new Date().toISOString().split('T')[0];
         const existing = await query(
             `SELECT COUNT(*) AS count FROM orders
              WHERE worker_id = $1
                AND DATE(requested_at) = $2
-               AND status != 'rejected'`,
+               AND status NOT IN ('rejected', 'cancelled')`,
             [workerId, today]
         );
 
@@ -266,12 +269,13 @@ const getTodayOrder = async (req, res) => {
             [req.user.id, today]
         );
 
-        // rejected বাদে কতটি অর্ডার দেওয়া হয়েছে
+        // rejected ও cancelled বাদে কতটি অর্ডার দেওয়া হয়েছে
+        // ✅ FIX: createOrder-এর মতো একই condition — NOT IN ('rejected', 'cancelled')
         const countResult = await query(
             `SELECT COUNT(*) AS count FROM orders
              WHERE worker_id = $1
                AND DATE(requested_at) = $2
-               AND status != 'rejected'`,
+               AND status NOT IN ('rejected', 'cancelled')`,
             [req.user.id, today]
         );
 
@@ -673,6 +677,67 @@ const getStockStatus = async (req, res) => {
     }
 };
 
+// ============================================================
+// CANCEL ORDER
+// PUT /api/orders/:id/cancel
+// SR নিজেই pending অর্ডার বাতিল করতে পারবে
+// বাতিল হলে slot ফেরত আসবে (count থেকে বাদ যাবে)
+// ============================================================
+
+const cancelOrder = async (req, res) => {
+    try {
+        const { id }     = req.params;
+        const workerId   = req.user.id;
+
+        // শুধু নিজের pending অর্ডার cancel করা যাবে
+        const order = await query(
+            `SELECT * FROM orders
+             WHERE id = $1 AND worker_id = $2 AND status = 'pending'`,
+            [id, workerId]
+        );
+
+        if (order.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'পেন্ডিং অর্ডার পাওয়া যায়নি অথবা আপনার অর্ডার নয়।'
+            });
+        }
+
+        const items = order.rows[0].items;
+        const parsedItems = typeof items === 'string' ? JSON.parse(items) : (Array.isArray(items) ? items : []);
+
+        await withTransaction(async (client) => {
+            // reserved_stock মুক্ত করো
+            for (const item of parsedItems) {
+                await client.query(
+                    `UPDATE products
+                     SET reserved_stock = GREATEST(0, COALESCE(reserved_stock, 0) - $1),
+                         updated_at     = NOW()
+                     WHERE id = $2`,
+                    [item.requested_qty || item.approved_qty || 0, item.product_id]
+                );
+            }
+
+            // অর্ডার cancelled করো
+            await client.query(
+                `UPDATE orders
+                 SET status = 'cancelled', updated_at = NOW()
+                 WHERE id = $1`,
+                [id]
+            );
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: 'অর্ডার বাতিল হয়েছে। একটি slot ফেরত পেয়েছেন।'
+        });
+
+    } catch (error) {
+        console.error('❌ Cancel Order Error:', error.message);
+        return res.status(500).json({ success: false, message: 'বাতিলে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     createOrder,
     getMyOrders,
@@ -680,5 +745,6 @@ module.exports = {
     getPendingOrders,
     approveOrder,
     rejectOrder,
+    cancelOrder,
     getStockStatus,
 };
