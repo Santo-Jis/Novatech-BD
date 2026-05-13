@@ -18,7 +18,28 @@ const submitExpense = async (req, res) => {
             receipt_url
         } = req.body;
 
-        const date = report_date || new Date().toISOString().slice(0, 10);
+        const today = new Date().toISOString().slice(0, 10);
+        const date  = report_date || today;
+
+        // ── Date Validation ──────────────────────────────────────────────
+        // ⚠️ Security Fix: report_date validate না করলে SR যেকোনো তারিখে
+        // expense জমা দিতে পারে — গতমাসে বা ভবিষ্যতেও।
+        // Rule: শুধু আজকের বা গতকালের তারিখ অনুমোদিত।
+        // গতকাল allow — কারণ রাত ১১টায় submit করতে না পারলে পরদিন সকালে দেওয়া স্বাভাবিক।
+        const dateObj  = new Date(date + 'T00:00:00');
+        const todayObj = new Date(today + 'T00:00:00');
+
+        if (isNaN(dateObj.getTime())) {
+            return res.status(400).json({ success: false, message: 'তারিখের ফরম্যাট সঠিক নয়।' });
+        }
+        if (dateObj > todayObj) {
+            return res.status(400).json({ success: false, message: 'ভবিষ্যতের তারিখে খরচ জমা দেওয়া যাবে না।' });
+        }
+        const diffDays = Math.floor((todayObj - dateObj) / (1000 * 60 * 60 * 24));
+        if (diffDays > 1) {
+            return res.status(400).json({ success: false, message: 'আজকের বা গতকালের তারিখ ছাড়া খরচ জমা দেওয়া যাবে না।' });
+        }
+        // ────────────────────────────────────────────────────────────────
 
         // আজকে আগে জমা দেওয়া আছে কিনা চেক করো
         const existing = await query(
