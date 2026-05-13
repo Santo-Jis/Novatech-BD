@@ -6,12 +6,21 @@ const { query } = require('../config/db');
 // ============================================================
 
 // Access Token তৈরি (১৫ মিনিট)
+// ✅ OPT: status, manager_id, employee_code, name_en, phone token-এ রাখা হলো।
+// auth middleware-এ আর প্রতি request-এ DB query লাগবে না।
+// Trade-off: role/status পরিবর্তন হলে সর্বোচ্চ ১৫ মিনিট পুরনো token চলবে।
+// suspend/archive এর ক্ষেত্রে এটা acceptable — admin logout করিয়ে দিতে পারবে।
 const generateAccessToken = (user) => {
     return jwt.sign(
         {
-            userId: user.id,
-            role:   user.role,
-            name:   user.name_bn
+            userId:        user.id,
+            role:          user.role,
+            status:        user.status,
+            name_bn:       user.name_bn,
+            name_en:       user.name_en       || null,
+            manager_id:    user.manager_id    || null,
+            employee_code: user.employee_code || null,
+            phone:         user.phone         || null,
         },
         process.env.JWT_ACCESS_SECRET,
         { expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m' }
@@ -66,7 +75,7 @@ const verifyRefreshToken = async (refreshToken) => {
         throw new Error('Session পাওয়া যায়নি। আবার লগইন করুন।');
     }
 
-    // ৩. User তথ্য নাও
+    // ৩. User তথ্য নাও (নতুন token generate করতে সব field লাগবে)
     const userResult = await query(
         `SELECT id, role, name_bn, name_en, email, phone, 
                 status, manager_id, employee_code
