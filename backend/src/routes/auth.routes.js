@@ -6,6 +6,7 @@ const {
     refresh,
     logout,
     me,
+    mySensitiveInfo,
     changePassword,
     forgotPassword,
     verifyOtp,
@@ -36,6 +37,10 @@ router.post('/logout', auth, logout);
 // GET /api/auth/me
 // বর্তমান লগইন করা ইউজারের তথ্য
 router.get('/me', auth, me);
+
+// GET /api/auth/my-sensitive-info
+// basic_salary, outstanding_dues, manager_id, nid — localStorage-এ কখনো সেভ করবে না
+router.get('/my-sensitive-info', auth, mySensitiveInfo);
 
 // PUT /api/auth/change-password
 // পাসওয়ার্ড পরিবর্তন
