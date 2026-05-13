@@ -13,6 +13,7 @@ const {
     getPendingOrders,
     approveOrder,
     rejectOrder,
+    cancelOrder,
     getTodayOrder,
     getStockStatus,
 } = require('../controllers/order.controller');
@@ -42,5 +43,8 @@ router.put('/:id/approve', auth, canApproveOrder, approveOrder);
 
 // অর্ডার রিজেক্ট
 router.put('/:id/reject',  auth, canApproveOrder, rejectOrder);
+
+// SR নিজে pending অর্ডার বাতিল করতে পারবে — slot ফেরত পাবে
+router.put('/:id/cancel',  auth, allowRoles('worker'), cancelOrder);
 
 module.exports = router;
