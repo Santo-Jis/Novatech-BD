@@ -32,14 +32,15 @@ const getSalarySheet = async (req, res) => {
                 COALESCE(SUM(c.commission_amount), 0)                      AS total_commission,
 
                 -- বেতন পরিশোধ ইতিহাস
-                sp.id              AS payment_id,
-                sp.status          AS payment_status,
-                sp.net_payable     AS paid_amount,
+                sp.id                         AS payment_id,
+                sp.status                     AS payment_status,
+                sp.net_payable                AS paid_amount,
+                sp.outstanding_dues_deducted,
                 sp.paid_at,
                 sp.payment_reference,
                 sp.payment_method,
                 sp.note,
-                approver.name_bn   AS approved_by_name
+                approver.name_bn              AS approved_by_name
 
              FROM users u
 
@@ -65,8 +66,8 @@ const getSalarySheet = async (req, res) => {
 
              GROUP BY
                 u.id, u.name_bn, u.employee_code, u.basic_salary, u.outstanding_dues,
-                sp.id, sp.status, sp.net_payable, sp.paid_at, sp.payment_reference,
-                sp.payment_method, sp.note, approver.name_bn
+                sp.id, sp.status, sp.net_payable, sp.outstanding_dues_deducted,
+                sp.paid_at, sp.payment_reference, sp.payment_method, sp.note, approver.name_bn
 
              ORDER BY u.name_bn ASC`,
             [currentYear, currentMonth]
@@ -77,8 +78,14 @@ const getSalarySheet = async (req, res) => {
             const basic      = parseFloat(row.basic_salary         || 0);
             const commission = parseFloat(row.total_commission      || 0);
             const attDed     = parseFloat(row.attendance_deduction  || 0);
-            const dues       = parseFloat(row.outstanding_dues      || 0);
-            const net        = Math.max(0, basic + commission - attDed - dues);
+
+            // ✅ FIX: paid হলে salary_payments থেকে actual deducted dues নাও,
+            //         না হলে users.outstanding_dues (current) দেখাও
+            const dues = row.payment_id
+                ? parseFloat(row.outstanding_dues_deducted || 0)
+                : parseFloat(row.outstanding_dues          || 0);
+
+            const net = Math.max(0, basic + commission - attDed - dues);
 
             return {
                 ...row,
@@ -165,6 +172,7 @@ const getWorkerSalaryDetail = async (req, res) => {
         // হিসাব
         const att         = attRes.rows;
         const comm        = commRes.rows;
+        const payment     = payRes.rows[0] || null;
         const presentDays = att.filter(a => ['present','late'].includes(a.status)).length;
         const absentDays  = att.filter(a => a.status === 'absent').length;
         const lateDays    = att.filter(a => a.status === 'late').length;
@@ -174,7 +182,13 @@ const getWorkerSalaryDetail = async (req, res) => {
         const bonus       = comm.filter(c => c.type === 'attendance_bonus')
                                .reduce((s, c) => s + parseFloat(c.commission_amount || 0), 0);
         const basic       = parseFloat(worker.basic_salary    || 0);
-        const dues        = parseFloat(worker.outstanding_dues || 0);
+
+        // ✅ FIX: paid হলে salary_payments থেকে actual deducted dues নাও,
+        //         না হলে users.outstanding_dues (current) দেখাও
+        const dues        = payment
+                               ? parseFloat(payment.outstanding_dues_deducted || 0)
+                               : parseFloat(worker.outstanding_dues            || 0);
+
         const netPayable  = Math.max(0, basic + salesComm + bonus - attDed - dues);
 
         return res.status(200).json({
@@ -204,7 +218,7 @@ const getWorkerSalaryDetail = async (req, res) => {
                     outstanding_dues:     dues,
                     net_payable:          netPayable
                 },
-                payment: payRes.rows[0] || null
+                payment: payment
             }
         });
 
