@@ -9,6 +9,7 @@
     "GoogleAuth": {
       "scopes": ["profile", "email"],
       "serverClientId": "1098950143887-0s1htavj6dh6p6vkrqumt62ljtce3qo2.apps.googleusercontent.com",
+      "androidClientId": "754818100492-c19csm90ldogkb7l9bobl24pbpqvbet9.apps.googleusercontent.com",
       "forceCodeForRefreshToken": false
     },
     "PushNotifications": {
