@@ -1,7 +1,7 @@
 const express  = require('express');
 const router   = express.Router();
 const multer   = require('multer');
-const { auth } = require('../middlewares/auth');
+const { auth, enrichUserSalary } = require('../middlewares/auth');  // ✅ enrichUserSalary import
 const {
     allowRoles,
     checkTeamAccess,
@@ -45,9 +45,11 @@ const upload = multer({
 // ============================================================
 
 // চেক-ইন (Worker/Manager/Supervisor)
+// ✅ OPT: enrichUserSalary শুধু এই একটি route-এ — basic_salary দরকার এখানেই
 router.post('/checkin',
     auth,
     allowRoles('worker', 'manager', 'supervisor', 'asm', 'rsm'),
+    enrichUserSalary,
     upload.single('selfie'),
     checkIn
 );
