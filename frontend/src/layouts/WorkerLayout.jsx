@@ -81,6 +81,15 @@ export default function WorkerLayout() {
   const navigate  = useNavigate()
   const location  = useLocation()
 
+  // ⚠️ SECURITY: outstanding_dues আর user store-এ নেই (localStorage expose হত)।
+  // এখন আলাদা API থেকে আনা হচ্ছে — component state-এ থাকে, localStorage-এ না।
+  const [outstandingDues, setOutstandingDues] = useState(0)
+  useEffect(() => {
+    api.get('/auth/my-sensitive-info')
+      .then(res => setOutstandingDues(parseFloat(res.data?.data?.outstanding_dues || 0)))
+      .catch(() => {})
+  }, [user?.id])
+
   // ✅ লাইভ GPS ট্র্যাকিং — ব্যাকগ্রাউন্ডে চলে
   useLiveTracking()
 
@@ -234,10 +243,10 @@ export default function WorkerLayout() {
         </div>
 
         <div className="flex items-center gap-2">
-          {/* বকেয়া badge */}
-          {parseFloat(user?.outstanding_dues || 0) > 0 && (
+          {/* বকেয়া badge — user store থেকে নয়, API state থেকে */}
+          {outstandingDues > 0 && (
             <div className="bg-red-500 text-white text-xs px-2 py-0.5 rounded-full font-medium">
-              বকেয়া ৳{parseFloat(user?.outstanding_dues || 0).toLocaleString('bn-BD')}
+              বকেয়া ৳{outstandingDues.toLocaleString('bn-BD')}
             </div>
           )}
 
