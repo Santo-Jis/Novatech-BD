@@ -40,10 +40,12 @@ const login = async (req, res) => {
         }
 
         // ইমেইল, ফোন বা কর্মী কোড দিয়ে খোঁজো
+        // ⚠️ SECURITY: basic_salary, outstanding_dues, manager_id — login response-এ দেওয়া হয় না।
+        // এগুলো sensitive — localStorage-এ যাওয়া উচিত নয়।
+        // Profile page /auth/me থেকে আলাদাভাবে নেয়, localStorage-এ সেভ হয় না।
         const result = await query(
             `SELECT id, role, employee_code, name_bn, name_en,
-                    email, phone, password_hash, status, 
-                    manager_id, basic_salary, outstanding_dues,
+                    email, phone, password_hash, status,
                     profile_photo
              FROM users
              WHERE email = $1 
@@ -230,15 +232,17 @@ const logout = async (req, res) => {
 
 const me = async (req, res) => {
     try {
+        // ⚠️ SECURITY: /me response localStorage-এ সেভ হয় (fetchMe → auth.store)।
+        // তাই basic_salary, outstanding_dues, manager_id, nid এখানে নেই।
+        // এই sensitive fields দরকার হলে আলাদা protected API থেকে নাও।
         const result = await query(
             `SELECT id, role, employee_code, name_bn, name_en,
                     email, phone, phone2, dob, gender,
-                    marital_status, nid, permanent_address,
+                    marital_status, permanent_address,
                     current_address, district, thana,
                     skills, education, experience,
                     emergency_contact, profile_photo,
-                    basic_salary, join_date, status,
-                    outstanding_dues, manager_id,
+                    join_date, status,
                     created_at
              FROM users
              WHERE id = $1`,
@@ -348,15 +352,14 @@ const forgotPassword = async (req, res) => {
             [email.trim().toLowerCase()]
         );
 
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'এই ইমেইল দিয়ে কোনো অ্যাকাউন্ট পাওয়া যায়নি।' });
+        // ✅ SECURITY: email enumeration বন্ধ।
+        // user না থাকলে বা inactive হলেও একই 200 response দেওয়া হচ্ছে।
+        // attacker বুঝতে পারবে না কোন email সিস্টেমে আছে।
+        if (result.rows.length === 0 || result.rows[0].status !== 'active') {
+            return res.status(200).json({ success: true, message: 'OTP আপনার ইমেইলে পাঠানো হয়েছে।' });
         }
 
         const user = result.rows[0];
-
-        if (user.status !== 'active') {
-            return res.status(403).json({ success: false, message: 'এই অ্যাকাউন্ট সক্রিয় নয়।' });
-        }
 
         // ─── FIX #3a: Secure OTP তৈরি ────────────────────────────
         // আগে: Math.random() — cryptographically insecure
@@ -418,8 +421,9 @@ const verifyOtp = async (req, res) => {
         }
 
         const userResult = await query(`SELECT id FROM users WHERE email = $1`, [email.trim().toLowerCase()]);
+        // ✅ SECURITY: email enumeration বন্ধ — user না থাকলেও generic error
         if (userResult.rows.length === 0) {
-            return res.status(400).json({ success: false, message: 'ইমেইল পাওয়া যায়নি।' });
+            return res.status(400).json({ success: false, message: 'OTP ভুল অথবা মেয়াদ শেষ।' });
         }
 
         const userId = userResult.rows[0].id;
@@ -473,8 +477,9 @@ const resetPasswordWithOtp = async (req, res) => {
         }
 
         const userResult = await query(`SELECT id FROM users WHERE email = $1`, [email.trim().toLowerCase()]);
+        // ✅ SECURITY: email enumeration বন্ধ — user না থাকলেও generic error
         if (userResult.rows.length === 0) {
-            return res.status(400).json({ success: false, message: 'ইমেইল পাওয়া যায়নি।' });
+            return res.status(400).json({ success: false, message: 'রিসেট টোকেন অবৈধ বা মেয়াদ শেষ।' });
         }
 
         const userId = userResult.rows[0].id;
@@ -639,11 +644,49 @@ const checkEmailType = async (req, res) => {
     }
 };
 
+// ============================================================
+// MY SENSITIVE INFO
+// GET /api/auth/my-sensitive-info
+// basic_salary, outstanding_dues, manager_id, nid — শুধু authenticated user নিজে দেখতে পারবে।
+// এই endpoint-এর response localStorage-এ সেভ করা যাবে না — component state-এ রাখতে হবে।
+// ============================================================
+
+const mySensitiveInfo = async (req, res) => {
+    try {
+        const result = await query(
+            `SELECT basic_salary, outstanding_dues, manager_id, nid
+             FROM users
+             WHERE id = $1`,
+            [req.user.id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'ব্যবহারকারী পাওয়া যায়নি।'
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: result.rows[0]
+        });
+
+    } catch (error) {
+        console.error('❌ mySensitiveInfo Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'তথ্য আনতে সমস্যা হয়েছে।'
+        });
+    }
+};
+
 module.exports = {
     login,
     refresh,
     logout,
     me,
+    mySensitiveInfo,
     changePassword,
     forgotPassword,
     verifyOtp,
