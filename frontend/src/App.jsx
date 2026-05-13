@@ -1,4 +1,5 @@
-import { Routes, Route, Navigate, useEffect, useState } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { useAuthStore } from './store/auth.store'
 import { FirebaseProvider } from './firebase/notifications'
 import PermissionSetup, { usePermissionSetup } from './components/PermissionSetup'
