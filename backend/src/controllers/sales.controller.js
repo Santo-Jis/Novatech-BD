@@ -178,29 +178,13 @@ const createSale = async (req, res) => {
             }
         }
 
-        // ── অনুমোদিত অর্ডার যাচাই (Server-side hard block) ──────
+        // ── অনুমোদিত অর্ডার যাচাই — Transaction-এর ভেতরে FOR UPDATE দিয়ে হবে ──────
+        // ⚠️ Race Condition Fix:
+        // আগে এখানে transaction-এর বাইরে SELECT করা হতো, তারপর transaction-এ INSERT।
+        // ফলে একাধিক SR একই সময়ে একই approved order পেয়ে যেত।
+        // Fix: order lock + validation এখন withTransaction-এর ভেতরে নামানো হয়েছে।
         const today = new Date().toISOString().split('T')[0];
-        const orderCheck = await query(
-            `SELECT id FROM orders
-             WHERE worker_id = $1
-               AND DATE(requested_at) = $2
-               AND status = 'approved'
-             ORDER BY approved_at DESC
-             LIMIT 1`,
-            [req.user.id, today]
-        );
-
-        if (orderCheck.rows.length === 0) {
-            return res.status(403).json({
-                success: false,
-                message: 'আজকের অর্ডার ম্যানেজার কর্তৃক অনুমোদিত হয়নি। অনুমোদন ছাড়া বিক্রয় সম্ভব নয়।'
-            });
-        }
-
-        // order_id না পাঠালে approved order থেকেই নাও
-        if (!order_id) {
-            order_id = orderCheck.rows[0].id;
-        }
+        const requested_order_id = order_id; // user যা পাঠিয়েছে সেটা ধরে রাখো
 
         // কাস্টমার তথ্য
         const customer = await query(
@@ -337,6 +321,53 @@ const createSale = async (req, res) => {
 
         // বিক্রয় সেভ
         const saleResult = await withTransaction(async (client) => {
+
+            // ── Order Lock — Race Condition Fix ─────────────────────────────
+            // FOR UPDATE: এই row অন্য কেউ একই সময়ে lock করতে পারবে না
+            // SKIP LOCKED: lock করা row পেলে error না দিয়ে 0 rows ফেরত দেবে
+            // এতে একই order দুইজন SR কখনো পাবে না
+            let lockedOrderId;
+
+            if (requested_order_id) {
+                // explicit order_id পাঠানো হয়েছে — সেটাই lock করো
+                const lockResult = await client.query(
+                    `SELECT id FROM orders
+                     WHERE id = $1
+                       AND worker_id = $2
+                       AND DATE(requested_at) = $3
+                       AND status = 'approved'
+                     FOR UPDATE SKIP LOCKED`,
+                    [requested_order_id, req.user.id, today]
+                );
+                if (lockResult.rows.length === 0) {
+                    throw Object.assign(
+                        new Error('ORDER_UNAVAILABLE'),
+                        { statusCode: 403, clientMessage: 'এই অর্ডারটি ইতোমধ্যে ব্যবহৃত হয়েছে বা অনুমোদিত নেই।' }
+                    );
+                }
+                lockedOrderId = lockResult.rows[0].id;
+
+            } else {
+                // order_id পাঠানো হয়নি — আজকের approved order খোঁজো
+                const lockResult = await client.query(
+                    `SELECT id FROM orders
+                     WHERE worker_id = $1
+                       AND DATE(requested_at) = $2
+                       AND status = 'approved'
+                     ORDER BY approved_at DESC
+                     LIMIT 1
+                     FOR UPDATE SKIP LOCKED`,
+                    [req.user.id, today]
+                );
+                if (lockResult.rows.length === 0) {
+                    throw Object.assign(
+                        new Error('ORDER_UNAVAILABLE'),
+                        { statusCode: 403, clientMessage: 'আজকের অর্ডার অনুমোদিত হয়নি বা অন্য কেউ ব্যবহার করছে। কিছুক্ষণ পরে আবার চেষ্টা করুন।' }
+                    );
+                }
+                lockedOrderId = lockResult.rows[0].id;
+            }
+
             const result = await client.query(
                 `INSERT INTO sales_transactions
                  (worker_id, customer_id, visit_id, order_id,
@@ -349,7 +380,7 @@ const createSale = async (req, res) => {
                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
                  RETURNING *`,
                 [
-                    req.user.id, customer_id, visit_id || null, order_id || null,
+                    req.user.id, customer_id, visit_id || null, lockedOrderId,
                     JSON.stringify(processedItems),
                     totalAmount, discountAmount, netAmount,
                     payment_method, cashReceived, creditUsed,
@@ -485,6 +516,15 @@ const createSale = async (req, res) => {
 
     } catch (error) {
         console.error('❌ Create Sale Error:', error.message);
+
+        // Order lock error — race condition বা unavailable order
+        if (error.message === 'ORDER_UNAVAILABLE') {
+            return res.status(error.statusCode || 403).json({
+                success: false,
+                message: error.clientMessage || 'অর্ডার পাওয়া যায়নি।'
+            });
+        }
+
         return res.status(500).json({ success: false, message: 'বিক্রয়ে সমস্যা হয়েছে।' });
     }
 };
