@@ -36,17 +36,25 @@ const submitReturn = async (req, res) => {
         }
 
         // পণ্য তথ্য ও মূল্য হিসাব
+        // ✅ FIX: N+1 query বন্ধ — আগে প্রতিটি item-এর জন্য আলাদা SELECT চলত।
+        // এখন সব product_id একবারে WHERE id = ANY($1) দিয়ে আনা হচ্ছে।
+        // ১০টি item = আগে ১০টি query, এখন ১টি query।
+        const productIds = items.map(i => i.product_id);
+        const productsRes = await query(
+            `SELECT id, name, price, vat, tax, unit FROM products
+             WHERE id = ANY($1) AND is_active = true`,
+            [productIds]
+        );
+        const productMap = {};
+        productsRes.rows.forEach(p => { productMap[p.id] = p; });
+
         let totalValue = 0;
         const processedItems = [];
 
         for (const item of items) {
-            const prodRes = await query(
-                `SELECT id, name, price, vat, tax, unit FROM products WHERE id = $1 AND is_active = true`,
-                [item.product_id]
-            );
-            if (prodRes.rows.length === 0) continue;
+            const prod = productMap[item.product_id];
+            if (!prod) continue;
 
-            const prod = prodRes.rows[0];
             const { finalPrice, subtotal } = calcFromProduct(prod, item.qty);
             totalValue += subtotal;
 
