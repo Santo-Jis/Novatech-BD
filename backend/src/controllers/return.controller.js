@@ -36,10 +36,18 @@ const submitReturn = async (req, res) => {
         }
 
         // পণ্য তথ্য ও মূল্য হিসাব
-        // ✅ FIX: N+1 query বন্ধ — আগে প্রতিটি item-এর জন্য আলাদা SELECT চলত।
-        // এখন সব product_id একবারে WHERE id = ANY($1) দিয়ে আনা হচ্ছে।
-        // ১০টি item = আগে ১০টি query, এখন ১টি query।
-        const productIds = items.map(i => i.product_id);
+        // ✅ N+1 query বন্ধ — সব product_id একবারে WHERE id = ANY($1) দিয়ে আনা হচ্ছে।
+        // ✅ Set দিয়ে duplicate product_id সরানো হচ্ছে।
+        // ✅ filter(Boolean) দিয়ে null/undefined product_id বাদ দেওয়া হচ্ছে।
+        const productIds = [...new Set(items.map(i => i.product_id).filter(Boolean))];
+
+        if (productIds.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'সকল পণ্যের ID অবৈধ।'
+            });
+        }
+
         const productsRes = await query(
             `SELECT id, name, price, vat, tax, unit FROM products
              WHERE id = ANY($1) AND is_active = true`,
@@ -50,10 +58,14 @@ const submitReturn = async (req, res) => {
 
         let totalValue = 0;
         const processedItems = [];
+        const invalidItems = [];
 
         for (const item of items) {
             const prod = productMap[item.product_id];
-            if (!prod) continue;
+            if (!prod) {
+                invalidItems.push(item.product_id);
+                continue;
+            }
 
             const { finalPrice, subtotal } = calcFromProduct(prod, item.qty);
             totalValue += subtotal;
@@ -66,6 +78,15 @@ const submitReturn = async (req, res) => {
                 unit_price:   finalPrice,
                 subtotal,
                 reason:       item.reason || reason
+            });
+        }
+
+        // ✅ বৈধ কোনো item না থাকলে INSERT করা যাবে না
+        if (processedItems.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'কোনো বৈধ পণ্য পাওয়া যায়নি।',
+                invalid_ids: invalidItems
             });
         }
 
@@ -89,7 +110,8 @@ const submitReturn = async (req, res) => {
             message: type === 'return'
                 ? 'রিটার্ন রিকোয়েস্ট পাঠানো হয়েছে। ম্যানেজার শীঘ্রই রিভিউ করবেন।'
                 : 'রিপ্লেসমেন্ট রিকোয়েস্ট পাঠানো হয়েছে।',
-            data: result.rows[0]
+            data: result.rows[0],
+            ...(invalidItems.length > 0 && { skipped_ids: invalidItems })
         });
 
     } catch (error) {
