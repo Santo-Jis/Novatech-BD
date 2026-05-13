@@ -61,9 +61,16 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // ============================================================
 
 // সাধারণ API limit
+// ⚠️ FIX: আগে শুধু IP-based ছিল — অফিস নেটওয়ার্কে একই IP থেকে সবার request block হত।
+// এখন লগইন থাকলে user ID দিয়ে limit, না থাকলে IP দিয়ে।
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // ১৫ মিনিট
-    max: 100,
+    max: 300, // authenticated user প্রতি — বেশি request দরকার হয় real usage-এ
+    keyGenerator: (req) => {
+        // JWT middleware আগেই req.user populate করে (authenticated routes-এ)
+        return req.user?.id ? `user_${req.user.id}` : `ip_${req.ip}`
+    },
+    skip: (req) => req.path === '/health', // keep-alive ping count করবে না
     message: {
         success: false,
         message: 'অনেক বেশি রিকোয়েস্ট। ১৫ মিনিট পরে চেষ্টা করুন।'
