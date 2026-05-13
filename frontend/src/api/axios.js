@@ -1,6 +1,25 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
 
+// ============================================================
+// IN-MEMORY TOKEN STORE
+// ─────────────────────────────────────────────────────────────
+// accessToken আর localStorage-এ রাখা হয় না।
+// localStorage = disk — যেকোনো third-party script বা XSS-এ পড়া যায়।
+// Memory = JS heap — শুধু এই tab-এর JS পড়তে পারে।
+//
+// ট্রেডঅফ: page refresh-এ token হারায়।
+// সমাধান: refresh হলে /auth/refresh call → refreshToken (HttpOnly cookie)
+//         দিয়ে নতুন accessToken নেওয়া হয় — silent re-auth।
+// ============================================================
+let _accessToken = null
+
+export const tokenStore = {
+  get: ()        => _accessToken,
+  set: (token)   => { _accessToken = token },
+  clear: ()      => { _accessToken = null },
+}
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
   timeout: 12000,
@@ -21,7 +40,7 @@ export function isNetworkError(error) {
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken')
+    const token = tokenStore.get()   // ✅ memory থেকে — localStorage নয়
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -66,7 +85,7 @@ api.interceptors.response.use(
     ) {
       // TOKEN_EXPIRED ছাড়া সব 401 — token নেই বা invalid
       // শুধু তখনই /login এ পাঠাবো যখন user আসলে logged-in ছিল
-      const hadToken = !!localStorage.getItem('accessToken')
+      const hadToken = !!tokenStore.get()
 
       if (code === 'WRONG_TOKEN_TYPE') {
         toast.error('অ্যাক্সেস অননুমোদিত। আবার লগইন করুন।')
@@ -78,6 +97,7 @@ api.interceptors.response.use(
       portalKeys.forEach(k => { portalData[k] = localStorage.getItem(k) })
 
       localStorage.clear()
+      tokenStore.clear()    // memory-ও clear
       Object.entries(portalData).forEach(([k, v]) => localStorage.setItem(k, v))
 
       // LandingPage visitor বা Customer কে /login এ পাঠাবো না
@@ -117,7 +137,7 @@ api.interceptors.response.use(
         )
 
         const { accessToken } = response.data.data
-        localStorage.setItem('accessToken', accessToken)
+        tokenStore.set(accessToken)   // ✅ memory-তে — localStorage নয়
 
         api.defaults.headers.common.Authorization = `Bearer ${accessToken}`
         processQueue(null, accessToken)
@@ -134,6 +154,7 @@ api.interceptors.response.use(
         portalKeys2.forEach(k => { portalData2[k] = localStorage.getItem(k) })
 
         localStorage.clear()
+        tokenStore.clear()    // memory-ও clear
         Object.entries(portalData2).forEach(([k, v]) => localStorage.setItem(k, v))
 
         window.location.href = '/login'
