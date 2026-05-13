@@ -283,7 +283,6 @@ export default function Login() {
 
       if (Capacitor.isNativePlatform()) {
         // Android APK → Capacitor Google Auth
-        await GoogleAuth.initialize({ scopes: ['profile', 'email'] })
         const googleUser = await GoogleAuth.signIn()
 
         // Capacitor GoogleAuth response: googleUser.email, googleUser.givenName
