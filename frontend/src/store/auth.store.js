@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import api from '../api/axios'
+import api, { tokenStore } from '../api/axios'
 import { clearAllData } from '../api/offlineQueue'
 import toast from 'react-hot-toast'
 
@@ -8,10 +8,28 @@ import toast from 'react-hot-toast'
 // লগইন, লগআউট, ইউজার তথ্য
 // ============================================================
 
+// ⚠️ SECURITY: localStorage-এ শুধু UI-এর জন্য দরকারী fields সেভ হবে।
+// basic_salary, outstanding_dues, manager_id, nid — localStorage-এ কখনো না।
+// এগুলো দরকার হলে GET /api/auth/my-sensitive-info থেকে নাও (component state-এ রাখো)।
+//
+// accessToken — আর localStorage-এ নেই। tokenStore (in-memory) এ থাকে।
+// Page refresh হলে /auth/refresh → HttpOnly refreshToken দিয়ে নতুন accessToken নেওয়া হয়।
+const SAFE_USER_FIELDS = ['id', 'role', 'employee_code', 'name_bn', 'name_en',
+  'email', 'phone', 'profile_photo', 'status', 'join_date']
+
+const toSafeUser = (user) => {
+  if (!user) return null
+  return SAFE_USER_FIELDS.reduce((acc, key) => {
+    if (user[key] !== undefined) acc[key] = user[key]
+    return acc
+  }, {})
+}
+
 export const useAuthStore = create((set, get) => ({
-  user:    JSON.parse(localStorage.getItem('user')  || 'null'),
-  token:   localStorage.getItem('accessToken')      || null,
-  // refreshToken: HttpOnly cookie-তে — JS দিয়ে পড়া যায় না, store-এ রাখা হয় না
+  user:    JSON.parse(localStorage.getItem('user') || 'null'),
+  // ✅ token এখন শুধু memory-তে (tokenStore) — localStorage-এ নেই।
+  // store-এ boolean হিসেবে রাখা হচ্ছে — UI logic-এর জন্য (logged in কিনা)।
+  token:   tokenStore.get(),
   loading: false,
 
   // ── LOGIN ──
@@ -22,22 +40,46 @@ export const useAuthStore = create((set, get) => ({
       const { user, accessToken } = response.data.data
       // refreshToken: server HttpOnly cookie-তে সেট করেছে — JS-এ দেখা যাবে না
 
-      localStorage.setItem('user',        JSON.stringify(user))
-      localStorage.setItem('accessToken', accessToken)
+      // ✅ accessToken শুধু memory-তে — localStorage-এ যাবে না
+      tokenStore.set(accessToken)
 
-      set({ user, token: accessToken, loading: false })
+      // ⚠️ SECURITY: sensitive fields বাদ দিয়ে localStorage-এ সেভ
+      const safeUser = toSafeUser(user)
+      localStorage.setItem('user', JSON.stringify(safeUser))
+
+      set({ user: safeUser, token: accessToken, loading: false })
 
       // লগইনের পর Eruda দেখাও
       if (typeof window.__showEruda === 'function') window.__showEruda()
 
       toast.success(`স্বাগতম, ${user.name_bn}!`)
-      return { success: true, user }
+      return { success: true, user: safeUser }
 
     } catch (error) {
       set({ loading: false })
       const message = error.response?.data?.message || 'লগইন ব্যর্থ হয়েছে।'
       toast.error(message)
       return { success: false, message }
+    }
+  },
+
+  // ── SILENT REFRESH (page load-এ call করো) ──
+  // accessToken memory-তে থাকে — refresh হলে হারায়।
+  // App mount-এ এই function call করলে HttpOnly refreshToken দিয়ে
+  // নতুন accessToken নেওয়া হয় — user আবার logged in হয়ে যায়।
+  silentRefresh: async () => {
+    try {
+      const response = await api.post('/auth/refresh', {})
+      const { accessToken } = response.data.data
+      tokenStore.set(accessToken)
+      set({ token: accessToken })
+      return true
+    } catch {
+      // refreshToken নেই বা expire — logout state
+      tokenStore.clear()
+      localStorage.removeItem('user')
+      set({ user: null, token: null })
+      return false
     }
   },
 
@@ -50,6 +92,7 @@ export const useAuthStore = create((set, get) => ({
 
     // ১. আগেই UI clear করো — ইউজার সাথে সাথে লগইন পেজে যাবে
     localStorage.clear()
+    tokenStore.clear()   // memory-ও clear
 
     // portal_jwt গুলো ফিরিয়ে দাও
     Object.entries(portalData).forEach(([k, v]) => localStorage.setItem(k, v))
@@ -74,7 +117,8 @@ export const useAuthStore = create((set, get) => ({
 
   // ── UPDATE USER ──
   updateUser: (updatedUser) => {
-    const merged = { ...get().user, ...updatedUser }
+    // ⚠️ SECURITY: update-এও sensitive fields ফিল্টার করো
+    const merged = toSafeUser({ ...get().user, ...updatedUser })
     localStorage.setItem('user', JSON.stringify(merged))
     set({ user: merged })
   },
@@ -84,8 +128,10 @@ export const useAuthStore = create((set, get) => ({
     try {
       const response = await api.get('/auth/me')
       const user     = response.data.data
-      localStorage.setItem('user', JSON.stringify(user))
-      set({ user })
+      // ⚠️ SECURITY: /me থেকে আসা data-ও ফিল্টার করে সেভ
+      const safeUser = toSafeUser(user)
+      localStorage.setItem('user', JSON.stringify(safeUser))
+      set({ user: safeUser })
     } catch { /* silent */ }
   },
 
