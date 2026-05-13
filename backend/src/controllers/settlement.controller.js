@@ -3,6 +3,24 @@ const axios = require('axios');
 const { sendPushNotification } = require('../services/fcm.service');
 const { addLedgerEntry } = require('./ledger.controller');
 
+// ─── Bangladesh Timezone Helper (UTC+6) ───────────────────────────────────────
+// new Date().toISOString() সবসময় UTC ধরে। বাংলাদেশ UTC+6 হওয়ায়
+// রাত ১২টার আগে (BD time) server-এ আগের দিনের date আসে।
+// এই helper সরাসরি BD local date string (YYYY-MM-DD) রিটার্ন করে।
+const getBDToday = () => {
+    const now = new Date();
+    // UTC milliseconds + 6 ঘণ্টা offset যোগ করলে BD local time পাওয়া যায়
+    const bdOffset = 6 * 60 * 60 * 1000;
+    const bdDate   = new Date(now.getTime() + bdOffset);
+    return bdDate.toISOString().split('T')[0]; // YYYY-MM-DD
+};
+
+const getBDNow = () => {
+    const bdOffset = 6 * 60 * 60 * 1000;
+    return new Date(Date.now() + bdOffset);
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 // Firebase নোটিফিকেশন
 const firebaseNotify = async (path, data) => {
     try {
@@ -26,7 +44,7 @@ const firebaseNotify = async (path, data) => {
 const createSettlement = async (req, res) => {
     try {
         const workerId = req.user.id;
-        const today    = new Date().toISOString().split('T')[0];
+        const today    = getBDToday(); // ✅ UTC নয়, BD local date (UTC+6)
 
         // আজকে আগে settlement আছে কিনা
         const existing = await query(
@@ -334,8 +352,9 @@ const createSettlement = async (req, res) => {
 const getMySettlements = async (req, res) => {
     try {
         const { month, year } = req.query;
-        const currentYear     = year  || new Date().getFullYear();
-        const currentMonth    = month || new Date().getMonth() + 1;
+        const bdNow        = getBDNow(); // ✅ BD local time থেকে default year/month
+        const currentYear  = year  || bdNow.getUTCFullYear();
+        const currentMonth = month || bdNow.getUTCMonth() + 1;
 
         const result = await query(
             `SELECT ds.*,
@@ -731,7 +750,7 @@ const payShortage = async (req, res) => {
 const getAllSettlements = async (req, res) => {
     try {
         const { from, to, status, worker_id } = req.query;
-        const today    = new Date().toISOString().split('T')[0];
+        const today    = getBDToday(); // ✅ BD local date
         const fromDate = from || today;
         const toDate   = to   || today;
 
@@ -841,7 +860,7 @@ const getSettlementDetail = async (req, res) => {
 const getTodayPreview = async (req, res) => {
     try {
         const workerId = req.user.id;
-        const today    = new Date().toISOString().split('T')[0];
+        const today    = getBDToday(); // ✅ BD local date (UTC+6)
 
         // আজকের সব approved অর্ডার (একটা নয়, সব)
         const ordersResult2 = await query(
