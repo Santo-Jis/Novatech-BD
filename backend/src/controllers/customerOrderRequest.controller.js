@@ -98,6 +98,8 @@ const createOrderRequest = async (req, res) => {
         }
 
         // DB-তে অর্ডার রিকোয়েস্ট সেভ করো
+        // Customer অর্ডারে reserved_stock বাড়ানো হয় না —
+        // কারণ customer যত খুশি অর্ডার করতে পারবে, stock 24 ঘন্টায় বাড়ানো হয়
         const result = await query(
             `INSERT INTO customer_order_requests (customer_id, items, note, status)
              VALUES ($1, $2::jsonb, $3, 'pending')
@@ -322,6 +324,7 @@ const updateOrderRequest = async (req, res) => {
         }
 
         values.push(id);
+
         await query(
             `UPDATE customer_order_requests SET ${updates.join(', ')} WHERE id = $${paramIdx}`,
             values
