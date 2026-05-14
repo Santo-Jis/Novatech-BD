@@ -26,11 +26,14 @@ const toSafeUser = (user) => {
 }
 
 export const useAuthStore = create((set, get) => ({
-  user:    JSON.parse(localStorage.getItem('user') || 'null'),
+  user:      JSON.parse(localStorage.getItem('user') || 'null'),
   // ✅ token এখন শুধু memory-তে (tokenStore) — localStorage-এ নেই।
   // store-এ boolean হিসেবে রাখা হচ্ছে — UI logic-এর জন্য (logged in কিনা)।
-  token:   tokenStore.get(),
-  loading: false,
+  token:     tokenStore.get(),
+  loading:   false,
+  // ✅ authReady: silentRefresh শেষ হওয়ার আগে ProtectedRoute render ব্লক করে।
+  // App mount-এ false থাকে, silentRefresh/skip হলে true হয়।
+  authReady: false,
 
   // ── LOGIN ──
   login: async (identifier, password) => {
@@ -47,7 +50,7 @@ export const useAuthStore = create((set, get) => ({
       const safeUser = toSafeUser(user)
       localStorage.setItem('user', JSON.stringify(safeUser))
 
-      set({ user: safeUser, token: accessToken, loading: false })
+      set({ user: safeUser, token: accessToken, loading: false, authReady: true })
 
       // লগইনের পর Eruda দেখাও
       if (typeof window.__showEruda === 'function') window.__showEruda()
@@ -70,15 +73,16 @@ export const useAuthStore = create((set, get) => ({
   silentRefresh: async () => {
     try {
       const response = await api.post('/auth/refresh', {})
+
       const { accessToken } = response.data.data
       tokenStore.set(accessToken)
-      set({ token: accessToken })
+      set({ token: accessToken, authReady: true })
       return true
     } catch {
       // refreshToken নেই বা expire — logout state
       tokenStore.clear()
       localStorage.removeItem('user')
-      set({ user: null, token: null })
+      set({ user: null, token: null, authReady: true })
       return false
     }
   },
