@@ -12,16 +12,7 @@ const { getDB } = require('../config/firebase');
 // এখন Admin SDK ব্যবহার করা হচ্ছে — কোনো auth token লাগে না।
 // ============================================================
 
-const firebaseNotify = async (path, data) => {
-    try {
-        await getDB().ref(path).push({
-            ...data,
-            timestamp: Date.now()
-        });
-    } catch (err) {
-        console.error('⚠️ Firebase Notify Error:', err.message);
-    }
-};
+const { firebaseNotify } = require('../services/firebase.notify');
 
 // ============================================================
 // CREATE ORDER
