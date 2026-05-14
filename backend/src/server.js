@@ -1,4 +1,10 @@
 require('dotenv').config();
+
+// ✅ ENV VALIDATION — dotenv-এর পরে, বাকি সব require-এর আগে।
+// Missing বা insecure variable থাকলে এখানেই server বন্ধ হবে।
+const { validateEnv } = require('./config/validateEnv');
+validateEnv();
+
 const { initializeFirebase } = require('./config/firebase');
 initializeFirebase();
 const express       = require('express');
