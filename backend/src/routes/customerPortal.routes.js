@@ -31,6 +31,7 @@ const {
 } = require('../controllers/customerOrderRequest.controller');
 
 const { auth } = require('../middlewares/auth');
+const { customerAiChat, getCustomerChatHistory } = require('../controllers/customerAiChat.controller');
 
 // ── Portal JWT Middleware (কাস্টমার ড্যাশবোর্ডের জন্য) ──────
 const portalAuth = (req, res, next) => {
@@ -100,4 +101,14 @@ router.post('/order-request', portalAuth, createOrderRequest);
 // GET  /api/portal/order-requests
 router.get('/order-requests', portalAuth, getMyOrderRequests);
 
+// ── Customer AI Chat ─────────────────────────────────────────
+// POST /api/portal/ai-chat        — AI-এর সাথে কথা বলো
+// GET  /api/portal/ai-chat/history — পুরনো chat দেখো
+router.post('/ai-chat',         portalAuth, customerAiChat);
+router.get('/ai-chat/history',  portalAuth, getCustomerChatHistory);
+
 module.exports = router;
+
+// ── Customer AI Chat ─────────────────────────────────────────
+// POST /api/portal/ai-chat
+// GET  /api/portal/ai-chat/history
