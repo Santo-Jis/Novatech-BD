@@ -112,10 +112,16 @@ export const useAuthStore = create((set, get) => ({
       clearTimeout(timer)
     } catch { /* timeout বা network error — কিছু করার নেই */ }
 
-    // ৩. IndexedDB ব্যাকগ্রাউন্ডে clear (block করবে না)
-    clearAllData().catch(() => {})
+    // ৩. IndexedDB clear — redirect-এর আগে await করতে হবে।
+    // background-এ রাখলে page unload হওয়ার সাথে সাথে deleteDatabase বন্ধ হয়,
+    // পুরনো offline data থেকে যায় — race condition।
+    // 2s timeout দিয়ে block করা হচ্ছে না — তবু সুযোগ দেওয়া হচ্ছে।
+    await Promise.race([
+      clearAllData(),
+      new Promise(resolve => setTimeout(resolve, 2000))  // max 2s wait
+    ]).catch(() => {})
 
-    // ৪. Hard redirect
+    // ৪. Hard redirect — IndexedDB clear হওয়ার পরে
     window.location.href = '/login'
   },
 
