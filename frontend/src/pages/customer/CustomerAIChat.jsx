@@ -9,8 +9,8 @@ const BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 // ── Portal JWT helper ──────────────────────────────────────────
 function getPortalJWT() {
-  const key = Object.keys(localStorage).find(k => k.startsWith('portal_jwt_'))
-  return key ? localStorage.getItem(key) : null
+  const key = Object.keys(sessionStorage).find(k => k.startsWith('portal_jwt_'))
+  return key ? sessionStorage.getItem(key) : null
 }
 
 async function portalPost(path, body) {
@@ -154,9 +154,9 @@ export default function CustomerAIChat() {
   const [customerInfo, setCustomerInfo] = useState({})
   useEffect(() => {
     try {
-      const key = Object.keys(localStorage).find(k => k.startsWith('portal_jwt_'))
+      const key = Object.keys(sessionStorage).find(k => k.startsWith('portal_jwt_'))
       if (!key) { navigate('/login', { replace: true }); return }
-      const jwt = localStorage.getItem(key)
+      const jwt = sessionStorage.getItem(key)
       const decoded = JSON.parse(atob(jwt.split('.')[1]))
       setCustomerInfo(decoded)
     } catch { navigate('/login', { replace: true }) }
