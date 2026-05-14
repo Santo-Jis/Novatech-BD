@@ -139,12 +139,25 @@ const verifyPortalToken = async (req, res) => {
         // এই লিংক আগে কোনো ডিভাইসে lock হয়েছে কিনা
         const isLocked = !!record.bound_device_id;
 
-        if (isLocked && device_id) {
-            const hashedIncoming = hashDeviceId(device_id);
+        if (isLocked) {
+            // ⚠️ FIX #3: device_id না পাঠালে lock bypass সম্ভব ছিল।
+            // এখন device_id ছাড়া locked token-এ access সম্পূর্ণ বন্ধ।
+            if (!device_id) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Device ID পাওয়া যায়নি। Browser থেকে লিংকটি খুলুন।',
+                    error_code: 'DEVICE_ID_MISSING'
+                });
+            }
+
+            // Composite fingerprint — googleAuth ও deviceLogin-এর মতোই
+            const userAgent      = req.headers['user-agent'] || '';
+            const clientIp       = req.ip || req.socket?.remoteAddress || '';
+            const compositeRaw   = `${device_id}::${userAgent}::${clientIp}`;
+            const hashedIncoming = hashDeviceId(compositeRaw);
             const isSameDevice   = hashedIncoming === record.bound_device_id;
 
             if (!isSameDevice) {
-                // ভিন্ন ডিভাইস — block
                 return res.status(403).json({
                     success: false,
                     message: 'এই লিংক অন্য একটি ডিভাইসে ব্যবহার করা হয়েছে। নতুন লিংকের জন্য SR-এর সাথে যোগাযোগ করুন।',
@@ -162,10 +175,9 @@ const verifyPortalToken = async (req, res) => {
                 customer_code:  record.customer_code,
                 email_linked:   !!record.email,
                 token_valid:    true,
-                // ── নতুন: এই ডিভাইস কি আগে lock হয়েছে?
+                // lock হলে এখানে পৌঁছানো মানে same device confirmed
                 is_device_locked: isLocked,
-                // lock হয়ে থাকলে আর Google login দরকার নেই — সরাসরি JWT দেওয়া যাবে
-                can_skip_google:  isLocked && device_id ? hashDeviceId(device_id) === record.bound_device_id : false
+                can_skip_google:  isLocked,
             }
         });
 
@@ -178,7 +190,12 @@ const verifyPortalToken = async (req, res) => {
 // ============================================================
 // 2b. DEVICE RE-LOGIN (Google ছাড়া)
 // POST /api/portal/device-login
-// আগে lock হওয়া ডিভাইস → fingerprint match → সরাসরি JWT
+// আগে lock হওয়া ডিভাইস → server-side fingerprint match → সরাসরি JWT
+//
+// ⚠️ FIX #2: device_id client থেকে আসে, তাই এটাকে একমাত্র
+// পরিচয় হিসেবে বিশ্বাস করা যাবে না।
+// Server-side তথ্য (User-Agent, IP) মিশিয়ে composite fingerprint
+// তৈরি করা হয় — শুধু device_id চুরি করে login করা যাবে না।
 // ============================================================
 const deviceLogin = async (req, res) => {
     try {
@@ -187,6 +204,12 @@ const deviceLogin = async (req, res) => {
         if (!portal_token || !device_id) {
             return res.status(400).json({ success: false, message: 'portal_token ও device_id দেওয়া হয়নি।' });
         }
+
+        // Composite fingerprint: client device_id + server-side User-Agent + IP
+        const userAgent  = req.headers['user-agent'] || '';
+        const clientIp   = req.ip || req.socket?.remoteAddress || '';
+        const compositeRaw = `${device_id}::${userAgent}::${clientIp}`;
+        const hashedIncoming = hashDeviceId(compositeRaw);
 
         const result = await query(
             `SELECT cpt.*, c.id as cid, c.shop_name, c.owner_name, c.customer_code,
@@ -207,7 +230,6 @@ const deviceLogin = async (req, res) => {
             return res.status(400).json({ success: false, message: 'এই লিংকে আগে Google login করা হয়নি।' });
         }
 
-        const hashedIncoming = hashDeviceId(device_id);
         if (hashedIncoming !== record.bound_device_id) {
             return res.status(403).json({
                 success: false,
@@ -216,7 +238,10 @@ const deviceLogin = async (req, res) => {
             });
         }
 
-        // ── Match! JWT issue করো ──
+        if (!process.env.JWT_PORTAL_SECRET) {
+            return res.status(500).json({ success: false, message: 'সার্ভার কনফিগারেশন সমস্যা।' });
+        }
+
         const portalJWT = jwt.sign(
             {
                 customer_id:    record.cid,
@@ -224,7 +249,7 @@ const deviceLogin = async (req, res) => {
                 google_name:    record.owner_name,
                 type:           'customer_portal'
             },
-            process.env.JWT_PORTAL_SECRET || process.env.JWT_ACCESS_SECRET,
+            process.env.JWT_PORTAL_SECRET,
             { expiresIn: '30d' }
         );
 
@@ -289,7 +314,12 @@ const googleAuth = async (req, res) => {
         }
 
         const customerData   = tokenResult.rows[0];
-        const hashedDeviceId = hashDeviceId(device_id);
+        // Composite fingerprint: client device_id + server-side User-Agent + IP
+        // এটি deviceLogin-এর সাথে হুবহু মিলতে হবে
+        const userAgent      = req.headers['user-agent'] || '';
+        const clientIp       = req.ip || req.socket?.remoteAddress || '';
+        const compositeRaw   = `${device_id}::${userAgent}::${clientIp}`;
+        const hashedDeviceId = hashDeviceId(compositeRaw);
 
         // ── Device Lock চেক ──────────────────────────────────
         if (customerData.bound_device_id) {
@@ -360,6 +390,14 @@ const googleAuth = async (req, res) => {
         }
 
         // ── Portal JWT issue ─────────────────────────────────
+        // JWT_PORTAL_SECRET অবশ্যই .env-এ আলাদা থাকতে হবে।
+        // JWT_ACCESS_SECRET fallback বাদ দেওয়া হয়েছে — দুটো secret
+        // একই হলে employee token দিয়ে portal access সম্ভব ছিল।
+        if (!process.env.JWT_PORTAL_SECRET) {
+            console.error('❌ JWT_PORTAL_SECRET is not set in environment variables.');
+            return res.status(500).json({ success: false, message: 'সার্ভার কনফিগারেশন সমস্যা।' });
+        }
+
         const portalJWT = jwt.sign(
             {
                 customer_id:    customerData.cid,
@@ -368,7 +406,7 @@ const googleAuth = async (req, res) => {
                 google_picture: picture,
                 type:           'customer_portal'
             },
-            process.env.JWT_PORTAL_SECRET || process.env.JWT_ACCESS_SECRET,
+            process.env.JWT_PORTAL_SECRET,
             { expiresIn: '30d' }
         );
 
