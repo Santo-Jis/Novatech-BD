@@ -3,13 +3,14 @@
 
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { FiHome, FiShoppingCart, FiFileText, FiCreditCard, FiBell, FiLogOut, FiX, FiUser, FiMenu } from 'react-icons/fi'
+import { FiHome, FiShoppingCart, FiFileText, FiCreditCard, FiBell, FiLogOut, FiX, FiUser, FiMenu, FiCpu } from 'react-icons/fi'
 
 const bottomNav = [
   { path: '/customer/dashboard', icon: <FiHome />,         label: 'হোম',     emoji: '🏠' },
-  { path: '/customer/orders',    icon: <FiShoppingCart />, label: 'অর্ডার',  emoji: '🛒' },
   { path: '/customer/invoices',  icon: <FiFileText />,     label: 'ইনভয়েস', emoji: '📄' },
+  { path: '/customer/ai-chat',   icon: <FiCpu />,          label: 'AI চ্যাট', emoji: '🤖' },
   { path: '/customer/payments',  icon: <FiCreditCard />,   label: 'পরিশোধ', emoji: '💳' },
+  { path: '/customer/orders',    icon: <FiShoppingCart />, label: 'অর্ডার',  emoji: '🛒' },
 ]
 
 function clearCustomerSession() {
@@ -193,6 +194,7 @@ export default function CustomerLayout() {
                 { icon: <FiFileText />,     emoji: '📄', label: 'ইনভয়েস',       path: '/customer/invoices' },
                 { icon: <FiCreditCard />,   emoji: '💳', label: 'পরিশোধ',       path: '/customer/payments' },
                 { icon: <FiUser />,         emoji: '👤', label: 'প্রোফাইল',     path: '/customer/profile' },
+                { icon: <FiCpu />,          emoji: '🤖', label: 'AI সহকারী',    path: '/customer/ai-chat' },
                 { icon: <FiBell />,         emoji: '🔔', label: 'নোটিফিকেশন', path: '/customer/notifications' },
               ].map((item, i) => (
                 <button
