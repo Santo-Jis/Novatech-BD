@@ -49,16 +49,16 @@ const upload = multer({
 // কাস্টমার তালিকা (দূরত্ব সহ)
 router.get('/',          auth, checkTeamAccess, getCustomers);
 
-// Visit ক্রম সেট করা (Manager/Admin)
-router.put('/visit-order', auth, allowRoles('admin', 'manager'), updateVisitOrder);
+// Visit ক্রম সেট করা (Manager/Supervisor/Admin)
+router.put('/visit-order', auth, allowRoles('admin', 'manager', 'supervisor'), updateVisitOrder);
 
 // Worker এর মোট কাস্টমার সংখ্যা
 router.get('/my-count',  auth, getMyCustomerCount);
 
 // Edit request routes (specific routes before /:id)
-router.get('/edit-requests/pending', auth, allowRoles('admin', 'manager'), getPendingCustomerEdits);
-router.put('/edit-requests/:requestId/approve', auth, allowRoles('admin', 'manager'), approveCustomerEdit);
-router.put('/edit-requests/:requestId/reject',  auth, allowRoles('admin', 'manager'), rejectCustomerEdit);
+router.get('/edit-requests/pending', auth, allowRoles('admin', 'manager', 'supervisor'), getPendingCustomerEdits);
+router.put('/edit-requests/:requestId/approve', auth, allowRoles('admin', 'manager', 'supervisor'), approveCustomerEdit);
+router.put('/edit-requests/:requestId/reject',  auth, allowRoles('admin', 'manager', 'supervisor'), rejectCustomerEdit);
 
 // Email OTP যাচাই (কাস্টমার তৈরির আগে)
 router.post('/verify-email/send',    auth, sendEmailVerifyOTP);
