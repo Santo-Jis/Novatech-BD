@@ -1,6 +1,6 @@
 const cron          = require('node-cron');
 const { query }     = require('../config/db');
-const { calculateCommission } = require('../controllers/commission.controller');
+const { calculateCommission } = require('../services/commission.service');
 
 // ============================================================
 // Commission Background Job
