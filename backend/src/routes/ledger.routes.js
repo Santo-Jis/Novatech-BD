@@ -12,10 +12,10 @@ const {
 // SR নিজের হাতের স্টক দেখবে
 router.get('/stock',   auth, allowRoles('worker'), getMyStock);
 
-// ইতিহাস — SR নিজেরটা, Manager যেকোনো SR-এর
-router.get('/history', auth, allowRoles('worker', 'manager', 'admin'), getLedgerHistory);
+// ইতিহাস — SR নিজেরটা, Manager/Supervisor/ASM/RSM যেকোনো SR-এর
+router.get('/history', auth, allowRoles('worker', 'manager', 'supervisor', 'asm', 'rsm', 'admin'), getLedgerHistory);
 
-// Admin/Manager ম্যানুয়াল সংশোধন
-router.post('/adjust', auth, allowRoles('manager', 'admin'), adjustStock);
+// Admin/Manager/Supervisor ম্যানুয়াল সংশোধন
+router.post('/adjust', auth, allowRoles('manager', 'supervisor', 'asm', 'rsm', 'admin'), adjustStock);
 
 module.exports = router;
