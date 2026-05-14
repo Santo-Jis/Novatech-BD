@@ -35,6 +35,22 @@ const submitReturn = async (req, res) => {
             });
         }
 
+        // sale_id দেওয়া থাকলে যাচাই করো —
+        // অন্য SR-এর sale-এর বিরুদ্ধে return করা ঠেকাতে।
+        if (sale_id) {
+            const saleCheck = await query(
+                `SELECT id FROM sales_transactions
+                 WHERE id = $1 AND worker_id = $2 AND customer_id = $3`,
+                [sale_id, srId, customer_id]
+            );
+            if (saleCheck.rows.length === 0) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'এই sale আপনার নয় অথবা এই কাস্টমারের সাথে সম্পর্কিত নয়।'
+                });
+            }
+        }
+
         // পণ্য তথ্য ও মূল্য হিসাব
         // ✅ N+1 query বন্ধ — সব product_id একবারে WHERE id = ANY($1) দিয়ে আনা হচ্ছে।
         // ✅ Set দিয়ে duplicate product_id সরানো হচ্ছে।
