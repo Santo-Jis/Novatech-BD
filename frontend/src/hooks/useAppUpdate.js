@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import api from '../api/axios'
 
 // ✅ GitHub Actions automatically এই number আপডেট করবে
-const CURRENT_VERSION_CODE = 267
+const CURRENT_VERSION_CODE = 268
 
 export function useAppUpdate() {
   const [updateInfo, setUpdateInfo] = useState(null)
