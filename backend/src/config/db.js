@@ -44,9 +44,12 @@ const query = async (text, params) => {
         const result = await pool.query(text, params);
         const duration = Date.now() - start;
 
-        // Development mode এ slow query লগ করো
-        if (process.env.NODE_ENV === 'development' && duration > 1000) {
-            console.warn(`⚠️ Slow Query (${duration}ms):`, text);
+        // Slow query সব environment-এ লগ করো।
+        // Development: 500ms threshold (কড়া)
+        // Production:  1000ms threshold (performance debug-এর জন্য)
+        const slowThreshold = process.env.NODE_ENV === 'production' ? 1000 : 500;
+        if (duration > slowThreshold) {
+            console.warn(`⚠️ Slow Query [${process.env.NODE_ENV}] (${duration}ms):`, text);
         }
 
         return result;
