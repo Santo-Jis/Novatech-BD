@@ -18,8 +18,8 @@ const {
     getUnassignedSRs
 } = require('../controllers/team.controller');
 
-// Manager middleware
-const isManager = allowRoles('manager', 'admin');
+// Manager middleware — supervisor/asm/rsm ও manager dashboard ব্যবহার করে
+const isManager = allowRoles('manager', 'supervisor', 'asm', 'rsm', 'admin');
 
 // ============================================================
 // TEAM ROUTES
