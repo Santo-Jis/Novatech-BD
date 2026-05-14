@@ -21,11 +21,22 @@ const getProducts = async (req, res) => {
 
         const result = await query(
             `SELECT id, name, sku, price, stock, reserved_stock,
-                    (stock - reserved_stock) AS available_stock,
+                    (stock - COALESCE((
+                        SELECT SUM((item->>'quantity')::int)
+                        FROM orders o,
+                             jsonb_array_elements(
+                                 CASE WHEN jsonb_typeof(o.items::jsonb) = 'array'
+                                      THEN o.items::jsonb
+                                      ELSE '[]'::jsonb
+                                 END
+                             ) AS item
+                        WHERE (item->>'product_id')::int = p.id
+                          AND o.status IN ('pending', 'approved', 'processing')
+                    ), 0)) AS available_stock,
                     unit, is_active, updated_at,
                     image_url, description,
                     discount, discount_type, vat, tax
-             FROM products
+             FROM products p
              WHERE ${conditions.join(' AND ')}
              ORDER BY name ASC`,
             params
@@ -47,8 +58,19 @@ const getProducts = async (req, res) => {
 const getProduct = async (req, res) => {
     try {
         const result = await query(
-            `SELECT *, (stock - reserved_stock) AS available_stock
-             FROM products WHERE id = $1`,
+            `SELECT *, (stock - COALESCE((
+                        SELECT SUM((item->>'quantity')::int)
+                        FROM orders o,
+                             jsonb_array_elements(
+                                 CASE WHEN jsonb_typeof(o.items::jsonb) = 'array'
+                                      THEN o.items::jsonb
+                                      ELSE '[]'::jsonb
+                                 END
+                             ) AS item
+                        WHERE (item->>'product_id')::int = p.id
+                          AND o.status IN ('pending', 'approved', 'processing')
+                    ), 0)) AS available_stock
+             FROM products p WHERE id = $1`,
             [req.params.id]
         );
 
