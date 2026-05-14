@@ -8,9 +8,18 @@ const { query, withTransaction } = require('../config/db');
 
 const getSalarySheet = async (req, res) => {
     try {
-        const { month, year } = req.query;
+        const { month, year, page = 1, limit = 50 } = req.query;
         const currentYear  = parseInt(year  || new Date().getFullYear());
         const currentMonth = parseInt(month || new Date().getMonth() + 1);
+        const pageNum      = Math.max(1, parseInt(page));
+        const limitNum     = Math.min(200, Math.max(1, parseInt(limit)));
+        const offset       = (pageNum - 1) * limitNum;
+
+        // মোট active worker count (pagination-এর জন্য)
+        const countRes = await query(
+            `SELECT COUNT(*) FROM users WHERE role = 'worker' AND status = 'active'`
+        );
+        const totalWorkers = parseInt(countRes.rows[0].count);
 
         const result = await query(
             `SELECT
@@ -69,8 +78,9 @@ const getSalarySheet = async (req, res) => {
                 sp.id, sp.status, sp.net_payable, sp.outstanding_dues_deducted,
                 sp.paid_at, sp.payment_reference, sp.payment_method, sp.note, approver.name_bn
 
-             ORDER BY u.name_bn ASC`,
-            [currentYear, currentMonth]
+             ORDER BY u.name_bn ASC
+             LIMIT $3 OFFSET $4`,
+            [currentYear, currentMonth, limitNum, offset]
         );
 
         // নেট বেতন হিসাব (পরিশোধ না হলে)
@@ -101,7 +111,17 @@ const getSalarySheet = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: { month: currentMonth, year: currentYear, workers: enriched }
+            data: {
+                month:      currentMonth,
+                year:       currentYear,
+                workers:    enriched,
+                pagination: {
+                    total:       totalWorkers,
+                    page:        pageNum,
+                    limit:       limitNum,
+                    total_pages: Math.ceil(totalWorkers / limitNum)
+                }
+            }
         });
 
     } catch (error) {
