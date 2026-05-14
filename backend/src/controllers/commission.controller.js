@@ -5,25 +5,7 @@ const { query } = require('../config/db');
 // বিক্রয় অনুযায়ী কমিশন রেট বের করা
 // ============================================================
 
-const calculateCommissionRate = async (salesAmount) => {
-    const result = await query(
-        `SELECT rate FROM commission_settings
-         WHERE is_active = true
-           AND slab_min <= $1
-           AND (slab_max IS NULL OR slab_max >= $1)
-         ORDER BY slab_min DESC
-         LIMIT 1`,
-        [salesAmount]
-    );
-
-    return result.rows[0]?.rate || 0;
-};
-
-const calculateCommission = async (salesAmount) => {
-    const rate   = await calculateCommissionRate(salesAmount);
-    const amount = Math.round((salesAmount * rate) / 100);
-    return { rate, amount };
-};
+const { calculateCommission, calculateCommissionRate } = require('../services/commission.service');
 
 // ============================================================
 // GET MY COMMISSION
