@@ -40,9 +40,15 @@ const portalAuth = (req, res, next) => {
         return res.status(401).json({ success: false, message: 'লগইন করুন।' });
     }
 
+    if (!process.env.JWT_PORTAL_SECRET) {
+        return res.status(500).json({ success: false, message: 'সার্ভার কনফিগারেশন সমস্যা।' });
+    }
+
     const token = authHeader.split(' ')[1];
     try {
-        const decoded = jwt.verify(token, process.env.JWT_PORTAL_SECRET || process.env.JWT_ACCESS_SECRET);
+        // শুধুমাত্র JWT_PORTAL_SECRET দিয়ে verify — JWT_ACCESS_SECRET fallback নেই।
+        // এতে employee token দিয়ে portal access সম্পূর্ণ বন্ধ।
+        const decoded = jwt.verify(token, process.env.JWT_PORTAL_SECRET);
         if (decoded.type !== 'customer_portal') {
             return res.status(403).json({ success: false, message: 'অবৈধ টোকেন।' });
         }
