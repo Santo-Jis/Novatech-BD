@@ -244,7 +244,7 @@ const testAIConnection = async (req, res) => {
             ? 'API Key সঠিক নয়।'
             : error.response?.status === 429
             ? 'API limit পার হয়েছে।'
-            : error.message || 'সংযোগ ব্যর্থ হয়েছে।';
+            : 'সংযোগ ব্যর্থ হয়েছে।';
         return res.status(400).json({ success: false, message: msg });
     }
 };
@@ -404,7 +404,7 @@ const aiChat = async (req, res) => {
         const msg = status === 401 ? 'API Key সঠিক নয়।'
                   : status === 429 ? 'API limit পার হয়েছে। কিছুক্ষণ পরে চেষ্টা করুন।'
                   : status === 402 ? 'API ক্রেডিট শেষ। Account এ ব্যালেন্স যোগ করুন।'
-                  : error.message || 'AI চ্যাটে সমস্যা হয়েছে।';
+                  : 'AI চ্যাটে সমস্যা হয়েছে।';
         return res.status(500).json({ success: false, message: msg });
     }
 };
