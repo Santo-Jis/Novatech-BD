@@ -10,18 +10,9 @@ const {
     getInvoiceWhatsAppMessage
 } = require('../services/invoice.service');
 const { uploadToCloudinary } = require('../services/employee.service');
-const axios = require('axios');
 
 // Firebase নোটিফিকেশন
-const firebaseNotify = async (path, data) => {
-    try {
-        const url = process.env.FIREBASE_DATABASE_URL;
-        if (!url) return;
-        await axios.post(`${url}/${path}.json`, { ...data, timestamp: new Date().toISOString() });
-    } catch (err) {
-        console.error('⚠️ Firebase Error:', err.message);
-    }
-};
+const { firebaseNotify } = require('../services/firebase.notify');
 
 // ============================================================
 // CREATE VISIT
