@@ -216,12 +216,13 @@ app.use((err, req, res, next) => {
 // BACKGROUND JOBS
 // ============================================================
 
-const { startCommissionJob }       = require('./jobs/commission.job');
-const { startBonusJob }            = require('./jobs/bonus.job');
-const { startAIJob }               = require('./jobs/ai.job');
-const { startGpsTrailCleanupJob }  = require('./jobs/gpsTrail.job');
+const { startCommissionJob }        = require('./jobs/commission.job');
+const { startBonusJob }             = require('./jobs/bonus.job');
+const { startAIJob }                = require('./jobs/ai.job');
+const { startGpsTrailCleanupJob }   = require('./jobs/gpsTrail.job');
 const { scheduleCreditReminderJob } = require('./jobs/creditReminder.job');
-const { startReservedStockJob }    = require('./jobs/reservedStock.job');
+const { startReservedStockJob }     = require('./jobs/reservedStock.job');
+const { startSessionCleanupJob }    = require('./jobs/sessionCleanup.job');
 
 
 // ============================================================
@@ -266,6 +267,7 @@ app.listen(PORT, "0.0.0.0", () => {
     startGpsTrailCleanupJob();
     scheduleCreditReminderJob();
     startReservedStockJob();
+    startSessionCleanupJob();  // ← expired session পরিষ্কার (প্রতিদিন রাত ৩টা)
 
     console.log('✅ Background jobs চালু হয়েছে');
 
