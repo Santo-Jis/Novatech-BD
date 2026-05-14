@@ -24,6 +24,26 @@ function notifyListeners(count) {
   syncListeners.forEach(fn => fn(count))
 }
 
+// ── Item-এর readable label তৈরি (error toast-এর জন্য) ────────
+function _itemLabel(item) {
+  const name = item?.payload?._customer_name
+  switch (item?.type) {
+    case 'SALE': {
+      const total = item?.payload?._total
+      const amt   = total != null ? ` (৳${Number(total).toLocaleString('bn-BD')})` : ''
+      return name ? `বিক্রয় — ${name}${amt}` : 'বিক্রয়'
+    }
+    case 'VISIT':
+      return name ? `ভিজিট — ${name}` : 'ভিজিট'
+    case 'ORDER':
+      return 'অর্ডার'
+    case 'ATTENDANCE':
+      return 'হাজিরা'
+    default:
+      return item?.type || 'ডেটা'
+  }
+}
+
 // ── একটি queue item sync করা ────────────────────────────────
 async function syncItem(item) {
   try {
@@ -103,12 +123,13 @@ async function syncItem(item) {
     const newRetry = (item.retry_count || 0) + 1
     // ৩ বারের বেশি fail হলে failed mark করো
     const newStatus = newRetry >= 3 ? 'failed' : 'pending'
+    const errorMsg  = err.response?.data?.message || err.message
     await updateQueueItem(item.id, {
       status: newStatus,
       retry_count: newRetry,
-      last_error: err.response?.data?.message || err.message,
+      last_error: errorMsg,
     })
-    return { success: false, error: err }
+    return { success: false, item, errorMsg }
   }
 }
 
@@ -129,25 +150,37 @@ export async function syncAll() {
   )
 
   let successCount = 0
-  let failCount = 0
+  const failures   = []   // { item, errorMsg }
 
   for (const item of toSync) {
     const result = await syncItem(item)
     if (result.success) successCount++
-    else failCount++
+    else failures.push({ item: result.item, errorMsg: result.errorMsg })
   }
 
   toast.dismiss(toastId)
 
+  const failCount = failures.length
+
   if (successCount > 0 && failCount === 0) {
     toast.success(`✅ ${successCount}টি ডেটা সফলভাবে sync হয়েছে!`, { duration: 4000 })
+
   } else if (successCount > 0 && failCount > 0) {
     toast(`✅ ${successCount}টি sync হয়েছে, ⚠️ ${failCount}টি ব্যর্থ হয়েছে`, {
       icon: '⚠️',
       duration: 5000,
     })
+    // প্রতিটি failure-এর জন্য আলাদা বিস্তারিত toast
+    failures.forEach(({ item, errorMsg }) => {
+      const label = _itemLabel(item)
+      toast.error(`❌ ${label} — ${errorMsg}`, { duration: 8000 })
+    })
+
   } else if (failCount > 0) {
-    toast.error(`❌ ${failCount}টি sync ব্যর্থ হয়েছে। পরে আবার চেষ্টা হবে।`)
+    failures.forEach(({ item, errorMsg }) => {
+      const label = _itemLabel(item)
+      toast.error(`❌ ${label} — ${errorMsg}`, { duration: 8000 })
+    })
   }
 
   isSyncing = false
