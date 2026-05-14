@@ -37,7 +37,8 @@ import AdminTeams from './pages/admin/Teams'
 import AIChat        from './pages/shared/AIChat'
 import NoticesView   from './pages/shared/NoticesView'
 import SRApplicationForm from './pages/SRApplicationForm'
-import CustomerPortal from './pages/customer/CustomerPortal'
+import CustomerPortal    from './pages/customer/CustomerPortal'
+import CustomerAIChat   from './pages/customer/CustomerAIChat'
 
 // ── Google OAuth Popup Callback ──────────────────────────────
 // Web login-এ popup redirect হয়ে এখানে আসবে
@@ -237,6 +238,7 @@ function AppWithPermissions() {
           <Route path="invoices"        element={<CustomerPortal defaultTab="invoices" />} />
           <Route path="payments"        element={<CustomerPortal defaultTab="payments" />} />
           <Route path="notifications"   element={<CustomerPortal defaultTab="summary"  />} />
+          <Route path="ai-chat"          element={<CustomerAIChat />} />
         </Route>
       </Route>
 
