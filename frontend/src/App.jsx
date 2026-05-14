@@ -1,5 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useAuthStore } from './store/auth.store'
 import { FirebaseProvider } from './firebase/notifications'
 import PermissionSetup, { usePermissionSetup } from './components/PermissionSetup'
@@ -99,7 +99,18 @@ import ReturnHistory    from './pages/worker/ReturnHistory'
 // ============================================================
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { user, token } = useAuthStore()
+  const { user, token, authReady } = useAuthStore()
+
+  // silentRefresh এখনও চলছে — render করো না
+  if (!authReady) {
+    return (
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh' }}>
+        <div style={{ width:36, height:36, border:'4px solid #e0e7ff',
+          borderTop:'4px solid #4f46e5', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    )
+  }
 
   if (!token || !user) {
     return <Navigate to="/login" replace />
@@ -173,19 +184,17 @@ const CustomerGuard = () => {
 
 function AppWithPermissions() {
   const { show: showPermissions, close: closePermissions } = usePermissionSetup()
-  const { silentRefresh, user } = useAuthStore()
+  const { silentRefresh, user, authReady } = useAuthStore()
 
   // ✅ Page refresh হলে accessToken memory থেকে হারায়।
   // App mount-এ একবার /auth/refresh call করে HttpOnly cookie থেকে
   // নতুন accessToken নেওয়া হয় — user logged-in থাকে।
-  // refreshing শেষ না হওয়া পর্যন্ত ProtectedRoute render হবে না (flicker বন্ধ)।
-  const [authReady, setAuthReady] = useState(false)
+  // authReady store-এ থাকে — ProtectedRoute-ও সরাসরি check করতপারে।
   useEffect(() => {
     if (user) {
-      // localStorage-এ user আছে — silentRefresh চেষ্টা করো
-      silentRefresh().finally(() => setAuthReady(true))
+      silentRefresh() // authReady: true store-এ set হবে (.finally নেই — store handle করছে)
     } else {
-      setAuthReady(true)
+      useAuthStore.setState({ authReady: true }) // user নেই — আর wait করার দরকার নেই
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
