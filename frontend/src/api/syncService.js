@@ -52,9 +52,16 @@ async function syncItem(item) {
       if (!payload.order_id) {
         try {
           const orderRes = await api.get('/orders/today')
-          payload.order_id = orderRes.data.data?.id || undefined
-        } catch {
-          // order না পেলেও sale চলবে
+          const fetchedId = orderRes.data.data?.id
+          if (!fetchedId) {
+            // order পাওয়া গেছে কিন্তু id নেই — sync করা যাবে না
+            throw new Error('আজকের order পাওয়া যায়নি। প্রথমে order তৈরি করুন।')
+          }
+          payload.order_id = fetchedId
+        } catch (orderErr) {
+          // order fetch ব্যর্থ — backend order_id ছাড়া sale block করে,
+          // তাই এখানেই abort করো। syncItem-এর outer catch এটা handle করবে।
+          throw orderErr
         }
       }
 
