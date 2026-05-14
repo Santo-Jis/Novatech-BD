@@ -221,6 +221,7 @@ const { startBonusJob }            = require('./jobs/bonus.job');
 const { startAIJob }               = require('./jobs/ai.job');
 const { startGpsTrailCleanupJob }  = require('./jobs/gpsTrail.job');
 const { scheduleCreditReminderJob } = require('./jobs/creditReminder.job');
+const { startReservedStockJob }    = require('./jobs/reservedStock.job');
 
 
 // ============================================================
@@ -264,6 +265,7 @@ app.listen(PORT, "0.0.0.0", () => {
     startAIJob();
     startGpsTrailCleanupJob();
     scheduleCreditReminderJob();
+    startReservedStockJob();
 
     console.log('✅ Background jobs চালু হয়েছে');
 
