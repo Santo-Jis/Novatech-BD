@@ -38,6 +38,13 @@ export function isNetworkError(error) {
   )
 }
 
+// interceptor যদি আগেই toast দিয়ে থাকে তাহলে component আবার দেবে না।
+// component-এ catch block-এ এভাবে ব্যবহার করো:
+//   catch (err) { if (!err._toastShown) toast.error(err.response?.data?.message || '...') }
+export function toastShown(error) {
+  return !!error?._toastShown
+}
+
 api.interceptors.request.use(
   (config) => {
     const token = tokenStore.get()   // ✅ memory থেকে — localStorage নয়
@@ -168,6 +175,7 @@ api.interceptors.response.use(
     if (isNetworkError(error)) {
       if (error.config?.method !== 'get') {
         toast.error('নেটওয়ার্ক সমস্যা। ডেটা পাঠানো যায়নি।')
+        error._toastShown = true
       }
       return Promise.reject(error)
     }
@@ -179,6 +187,7 @@ api.interceptors.response.use(
       const SILENT_403 = ['CHECKIN_REQUIRED']
       if (!SILENT_403.includes(code)) {
         toast.error(error.response?.data?.message || 'এই কাজের অনুমতি নেই।')
+        error._toastShown = true   // component যেন আবার না দেখায়
       }
     } else if (error.response?.status === 404) {
       // শান্তভাবে handle করো
@@ -186,6 +195,7 @@ api.interceptors.response.use(
       // component নিজে দেখাবে
     } else if (error.response?.status >= 500) {
       toast.error('সার্ভারে সমস্যা হয়েছে। পরে চেষ্টা করুন।')
+      error._toastShown = true   // component যেন আবার না দেখায়
     }
 
     return Promise.reject(error)
