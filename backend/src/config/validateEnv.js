@@ -74,6 +74,7 @@ const OPTIONAL = [
     { key: 'SMS_API_KEY',              feature: 'SMS Notification' },
     { key: 'CLOUDINARY_CLOUD_NAME',    feature: 'Image Upload (Cloudinary)' },
     { key: 'CLOUDINARY_UPLOAD_PRESET', feature: 'Image Upload (Cloudinary)' },
+    { key: 'GOOGLE_CLIENT_ID',         feature: 'Google OAuth aud check (customer portal)' },
     { key: 'GOOGLE_MAPS_KEY',          feature: 'Google Maps' },
     { key: 'RENDER_EXTERNAL_URL',      feature: 'Keep-Alive Ping (Render)' },
     { key: 'FRONTEND_URL',             feature: 'CORS (default: localhost:3000)' },
