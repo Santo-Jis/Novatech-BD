@@ -147,7 +147,7 @@ const runCreditReminderJob = async () => {
                 u.name_bn  AS sr_name,
                 u.id       AS sr_id,
                 u.manager_id,
-                cpt.token  AS portal_token
+                cpt.redirect_id  AS portal_redirect_id
             FROM customers c
             LEFT JOIN users u ON c.assigned_sr_id = u.id
             LEFT JOIN customer_portal_tokens cpt ON c.id = cpt.customer_id
@@ -169,8 +169,9 @@ const runCreditReminderJob = async () => {
 
             // ── Email to Customer ────────────────────────────
             try {
-                const portalLink = customer.portal_token
-                    ? `${FRONTEND_URL}/customer/dashboard?token=${customer.portal_token}`
+                // ✅ Fix 1: URL-এ redirect_id যাবে, token নয়
+                const portalLink = customer.portal_redirect_id
+                    ? `${FRONTEND_URL}/customer/portal?r=${customer.portal_redirect_id}`
                     : null;
 
                 const { subject, html, text } = buildReminderEmail(customer, portalLink);
