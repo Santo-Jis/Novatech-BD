@@ -27,7 +27,11 @@ export default function CustomerLayout() {
   let customerInfo = {}
   try {
     const jwt = sessionStorage.getItem(portalKey)
-    customerInfo = JSON.parse(atob(jwt.split('.')[1]))
+    // Base64URL → Base64 → JSON (JWT payload is Base64URL, not standard Base64)
+    const base64Url = jwt.split('.')[1]
+    const base64    = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+    const padded    = base64 + '=='.slice(0, (4 - base64.length % 4) % 4)
+    customerInfo    = JSON.parse(atob(padded))
   } catch { /* silent */ }
 
   const handleLogout = () => {
