@@ -1,5 +1,6 @@
-const { query }   = require('../config/db');
-const { callAI }  = require('../services/ai.service');
+const { query }          = require('../config/db');
+const { callAI }         = require('../services/ai.service');
+const { writeAiChatLog, getDB } = require('../config/firebase');
 const {
     CUSTOMER_TOOLS,
     executeTool,
@@ -9,15 +10,13 @@ const {
 
 // ============================================================
 // Customer AI Chat Controller
+// চ্যাট হিস্টরি → Firebase Realtime Database
+// Structure: aiChatLogs/{customerId}/{timestamp}
 // ============================================================
 
 const saveToLog = async (customerId, message, reply) => {
     try {
-        await query(
-            `INSERT INTO ai_chat_logs (user_id, message, reply, created_at)
-             VALUES ($1, $2, $3, NOW())`,
-            [customerId, message, reply]
-        );
+        await writeAiChatLog(customerId, message, reply);
     } catch { /* non-critical */ }
 };
 
@@ -110,17 +109,39 @@ const getCustomerChatHistory = async (req, res) => {
         const customerId = req.portalUser.customer_id;
         const limit = Math.min(50, parseInt(req.query.limit) || 20);
 
-        const result = await query(
-            `SELECT message, reply,
-                    TO_CHAR(created_at AT TIME ZONE 'Asia/Dhaka', 'DD Mon HH12:MI AM') AS time
-             FROM ai_chat_logs
-             WHERE user_id = $1
-             ORDER BY created_at DESC LIMIT $2`,
-            [customerId, limit]
-        );
+        // Firebase Realtime Database থেকে চ্যাট হিস্টরি আনো
+        // timestamp key দিয়ে sort হয়, শেষ N টা নাও
+        const snapshot = await getDB()
+            .ref(`aiChatLogs/${customerId}`)
+            .orderByKey()
+            .limitToLast(limit)
+            .once('value');
 
-        return res.status(200).json({ success: true, data: result.rows.reverse() });
+        const data = snapshot.val();
+
+        if (!data) {
+            return res.status(200).json({ success: true, data: [] });
+        }
+
+        // timestamp key দিয়ে sort করে array বানাও
+        const history = Object.entries(data)
+            .sort(([a], [b]) => Number(a) - Number(b))
+            .map(([ts, entry]) => ({
+                message:    entry.message,
+                reply:      entry.reply,
+                time:       new Date(Number(ts)).toLocaleString('bn-BD', {
+                                timeZone: 'Asia/Dhaka',
+                                day:      '2-digit',
+                                month:    'short',
+                                hour:     '2-digit',
+                                minute:   '2-digit',
+                            }),
+            }));
+
+        return res.status(200).json({ success: true, data: history });
+
     } catch (error) {
+        console.error('❌ Chat History Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
