@@ -18,8 +18,8 @@ const portalFetch = async (path, jwt) => {
 const fmt = (n) => parseFloat(n || 0).toLocaleString('bn-BD', { minimumFractionDigits: 0 })
 
 function getPortalJWT() {
-  const key = Object.keys(localStorage).find(k => k.startsWith('portal_jwt_'))
-  return key ? localStorage.getItem(key) : null
+  const key = Object.keys(sessionStorage).find(k => k.startsWith('portal_jwt_'))
+  return key ? sessionStorage.getItem(key) : null
 }
 
 // ── Animated Counter ──────────────────────────────────────────
