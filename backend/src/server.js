@@ -67,16 +67,21 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // ============================================================
 
 // সাধারণ API limit
-// ⚠️ FIX: আগে শুধু IP-based ছিল — অফিস নেটওয়ার্কে একই IP থেকে সবার request block হত।
-// এখন লগইন থাকলে user ID দিয়ে limit, না থাকলে IP দিয়ে।
+// ✅ Fix: keyGenerator এখন req.user (employee) ও req.portalUser (customer) দুটোই চেক করে।
+// আগে portal routes-এ req.user null থাকত — সব কাস্টমার IP-based limit-এ পড়ত।
+// একই নেটওয়ার্ক (market WiFi) থেকে সবার request একসাথে block হওয়ার সমস্যা ছিল।
 const apiLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // ১৫ মিনিট
-    max: 300, // authenticated user প্রতি — বেশি request দরকার হয় real usage-এ
+    max: 300,
     keyGenerator: (req) => {
-        // JWT middleware আগেই req.user populate করে (authenticated routes-এ)
-        return req.user?.id ? `user_${req.user.id}` : `ip_${req.ip}`
+        // Employee routes: auth middleware req.user সেট করে
+        if (req.user?.id)           return `emp_${req.user.id}`;
+        // Portal routes: portalAuth middleware req.portalUser সেট করে
+        if (req.portalUser?.customer_id) return `cust_${req.portalUser.customer_id}`;
+        // unauthenticated (login page, verify-token ইত্যাদি) → IP fallback
+        return `ip_${req.ip}`;
     },
-    skip: (req) => req.path === '/health', // keep-alive ping count করবে না
+    skip: (req) => req.path === '/health',
     message: {
         success: false,
         message: 'অনেক বেশি রিকোয়েস্ট। ১৫ মিনিট পরে চেষ্টা করুন।'
