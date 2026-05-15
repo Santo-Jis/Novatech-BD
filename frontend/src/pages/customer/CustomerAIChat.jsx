@@ -155,11 +155,11 @@ export default function CustomerAIChat() {
   useEffect(() => {
     try {
       const key = Object.keys(sessionStorage).find(k => k.startsWith('portal_jwt_'))
-      if (!key) { navigate('/login', { replace: true }); return }
+      if (!key) { window.history.back(); return }
       const jwt = sessionStorage.getItem(key)
       const decoded = JSON.parse(atob(jwt.split('.')[1]))
       setCustomerInfo(decoded)
-    } catch { navigate('/login', { replace: true }) }
+    } catch { window.history.back() }
   }, [navigate])
 
   const [messages, setMessages]       = useState([])
