@@ -174,6 +174,70 @@ const getMyOrderRequests = async (req, res) => {
 };
 
 // ============================================================
+// 2b. কাস্টমার নিজের PENDING অর্ডার বাতিল করবে
+// PATCH /api/portal/order-requests/:id/cancel
+// portalAuth middleware দরকার
+//
+// নিয়ম:
+//   - শুধু নিজের অর্ডার cancel করতে পারবে (customer_id match)
+//   - শুধু 'pending' status-এ থাকলে cancel করা যাবে
+//   - confirmed/assigned/delivered হলে SR-এর সাথে যোগাযোগ করতে হবে
+// ============================================================
+const cancelMyOrderRequest = async (req, res) => {
+    try {
+        const { customer_id } = req.portalUser;
+        const { id }          = req.params;
+
+        // অর্ডার আছে কিনা এবং এই কাস্টমারের কিনা — একটি query-তে
+        const existing = await query(
+            `SELECT id, status FROM customer_order_requests
+             WHERE id = $1 AND customer_id = $2`,
+            [id, customer_id]
+        );
+
+        if (existing.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'অর্ডার পাওয়া যায়নি।'
+            });
+        }
+
+        const order = existing.rows[0];
+
+        // শুধু pending অর্ডার বাতিল করা যাবে
+        if (order.status !== 'pending') {
+            const statusBn = {
+                confirmed: 'কনফার্ম',
+                assigned:  'SR অ্যাসাইন',
+                delivered: 'ডেলিভারি সম্পন্ন',
+                cancelled: 'ইতোমধ্যে বাতিল',
+            };
+            return res.status(400).json({
+                success: false,
+                message: `এই অর্ডার "${statusBn[order.status] || order.status}" হয়ে গেছে। বাতিল করতে SR-এর সাথে যোগাযোগ করুন।`,
+                error_code: 'ORDER_NOT_CANCELLABLE'
+            });
+        }
+
+        await query(
+            `UPDATE customer_order_requests
+             SET status = 'cancelled', admin_note = 'কাস্টমার কর্তৃক বাতিল', updated_at = NOW()
+             WHERE id = $1`,
+            [id]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'অর্ডার বাতিল করা হয়েছে।'
+        });
+
+    } catch (error) {
+        console.error('❌ cancelMyOrderRequest Error:', error.message);
+        return res.status(500).json({ success: false, message: 'বাতিল করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // 3. Admin/Manager — সব pending রিকোয়েস্ট দেখবে
 // GET /api/customer-order-requests?status=pending
 // auth + isManager middleware দরকার
@@ -485,6 +549,7 @@ const notifyAdminStockWarning = async (req, res) => {
 module.exports = {
     createOrderRequest,
     getMyOrderRequests,
+    cancelMyOrderRequest,
     getAllOrderRequests,
     updateOrderRequest,
     notifyAdminStockWarning,
