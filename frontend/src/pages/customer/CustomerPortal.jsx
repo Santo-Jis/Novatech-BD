@@ -42,11 +42,132 @@ const webGoogleLogin = (clientId) => new Promise(async (resolve, reject) => {
 // ── Backend URL ───────────────────────────────────────────────
 const BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
-// ── Device Fingerprint — browser info থেকে consistent ID তৈরি ─
-// Server-side hash করা হবে, তাই raw string পাঠানো হয়
-const getDeviceFingerprint = () => {
+// ── Device Fingerprint — persistent + hardware-based strong ID ──
+//
+// দুই স্তরে তৈরি:
+//   ১. Persistent ID  — IndexedDB-তে random UUID store করা হয়।
+//      একবার তৈরি হলে browser clear না করা পর্যন্ত একই থাকে।
+//      localStorage ব্যবহার করা হয়নি — private mode-এ wipe হয়।
+//
+//   ২. Hardware signals — canvas fingerprint + audio context + fonts।
+//      এগুলো device-specific এবং JS দিয়ে সহজে override করা যায় না।
+//
+//   দুটো মিলিয়ে final ID তৈরি হয় → server-side তার সাথে
+//   User-Agent ও IP মিশিয়ে SHA-256 hash করে।
+//   শুধু device_id চুরি করলেই হবে না — UA ও IP-ও মিলতে হবে।
+
+// IndexedDB থেকে persistent device UUID পড়া/তৈরি করা
+const getPersistentDeviceId = () => new Promise((resolve) => {
   try {
+    const DB_NAME    = 'portal_device'
+    const STORE_NAME = 'ids'
+    const KEY        = 'device_uuid'
+
+    const req = indexedDB.open(DB_NAME, 1)
+
+    req.onupgradeneeded = (e) => {
+      e.target.result.createObjectStore(STORE_NAME)
+    }
+
+    req.onsuccess = (e) => {
+      const db  = e.target.result
+      const tx  = db.transaction(STORE_NAME, 'readwrite')
+      const st  = tx.objectStore(STORE_NAME)
+      const get = st.get(KEY)
+
+      get.onsuccess = () => {
+        if (get.result) {
+          resolve(get.result)
+        } else {
+          // প্রথমবার — random UUID তৈরি করে store করো
+          const uuid = crypto.randomUUID
+            ? crypto.randomUUID()
+            : Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                .map(b => b.toString(16).padStart(2, '0')).join('-')
+          st.put(uuid, KEY)
+          resolve(uuid)
+        }
+      }
+      get.onerror = () => resolve('idb-error')
+    }
+
+    req.onerror = () => resolve('idb-open-error')
+  } catch {
+    resolve('idb-unavailable')
+  }
+})
+
+// Canvas fingerprint — GPU rendering থেকে hardware-specific signal
+const getCanvasFingerprint = () => {
+  try {
+    const canvas  = document.createElement('canvas')
+    canvas.width  = 200
+    canvas.height = 50
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return 'no-canvas'
+
+    ctx.textBaseline = 'top'
+    ctx.font         = '14px Arial'
+    ctx.fillStyle    = '#f60'
+    ctx.fillRect(0, 0, 200, 50)
+    ctx.fillStyle    = '#069'
+    ctx.fillText('NovaTech Portal 🔐', 2, 15)
+    ctx.fillStyle    = 'rgba(102,204,0,0.8)'
+    ctx.fillText('NovaTech Portal 🔐', 4, 25)
+
+    return canvas.toDataURL().slice(-80)   // শেষ ৮০ char — pixel hash
+  } catch {
+    return 'canvas-blocked'
+  }
+}
+
+// Audio context fingerprint — audio hardware থেকে signal
+const getAudioFingerprint = () => {
+  try {
+    const AudioCtx = window.OfflineAudioContext || window.webkitOfflineAudioContext
+    if (!AudioCtx) return Promise.resolve('no-audio')
+
+    return new Promise((resolve) => {
+      const ctx  = new AudioCtx(1, 44100, 44100)
+      const osc  = ctx.createOscillator()
+      const comp = ctx.createDynamicsCompressor()
+
+      osc.type = 'triangle'
+      osc.frequency.value = 10000
+      osc.connect(comp)
+      comp.connect(ctx.destination)
+      osc.start(0)
+
+      ctx.startRendering()
+      ctx.oncomplete = (e) => {
+        const data = e.renderedBuffer.getChannelData(0)
+        let sum = 0
+        for (let i = 4500; i < 5000; i++) sum += Math.abs(data[i])
+        resolve(sum.toString().slice(0, 12))
+      }
+
+      // timeout — কিছু browser-এ oncomplete না আসলে fallback
+      setTimeout(() => resolve('audio-timeout'), 500)
+    })
+  } catch {
+    return Promise.resolve('audio-error')
+  }
+}
+
+// Main: সব signal একত্রিত করে persistent fingerprint তৈরি
+const getDeviceFingerprint = async () => {
+  try {
+    const [persistentId, audioFp] = await Promise.all([
+      getPersistentDeviceId(),
+      getAudioFingerprint(),
+    ])
+
+    const canvasFp = getCanvasFingerprint()
+
     const parts = [
+      persistentId,                              // IndexedDB UUID (persistent)
+      canvasFp,                                  // GPU-based canvas hash
+      audioFp,                                   // Audio hardware signal
       navigator.userAgent,
       navigator.language,
       `${screen.width}x${screen.height}`,
@@ -55,9 +176,25 @@ const getDeviceFingerprint = () => {
       navigator.hardwareConcurrency || '',
       navigator.platform || '',
     ]
-    return btoa(parts.join('|')).replace(/[/+=]/g, '').slice(0, 64)
+
+    // SubtleCrypto দিয়ে SHA-256 hash — btoa থেকে অনেক বেশি collision-resistant
+    const encoded = new TextEncoder().encode(parts.join('||'))
+    const hashBuf = await crypto.subtle.digest('SHA-256', encoded)
+    const hashArr = Array.from(new Uint8Array(hashBuf))
+    return hashArr.map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 64)
   } catch {
-    return 'unknown-device'
+    // Fallback: sync version (old behavior) — SubtleCrypto না থাকলে
+    try {
+      const parts = [
+        navigator.userAgent, navigator.language,
+        `${screen.width}x${screen.height}`,
+        screen.colorDepth, new Date().getTimezoneOffset(),
+        navigator.hardwareConcurrency || '', navigator.platform || '',
+      ]
+      return btoa(parts.join('|')).replace(/[/+=]/g, '').slice(0, 64)
+    } catch {
+      return 'unknown-device'
+    }
   }
 }
 
@@ -610,7 +747,7 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
 
   useEffect(() => {
     const init = async () => {
-      const deviceId = getDeviceFingerprint()
+      const deviceId = await getDeviceFingerprint()
 
       if (portalToken) {
         try {
@@ -697,12 +834,13 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
         access_token = await webGoogleLogin(clientId)
       }
 
+      const deviceId = await getDeviceFingerprint()
       const data = await portalFetch('/portal/google-auth', {
         method: 'POST',
         body: JSON.stringify({
           google_token: access_token,
           portal_token: portalToken,
-          device_id:    getDeviceFingerprint()   // ← device lock এর জন্য
+          device_id:    deviceId
         })
       })
       const jwt        = data.data.portal_jwt
