@@ -133,7 +133,7 @@ const HomeRedirect = () => {
 
   // portal_jwt থাকলে → customer dashboard
   const hasPortalJWT = typeof window !== 'undefined' &&
-    Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
+    Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
   if (hasPortalJWT && !user) return <Navigate to="/customer/dashboard" replace />
 
   // login নেই → LandingPage দেখাও
@@ -165,7 +165,7 @@ import { Outlet } from 'react-router-dom'
 
 const CustomerGuard = () => {
   const hasPortalJWT = typeof window !== 'undefined' &&
-    Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
+    Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
 
   // portal_jwt আছে → ভেতরে যাও
   if (hasPortalJWT) return <Outlet />
@@ -237,7 +237,8 @@ function AppWithPermissions() {
           <Route path="orders"          element={<CustomerPortal defaultTab="orders"   />} />
           <Route path="invoices"        element={<CustomerPortal defaultTab="invoices" />} />
           <Route path="payments"        element={<CustomerPortal defaultTab="payments" />} />
-          <Route path="notifications"   element={<CustomerPortal defaultTab="summary"  />} />
+          <Route path="notifications"   element={<CustomerPortal defaultTab="notifications" />} />
+          <Route path="profile"         element={<CustomerPortal defaultTab="summary"  />} />
           <Route path="ai-chat"          element={<CustomerAIChat />} />
         </Route>
       </Route>
