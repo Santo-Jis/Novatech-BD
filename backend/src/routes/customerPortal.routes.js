@@ -32,9 +32,10 @@ const {
 
 const { auth } = require('../middlewares/auth');
 const { customerAiChat, getCustomerChatHistory } = require('../controllers/customerAiChat.controller');
+const { query } = require('../config/db');
 
 // ── Portal JWT Middleware (কাস্টমার ড্যাশবোর্ডের জন্য) ──────
-const portalAuth = (req, res, next) => {
+const portalAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
         return res.status(401).json({ success: false, message: 'লগইন করুন।' });
@@ -47,11 +48,37 @@ const portalAuth = (req, res, next) => {
     const token = authHeader.split(' ')[1];
     try {
         // শুধুমাত্র JWT_PORTAL_SECRET দিয়ে verify — JWT_ACCESS_SECRET fallback নেই।
-        // এতে employee token দিয়ে portal access সম্পূর্ণ বন্ধ।
-        const decoded = jwt.verify(token, process.env.JWT_PORTAL_SECRET);
+        // algorithms সুনির্দিষ্ট করা — 'none' algorithm attack বন্ধ।
+        const decoded = jwt.verify(token, process.env.JWT_PORTAL_SECRET, {
+            algorithms: ['HS256']
+        });
+
         if (decoded.type !== 'customer_portal') {
             return res.status(403).json({ success: false, message: 'অবৈধ টোকেন।' });
         }
+
+        if (!decoded.customer_id) {
+            return res.status(403).json({ success: false, message: 'অবৈধ টোকেন — customer_id নেই।' });
+        }
+
+        // ── DB-তে customer active আছে কিনা verify ────────────
+        // JWT valid হলেও deactivated customer block হবে।
+        try {
+            const custCheck = await query(
+                'SELECT id FROM customers WHERE id = $1 AND is_active = true',
+                [decoded.customer_id]
+            );
+            if (custCheck.rows.length === 0) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'আপনার অ্যাকাউন্ট নিষ্ক্রিয় করা হয়েছে।'
+                });
+            }
+        } catch (dbErr) {
+            console.error('❌ portalAuth DB check error:', dbErr.message);
+            return res.status(500).json({ success: false, message: 'যাচাই করতে সমস্যা হয়েছে।' });
+        }
+
         req.portalUser = decoded;
         next();
     } catch {
