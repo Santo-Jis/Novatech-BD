@@ -125,39 +125,6 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 }
 
 // ============================================================
-// Role-based Home redirect
-// ============================================================
-
-const HomeRedirect = () => {
-  const { user } = useAuthStore()
-
-  // portal_jwt থাকলে → customer dashboard
-  const hasPortalJWT = typeof window !== 'undefined' &&
-    Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
-  if (hasPortalJWT && !user) return <Navigate to="/customer/dashboard" replace />
-
-  // login নেই → LandingPage দেখাও
-  if (!user) return <LandingPage />
-
-  // logged-in → dashboard-এ পাঠাও, কিন্তু history তে /landing রেখে যাও
-  // যাতে back বাটনে LandingPage দেখা যায়
-  switch (user.role) {
-    case 'admin':
-      return <Navigate to="/admin/dashboard" replace={false} />
-    case 'manager':
-    case 'supervisor':
-    case 'asm':
-    case 'rsm':
-    case 'accountant':
-      return <Navigate to="/manager/dashboard" replace={false} />
-    case 'worker':
-      return <Navigate to="/worker/dashboard" replace={false} />
-    default:
-      return <Navigate to="/login" replace />
-  }
-}
-
-// ============================================================
 // Customer Guard — portal_jwt চেক করে
 // ============================================================
 
@@ -176,7 +143,7 @@ const CustomerGuard = () => {
   if (urlToken) return <Outlet />
 
   // কোনো token নেই → LandingPage এ পাঠাও
-  return <Navigate to="/landing" replace />
+  return <Navigate to="/" replace />
 }
 
 // ============================================================
@@ -222,8 +189,7 @@ function AppWithPermissions() {
 
       <Routes>
       {/* Public */}
-      <Route path="/"                      element={<HomeRedirect />} />
-      <Route path="/landing"              element={<LandingPage />} />
+      <Route path="/"                      element={<LandingPage />} />
       <Route path="/login"                element={<Login />} />
       <Route path="/apply/sr"             element={<SRApplicationForm />} />
       <Route path="/customer-portal"      element={<Navigate to="/customer/dashboard" replace />} />
