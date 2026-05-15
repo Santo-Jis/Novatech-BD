@@ -59,7 +59,11 @@ const sendCreditReminder = async (req, res) => {
             return res.status(400).json({ success: false, message: 'কাস্টমারের email নেই।' });
         }
 
-        const FRONTEND_URL = process.env.FRONTEND_URL || 'https://novatech-bd-kqrn.vercel.app';
+        const FRONTEND_URL = process.env.FRONTEND_URL;
+        if (!FRONTEND_URL) {
+            console.error('❌ FRONTEND_URL env variable সেট নেই।');
+            return res.status(500).json({ success: false, message: 'Server configuration error: FRONTEND_URL missing.' });
+        }
         const portalLink   = customer.portal_token
             ? `${FRONTEND_URL}/customer/dashboard?token=${customer.portal_token}`
             : null;
