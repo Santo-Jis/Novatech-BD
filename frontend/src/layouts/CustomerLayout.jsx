@@ -67,7 +67,7 @@ export default function CustomerLayout() {
 
   const handleLogout = () => {
     clearCustomerSession()
-    navigate('/login', { replace: true })
+    navigate('/customer-login', { replace: true })
   }
 
   const initials = (customerInfo.shop_name || 'K').slice(0, 1).toUpperCase()
