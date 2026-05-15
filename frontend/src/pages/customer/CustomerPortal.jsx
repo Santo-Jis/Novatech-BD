@@ -193,20 +193,41 @@ const getDeviceFingerprint = async () => {
       ]
       return btoa(parts.join('|')).replace(/[/+=]/g, '').slice(0, 64)
     } catch {
-      return 'unknown-device'
+      // সম্পূর্ণ ব্যর্থ হলে — random UUID দিয়ে unique id তৈরি করো
+      // এটা session-এ সাময়িক, কিন্তু 'unknown-device' এর মতো সবার একই হবে না
+      try {
+        return crypto.randomUUID().replace(/-/g, '')
+      } catch {
+        return Date.now().toString(36) + Math.random().toString(36).slice(2, 10)
+      }
     }
   }
 }
 
-// ── axios ব্যবহার না করে সরাসরি fetch — interceptor bypass ──
-const portalFetch = async (path, options = {}) => {
-  const res = await fetch(`${BACKEND}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...options.headers },
-    ...options,
-  })
-  const data = await res.json()
-  if (!res.ok) throw { status: res.status, message: data.message || 'Error' }
-  return data
+// ── portalFetch — timeout (15s) + retry (1 বার) সহ ──────────
+const portalFetch = async (path, options = {}, retries = 1) => {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15000) // 15s timeout
+
+  try {
+    const res = await fetch(`${BACKEND}${path}`, {
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+      signal: controller.signal,
+      ...options,
+    })
+    clearTimeout(timeout)
+    const data = await res.json()
+    if (!res.ok) throw { status: res.status, message: data.message || 'Error' }
+    return data
+  } catch (err) {
+    clearTimeout(timeout)
+    // Network error বা timeout হলে একবার retry করো (401/403 retry করবে না)
+    if (retries > 0 && err.name !== 'AbortError' && !err.status) {
+      await new Promise(r => setTimeout(r, 1000)) // 1s পরে retry
+      return portalFetch(path, options, retries - 1)
+    }
+    throw err
+  }
 }
 
 // ── Helpers ───────────────────────────────────────────────────
