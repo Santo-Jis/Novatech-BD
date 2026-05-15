@@ -140,8 +140,8 @@ const verifyPortalToken = async (req, res) => {
         const isLocked = !!record.bound_device_id;
 
         if (isLocked) {
-            // ⚠️ FIX #3: device_id না পাঠালে lock bypass সম্ভব ছিল।
-            // এখন device_id ছাড়া locked token-এ access সম্পূর্ণ বন্ধ।
+            // device_id না পাঠালে সম্পূর্ণ block — can_skip_google:false
+            // দিলেও Google login দিয়ে re-lock করা যেত, তাই এখানেই থামাও।
             if (!device_id) {
                 return res.status(400).json({
                     success: false,
@@ -164,6 +164,11 @@ const verifyPortalToken = async (req, res) => {
                     error_code: 'DEVICE_LOCKED'
                 });
             }
+
+            // same device confirmed — can_skip_google দেওয়া যাবে
+        } else {
+            // এখনো lock হয়নি — device_id আসুক বা না আসুক,
+            // Google login mandatory। can_skip_google কখনো true হবে না।
         }
 
         return res.status(200).json({
@@ -175,9 +180,9 @@ const verifyPortalToken = async (req, res) => {
                 customer_code:  record.customer_code,
                 email_linked:   !!record.email,
                 token_valid:    true,
-                // lock হলে এখানে পৌঁছানো মানে same device confirmed
+                // isLocked && same device verified হলেই true — অন্য সব ক্ষেত্রে false
                 is_device_locked: isLocked,
-                can_skip_google:  isLocked,
+                can_skip_google:  isLocked,   // এখানে পৌঁছানো মানে device check passed
             }
         });
 
@@ -238,6 +243,17 @@ const deviceLogin = async (req, res) => {
             });
         }
 
+        // ── bound_email অবশ্যই থাকতে হবে ────────────────────
+        // device lock আছে কিন্তু email নেই — corrupted state,
+        // Google re-login করতে বলো।
+        if (!record.bound_email) {
+            return res.status(400).json({
+                success: false,
+                message: 'এই লিংকে Google login সম্পূর্ণ হয়নি। নতুন করে Google দিয়ে login করুন।',
+                error_code: 'EMAIL_NOT_BOUND'
+            });
+        }
+
         if (!process.env.JWT_PORTAL_SECRET) {
             return res.status(500).json({ success: false, message: 'সার্ভার কনফিগারেশন সমস্যা।' });
         }
@@ -250,7 +266,7 @@ const deviceLogin = async (req, res) => {
                 type:           'customer_portal'
             },
             process.env.JWT_PORTAL_SECRET,
-            { expiresIn: '30d' }
+            { expiresIn: '30d', algorithm: 'HS256' }
         );
 
         await query(
@@ -335,14 +351,41 @@ const googleAuth = async (req, res) => {
             // (Google account বদলে login করার চেষ্টা রোধ)
         }
 
-        // ── Google থেকে user info ────────────────────────────
+        // ── Google token যাচাই — userinfo + audience (aud) check ──
+        // শুধু userinfo দিয়ে validate করলে অন্য Google app-এর
+        // valid token দিয়েও login করা যায় (token substitution attack)।
+        // tokeninfo endpoint দিয়ে aud field verify করা হচ্ছে —
+        // token অবশ্যই এই app-এর GOOGLE_CLIENT_ID-এর জন্য issued হতে হবে।
         let googleUser;
         try {
-            const googleRes = await axios.get(
-                'https://www.googleapis.com/oauth2/v3/userinfo',
-                { headers: { Authorization: `Bearer ${google_token}` } }
-            );
-            googleUser = googleRes.data;
+            // Step 1: userinfo — email, name, picture নাও
+            const [userinfoRes, tokeninfoRes] = await Promise.all([
+                axios.get(
+                    'https://www.googleapis.com/oauth2/v3/userinfo',
+                    { headers: { Authorization: `Bearer ${google_token}` } }
+                ),
+                // Step 2: tokeninfo — aud (audience) চেক করো
+                axios.get(
+                    `https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${google_token}`
+                ),
+            ]);
+
+            googleUser = userinfoRes.data;
+
+            // aud মিলছে কিনা verify — GOOGLE_CLIENT_ID .env-এ থাকতে হবে
+            const expectedClientId = process.env.GOOGLE_CLIENT_ID;
+            if (expectedClientId) {
+                const aud = tokeninfoRes.data.aud || tokeninfoRes.data.azp || '';
+                if (aud !== expectedClientId) {
+                    console.warn(`❌ Google token aud mismatch: got "${aud}", expected "${expectedClientId}"`);
+                    return res.status(401).json({
+                        success: false,
+                        message: 'Google token অবৈধ — ভিন্ন app-এর token গ্রহণযোগ্য নয়।'
+                    });
+                }
+            } else {
+                console.warn('⚠️ GOOGLE_CLIENT_ID .env-এ নেই — aud check skip হচ্ছে।');
+            }
         } catch {
             return res.status(401).json({ success: false, message: 'Google যাচাই ব্যর্থ হয়েছে।' });
         }
@@ -407,7 +450,7 @@ const googleAuth = async (req, res) => {
                 type:           'customer_portal'
             },
             process.env.JWT_PORTAL_SECRET,
-            { expiresIn: '30d' }
+            { expiresIn: '30d', algorithm: 'HS256' }
         );
 
         return res.status(200).json({
@@ -444,7 +487,21 @@ const getCustomerDashboard = async (req, res) => {
     try {
         const { customer_id } = req.portalUser;
 
-        const customer = await query(
+        // ── আগে: ৫টি আলাদা sequential query (N+1 pattern)
+        // ── এখন: ২টি query — একটি Promise.all-এ parallel
+        //
+        // Query 1 — customer info (single row, fast)
+        // Query 2 — একটি CTE দিয়ে sales + payments + দুটো summary একসাথে
+        //
+        // কেন ২টি query, ১টি নয়?
+        // sales ও payments দুটো আলাদা table থেকে আসে, দুটোরই
+        // LIMIT আছে। একটি query-তে JOIN করলে Cartesian product হবে —
+        // 30 sales × 20 payments = 600 row fetch হবে, তারপর
+        // application layer-এ আলাদা করতে হবে। সেটা আরো slow।
+        // আলাদা query কিন্তু parallel চালানোই optimal।
+
+        // ── Query 1: Customer info ────────────────────────────
+        const customerResult = await query(
             `SELECT c.shop_name, c.owner_name, c.customer_code, c.email,
                     c.credit_limit, c.current_credit, c.credit_balance,
                     c.business_type, c.whatsapp,
@@ -455,71 +512,87 @@ const getCustomerDashboard = async (req, res) => {
             [customer_id]
         );
 
-        if (customer.rows.length === 0) {
+        if (customerResult.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'তথ্য পাওয়া যায়নি।' });
         }
 
-        const sales = await query(
-            `SELECT st.invoice_number, st.items, st.total_amount,
-                    st.discount_amount, st.net_amount,
-                    st.payment_method, st.cash_received, st.credit_used,
-                    st.replacement_value, st.credit_balance_used,
-                    st.created_at,
-                    u.name_bn AS sr_name
-             FROM sales_transactions st
-             JOIN users u ON st.worker_id = u.id
-             WHERE st.customer_id = $1
-               AND st.otp_verified = true
-             ORDER BY st.created_at DESC
-             LIMIT 30`,
-            [customer_id]
-        );
+        // ── Query 2: CTE দিয়ে sales + payments + দুটো summary —
+        // WITH clause-এ চারটি subquery define করা হয়েছে।
+        // PostgreSQL এগুলো একটি execution plan-এ চালায় —
+        // sales_transactions table একবারই scan হয় (monthlySummary
+        // ও totalSummary-এর জন্য আলাদা scan নেই)।
+        // Query 3 (payments) আলাদা table তাই parallel চালানো হচ্ছে।
+        const [mainResult, paymentsResult] = await Promise.all([
+            query(
+                `WITH
+                 -- শেষ ৩০টি invoice
+                 recent_sales AS (
+                     SELECT st.invoice_number, st.items, st.total_amount,
+                            st.discount_amount, st.net_amount,
+                            st.payment_method, st.cash_received, st.credit_used,
+                            st.replacement_value, st.credit_balance_used,
+                            st.created_at,
+                            u.name_bn AS sr_name,
+                            'sale' AS row_type
+                     FROM sales_transactions st
+                     JOIN users u ON st.worker_id = u.id
+                     WHERE st.customer_id = $1
+                       AND st.otp_verified = true
+                     ORDER BY st.created_at DESC
+                     LIMIT 30
+                 ),
+                 -- এই মাসের summary
+                 monthly AS (
+                     SELECT
+                         COUNT(*)                        AS total_invoices,
+                         COALESCE(SUM(net_amount), 0)    AS total_purchase,
+                         COALESCE(SUM(cash_received), 0) AS total_cash,
+                         COALESCE(SUM(credit_used), 0)   AS total_credit
+                     FROM sales_transactions
+                     WHERE customer_id = $1
+                       AND otp_verified = true
+                       AND date_trunc('month', created_at) = date_trunc('month', NOW())
+                 ),
+                 -- সর্বকালীন summary
+                 overall AS (
+                     SELECT
+                         COUNT(*)                        AS total_invoices,
+                         COALESCE(SUM(net_amount), 0)    AS total_purchase,
+                         COALESCE(SUM(cash_received), 0) AS total_cash,
+                         COALESCE(SUM(credit_used), 0)   AS total_credit
+                     FROM sales_transactions
+                     WHERE customer_id = $1
+                       AND otp_verified = true
+                 )
+                 SELECT
+                     (SELECT json_agg(recent_sales.*) FROM recent_sales) AS sales,
+                     (SELECT row_to_json(monthly.*)   FROM monthly)      AS monthly_summary,
+                     (SELECT row_to_json(overall.*)   FROM overall)      AS total_summary`,
+                [customer_id]
+            ),
+            // payments আলাদা table — parallel চালাও
+            query(
+                `SELECT cp.amount, cp.notes, cp.created_at,
+                        u.name_bn AS collected_by
+                 FROM credit_payments cp
+                 JOIN users u ON cp.worker_id = u.id
+                 WHERE cp.customer_id = $1
+                 ORDER BY cp.created_at DESC
+                 LIMIT 20`,
+                [customer_id]
+            ),
+        ]);
 
-        const payments = await query(
-            `SELECT cp.amount, cp.notes, cp.created_at,
-                    u.name_bn AS collected_by
-             FROM credit_payments cp
-             JOIN users u ON cp.worker_id = u.id
-             WHERE cp.customer_id = $1
-             ORDER BY cp.created_at DESC
-             LIMIT 20`,
-            [customer_id]
-        );
-
-        const monthlySummary = await query(
-            `SELECT
-                COUNT(*)                          AS total_invoices,
-                COALESCE(SUM(net_amount), 0)      AS total_purchase,
-                COALESCE(SUM(cash_received), 0)   AS total_cash,
-                COALESCE(SUM(credit_used), 0)     AS total_credit
-             FROM sales_transactions
-             WHERE customer_id = $1
-               AND otp_verified = true
-               AND EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM NOW())
-               AND EXTRACT(YEAR  FROM created_at) = EXTRACT(YEAR  FROM NOW())`,
-            [customer_id]
-        );
-
-        const totalSummary = await query(
-            `SELECT
-                COUNT(*)                          AS total_invoices,
-                COALESCE(SUM(net_amount), 0)      AS total_purchase,
-                COALESCE(SUM(cash_received), 0)   AS total_cash,
-                COALESCE(SUM(credit_used), 0)     AS total_credit
-             FROM sales_transactions
-             WHERE customer_id = $1
-               AND otp_verified = true`,
-            [customer_id]
-        );
+        const { sales, monthly_summary, total_summary } = mainResult.rows[0];
 
         return res.status(200).json({
             success: true,
             data: {
-                customer:        customer.rows[0],
-                sales:           sales.rows,
-                credit_payments: payments.rows,
-                monthly_summary: monthlySummary.rows[0],
-                total_summary:   totalSummary.rows[0]
+                customer:        customerResult.rows[0],
+                sales:           sales           || [],
+                credit_payments: paymentsResult.rows,
+                monthly_summary: monthly_summary || {},
+                total_summary:   total_summary   || {}
             }
         });
 
@@ -539,20 +612,20 @@ const getCustomerInvoices = async (req, res) => {
         const limit       = Math.min(50, parseInt(req.query.limit) || 15);
         const offset      = (page - 1) * limit;
 
-        const countResult = await query(
-            'SELECT COUNT(*) AS total FROM sales_transactions WHERE customer_id = $1 AND otp_verified = true',
-            [customer_id]
-        );
-        const total      = parseInt(countResult.rows[0].total);
-        const totalPages = Math.ceil(total / limit);
-
-        const sales = await query(
+        // ── আগে: ২টি আলাদা query — COUNT(*) তারপর data fetch
+        // ── এখন: ১টি query — COUNT(*) OVER() window function
+        //
+        // COUNT(*) OVER() প্রতিটি row-এ total count যোগ করে দেয়।
+        // PostgreSQL একটি pass-এই data ও count দুটো বের করে —
+        // table দুবার scan হয় না। প্রথম row থেকে total নিলেই হয়।
+        const result = await query(
             `SELECT st.invoice_number, st.items, st.total_amount,
                     st.discount_amount, st.net_amount,
                     st.payment_method, st.cash_received, st.credit_used,
                     st.replacement_value, st.credit_balance_used,
                     st.created_at,
-                    u.name_bn AS sr_name
+                    u.name_bn AS sr_name,
+                    COUNT(*) OVER() AS total_count
              FROM sales_transactions st
              JOIN users u ON st.worker_id = u.id
              WHERE st.customer_id = $1
@@ -562,9 +635,15 @@ const getCustomerInvoices = async (req, res) => {
             [customer_id, limit, offset]
         );
 
+        const total      = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
+        const totalPages = Math.ceil(total / limit);
+
+        // total_count প্রতিটি row-এ আছে — response-এ পাঠানোর দরকার নেই
+        const rows = result.rows.map(({ total_count, ...rest }) => rest);
+
         return res.status(200).json({
             success: true,
-            data: sales.rows,
+            data: rows,
             pagination: { page, limit, total, totalPages }
         });
 
