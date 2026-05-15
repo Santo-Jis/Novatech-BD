@@ -30,7 +30,7 @@ const getProducts = async (req, res) => {
                                       ELSE '[]'::jsonb
                                  END
                              ) AS item
-                        WHERE (item->>'product_id')::int = p.id
+                        WHERE (item->>'product_id')::uuid = p.id
                           AND o.status IN ('pending', 'approved', 'processing')
                     ), 0)) AS available_stock,
                     unit, is_active, updated_at,
@@ -67,7 +67,7 @@ const getProduct = async (req, res) => {
                                       ELSE '[]'::jsonb
                                  END
                              ) AS item
-                        WHERE (item->>'product_id')::int = p.id
+                        WHERE (item->>'product_id')::uuid = p.id
                           AND o.status IN ('pending', 'approved', 'processing')
                     ), 0)) AS available_stock
              FROM products p WHERE id = $1`,
