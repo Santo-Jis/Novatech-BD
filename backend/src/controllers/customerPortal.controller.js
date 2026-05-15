@@ -10,9 +10,17 @@ const crypto     = require('crypto');
 const axios      = require('axios');
 
 // ============================================================
-// HELPER: Unique Token তৈরি
+// HELPER: Unique Token তৈরি (64-char hex, cryptographically secure)
 // ============================================================
 const generatePortalToken = () => crypto.randomBytes(32).toString('hex');
+
+// ============================================================
+// HELPER: Short redirect ID তৈরি — URL-এ শুধু এটা যাবে
+// এটা দিয়ে সরাসরি dashboard access হবে না;
+// frontend এটা দিয়ে POST /api/portal/resolve-link call করবে,
+// তারপর actual portal_token পাবে (POST body-তে, URL-এ নয়)।
+// ============================================================
+const generateRedirectId = () => crypto.randomBytes(16).toString('base64url');
 
 // ============================================================
 // HELPER: Device Fingerprint — browser info থেকে consistent ID
@@ -48,28 +56,37 @@ const sendPortalLink = async (req, res) => {
             return res.status(400).json({ success: false, message: 'কাস্টমারের WhatsApp নম্বর নেই।' });
         }
 
-        const token     = generatePortalToken();
-        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        const token      = generatePortalToken();
+        const redirectId = generateRedirectId(); // ✅ Fix 1: URL-এ শুধু redirect_id যাবে, token নয়
+        const expiresAt  = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
         // নতুন লিংক পাঠালে bound_email ও bound_device_id সম্পূর্ণ রিসেট
+        // redirect_id আলাদা — URL-এ এটা দেখায়, token শুধু DB-তে থাকে
         await query(
             `INSERT INTO customer_portal_tokens
-                (customer_id, token, expires_at, bound_email, bound_device_id, bound_at)
-             VALUES ($1, $2, $3, NULL, NULL, NULL)
+                (customer_id, token, redirect_id, expires_at, token_version, bound_email, bound_device_id, bound_at)
+             VALUES ($1, $2, $3, $4, 1, NULL, NULL, NULL)
              ON CONFLICT (customer_id) DO UPDATE SET
                 token           = $2,
-                expires_at      = $3,
+                redirect_id     = $3,
+                expires_at      = $4,
+                -- ✅ Fix 1: নতুন লিংক পাঠালে token_version বাড়ে।
+                -- আগের JWT-এ পুরনো version থাকবে → portalAuth-এ reject হবে।
+                -- 30-দিনের পুরনো JWT আর কাজ করবে না।
+                token_version   = COALESCE(customer_portal_tokens.token_version, 0) + 1,
                 created_at      = NOW(),
                 bound_email     = NULL,
                 bound_device_id = NULL,
                 bound_at        = NULL,
                 last_login      = NULL,
                 google_email    = NULL`,
-            [customerId, token, expiresAt]
+            [customerId, token, redirectId, expiresAt]
         );
 
         const frontendUrl = process.env.FRONTEND_URL || 'https://novatech-bd-kqrn.vercel.app';
-        const portalLink  = `${frontendUrl}/customer/dashboard?token=${token}`;
+        // ✅ Fix 1: URL-এ শুধু redirect_id (opaque, short-lived lookup key)
+        // Frontend POST /api/portal/resolve-link { redirect_id } → actual portal_token পাবে
+        const portalLink  = `${frontendUrl}/customer/portal?r=${redirectId}`;
 
         const rawPhone = cust.whatsapp.replace(/\D/g, '');
         const phone    = rawPhone.startsWith('880') ? rawPhone : '880' + rawPhone.replace(/^0/, '');
@@ -90,7 +107,7 @@ const sendPortalLink = async (req, res) => {
             data: {
                 portal_link:   portalLink,
                 whatsapp_url:  whatsappUrl,
-                token,
+                // ✅ Fix 1: token response-এ নেই — শুধু admin দেখার জন্য redirect_id
                 expires_at:    expiresAt,
                 customer_name: cust.owner_name,
                 shop_name:     cust.shop_name
@@ -100,6 +117,54 @@ const sendPortalLink = async (req, res) => {
     } catch (error) {
         console.error('❌ Send Portal Link Error:', error.message);
         return res.status(500).json({ success: false, message: 'লিংক তৈরিতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// 1b. RESOLVE LINK (Fix 1 — token URL থেকে সরানো)
+// POST /api/portal/resolve-link
+// body: { redirect_id }
+// Frontend URL-এ শুধু redirect_id থাকে (?r=xxx)।
+// Client POST করে এই endpoint-এ → actual portal_token পায় (body-তে)।
+// token কখনো URL-এ যায় না → browser history / server log / WhatsApp preview safe।
+// ============================================================
+const resolveLink = async (req, res) => {
+    try {
+        const { redirect_id } = req.body;
+
+        if (!redirect_id) {
+            return res.status(400).json({ success: false, message: 'redirect_id দেওয়া হয়নি।' });
+        }
+
+        const result = await query(
+            `SELECT cpt.token, cpt.expires_at, c.shop_name, c.owner_name, c.customer_code
+             FROM customer_portal_tokens cpt
+             JOIN customers c ON cpt.customer_id = c.id
+             WHERE cpt.redirect_id = $1`,
+            [redirect_id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'লিংক পাওয়া যায়নি বা মেয়াদ শেষ।' });
+        }
+
+        const record = result.rows[0];
+
+        if (new Date() > new Date(record.expires_at)) {
+            return res.status(400).json({ success: false, message: 'লিংকের মেয়াদ শেষ হয়ে গেছে। SR-কে নতুন লিংক পাঠাতে বলুন।' });
+        }
+
+        // ✅ portal_token শুধু HTTPS response body-তে যাচ্ছে — URL-এ নয়
+        return res.status(200).json({
+            success:      true,
+            portal_token: record.token,
+            shop_name:    record.shop_name,
+            owner_name:   record.owner_name,
+        });
+
+    } catch (error) {
+        console.error('❌ Resolve Link Error:', error.message);
+        return res.status(500).json({ success: false, message: 'লিংক যাচাইতে সমস্যা হয়েছে।' });
     }
 };
 
@@ -152,8 +217,10 @@ const verifyPortalToken = async (req, res) => {
 
             // Composite fingerprint — googleAuth ও deviceLogin-এর মতোই
             const userAgent      = req.headers['user-agent'] || '';
-            const clientIp       = req.ip || req.socket?.remoteAddress || '';
-            const compositeRaw   = `${device_id}::${userAgent}::${clientIp}`;
+            // ✅ Fix 3: IP বাদ দেওয়া হয়েছে — বাংলাদেশে মোবাইল ডেটায় IP প্রতি session-এ বদলায়।
+            // IP থাকলে বৈধ কাস্টমার নিজের ফোনেই DEVICE_LOCKED পাবেন।
+            // device_id (browser fingerprint) + User-Agent যথেষ্ট stable।
+            const compositeRaw   = `${device_id}::${userAgent}`;
             const hashedIncoming = hashDeviceId(compositeRaw);
             const isSameDevice   = hashedIncoming === record.bound_device_id;
 
@@ -210,10 +277,10 @@ const deviceLogin = async (req, res) => {
             return res.status(400).json({ success: false, message: 'portal_token ও device_id দেওয়া হয়নি।' });
         }
 
-        // Composite fingerprint: client device_id + server-side User-Agent + IP
+        // ✅ Fix 3: Composite fingerprint — IP বাদ, শুধু device_id + User-Agent
+        // IP বাদ দেওয়ার কারণ: বাংলাদেশে মোবাইল ডেটায় প্রতি session-এ নতুন IP আসে।
         const userAgent  = req.headers['user-agent'] || '';
-        const clientIp   = req.ip || req.socket?.remoteAddress || '';
-        const compositeRaw = `${device_id}::${userAgent}::${clientIp}`;
+        const compositeRaw = `${device_id}::${userAgent}`;
         const hashedIncoming = hashDeviceId(compositeRaw);
 
         const result = await query(
@@ -258,12 +325,15 @@ const deviceLogin = async (req, res) => {
             return res.status(500).json({ success: false, message: 'সার্ভার কনফিগারেশন সমস্যা।' });
         }
 
+        // ✅ Fix 1: JWT-এ token_version যোগ — নতুন লিংক পাঠালে version বাড়বে
+        // portalAuth middleware এই version DB-এর সাথে মিলিয়ে দেখবে
         const portalJWT = jwt.sign(
             {
                 customer_id:    record.cid,
                 email:          record.bound_email,
                 google_name:    record.owner_name,
-                type:           'customer_portal'
+                type:           'customer_portal',
+                token_version:  record.token_version || 1,
             },
             process.env.JWT_PORTAL_SECRET,
             { expiresIn: '30d', algorithm: 'HS256' }
@@ -332,9 +402,9 @@ const googleAuth = async (req, res) => {
         const customerData   = tokenResult.rows[0];
         // Composite fingerprint: client device_id + server-side User-Agent + IP
         // এটি deviceLogin-এর সাথে হুবহু মিলতে হবে
+        // ✅ Fix 3: IP বাদ — device_id + User-Agent দিয়ে fingerprint
         const userAgent      = req.headers['user-agent'] || '';
-        const clientIp       = req.ip || req.socket?.remoteAddress || '';
-        const compositeRaw   = `${device_id}::${userAgent}::${clientIp}`;
+        const compositeRaw   = `${device_id}::${userAgent}`;
         const hashedDeviceId = hashDeviceId(compositeRaw);
 
         // ── Device Lock চেক ──────────────────────────────────
@@ -364,9 +434,13 @@ const googleAuth = async (req, res) => {
                     'https://www.googleapis.com/oauth2/v3/userinfo',
                     { headers: { Authorization: `Bearer ${google_token}` } }
                 ),
-                // Step 2: tokeninfo — aud (audience) চেক করো
-                axios.get(
-                    `https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${google_token}`
+                // ✅ Fix 2: tokeninfo — POST body দিয়ে access_token পাঠানো
+                // GET query param-এ token গেলে Google-এর নিজস্ব server log-এ পড়ে।
+                // URLSearchParams দিয়ে application/x-www-form-urlencoded body করা হচ্ছে।
+                axios.post(
+                    'https://www.googleapis.com/oauth2/v3/tokeninfo',
+                    new URLSearchParams({ access_token: google_token }).toString(),
+                    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
                 ),
             ]);
 
@@ -441,13 +515,15 @@ const googleAuth = async (req, res) => {
             return res.status(500).json({ success: false, message: 'সার্ভার কনফিগারেশন সমস্যা।' });
         }
 
+        // ✅ Fix 1: JWT-এ token_version embed করা হচ্ছে
         const portalJWT = jwt.sign(
             {
                 customer_id:    customerData.cid,
                 email,
                 google_name:    name,
                 google_picture: picture,
-                type:           'customer_portal'
+                type:           'customer_portal',
+                token_version:  customerData.token_version || 1,
             },
             process.env.JWT_PORTAL_SECRET,
             { expiresIn: '30d', algorithm: 'HS256' }
@@ -585,11 +661,20 @@ const getCustomerDashboard = async (req, res) => {
 
         const { sales, monthly_summary, total_summary } = mainResult.rows[0];
 
+        const totalInvoices = parseInt(total_summary?.total_invoices || 0);
+        const salesPreview  = sales || [];
+
         return res.status(200).json({
             success: true,
             data: {
                 customer:        customerResult.rows[0],
-                sales:           sales           || [],
+                // ✅ Fix 3: sales এখন শুধু preview (শেষ ৩০টি)।
+                // total_invoices total_summary-তে আছে — কাস্টমার বুঝবে আরো আছে।
+                // সব invoice দেখতে GET /api/portal/invoices ব্যবহার করুন।
+                sales:           salesPreview,
+                sales_note: salesPreview.length === 30 && totalInvoices > 30
+                    ? `সর্বশেষ ৩০টি দেখানো হচ্ছে। মোট ${totalInvoices}টি ইনভয়েস আছে।`
+                    : null,
                 credit_payments: paymentsResult.rows,
                 monthly_summary: monthly_summary || {},
                 total_summary:   total_summary   || {}
@@ -655,6 +740,7 @@ const getCustomerInvoices = async (req, res) => {
 
 module.exports = {
     sendPortalLink,
+    resolveLink,
     verifyPortalToken,
     deviceLogin,
     googleAuth,
