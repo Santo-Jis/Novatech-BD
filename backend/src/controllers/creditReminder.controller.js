@@ -37,7 +37,7 @@ const sendCreditReminder = async (req, res) => {
                 c.email, c.current_credit, c.whatsapp,
                 u.name_bn  AS sr_name,
                 u.manager_id,
-                cpt.token  AS portal_token
+                cpt.redirect_id  AS portal_redirect_id
             FROM customers c
             LEFT JOIN users u ON u.id = $2
             LEFT JOIN customer_portal_tokens cpt ON c.id = cpt.customer_id
@@ -64,8 +64,9 @@ const sendCreditReminder = async (req, res) => {
             console.error('❌ FRONTEND_URL env variable সেট নেই।');
             return res.status(500).json({ success: false, message: 'Server configuration error: FRONTEND_URL missing.' });
         }
-        const portalLink   = customer.portal_token
-            ? `${FRONTEND_URL}/customer/dashboard?token=${customer.portal_token}`
+        // ✅ Fix 1: URL-এ redirect_id যাবে, token নয়
+        const portalLink   = customer.portal_redirect_id
+            ? `${FRONTEND_URL}/customer/portal?r=${customer.portal_redirect_id}`
             : null;
 
         const credit = parseFloat(customer.current_credit).toLocaleString('bn-BD');
