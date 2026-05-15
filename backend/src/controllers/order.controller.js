@@ -600,7 +600,7 @@ const getStockStatus = async (req, res) => {
                                ELSE '[]'::jsonb END
                       ) AS item
                  WHERE o.worker_id = $1::uuid
-                   AND (item->>'product_id')::int = l.product_id
+                   AND (item->>'product_id')::uuid = l.product_id
                    AND o.status = 'approved'
                  ORDER BY o.approved_at DESC
                  LIMIT 1
