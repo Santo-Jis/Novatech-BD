@@ -615,49 +615,72 @@ const getCustomerDashboard = async (req, res) => {
         const [mainResult, paymentsResult] = await Promise.all([
             query(
                 `WITH
-                 -- শেষ ৩০টি invoice
+                 -- শেষ ৩০টি invoice (replacement info সহ)
                  recent_sales AS (
                      SELECT st.invoice_number, st.items, st.total_amount,
                             st.discount_amount, st.net_amount,
                             st.payment_method, st.cash_received, st.credit_used,
-                            st.replacement_value, st.credit_balance_used,
+                            st.replacement_items, st.replacement_value,
+                            st.credit_balance_used, st.credit_balance_added,
                             st.created_at,
                             u.name_bn AS sr_name,
                             'sale' AS row_type
                      FROM sales_transactions st
                      JOIN users u ON st.worker_id = u.id
                      WHERE st.customer_id = $1
-                       AND st.otp_verified = true
+                       AND (st.otp_verified = true OR st.otp_skipped = true)
                      ORDER BY st.created_at DESC
                      LIMIT 30
                  ),
-                 -- এই মাসের summary
+                 -- এই মাসের summary (replacement সহ)
                  monthly AS (
                      SELECT
-                         COUNT(*)                        AS total_invoices,
-                         COALESCE(SUM(net_amount), 0)    AS total_purchase,
-                         COALESCE(SUM(cash_received), 0) AS total_cash,
-                         COALESCE(SUM(credit_used), 0)   AS total_credit
+                         COUNT(*)                              AS total_invoices,
+                         COALESCE(SUM(net_amount), 0)          AS total_purchase,
+                         COALESCE(SUM(cash_received), 0)       AS total_cash,
+                         COALESCE(SUM(credit_used), 0)         AS total_credit,
+                         COALESCE(SUM(replacement_value), 0)   AS total_replacement,
+                         COALESCE(SUM(credit_balance_added), 0) AS total_credit_earned
                      FROM sales_transactions
                      WHERE customer_id = $1
-                       AND otp_verified = true
+                       AND (otp_verified = true OR otp_skipped = true)
                        AND date_trunc('month', created_at) = date_trunc('month', NOW())
                  ),
-                 -- সর্বকালীন summary
+                 -- সর্বকালীন summary (replacement সহ)
                  overall AS (
                      SELECT
-                         COUNT(*)                        AS total_invoices,
-                         COALESCE(SUM(net_amount), 0)    AS total_purchase,
-                         COALESCE(SUM(cash_received), 0) AS total_cash,
-                         COALESCE(SUM(credit_used), 0)   AS total_credit
+                         COUNT(*)                              AS total_invoices,
+                         COALESCE(SUM(net_amount), 0)          AS total_purchase,
+                         COALESCE(SUM(cash_received), 0)       AS total_cash,
+                         COALESCE(SUM(credit_used), 0)         AS total_credit,
+                         COALESCE(SUM(replacement_value), 0)   AS total_replacement,
+                         COALESCE(SUM(credit_balance_added), 0) AS total_credit_earned
                      FROM sales_transactions
                      WHERE customer_id = $1
-                       AND otp_verified = true
+                       AND (otp_verified = true OR otp_skipped = true)
+                 ),
+                 -- রিটার্ন ইতিহাস — replacement_value > 0 এমন sale গুলো
+                 -- কাস্টমার কোন invoice-এ কী ফেরত দিয়েছে এবং কত credit পেয়েছে
+                 returns AS (
+                     SELECT st.invoice_number,
+                            st.replacement_items,
+                            st.replacement_value,
+                            st.credit_balance_added,
+                            st.created_at,
+                            u.name_bn AS sr_name
+                     FROM sales_transactions st
+                     JOIN users u ON st.worker_id = u.id
+                     WHERE st.customer_id = $1
+                       AND (st.otp_verified = true OR st.otp_skipped = true)
+                       AND st.replacement_value > 0
+                     ORDER BY st.created_at DESC
+                     LIMIT 20
                  )
                  SELECT
                      (SELECT json_agg(recent_sales.*) FROM recent_sales) AS sales,
                      (SELECT row_to_json(monthly.*)   FROM monthly)      AS monthly_summary,
-                     (SELECT row_to_json(overall.*)   FROM overall)      AS total_summary`,
+                     (SELECT row_to_json(overall.*)   FROM overall)      AS total_summary,
+                     (SELECT json_agg(returns.*)      FROM returns)      AS returns`,
                 [customer_id]
             ),
             // payments আলাদা table — parallel চালাও
@@ -673,22 +696,27 @@ const getCustomerDashboard = async (req, res) => {
             ),
         ]);
 
-        const { sales, monthly_summary, total_summary } = mainResult.rows[0];
+        const { sales, monthly_summary, total_summary, returns } = mainResult.rows[0];
 
         const totalInvoices = parseInt(total_summary?.total_invoices || 0);
-        const salesPreview  = sales || [];
+        const salesPreview  = sales   || [];
+        const returnsData   = returns || [];
 
         return res.status(200).json({
             success: true,
             data: {
                 customer:        customerResult.rows[0],
-                // ✅ Fix 3: sales এখন শুধু preview (শেষ ৩০টি)।
-                // total_invoices total_summary-তে আছে — কাস্টমার বুঝবে আরো আছে।
+                // sales: শেষ ৩০টি invoice (replacement_items ও credit_balance_added সহ)
                 // সব invoice দেখতে GET /api/portal/invoices ব্যবহার করুন।
                 sales:           salesPreview,
                 sales_note: salesPreview.length === 30 && totalInvoices > 30
                     ? `সর্বশেষ ৩০টি দেখানো হচ্ছে। মোট ${totalInvoices}টি ইনভয়েস আছে।`
                     : null,
+                // returns: যেসব invoice-এ পণ্য ফেরত দেওয়া হয়েছে (শেষ ২০টি)
+                // replacement_items → কী কী ফেরত গেছে
+                // replacement_value → মোট মূল্য
+                // credit_balance_added → এই return থেকে কত credit balance পেয়েছে
+                returns:         returnsData,
                 credit_payments: paymentsResult.rows,
                 monthly_summary: monthly_summary || {},
                 total_summary:   total_summary   || {}
@@ -728,7 +756,7 @@ const getCustomerInvoices = async (req, res) => {
              FROM sales_transactions st
              JOIN users u ON st.worker_id = u.id
              WHERE st.customer_id = $1
-               AND st.otp_verified = true
+               AND (st.otp_verified = true OR st.otp_skipped = true)
              ORDER BY st.created_at DESC
              LIMIT $2 OFFSET $3`,
             [customer_id, limit, offset]
