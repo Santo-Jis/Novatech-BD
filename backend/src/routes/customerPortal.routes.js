@@ -66,6 +66,45 @@ const customerAiLimiter = rateLimit({
     }
 });
 
+// ============================================================
+// PORTAL AUTH CACHE
+// ============================================================
+// Redis নেই — in-process Map দিয়ে TTL cache।
+//
+// কী cache করা হচ্ছে:
+//   key   → customer_id
+//   value → { token_version, cachedAt }
+//
+// TTL: 60 সেকেন্ড।
+//   - এই সময়ের মধ্যে deactivate হলে সর্বোচ্চ ৬০ সেকেন্ড পুরনো
+//     session চলবে — acceptable trade-off (employee auth-এ ১৫ মিনিট)।
+//   - sendPortalLink বা deactivate হলে invalidatePortalAuthCache(id)
+//     call করলে তাৎক্ষণিক বাদ পড়বে।
+//
+// Memory: প্রতিটি entry ~150 bytes। ১০,০০০ customer = ~1.5 MB — safe।
+// ============================================================
+const PORTAL_AUTH_CACHE_TTL_MS = 60 * 1000; // ৬০ সেকেন্ড
+const portalAuthCache = new Map(); // customer_id → { token_version, cachedAt }
+
+// Cache থেকে পড়ো — মেয়াদ শেষ হলে delete করে null দাও
+const getCached = (customerId) => {
+    const entry = portalAuthCache.get(customerId);
+    if (!entry) return null;
+    if (Date.now() - entry.cachedAt > PORTAL_AUTH_CACHE_TTL_MS) {
+        portalAuthCache.delete(customerId);
+        return null;
+    }
+    return entry;
+};
+
+// নতুন লিংক পাঠালে বা admin deactivate করলে cache বাতিল করুন।
+// customerPortal.controller.js-এ sendPortalLink থেকে call করুন:
+//   const { invalidatePortalAuthCache } = require('../routes/customerPortal.routes');
+//   invalidatePortalAuthCache(customerId);
+const invalidatePortalAuthCache = (customerId) => {
+    portalAuthCache.delete(customerId);
+};
+
 // ── Portal JWT Middleware (কাস্টমার ড্যাশবোর্ডের জন্য) ──────
 const portalAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -93,56 +132,53 @@ const portalAuth = async (req, res, next) => {
             return res.status(403).json({ success: false, message: 'অবৈধ টোকেন — customer_id নেই।' });
         }
 
-        // ── DB-তে customer active আছে কিনা verify ────────────
-        // JWT valid হলেও deactivated customer block হবে।
-        try {
-            const custCheck = await query(
-                'SELECT id FROM customers WHERE id = $1 AND is_active = true',
-                [decoded.customer_id]
-            );
-            if (custCheck.rows.length === 0) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'আপনার অ্যাকাউন্ট নিষ্ক্রিয় করা হয়েছে।'
-                });
+        const customerId  = decoded.customer_id;
+        const jwtVersion  = decoded.token_version || 1;
+
+        // ── Cache-first DB check ──────────────────────────────
+        // আগে: প্রতি request-এ দুটো DB query (active check + token_version check)
+        // এখন: cache hit হলে শূন্য DB query; miss হলে একটি query
+        let cached = getCached(customerId);
+
+        if (!cached) {
+            // Cache miss — DB থেকে একটি query-তে সব তথ্য আনো
+            try {
+                const authCheck = await query(
+                    `SELECT c.id, c.is_active, cpt.token_version AS current_version
+                     FROM customers c
+                     LEFT JOIN customer_portal_tokens cpt ON cpt.customer_id = c.id
+                     WHERE c.id = $1`,
+                    [customerId]
+                );
+
+                if (authCheck.rows.length === 0 || !authCheck.rows[0].is_active) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'আপনার অ্যাকাউন্ট নিষ্ক্রিয় করা হয়েছে।',
+                    });
+                }
+
+                const currentVersion = authCheck.rows[0].current_version || 1;
+
+                // Cache-এ রাখো — পরের ৬০ সেকেন্ড DB query লাগবে না
+                cached = { token_version: currentVersion, cachedAt: Date.now() };
+                portalAuthCache.set(customerId, cached);
+
+            } catch (dbErr) {
+                console.error('❌ portalAuth DB check error:', dbErr.message);
+                return res.status(500).json({ success: false, message: 'যাচাই করতে সমস্যা হয়েছে।' });
             }
-        } catch (dbErr) {
-            console.error('❌ portalAuth DB check error:', dbErr.message);
-            return res.status(500).json({ success: false, message: 'যাচাই করতে সমস্যা হয়েছে।' });
         }
 
-        // ✅ Fix 1: একটি JOIN query-তে customer active চেক + token_version মেলানো।
-        // নতুন লিংক পাঠালে sendPortalLink token_version বাড়ায়।
-        // পুরনো JWT-এ আগের version → এখানে reject → 30-দিনের JWT তাৎক্ষণিক বাতিল।
-        try {
-            const authCheck = await query(
-                `SELECT c.id, cpt.token_version AS current_version
-                 FROM customers c
-                 LEFT JOIN customer_portal_tokens cpt ON cpt.customer_id = c.id
-                 WHERE c.id = $1 AND c.is_active = true`,
-                [decoded.customer_id]
-            );
-
-            if (authCheck.rows.length === 0) {
-                return res.status(403).json({
-                    success: false,
-                    message: 'আপনার অ্যাকাউন্ট নিষ্ক্রিয় করা হয়েছে।'
-                });
-            }
-
-            const currentVersion = authCheck.rows[0].current_version || 1;
-            const jwtVersion     = decoded.token_version || 1;
-
-            if (jwtVersion !== currentVersion) {
-                return res.status(401).json({
-                    success: false,
-                    message: 'নতুন লিংক ইস্যু হয়েছে। পুনরায় লগইন করুন।',
-                    error_code: 'TOKEN_REVOKED'
-                });
-            }
-        } catch (dbErr) {
-            console.error('❌ portalAuth DB check error:', dbErr.message);
-            return res.status(500).json({ success: false, message: 'যাচাই করতে সমস্যা হয়েছে।' });
+        // Token version মেলাও — cache থেকে (DB query ছাড়াই)
+        if (jwtVersion !== cached.token_version) {
+            // Version mismatch → cache stale হতে পারে, তাই বাতিল করে দাও
+            invalidatePortalAuthCache(customerId);
+            return res.status(401).json({
+                success:    false,
+                message:    'নতুন লিংক ইস্যু হয়েছে। পুনরায় লগইন করুন।',
+                error_code: 'TOKEN_REVOKED',
+            });
         }
 
         req.portalUser = decoded;
@@ -214,6 +250,7 @@ router.post('/ai-chat',         portalAuth, customerAiLimiter, customerAiChat);
 router.get('/ai-chat/history',  portalAuth, getCustomerChatHistory);
 
 module.exports = router;
+module.exports.invalidatePortalAuthCache = invalidatePortalAuthCache;
 
 // ── Customer AI Chat ─────────────────────────────────────────
 // POST /api/portal/ai-chat
