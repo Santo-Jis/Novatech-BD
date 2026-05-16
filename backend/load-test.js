@@ -268,6 +268,86 @@ async function adminFlow() {
 }
 
 // ============================================================
+// SCENARIO 5: ১০০ Customer একসাথে login + order request
+// ============================================================
+async function customerFlow(customerId) {
+    console.log(`\n🛍️  Customer-${customerId}: শুরু হচ্ছে...`);
+
+    // ── Step 1: device-login (portal_token + device_id দরকার) ──
+    // Load test-এ real portal_token থাকে না, তাই
+    // verify-token দিয়ে আগে token validate করার simulate করা হচ্ছে।
+    // Production-এ customer WhatsApp link পায়, তারপর device-login করে।
+
+    const portalToken = process.env[`TEST_PORTAL_TOKEN_${customerId}`]
+        || process.env.TEST_PORTAL_TOKEN; // একটি shared test token
+
+    if (!portalToken) {
+        // Token না থাকলে — unauthenticated endpoint টেস্ট করো
+        const healthRes = await request('GET', '/api/health', null, null);
+        check(`Customer-${customerId}: Health check`, healthRes.status === 200, healthRes.duration);
+        console.log(`🛍️  Customer-${customerId}: portal token নেই — শুধু health check`);
+        return;
+    }
+
+    const deviceId = `load-test-device-${customerId}`;
+
+    const loginRes = await request('POST', '/api/portal/device-login', {
+        portal_token: portalToken,
+        device_id:    deviceId,
+    });
+
+    check(
+        `Customer-${customerId}: Portal Login`,
+        loginRes.status === 200,
+        loginRes.duration
+    );
+
+    const token = loginRes.body?.data?.portal_jwt;
+    if (!token) {
+        console.log(`🛍️  Customer-${customerId}: login হয়নি — বাকি skip`);
+        return;
+    }
+
+    // ── Step 2: Dashboard ──────────────────────────────────
+    await sleep(200);
+    const dashRes = await request('GET', '/api/portal/dashboard', null, token);
+    check(`Customer-${customerId}: Dashboard`, dashRes.status === 200, dashRes.duration);
+
+    // ── Step 3: Products দেখো ─────────────────────────────
+    await sleep(200);
+    const prodRes = await request('GET', '/api/portal/products', null, token);
+    check(`Customer-${customerId}: Products`, prodRes.status === 200, prodRes.duration);
+
+    // ── Step 4: Order Request দাও ─────────────────────────
+    const products = prodRes.body?.data || [];
+    if (products.length > 0) {
+        await sleep(200);
+        const product  = products[Math.floor(Math.random() * products.length)];
+        const orderRes = await request('POST', '/api/portal/order-request', {
+            items: [{ product_id: product.id, qty: Math.floor(Math.random() * 3) + 1 }],
+            note:  `Load test order from customer ${customerId}`,
+        }, token);
+        check(
+            `Customer-${customerId}: Order Request`,
+            orderRes.status === 200 || orderRes.status === 201,
+            orderRes.duration
+        );
+    }
+
+    // ── Step 5: My Order Requests দেখো ───────────────────
+    await sleep(200);
+    const myOrdersRes = await request('GET', '/api/portal/order-requests', null, token);
+    check(`Customer-${customerId}: My Orders`, myOrdersRes.status === 200, myOrdersRes.duration);
+
+    // ── Step 6: Invoices দেখো ─────────────────────────────
+    await sleep(200);
+    const invoiceRes = await request('GET', '/api/portal/invoices', null, token);
+    check(`Customer-${customerId}: Invoices`, invoiceRes.status === 200, invoiceRes.duration);
+
+    console.log(`🛍️  Customer-${customerId}: শেষ`);
+}
+
+// ============================================================
 // MAIN
 // ============================================================
 async function main() {
@@ -312,6 +392,17 @@ async function main() {
     // ── Phase 4: Admin ─────────────────────────────────────
     console.log('\n━━━ Phase 4: Admin রিপোর্ট দেখছে ━━━');
     await adminFlow();
+
+    // ── Phase 5: ১০০ Customer একসাথে ──────────────────────
+    console.log('\n━━━ Phase 5: ১০০ Customer একসাথে login + order ━━━');
+    if (!process.env.TEST_PORTAL_TOKEN) {
+        console.log('  ⚠️  TEST_PORTAL_TOKEN সেট নেই — customer flow skip');
+        console.log('  ℹ️  চালাতে হলে: export TEST_PORTAL_TOKEN="your_portal_token"');
+    } else {
+        await Promise.all(
+            Array.from({ length: 100 }, (_, i) => customerFlow(i + 1))
+        );
+    }
 
     // ── Final Report ───────────────────────────────────────
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
