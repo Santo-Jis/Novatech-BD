@@ -20,12 +20,30 @@ const saveToLog = async (customerId, message, reply) => {
     } catch { /* non-critical */ }
 };
 
+// ── Constants ────────────────────────────────────────────────
+// AI-তে পাঠানোর আগে message ও history কতটুকু accept করব
+const MAX_MESSAGE_LENGTH  = 500;   // user message-এর সর্বোচ্চ character
+const MAX_HISTORY_TURNS   = 6;     // শেষ কতটি turn history পাঠাব
+const MAX_HISTORY_CONTENT = 300;   // history-র প্রতিটি item সর্বোচ্চ character
+
 const customerAiChat = async (req, res) => {
     try {
         const { message, history = [] } = req.body;
 
+        // ── Validation ────────────────────────────────────────
         if (!message?.trim()) {
             return res.status(400).json({ success: false, message: 'বার্তা দিন।' });
+        }
+
+        // Message length check — token abuse ও cost spike রোধ
+        if (message.trim().length > MAX_MESSAGE_LENGTH) {
+            return res.status(400).json({
+                success:    false,
+                message:    `বার্তা সর্বোচ্চ ${MAX_MESSAGE_LENGTH} অক্ষরের মধ্যে রাখুন।`,
+                error_code: 'MESSAGE_TOO_LONG',
+                max_length: MAX_MESSAGE_LENGTH,
+                sent_length: message.trim().length,
+            });
         }
 
         // ⚠️ SECURITY: customerId সবসময় JWT থেকে — user input থেকে নয়
@@ -72,7 +90,17 @@ const customerAiChat = async (req, res) => {
         }
 
         // ── Pass 2: Final Answer ──────────────────────────────
-        const chatHistory = history.slice(-6).map(h => ({ role: h.role, content: h.content }));
+        // History: শেষ N turn, প্রতিটি item MAX_HISTORY_CONTENT-এ truncate
+        // — কেউ ইচ্ছাকৃতভাবে বড় history inject করলেও token খরচ bounded থাকবে
+        const chatHistory = history
+            .slice(-MAX_HISTORY_TURNS)
+            .map(h => ({
+                role:    h.role,
+                content: typeof h.content === 'string'
+                    ? h.content.slice(0, MAX_HISTORY_CONTENT)
+                    : '',
+            }))
+            .filter(h => h.content.length > 0);
 
         let finalPrompt = message.trim();
         if (toolData && !toolData.error) {
