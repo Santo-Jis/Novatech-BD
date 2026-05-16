@@ -10,6 +10,13 @@
  * ✅ cancelOrder  — শুধু নিজের pending order cancel
  *
  * DB mock করা হয়েছে — real DB connection ছাড়াই চলবে
+ *
+ * FIX LOG:
+ * - firebase.js mock যোগ করা হয়েছে (getDB import fail ঠেকাতে)
+ * - createOrder: controller এখন একটাই query-তে ALL products আনে
+ *   (WHERE id = ANY($1)) — mock sequence ঠিক করা হয়েছে
+ * - rejectOrder: items array-এ object থাকে, string নয়
+ * - cancelOrder: response message-এ 'slot' আছে কিনা যাচাই ঠিক করা হয়েছে
  * ─────────────────────────────────────────────────────────────
  */
 
@@ -18,24 +25,35 @@ jest.mock('../config/db', () => ({
     query: jest.fn(),
     withTransaction: jest.fn(),
 }));
-jest.mock('../services/email.service',       () => ({ sendOrderNotificationEmail: jest.fn().mockResolvedValue({}) }));
-jest.mock('../services/fcm.service',         () => ({ sendPushNotification: jest.fn().mockResolvedValue({}) }));
-jest.mock('../services/firebase.notify',     () => ({ firebaseNotify: jest.fn().mockResolvedValue({}) }));
-jest.mock('../controllers/ledger.controller',() => ({ addLedgerEntry: jest.fn().mockResolvedValue({}) }));
+jest.mock('../config/firebase', () => ({
+    getDB: jest.fn().mockReturnValue({
+        ref: jest.fn().mockReturnValue({
+            set:    jest.fn().mockResolvedValue({}),
+            update: jest.fn().mockResolvedValue({}),
+        }),
+    }),
+}));
+jest.mock('../services/email.service',        () => ({ sendOrderNotificationEmail: jest.fn().mockResolvedValue({}) }));
+jest.mock('../services/fcm.service',          () => ({ sendPushNotification:        jest.fn().mockResolvedValue({}) }));
+jest.mock('../services/firebase.notify',      () => ({ firebaseNotify:              jest.fn().mockResolvedValue({}) }));
+jest.mock('../controllers/ledger.controller', () => ({ addLedgerEntry:              jest.fn().mockResolvedValue({}) }));
 
 const { query, withTransaction } = require('../config/db');
 
-// withTransaction-এর default behaviour: callback কে fake client দিয়ে চালাও
-const makeFakeClient = () => ({ query: jest.fn().mockResolvedValue({ rows: [{ id: 99 }] }) });
+// ─── Helpers ──────────────────────────────────────────────────
+
+// withTransaction: callback কে fake client দিয়ে চালাও
+const makeFakeClient = () => ({
+    query: jest.fn().mockResolvedValue({ rows: [{ id: 99 }] }),
+});
 
 const mockRes = () => {
-    const res = {};
-    res.status = jest.fn().mockReturnValue(res);
-    res.json   = jest.fn().mockReturnValue(res);
+    const res   = {};
+    res.status  = jest.fn().mockReturnValue(res);
+    res.json    = jest.fn().mockReturnValue(res);
     return res;
 };
 
-// ─── Test Helper: সাধারণ worker user ─────────────────────────
 const workerUser = {
     id:            'worker-uuid-1',
     role:          'worker',
@@ -45,7 +63,6 @@ const workerUser = {
     phone:         '01700000000',
 };
 
-// ─── Test Helper: সাধারণ পণ্য ────────────────────────────────
 const makeProduct = (overrides = {}) => ({
     id:             'product-uuid-1',
     name:           'পণ্য ১',
@@ -59,6 +76,14 @@ const makeProduct = (overrides = {}) => ({
 
 // ─────────────────────────────────────────────────────────────
 // createOrder
+// query sequence (controller অনুযায়ী):
+//   1. COUNT — আজকের order কতটি
+//   2. SELECT products WHERE id = ANY($1) — সব product একসাথে
+//   3. SELECT admin emails (transaction এর বাইরে)
+//   4. SELECT manager email (transaction এর বাইরে)
+// withTransaction এর ভেতরে client.query:
+//   - INSERT INTO orders → RETURNING id
+//   - UPDATE products (reserved_stock) × item count
 // ─────────────────────────────────────────────────────────────
 
 describe('createOrder — অর্ডার তৈরির নিয়ম', () => {
@@ -69,16 +94,16 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
         jest.resetModules();
         jest.clearAllMocks();
 
-        // withTransaction: callback-এ fake client পাঠাও, id ফেরত দাও
         withTransaction.mockImplementation(async (cb) => {
             const client = makeFakeClient();
+            client.query.mockResolvedValue({ rows: [{ id: 99 }] });
             await cb(client);
         });
 
         ({ createOrder } = require('../controllers/order.controller'));
     });
 
-    // ── ইনপুট যাচাই ────────────────────────────────────────
+    // ── ইনপুট যাচাই ──────────────────────────────────────────
 
     test('items না দিলে 400', async () => {
         const req = { body: { items: [] }, user: workerUser };
@@ -92,13 +117,15 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
         );
     });
 
+    // ── Daily Limit ───────────────────────────────────────────
+
     test('আজকে ৩টি অর্ডার থাকলে আর দেওয়া যাবে না', async () => {
-        // আজকের order count = 3
+        // query 1: COUNT → 3
         query.mockResolvedValueOnce({ rows: [{ count: '3' }] });
 
         const req = {
             body: { items: [{ product_id: 'p1', qty: 2 }] },
-            user: workerUser
+            user: workerUser,
         };
         const res = mockRes();
 
@@ -107,21 +134,21 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
         expect(res.status).toHaveBeenCalledWith(400);
         expect(res.json).toHaveBeenCalledWith(
             expect.objectContaining({
-                message: expect.stringContaining('৩টি অর্ডার')
+                message: expect.stringContaining('৩টি অর্ডার'),
             })
         );
     });
 
-    // ── Stock Validation ────────────────────────────────────
+    // ── Stock Validation ──────────────────────────────────────
 
     test('অজানা product_id দিলে 400', async () => {
         query
-            .mockResolvedValueOnce({ rows: [{ count: '0' }] })  // today count
-            .mockResolvedValueOnce({ rows: [] });                // product not found
+            .mockResolvedValueOnce({ rows: [{ count: '0' }] })  // COUNT
+            .mockResolvedValueOnce({ rows: [] });                 // products — empty (not found)
 
         const req = {
             body: { items: [{ product_id: 'unknown-id', qty: 2 }] },
-            user: workerUser
+            user: workerUser,
         };
         const res = mockRes();
 
@@ -137,11 +164,13 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
         // stock=10, reserved=5 → available=5, কিন্তু qty=10 চাচ্ছে
         query
             .mockResolvedValueOnce({ rows: [{ count: '0' }] })
-            .mockResolvedValueOnce({ rows: [makeProduct({ stock: 10, reserved_stock: 5 })] });
+            .mockResolvedValueOnce({
+                rows: [makeProduct({ id: 'p1', stock: 10, reserved_stock: 5 })],
+            });
 
         const req = {
-            body: { items: [{ product_id: 'product-uuid-1', qty: 10 }] },
-            user: workerUser
+            body: { items: [{ product_id: 'p1', qty: 10 }] },
+            user: workerUser,
         };
         const res = mockRes();
 
@@ -157,11 +186,9 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
         // stock=50, reserved=5 → available=45, qty=10 → সফল
         query
             .mockResolvedValueOnce({ rows: [{ count: '0' }] })
-            .mockResolvedValueOnce({ rows: [makeProduct({ stock: 50, reserved_stock: 5 })] })
-            // admin email query
-            .mockResolvedValueOnce({ rows: [] })
-            // manager email query
-            .mockResolvedValueOnce({ rows: [] });
+            .mockResolvedValueOnce({ rows: [makeProduct({ id: 'product-uuid-1', stock: 50, reserved_stock: 5 })] })
+            .mockResolvedValueOnce({ rows: [] })  // admin emails
+            .mockResolvedValueOnce({ rows: [] }); // manager email
 
         withTransaction.mockImplementation(async (cb) => {
             const client = makeFakeClient();
@@ -171,7 +198,7 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
 
         const req = {
             body: { items: [{ product_id: 'product-uuid-1', qty: 10 }] },
-            user: workerUser
+            user: workerUser,
         };
         const res = mockRes();
 
@@ -183,15 +210,15 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
         );
     });
 
-    // ── VAT/Tax হিসাব ───────────────────────────────────────
+    // ── VAT/Tax হিসাব ─────────────────────────────────────────
 
     test('VAT 15% সহ total_amount সঠিক', async () => {
         // price=1000, vat=15% → finalPrice=1150, qty=2 → total=2300
         query
             .mockResolvedValueOnce({ rows: [{ count: '0' }] })
-            .mockResolvedValueOnce({ rows: [makeProduct({ price: '1000', vat: '15', tax: '0' })] })
-            .mockResolvedValueOnce({ rows: [] }) // admin emails
-            .mockResolvedValueOnce({ rows: [] }); // manager email
+            .mockResolvedValueOnce({ rows: [makeProduct({ id: 'product-uuid-1', price: '1000', vat: '15', tax: '0' })] })
+            .mockResolvedValueOnce({ rows: [] })
+            .mockResolvedValueOnce({ rows: [] });
 
         let capturedTotal;
         withTransaction.mockImplementation(async (cb) => {
@@ -208,7 +235,7 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
 
         const req = {
             body: { items: [{ product_id: 'product-uuid-1', qty: 2 }] },
-            user: workerUser
+            user: workerUser,
         };
         const res = mockRes();
 
@@ -222,7 +249,7 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
         // price=1000, vat=10%, tax=5% → 1150; qty=3 → 3450
         query
             .mockResolvedValueOnce({ rows: [{ count: '0' }] })
-            .mockResolvedValueOnce({ rows: [makeProduct({ price: '1000', vat: '10', tax: '5' })] })
+            .mockResolvedValueOnce({ rows: [makeProduct({ id: 'product-uuid-1', price: '1000', vat: '10', tax: '5' })] })
             .mockResolvedValueOnce({ rows: [] })
             .mockResolvedValueOnce({ rows: [] });
 
@@ -241,7 +268,7 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
 
         const req = {
             body: { items: [{ product_id: 'product-uuid-1', qty: 3 }] },
-            user: workerUser
+            user: workerUser,
         };
         const res = mockRes();
 
@@ -254,7 +281,7 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
     test('VAT/Tax ছাড়া product — base price-ই final', async () => {
         query
             .mockResolvedValueOnce({ rows: [{ count: '0' }] })
-            .mockResolvedValueOnce({ rows: [makeProduct({ price: '500', vat: '0', tax: '0' })] })
+            .mockResolvedValueOnce({ rows: [makeProduct({ id: 'product-uuid-1', price: '500', vat: '0', tax: '0' })] })
             .mockResolvedValueOnce({ rows: [] })
             .mockResolvedValueOnce({ rows: [] });
 
@@ -273,7 +300,7 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
 
         const req = {
             body: { items: [{ product_id: 'product-uuid-1', qty: 4 }] },
-            user: workerUser
+            user: workerUser,
         };
         const res = mockRes();
 
@@ -282,12 +309,12 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
         expect(capturedTotal).toBeCloseTo(2000, 1); // 500×4
     });
 
-    // ── Daily Limit Boundary ────────────────────────────────
+    // ── Daily Limit Boundary ──────────────────────────────────
 
     test('ঠিক ২টি অর্ডার থাকলে ৩য়টি দেওয়া যাবে', async () => {
         query
-            .mockResolvedValueOnce({ rows: [{ count: '2' }] }) // todayCount = 2
-            .mockResolvedValueOnce({ rows: [makeProduct()] })
+            .mockResolvedValueOnce({ rows: [{ count: '2' }] })
+            .mockResolvedValueOnce({ rows: [makeProduct({ id: 'product-uuid-1' })] })
             .mockResolvedValueOnce({ rows: [] })
             .mockResolvedValueOnce({ rows: [] });
 
@@ -299,7 +326,7 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
 
         const req = {
             body: { items: [{ product_id: 'product-uuid-1', qty: 1 }] },
-            user: workerUser
+            user: workerUser,
         };
         const res = mockRes();
 
@@ -310,12 +337,25 @@ describe('createOrder — অর্ডার তৈরির নিয়ম', (
 });
 
 // ─────────────────────────────────────────────────────────────
-// approveOrder — Manager অনুমোদন
+// approveOrder
+// query sequence:
+//   1. SELECT order WHERE id AND status='pending'
+//   2. (manager only) SELECT manager_id FROM users WHERE id = worker_id
+// withTransaction client.query:
+//   - UPDATE products (stock/reserved) × item count
+//   - UPDATE orders SET status='approved'
+//   - addLedgerEntry (mocked)
 // ─────────────────────────────────────────────────────────────
 
 describe('approveOrder — অনুমোদনের নিয়ম', () => {
 
     let approveOrder;
+
+    const managerUser = {
+        id:      'manager-uuid-1',
+        role:    'manager',
+        name_bn: 'ম্যানেজার',
+    };
 
     beforeEach(() => {
         jest.resetModules();
@@ -327,12 +367,6 @@ describe('approveOrder — অনুমোদনের নিয়ম', () => {
         });
         ({ approveOrder } = require('../controllers/order.controller'));
     });
-
-    const managerUser = {
-        id:      'manager-uuid-1',
-        role:    'manager',
-        name_bn: 'ম্যানেজার',
-    };
 
     test('pending অর্ডার না পাওয়া গেলে 404', async () => {
         query.mockResolvedValueOnce({ rows: [] }); // order not found
@@ -346,10 +380,10 @@ describe('approveOrder — অনুমোদনের নিয়ম', () => {
     });
 
     test('অন্য টিমের order approve করতে পারবে না (403)', async () => {
-        // order exists কিন্তু worker অন্য manager-এর
+        const orderItems = [{ product_id: 'p1', product_name: 'পণ্য', requested_qty: 5, approved_qty: 5, price: 500 }];
         query
-            .mockResolvedValueOnce({ rows: [{ id: '10', worker_id: 'worker-2', items: '[]', total_amount: 0 }] })
-            .mockResolvedValueOnce({ rows: [{ manager_id: 'other-manager-id' }] }); // worker team check
+            .mockResolvedValueOnce({ rows: [{ id: '10', worker_id: 'worker-2', items: JSON.stringify(orderItems), total_amount: 0 }] })
+            .mockResolvedValueOnce({ rows: [{ manager_id: 'other-manager-id' }] }); // team check fail
 
         const req = { params: { id: '10' }, body: {}, user: managerUser };
         const res = mockRes();
@@ -394,7 +428,7 @@ describe('approveOrder — অনুমোদনের নিয়ম', () => {
             const client = makeFakeClient();
             client.query.mockImplementation(async (sql, params) => {
                 if (sql.includes('UPDATE orders')) {
-                    capturedTotal = params[2]; // total_amount
+                    capturedTotal = params[2]; // total_amount is 3rd param
                 }
                 return { rows: [] };
             });
@@ -411,10 +445,10 @@ describe('approveOrder — অনুমোদনের নিয়ম', () => {
 
     test('admin যেকোনো order approve করতে পারবে (team check নেই)', async () => {
         const orderItems = [{ product_id: 'p1', product_name: 'পণ্য', requested_qty: 3, approved_qty: 3, price: 200 }];
+        // admin-এর জন্য শুধু ১টি query (order fetch) — manager team check query নেই
         query.mockResolvedValueOnce({
-            rows: [{ id: '15', worker_id: 'any-worker', items: JSON.stringify(orderItems), total_amount: 600 }]
+            rows: [{ id: '15', worker_id: 'any-worker', items: JSON.stringify(orderItems), total_amount: 600 }],
         });
-        // admin-এর ক্ষেত্রে manager team check query চলবে না
 
         const adminUser = { id: 'admin-1', role: 'admin', name_bn: 'অ্যাডমিন' };
         const req = { params: { id: '15' }, body: {}, user: adminUser };
@@ -428,19 +462,27 @@ describe('approveOrder — অনুমোদনের নিয়ম', () => {
 
 // ─────────────────────────────────────────────────────────────
 // rejectOrder
+// query sequence:
+//   1. SELECT order WHERE id AND status='pending'
+//   2. (manager only) SELECT manager_id — team check
+//   3. UPDATE products (reserved_stock) × items length
+//   4. UPDATE orders SET status='rejected'
+//
+// ⚠️ items loop: controller iterates order.rows[0].items directly
+//    তাই items must be an array of objects, NOT a JSON string
 // ─────────────────────────────────────────────────────────────
 
 describe('rejectOrder — বাতিলের নিয়ম', () => {
 
     let rejectOrder;
 
+    const managerUser = { id: 'manager-uuid-1', role: 'manager', name_bn: 'ম্যানেজার' };
+
     beforeEach(() => {
         jest.resetModules();
         jest.clearAllMocks();
         ({ rejectOrder } = require('../controllers/order.controller'));
     });
-
-    const managerUser = { id: 'manager-uuid-1', role: 'manager', name_bn: 'ম্যানেজার' };
 
     test('pending অর্ডার না থাকলে 404', async () => {
         query.mockResolvedValueOnce({ rows: [] });
@@ -454,6 +496,7 @@ describe('rejectOrder — বাতিলের নিয়ম', () => {
     });
 
     test('অন্য টিমের order reject করতে পারবে না (403)', async () => {
+        // items must be array (controller iterates it directly)
         const items = [{ product_id: 'p1', requested_qty: 3 }];
         query
             .mockResolvedValueOnce({ rows: [{ id: '20', worker_id: 'w1', items }] })
@@ -471,9 +514,9 @@ describe('rejectOrder — বাতিলের নিয়ম', () => {
         const items = [{ product_id: 'p1', requested_qty: 4 }];
         query
             .mockResolvedValueOnce({ rows: [{ id: '21', worker_id: 'w1', items }] })
-            .mockResolvedValueOnce({ rows: [{ manager_id: 'manager-uuid-1' }] }) // team ok
-            .mockResolvedValueOnce({ rows: [] }) // reserved stock update
-            .mockResolvedValueOnce({ rows: [] }); // order status update
+            .mockResolvedValueOnce({ rows: [{ manager_id: 'manager-uuid-1' }] }) // team ✅
+            .mockResolvedValueOnce({ rows: [] })  // UPDATE products (reserved_stock)
+            .mockResolvedValueOnce({ rows: [] }); // UPDATE orders
 
         const req = { params: { id: '21' }, body: { reason: 'স্টক নেই' }, user: managerUser };
         const res = mockRes();
@@ -488,7 +531,12 @@ describe('rejectOrder — বাতিলের নিয়ম', () => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// cancelOrder — SR নিজের order বাতিল
+// cancelOrder
+// query sequence:
+//   1. SELECT order WHERE id AND worker_id AND status='pending'
+// withTransaction client.query:
+//   - UPDATE products (reserved_stock) × item count
+//   - UPDATE orders SET status='cancelled'
 // ─────────────────────────────────────────────────────────────
 
 describe('cancelOrder — SR নিজের order বাতিল', () => {
@@ -518,7 +566,8 @@ describe('cancelOrder — SR নিজের order বাতিল', () => {
     });
 
     test('নিজের pending order cancel — সফল, reserved মুক্ত', async () => {
-        const items = [{ product_id: 'p1', requested_qty: 3 }];
+        // items as array (parsedItems loop চলবে)
+        const items = [{ product_id: 'p1', requested_qty: 3, approved_qty: 3 }];
         query.mockResolvedValueOnce({ rows: [{ id: '51', worker_id: workerUser.id, items }] });
 
         const req = { params: { id: '51' }, user: workerUser };
@@ -534,17 +583,13 @@ describe('cancelOrder — SR নিজের order বাতিল', () => {
 });
 
 // ─────────────────────────────────────────────────────────────
-// Order Business Logic — Pure functions (extracted)
+// Order Business Logic — Pure functions
 // ─────────────────────────────────────────────────────────────
 
 describe('Order Business Logic — Pure Calculations', () => {
 
-    /**
-     * VAT ও Tax সহ final price হিসাব
-     * order.controller.js-এর ভেতরের লজিক reproduce করা হচ্ছে
-     */
     const calcOrderItemPrice = (basePrice, vatRate, taxRate) => {
-        const price  = Number(basePrice)  || 0;
+        const price  = Number(basePrice)    || 0;
         const vat    = parseFloat(vatRate)  || 0;
         const tax    = parseFloat(taxRate)  || 0;
         const vatAmt = parseFloat((price * vat  / 100).toFixed(2));
@@ -568,10 +613,6 @@ describe('Order Business Logic — Pure Calculations', () => {
         expect(calcOrderItemPrice('800', '10', '0')).toBe(880);
     });
 
-    /**
-     * Available stock হিসাব
-     * stock - reserved_stock = available
-     */
     const calcAvailableStock = (stock, reservedStock) =>
         (stock || 0) - (reservedStock || 0);
 
@@ -587,10 +628,6 @@ describe('Order Business Logic — Pure Calculations', () => {
         expect(calcAvailableStock(20, 0)).toBe(20);
     });
 
-    /**
-     * Daily order limit check
-     * rejected ও cancelled বাদে ৩টির বেশি হলে block
-     */
     const canPlaceOrder = (todayCount) => todayCount < 3;
 
     test('count=0 — order দেওয়া যাবে', () => {
@@ -609,9 +646,6 @@ describe('Order Business Logic — Pure Calculations', () => {
         expect(canPlaceOrder(4)).toBe(false);
     });
 
-    /**
-     * Total amount = Σ(finalPrice × qty)
-     */
     const calcOrderTotal = (items) =>
         items.reduce((sum, item) => {
             const finalPrice = calcOrderItemPrice(item.price, item.vatRate, item.taxRate);
