@@ -26,25 +26,64 @@ const { sendCustomerPush } = require('../services/fcm.service');
 const getCustomerId = (req) => req.portalUser?.customer_id;
 
 // ============================================================
-// GET /api/portal/notifications
-// কাস্টমারের সব notification (শেষ ৩০টি)
+// GET /api/portal/notifications?page=1&limit=20
+// কাস্টমারের notification — Cursor-based Pagination সহ
+//
+// Query Params:
+//   page  — page নম্বর (default: 1, minimum: 1)
+//   limit — প্রতি পাতায় কতটি (default: 20, max: 50)
+//
+// Response:
+//   notifications  — এই পাতার notification গুলো
+//   unread_count   — মোট অপঠিত (শুধু DB COUNT — array filter নয়)
+//   pagination     — { page, limit, total, total_pages, has_next, has_prev }
 // ============================================================
 const getNotifications = async (req, res) => {
     try {
         const customerId = getCustomerId(req);
 
+        // Pagination params — parse ও sanitize
+        const page  = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit = Math.min(50, Math.max(1, parseInt(req.query.limit) || 20));
+        const offset = (page - 1) * limit;
+
+        // মোট notification count ও unread count — একটি query-তে
+        const countRes = await query(`
+            SELECT
+                COUNT(*)                                    AS total,
+                COUNT(*) FILTER (WHERE is_read = false)    AS unread
+            FROM customer_notifications
+            WHERE customer_id = $1
+        `, [customerId]);
+
+        const total       = parseInt(countRes.rows[0].total);
+        const unreadCount = parseInt(countRes.rows[0].unread);
+        const totalPages  = Math.ceil(total / limit);
+
+        // Paginated notification list
         const { rows } = await query(`
             SELECT id, title, body, type, is_read, created_at
             FROM customer_notifications
             WHERE customer_id = $1
             ORDER BY created_at DESC
-            LIMIT 30
-        `, [customerId]);
+            LIMIT $2 OFFSET $3
+        `, [customerId, limit, offset]);
 
-        // অপঠিত সংখ্যা
-        const unread = rows.filter(n => !n.is_read).length;
-
-        return res.json({ success: true, data: { notifications: rows, unread_count: unread } });
+        return res.json({
+            success: true,
+            data: {
+                notifications: rows,
+                unread_count:  unreadCount,
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    total_pages: totalPages,
+                    has_next:    page < totalPages,
+                    has_prev:    page > 1,
+                },
+            },
+        });
 
     } catch (error) {
         console.error('❌ getNotifications Error:', error.message);
