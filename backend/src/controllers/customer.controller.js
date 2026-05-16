@@ -439,8 +439,18 @@ const getCustomerHistory = async (req, res) => {
         }
 
         // বিক্রয় ইতিহাস
+        // sale_status: Admin/Manager কে দেখায় প্রতিটি sale এর অবস্থা
+        //   verified  → কাস্টমার OTP দিয়েছে ✅
+        //   skipped   → কাস্টমার অনুপস্থিত, SR ছবি তুলেছে 📷
+        //   pending   → OTP এখনো দেওয়া হয়নি ⏳
         const sales = await query(
-            `SELECT st.*, u.name_bn AS worker_name
+            `SELECT st.*,
+                    u.name_bn AS worker_name,
+                    CASE
+                        WHEN st.otp_verified = true THEN 'verified'
+                        WHEN st.otp_skipped  = true THEN 'skipped'
+                        ELSE                             'pending'
+                    END AS sale_status
              FROM sales_transactions st
              JOIN users u ON st.worker_id = u.id
              WHERE st.customer_id = $1
@@ -891,17 +901,43 @@ const updateVisitOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: 'route_id এবং orders দরকার।' });
         }
 
-        // প্রতিটা কাস্টমারের visit_order আপডেট করো
+        // ── FIX: N+1 loop বাদ → একটি bulk UPDATE ──────────────────────
+        // আগে: N জন customer → N টি আলাদা UPDATE query (serial round-trip)
+        // এখন: একটি VALUES list → PostgreSQL একটি pass-এই সব row আপডেট করে
+        //
+        // Query গঠন:
+        //   UPDATE customer_assignments AS ca
+        //   SET visit_order = v.visit_order
+        //   FROM (VALUES ($1::uuid, $2::int), ($3::uuid, $4::int), ...) AS v(customer_id, visit_order)
+        //   WHERE ca.customer_id = v.customer_id
+        //     AND ca.route_id   = $N
+        //     AND ca.is_active  = true
+        //
+        // params: [cid1, ord1, cid2, ord2, ..., route_id]
+
+        const values  = [];   // flat param list
+        const tuples  = [];   // ($1::uuid, $2::int), ($3::uuid, $4::int) ...
+        let   i       = 1;
+
         for (const { customer_id, visit_order } of orders) {
-            await query(
-                `UPDATE customer_assignments
-                 SET visit_order = $1
-                 WHERE customer_id = $2
-                   AND route_id = $3
-                   AND is_active = true`,
-                [visit_order ?? null, customer_id, route_id]
-            );
+            tuples.push(`($${i}::uuid, $${i + 1}::int)`);
+            values.push(customer_id, visit_order ?? null);
+            i += 2;
         }
+
+        // route_id শেষ param
+        values.push(route_id);
+        const routeParam = i;
+
+        await query(
+            `UPDATE customer_assignments AS ca
+             SET visit_order = v.visit_order
+             FROM (VALUES ${tuples.join(', ')}) AS v(customer_id, visit_order)
+             WHERE ca.customer_id = v.customer_id
+               AND ca.route_id   = $${routeParam}::uuid
+               AND ca.is_active  = true`,
+            values
+        );
 
         return res.status(200).json({ success: true, message: 'Visit ক্রম সেভ হয়েছে ✅' });
 
