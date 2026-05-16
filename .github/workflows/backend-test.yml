@@ -40,9 +40,22 @@ jobs:
       - name: Run tests
         working-directory: backend
         env:
-          JWT_ACCESS_SECRET: test_secret
-          JWT_REFRESH_SECRET: test_refresh_secret
           NODE_ENV: test
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          JWT_PORTAL_SECRET: ${{ secrets.JWT_PORTAL_SECRET }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          DB_HOST: ${{ secrets.TEST_DB_HOST }}
+          DB_NAME: postgres
+          DB_USER: postgres
+          DB_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
+          TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL }}
+          TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
+          TEST_MANAGER_EMAIL: ${{ secrets.TEST_MANAGER_EMAIL }}
+          TEST_MANAGER_PASSWORD: ${{ secrets.TEST_MANAGER_PASSWORD }}
+          TEST_WORKER_EMAIL: ${{ secrets.TEST_WORKER_EMAIL }}
+          TEST_WORKER_PASSWORD: ${{ secrets.TEST_WORKER_PASSWORD }}
+          TEST_WORKER_CODE: ${{ secrets.TEST_WORKER_CODE }}
         run: npm test
 
       - name: Upload coverage report
