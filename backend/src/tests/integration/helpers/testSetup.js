@@ -12,7 +12,7 @@ const request = require('supertest');
 // server.js module.exports = app করে, তাই সরাসরি import করা যায়
 let app;
 const getApp = () => {
-    if (!app) app = require('../../../server');
+    if (!app) app = require('../../src/server');
     return app;
 };
 
@@ -63,7 +63,7 @@ const getToken = async (role = 'admin') => {
         );
     }
 
-    tokenCache[role] = res.body.accessToken;
+    tokenCache[role] = res.body.data.accessToken;
     return tokenCache[role];
 };
 
