@@ -9,6 +9,16 @@ const jwt        = require('jsonwebtoken');
 const crypto     = require('crypto');
 const axios      = require('axios');
 
+// ── portalAuth cache invalidation (circular require এড়াতে lazy load) ──
+// sendPortalLink বা customer deactivation-এ call করলে
+// পরবর্তী request-এ DB থেকে fresh token_version আনা হবে।
+const invalidateAuthCache = (customerId) => {
+    try {
+        const { invalidatePortalAuthCache } = require('../routes/customerPortal.routes');
+        invalidatePortalAuthCache(customerId);
+    } catch { /* routes লোড না হলে silent fail — cache TTL-এই expire হবে */ }
+};
+
 // ============================================================
 // HELPER: Unique Token তৈরি (64-char hex, cryptographically secure)
 // ============================================================
@@ -82,6 +92,10 @@ const sendPortalLink = async (req, res) => {
                 google_email    = NULL`,
             [customerId, token, redirectId, expiresAt]
         );
+
+        // নতুন লিংকে token_version বাড়লো — cache-এ পুরনো version বাতিল করো
+        // পরের request-এ DB থেকে নতুন version আনা হবে, পুরনো JWT reject হবে
+        invalidateAuthCache(customerId);
 
         const frontendUrl = process.env.FRONTEND_URL || 'https://novatech-bd-kqrn.vercel.app';
         // ✅ Fix 1: URL-এ শুধু redirect_id (opaque, short-lived lookup key)
