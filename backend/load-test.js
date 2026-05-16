@@ -332,7 +332,11 @@ async function customerFlow(customerId) {
 
     const token = loginRes.body?.data?.portal_jwt;
     if (!token) {
-        console.log(`🛍️  Customer-${customerId}: login হয়নি — বাকি skip`);
+        // ❗ error message print করো — debug-এর জন্য
+        const errMsg = loginRes.body?.message || loginRes.body?.error_code || JSON.stringify(loginRes.body);
+        if (customerId === 1) { // শুধু প্রথমজনের error দেখাই — বাকিগুলো একই হবে
+            console.log(`🛍️  Customer-${customerId}: login failed — status=${loginRes.status} msg="${errMsg}"`);
+        }
         return;
     }
 
