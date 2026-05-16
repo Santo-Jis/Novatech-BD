@@ -33,12 +33,12 @@ describe('POST /api/auth/login', () => {
         });
 
         expectSuccess(res);
-        expect(res.body).toHaveProperty('accessToken');
-        expect(res.body.user).toHaveProperty('id');
-        expect(res.body.user).toHaveProperty('role');
+        expect(res.body.data).toHaveProperty('accessToken');
+        expect(res.body.data.user).toHaveProperty('id');
+        expect(res.body.data.user).toHaveProperty('role');
         // sensitive data login response-এ থাকবে না
-        expect(res.body.user).not.toHaveProperty('basic_salary');
-        expect(res.body.user).not.toHaveProperty('outstanding_dues');
+        expect(res.body.data.user).not.toHaveProperty('basic_salary');
+        expect(res.body.data.user).not.toHaveProperty('outstanding_dues');
     });
 
     test('ভুল password — 401', async () => {
@@ -80,7 +80,7 @@ describe('POST /api/auth/login', () => {
             password:   process.env.TEST_WORKER_PASSWORD,
         });
         expectSuccess(res);
-        expect(res.body.user.role).toBe('worker');
+        expect(res.body.data.user.role).toBe('worker');
     });
 });
 
@@ -122,7 +122,7 @@ describe('POST /api/auth/logout', () => {
         });
         expect(loginRes.status).toBe(200);
 
-        const token = loginRes.body.accessToken;
+        const token = loginRes.body.data.accessToken;
 
         const logoutRes = await request(getApp())
             .post('/api/auth/logout')
