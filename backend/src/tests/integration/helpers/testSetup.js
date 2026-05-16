@@ -12,7 +12,7 @@ const request = require('supertest');
 // server.js module.exports = app করে, তাই সরাসরি import করা যায়
 let app;
 const getApp = () => {
-    if (!app) app = require('../../src/server');
+    if (!app) app = require('../../../server');
     return app;
 };
 
