@@ -88,10 +88,10 @@ const apiLimiter = rateLimit({
     }
 });
 
-// Login এ কড়া limit
+// Login এ কড়া limit (test-এ disable — integration test অনেক request করে)
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 10,
+    max: process.env.NODE_ENV === 'test' ? 10000 : 10,
     message: {
         success: false,
         message: 'অনেকবার ভুল চেষ্টা। ১৫ মিনিট পরে চেষ্টা করুন।'
@@ -261,34 +261,35 @@ const keepAlive = () => {
 
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, "0.0.0.0", () => {
-    console.log('');
-    console.log('╔════════════════════════════════════════╗');
-    console.log('║     NovaTechBD Management System       ║');
-    console.log('║     Backend API Server                 ║');
-    console.log(`║     Port: ${PORT}                          ║`);
-    console.log(`║     Mode: ${process.env.NODE_ENV}               ║`);
-    console.log('╚════════════════════════════════════════╝');
-    console.log('');
+// test mode-এ listen করি না — supertest নিজেই handle করে
+// এতে background jobs চলে না, port conflict হয় না, worker leak হয় না
+if (process.env.NODE_ENV !== 'test') {
+    app.listen(PORT, "0.0.0.0", () => {
+        console.log('');
+        console.log('╔════════════════════════════════════════╗');
+        console.log('║     NovaTechBD Management System       ║');
+        console.log('║     Backend API Server                 ║');
+        console.log(`║     Port: ${PORT}                          ║`);
+        console.log(`║     Mode: ${process.env.NODE_ENV}               ║`);
+        console.log('╚════════════════════════════════════════╝');
+        console.log('');
 
-    // Background jobs শুরু করো
-    startCommissionJob();
-    startBonusJob();
-    startAIJob();
-    startGpsTrailCleanupJob();
-    scheduleCreditReminderJob();
-    startReservedStockJob();
-    startSessionCleanupJob();  // ← expired session পরিষ্কার (প্রতিদিন রাত ৩টা)
+        // Background jobs শুরু করো
+        startCommissionJob();
+        startBonusJob();
+        startAIJob();
+        startGpsTrailCleanupJob();
+        scheduleCreditReminderJob();
+        startReservedStockJob();
+        startSessionCleanupJob();
 
-    console.log('✅ Background jobs চালু হয়েছে');
+        console.log('✅ Background jobs চালু হয়েছে');
 
-    // ✅ FIX: keepAlive call করা হয়নি — Render free tier ঘুমিয়ে পড়ত।
-    // Server সম্পূর্ণ উঠে যাওয়ার পর (listen callback-এ) call করা হচ্ছে
-    // যাতে /api/health ping করার সময় server ready থাকে।
-    if (process.env.NODE_ENV === 'production') {
-        keepAlive();
-        console.log('✅ Keep-alive চালু হয়েছে (প্রতি ১৪ মিনিট)');
-    }
-});
+        if (process.env.NODE_ENV === 'production') {
+            keepAlive();
+            console.log('✅ Keep-alive চালু হয়েছে (প্রতি ১৪ মিনিট)');
+        }
+    });
+}
 
 module.exports = app;
