@@ -16,6 +16,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Install dependencies
+        run: cd backend && npm install jsonwebtoken
+
       - name: Run Load Test
         env:
           BASE_URL:              https://novatechbd-backend.onrender.com
@@ -25,5 +28,5 @@ jobs:
           TEST_WORKER_PASSWORD:  ${{ secrets.TEST_WORKER_PASSWORD }}
           TEST_MANAGER_EMAIL:    ${{ secrets.TEST_MANAGER_EMAIL }}
           TEST_MANAGER_PASSWORD: ${{ secrets.TEST_MANAGER_PASSWORD }}
-          TEST_PORTAL_TOKEN:     ${{ secrets.TEST_PORTAL_TOKEN }}  # Customer portal load test
+          TEST_PORTAL_TOKEN:     ${{ secrets.TEST_PORTAL_TOKEN }}
         run: node backend/load-test.js
