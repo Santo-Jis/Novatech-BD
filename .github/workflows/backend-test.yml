@@ -46,8 +46,9 @@ jobs:
           JWT_PORTAL_SECRET: ${{ secrets.JWT_PORTAL_SECRET }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           DB_HOST: ${{ secrets.TEST_DB_HOST }}
+          DB_PORT: 5432
           DB_NAME: postgres
-          DB_USER: postgres
+          DB_USER: ${{ secrets.TEST_DB_USER }}
           DB_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
           TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL }}
           TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
