@@ -1,0 +1,28 @@
+name: Load Test
+
+on:
+  workflow_dispatch:  # হাতে চালাতে হবে — Actions tab থেকে
+
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run Load Test
+        env:
+          BASE_URL:             https://novatechbd-backend.onrender.com
+          TEST_ADMIN_EMAIL:     ${{ secrets.TEST_ADMIN_EMAIL }}
+          TEST_ADMIN_PASSWORD:  ${{ secrets.TEST_ADMIN_PASSWORD }}
+          TEST_WORKER_EMAIL:    ${{ secrets.TEST_WORKER_EMAIL }}
+          TEST_WORKER_PASSWORD: ${{ secrets.TEST_WORKER_PASSWORD }}
+          TEST_MANAGER_EMAIL:   ${{ secrets.TEST_MANAGER_EMAIL }}
+          TEST_MANAGER_PASSWORD: ${{ secrets.TEST_MANAGER_PASSWORD }}
+        run: node backend/load-test.js
