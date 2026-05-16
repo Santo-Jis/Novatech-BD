@@ -14,6 +14,16 @@
  *   export TEST_WORKER_PASSWORD="WorkerPass1"
  *   export TEST_MANAGER_EMAIL="manager@example.com"
  *   export TEST_MANAGER_PASSWORD="ManagerPass1"
+ *   export TEST_PORTAL_TOKEN="<customer_portal_token_from_db>"
+ *
+ * Customer Portal Token setup (একবার করতে হবে):
+ *   Supabase SQL Editor-এ:
+ *   UPDATE customer_portal_tokens
+ *   SET bound_device_id = '003969ffd38e01145439b34cb31c72d6f80ed85e5dec26be10035fcc457c47cf',
+ *       bound_email     = 'loadtest@novatech.test',
+ *       token_version   = 1,
+ *       expires_at      = NOW() + INTERVAL '30 days'
+ *   WHERE customer_id = '<test_customer_id>';
  *
  * ধাপ ৩ — চালাও:
  *   node load-test.js
@@ -21,11 +31,28 @@
  * ============================================================
  */
 
+const jwt   = require('jsonwebtoken');
 const https = require('https');
 const http  = require('http');
 
 // ─── Config ────────────────────────────────────────────────
 const BASE_URL = process.env.BASE_URL || 'https://novatechbd-backend.onrender.com';
+
+// Customer Portal Load Test Config
+const TEST_CUSTOMER_ID    = process.env.TEST_CUSTOMER_ID    || '68734e30-df31-4337-a5cf-a7b813bb415a';
+const TEST_CUSTOMER_COUNT = parseInt(process.env.TEST_CUSTOMER_COUNT || '100', 10);
+const JWT_PORTAL_SECRET   = process.env.JWT_PORTAL_SECRET;
+
+// Test portal JWT তৈরি করো (login step বাদ — সরাসরি authenticated endpoints টেস্ট)
+function makePortalJWT(customerId) {
+    if (!JWT_PORTAL_SECRET) return null;
+    return jwt.sign(
+        { customer_id: customerId, email: 'loadtest@novatech.test',
+          google_name: 'Load Test', type: 'customer_portal', token_version: 1 },
+        JWT_PORTAL_SECRET,
+        { expiresIn: '1h', algorithm: 'HS256' }
+    );
+}
 
 const USERS = {
     admin:   { identifier: process.env.TEST_ADMIN_EMAIL,   password: process.env.TEST_ADMIN_PASSWORD },
@@ -44,7 +71,8 @@ const results = {
 };
 
 // ─── Helper: HTTP Request ──────────────────────────────────
-function request(method, path, body, token) {
+// extraHeaders — device-login এ custom User-Agent পাঠানোর জন্য
+function request(method, path, body, token, extraHeaders = {}) {
     return new Promise((resolve) => {
         const url     = new URL(BASE_URL + path);
         const isHttps = url.protocol === 'https:';
@@ -55,6 +83,7 @@ function request(method, path, body, token) {
             'Content-Type': 'application/json',
             ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
             ...(data  ? { 'Content-Length': Buffer.byteLength(data) } : {}),
+            ...extraHeaders,
         };
 
         const start = Date.now();
@@ -269,32 +298,31 @@ async function adminFlow() {
 
 // ============================================================
 // SCENARIO 5: ১০০ Customer একসাথে login + order request
+//
+// DB-তে একটি test token bound করা আছে:
+//   device_id  = 'load-test-device'
+//   User-Agent = 'Mozilla/5.0'
+//   hash       = sha256('load-test-device::Mozilla/5.0')
 // ============================================================
 async function customerFlow(customerId) {
     console.log(`\n🛍️  Customer-${customerId}: শুরু হচ্ছে...`);
 
-    // ── Step 1: device-login (portal_token + device_id দরকার) ──
-    // Load test-এ real portal_token থাকে না, তাই
-    // verify-token দিয়ে আগে token validate করার simulate করা হচ্ছে।
-    // Production-এ customer WhatsApp link পায়, তারপর device-login করে।
-
-    const portalToken = process.env[`TEST_PORTAL_TOKEN_${customerId}`]
-        || process.env.TEST_PORTAL_TOKEN; // একটি shared test token
+    const portalToken = process.env.TEST_PORTAL_TOKEN;
 
     if (!portalToken) {
-        // Token না থাকলে — unauthenticated endpoint টেস্ট করো
-        const healthRes = await request('GET', '/api/health', null, null);
-        check(`Customer-${customerId}: Health check`, healthRes.status === 200, healthRes.duration);
-        console.log(`🛍️  Customer-${customerId}: portal token নেই — শুধু health check`);
+        console.log(`🛍️  Customer-${customerId}: TEST_PORTAL_TOKEN নেই — skip`);
         return;
     }
 
-    const deviceId = `load-test-device-${customerId}`;
-
-    const loginRes = await request('POST', '/api/portal/device-login', {
-        portal_token: portalToken,
-        device_id:    deviceId,
-    });
+    // ── Step 1: device-login ───────────────────────────────
+    // device_id ও User-Agent fixed — DB bound_device_id এর সাথে match করবে
+    const loginRes = await request(
+        'POST',
+        '/api/portal/device-login',
+        { portal_token: portalToken, device_id: 'load-test-device' },
+        null,
+        { 'User-Agent': 'Mozilla/5.0' }
+    );
 
     check(
         `Customer-${customerId}: Portal Login`,
@@ -397,10 +425,11 @@ async function main() {
     console.log('\n━━━ Phase 5: ১০০ Customer একসাথে login + order ━━━');
     if (!process.env.TEST_PORTAL_TOKEN) {
         console.log('  ⚠️  TEST_PORTAL_TOKEN সেট নেই — customer flow skip');
-        console.log('  ℹ️  চালাতে হলে: export TEST_PORTAL_TOKEN="your_portal_token"');
+        console.log('  ℹ️  GitHub Secrets-এ TEST_PORTAL_TOKEN যোগ করো।');
     } else {
+        console.log(`  ℹ️  ${TEST_CUSTOMER_COUNT} জন customer একসাথে চলছে...`);
         await Promise.all(
-            Array.from({ length: 100 }, (_, i) => customerFlow(i + 1))
+            Array.from({ length: TEST_CUSTOMER_COUNT }, (_, i) => customerFlow(i + 1))
         );
     }
 
