@@ -89,9 +89,19 @@ const apiLimiter = rateLimit({
 });
 
 // Login এ কড়া limit (test-এ disable — integration test অনেক request করে)
+// ✅ Fix: IP-based না করে identifier-based করা হয়েছে।
+//   কারণ: বাজারের shared WiFi থেকে ১০০ customer একই IP-তে পড়লে
+//   সবাই block হয়ে যেত। এখন প্রতিটি identifier (phone/email) আলাদা count।
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: process.env.NODE_ENV === 'test' ? 10000 : 10,
+    max: process.env.NODE_ENV === 'test' ? 10000 : 20, // প্রতি identifier-এ ১৫ মিনিটে ২০ বার
+    keyGenerator: (req) => {
+        // Employee login: identifier field (email/phone/employee_code)
+        const identifier = req.body?.identifier || req.body?.phone || req.body?.portal_token;
+        if (identifier) return `login_${identifier}`;
+        // fallback → IP
+        return `login_ip_${req.ip}`;
+    },
     message: {
         success: false,
         message: 'অনেকবার ভুল চেষ্টা। ১৫ মিনিট পরে চেষ্টা করুন।'
@@ -130,6 +140,7 @@ const expenseRoutes             = require('./routes/expense.routes');
 const returnRoutes              = require('./routes/return.routes');
 
 app.use('/api/auth',        loginLimiter, authRoutes);
+app.use('/api/portal',     loginLimiter, portalRoutes); // ✅ customer portal login-এও limiter
 app.use('/api/employees',   employeeRoutes);
 app.use('/api/attendance',  attendanceRoutes);
 app.use('/api/routes',      routeRoutes);
@@ -148,7 +159,7 @@ app.use('/api/teams',      teamRoutes);
 app.use('/api/salary',     salaryRoutes);
 app.use('/api/location',   locationRoutes);
 app.use('/api/ledger',     ledgerRoutes);
-app.use('/api/portal',                  portalRoutes);
+// /api/portal — উপরে loginLimiter সহ mount করা হয়েছে
 app.use('/api/customer-order-requests', customerOrderReqRoutes);
 app.use('/api/app',                     appRoutes);            // ← নতুন
 app.use('/api/expense',                 expenseRoutes);
