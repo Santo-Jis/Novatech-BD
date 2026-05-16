@@ -94,7 +94,7 @@ const apiLimiter = rateLimit({
 //   সবাই block হয়ে যেত। এখন প্রতিটি identifier (phone/email) আলাদা count।
 const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: process.env.NODE_ENV === 'test' ? 10000 : 20, // প্রতি identifier-এ ১৫ মিনিটে ২০ বার
+    max: process.env.NODE_ENV === 'test' ? 10000 : 50, // প্রতি identifier-এ ১৫ মিনিটে ৫০ বার (আগে ২০ — একসাথে অনেক SR login করলে block হত)
     keyGenerator: (req) => {
         // Employee login: identifier field (email/phone/employee_code)
         const identifier = req.body?.identifier || req.body?.phone || req.body?.portal_token;
@@ -263,7 +263,7 @@ const keepAlive = () => {
         } catch (err) {
             console.log('⚠️ Keep-alive ping ব্যর্থ:', err.message);
         }
-    }, 14 * 60 * 1000); // ১৪ মিনিট
+    }, 10 * 60 * 1000); // ১০ মিনিট (আগে ১৪ মিনিট — Render ১৫ মিনিটে sleep করে, margin কম ছিল)
 };
 
 // ============================================================
@@ -298,7 +298,7 @@ if (process.env.NODE_ENV !== 'test') {
 
         if (process.env.NODE_ENV === 'production') {
             keepAlive();
-            console.log('✅ Keep-alive চালু হয়েছে (প্রতি ১৪ মিনিট)');
+            console.log('✅ Keep-alive চালু হয়েছে (প্রতি ১০ মিনিট)');
         }
     });
 }
