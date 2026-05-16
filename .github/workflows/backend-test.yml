@@ -11,8 +11,14 @@ on:
       - 'backend/**'
   workflow_dispatch:
 
+# ──────────────────────────────────────────────────────────────
+# Job 1: Unit Tests
+# DB লাগে না — mock দিয়ে চলে
+# Auth, Middleware, Order, Sales, Settlement, Commission, Price
+# ──────────────────────────────────────────────────────────────
 jobs:
-  test:
+  unit-tests:
+    name: 🧪 Unit Tests (DB ছাড়া)
     runs-on: ubuntu-latest
 
     steps:
@@ -30,21 +36,65 @@ jobs:
         working-directory: backend
         run: npm install
 
-      - name: Fix jest config path
-        working-directory: backend
-        run: |
-          sed -i "s|src/__tests__|src/tests|g" jest.config.js
-          echo "✅ jest.config.js path fixed"
-          cat jest.config.js | grep testMatch
-
-      - name: Run tests
+      - name: Run unit tests
         working-directory: backend
         env:
+          NODE_ENV: test
           JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
           JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
           JWT_PORTAL_SECRET: ${{ secrets.JWT_PORTAL_SECRET }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+        run: npm run test:unit
+
+      - name: Upload unit test coverage
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-coverage
+          path: backend/coverage/
+          retention-days: 7
+
+# ──────────────────────────────────────────────────────────────
+# Job 2: Integration Tests
+# Real DB লাগে — Supabase Test DB ব্যবহার করে
+# Auth login/logout/me API টেস্ট
+# commission_settings slab query টেস্ট
+# price calculation DB row দিয়ে টেস্ট
+# auth.service verifyRefreshToken DB flow টেস্ট
+# ──────────────────────────────────────────────────────────────
+  integration-tests:
+    name: 🔗 Integration Tests (Real DB)
+    runs-on: ubuntu-latest
+    # unit tests পাস হলেই integration চলবে
+    needs: unit-tests
+    # DB secrets না থাকলে skip করো (fork PR-এ secrets নেই)
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: backend/package.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm install
+
+      - name: Run integration tests
+        working-directory: backend
+        env:
           NODE_ENV: test
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          JWT_PORTAL_SECRET: ${{ secrets.JWT_PORTAL_SECRET }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
           DB_HOST: ${{ secrets.TEST_DB_HOST }}
           DB_USER: ${{ secrets.TEST_DB_USER }}
           DB_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
@@ -57,12 +107,48 @@ jobs:
           TEST_WORKER_EMAIL: ${{ secrets.TEST_WORKER_EMAIL }}
           TEST_WORKER_PASSWORD: ${{ secrets.TEST_WORKER_PASSWORD }}
           TEST_WORKER_CODE: ${{ secrets.TEST_WORKER_CODE }}
-        run: npm test
+        run: npm run test:integration
 
-      - name: Upload coverage report
+      - name: Upload integration test coverage
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage-report
+          name: integration-coverage
           path: backend/coverage/
           retention-days: 7
+
+# ──────────────────────────────────────────────────────────────
+# Job 3: Load Test (manual trigger only)
+# production URL-এ load test — Actions tab থেকে হাতে চালাতে হবে
+# ──────────────────────────────────────────────────────────────
+  load-test:
+    name: 🚀 Load Test (Manual)
+    runs-on: ubuntu-latest
+    # শুধু manual trigger-এ চলবে, push/PR-এ না
+    if: github.event_name == 'workflow_dispatch'
+    # integration tests পাস হলেই load test চলবে
+    needs: integration-tests
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: cd backend && npm install jsonwebtoken
+
+      - name: Run Load Test
+        env:
+          BASE_URL:              https://novatechbd-backend.onrender.com
+          TEST_ADMIN_EMAIL:      ${{ secrets.TEST_ADMIN_EMAIL }}
+          TEST_ADMIN_PASSWORD:   ${{ secrets.TEST_ADMIN_PASSWORD }}
+          TEST_WORKER_EMAIL:     ${{ secrets.TEST_WORKER_EMAIL }}
+          TEST_WORKER_PASSWORD:  ${{ secrets.TEST_WORKER_PASSWORD }}
+          TEST_MANAGER_EMAIL:    ${{ secrets.TEST_MANAGER_EMAIL }}
+          TEST_MANAGER_PASSWORD: ${{ secrets.TEST_MANAGER_PASSWORD }}
+          TEST_PORTAL_TOKEN:     ${{ secrets.TEST_PORTAL_TOKEN }}
+        run: node backend/load-test.js
