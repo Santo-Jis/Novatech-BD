@@ -18,11 +18,12 @@ jobs:
 
       - name: Run Load Test
         env:
-          BASE_URL:             https://novatechbd-backend.onrender.com
-          TEST_ADMIN_EMAIL:     ${{ secrets.TEST_ADMIN_EMAIL }}
-          TEST_ADMIN_PASSWORD:  ${{ secrets.TEST_ADMIN_PASSWORD }}
-          TEST_WORKER_EMAIL:    ${{ secrets.TEST_WORKER_EMAIL }}
-          TEST_WORKER_PASSWORD: ${{ secrets.TEST_WORKER_PASSWORD }}
-          TEST_MANAGER_EMAIL:   ${{ secrets.TEST_MANAGER_EMAIL }}
+          BASE_URL:              https://novatechbd-backend.onrender.com
+          TEST_ADMIN_EMAIL:      ${{ secrets.TEST_ADMIN_EMAIL }}
+          TEST_ADMIN_PASSWORD:   ${{ secrets.TEST_ADMIN_PASSWORD }}
+          TEST_WORKER_EMAIL:     ${{ secrets.TEST_WORKER_EMAIL }}
+          TEST_WORKER_PASSWORD:  ${{ secrets.TEST_WORKER_PASSWORD }}
+          TEST_MANAGER_EMAIL:    ${{ secrets.TEST_MANAGER_EMAIL }}
           TEST_MANAGER_PASSWORD: ${{ secrets.TEST_MANAGER_PASSWORD }}
+          TEST_PORTAL_TOKEN:     ${{ secrets.TEST_PORTAL_TOKEN }}  # Customer portal load test
         run: node backend/load-test.js
