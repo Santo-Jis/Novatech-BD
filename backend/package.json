@@ -6,7 +6,13 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "jest --coverage"
+    "test": "jest --coverage",
+    "test:unit": "jest --coverage --testPathIgnorePatterns=integration",
+    "test:integration": "jest --coverage --testPathPattern=integration",
+    "test:order": "jest --coverage --testPathPattern=order.controller",
+    "test:sales": "jest --coverage --testPathPattern=sales.controller",
+    "test:settlement": "jest --coverage --testPathPattern=settlement.controller",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "express": "^4.18.2",
