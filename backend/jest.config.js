@@ -9,7 +9,7 @@ module.exports = {
 
     // কোন ফাইলগুলো টেস্ট ফাইল
     testMatch: [
-        '**/src/__tests__/**/*.test.js'
+        '**/src/tests/**/*.test.js'
     ],
 
     // Coverage কোন ফাইলগুলো থেকে নেবে
@@ -32,5 +32,8 @@ module.exports = {
     testTimeout: 10000,
 
     // বাংলা output সঠিক দেখাতে
-    verbose: true
+    verbose: true,
+
+    // .env ছাড়াই টেস্ট চালানোর জন্য env setup
+    setupFiles: ['./jest.setup.js']
 };
