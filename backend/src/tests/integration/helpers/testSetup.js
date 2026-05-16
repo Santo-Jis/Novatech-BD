@@ -3,6 +3,19 @@
  * ─────────────────────────────────────────────────────────────
  * Integration টেস্টের জন্য shared helper
  * Real Supabase Test DB ব্যবহার করে
+ *
+ * Available helpers:
+ *   getApp()                   → Express app instance
+ *   getToken(role)             → Bearer token (cached)
+ *   authGet(url, role)         → Authenticated GET
+ *   authPost(url, body, role)  → Authenticated POST
+ *   authPut(url, body, role)   → Authenticated PUT
+ *   authPatch(url, body, role) → Authenticated PATCH  ← নতুন
+ *   authDelete(url, role)      → Authenticated DELETE ← নতুন
+ *   publicPost(url, body)      → Unauthenticated POST
+ *   publicGet(url)             → Unauthenticated GET
+ *   expectSuccess(res, code)   → 2xx + success:true assert
+ *   expectError(res, code)     → 4xx/5xx + success:false assert
  * ─────────────────────────────────────────────────────────────
  */
 
@@ -17,7 +30,7 @@ const getApp = () => {
 };
 
 // ─── Test User Credentials ────────────────────────────────────
-// GitHub Secrets থেকে আসবে (নিচে দেখুন কোন Secrets বানাতে হবে)
+// GitHub Secrets থেকে আসবে
 const TEST_USERS = {
     admin: {
         identifier: process.env.TEST_ADMIN_EMAIL,
@@ -67,9 +80,17 @@ const getToken = async (role = 'admin') => {
     return tokenCache[role];
 };
 
-/**
- * Authenticated GET request
- */
+// ─── Cache reset (logout test-এর পরে দরকার হতে পারে) ─────────
+const clearTokenCache = (role) => {
+    if (role) {
+        delete tokenCache[role];
+    } else {
+        Object.keys(tokenCache).forEach(k => delete tokenCache[k]);
+    }
+};
+
+// ─── Authenticated Request Helpers ───────────────────────────
+
 const authGet = async (url, role = 'admin') => {
     const token = await getToken(role);
     return request(getApp())
@@ -77,9 +98,6 @@ const authGet = async (url, role = 'admin') => {
         .set('Authorization', `Bearer ${token}`);
 };
 
-/**
- * Authenticated POST request
- */
 const authPost = async (url, body, role = 'admin') => {
     const token = await getToken(role);
     return request(getApp())
@@ -88,9 +106,6 @@ const authPost = async (url, body, role = 'admin') => {
         .send(body);
 };
 
-/**
- * Authenticated PUT request
- */
 const authPut = async (url, body, role = 'admin') => {
     const token = await getToken(role);
     return request(getApp())
@@ -99,9 +114,25 @@ const authPut = async (url, body, role = 'admin') => {
         .send(body);
 };
 
-/**
- * Unauthenticated request (auth test-এর জন্য)
- */
+// ← নতুন: PATCH request helper
+const authPatch = async (url, body, role = 'admin') => {
+    const token = await getToken(role);
+    return request(getApp())
+        .patch(url)
+        .set('Authorization', `Bearer ${token}`)
+        .send(body);
+};
+
+// ← নতুন: DELETE request helper
+const authDelete = async (url, role = 'admin') => {
+    const token = await getToken(role);
+    return request(getApp())
+        .delete(url)
+        .set('Authorization', `Bearer ${token}`);
+};
+
+// ─── Unauthenticated Helpers ──────────────────────────────────
+
 const publicPost = (url, body) =>
     request(getApp()).post(url).send(body);
 
@@ -112,6 +143,8 @@ const publicGet = (url) =>
 
 /**
  * Successful response যাচাই
+ * @param {object} res - supertest response
+ * @param {number} statusCode - expected HTTP status (default 200)
  */
 const expectSuccess = (res, statusCode = 200) => {
     expect(res.status).toBe(statusCode);
@@ -120,6 +153,8 @@ const expectSuccess = (res, statusCode = 200) => {
 
 /**
  * Error response যাচাই
+ * @param {object} res - supertest response
+ * @param {number} statusCode - expected HTTP status
  */
 const expectError = (res, statusCode) => {
     expect(res.status).toBe(statusCode);
@@ -129,9 +164,12 @@ const expectError = (res, statusCode) => {
 module.exports = {
     getApp,
     getToken,
+    clearTokenCache,
     authGet,
     authPost,
     authPut,
+    authPatch,      // ← নতুন
+    authDelete,     // ← নতুন
     publicPost,
     publicGet,
     expectSuccess,
