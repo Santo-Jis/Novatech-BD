@@ -40,16 +40,16 @@ jobs:
       - name: Run tests
         working-directory: backend
         env:
-          NODE_ENV: test
           JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
           JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
           JWT_PORTAL_SECRET: ${{ secrets.JWT_PORTAL_SECRET }}
           ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          NODE_ENV: test
           DB_HOST: ${{ secrets.TEST_DB_HOST }}
-          DB_PORT: 5432
-          DB_NAME: postgres
           DB_USER: ${{ secrets.TEST_DB_USER }}
           DB_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
+          DB_NAME: ${{ secrets.TEST_DB_NAME }}
+          DB_PORT: 5432
           TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL }}
           TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
           TEST_MANAGER_EMAIL: ${{ secrets.TEST_MANAGER_EMAIL }}
