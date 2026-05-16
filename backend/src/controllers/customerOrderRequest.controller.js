@@ -148,9 +148,45 @@ const createOrderRequest = async (req, res) => {
 // 2. কাস্টমার তার নিজের অর্ডার রিকোয়েস্ট লিস্ট দেখবে
 // GET /api/portal/order-requests
 // ============================================================
+// ============================================================
+// 2. কাস্টমার তার নিজের অর্ডার রিকোয়েস্ট লিস্ট দেখবে
+// GET /api/portal/order-requests?page=1&limit=10&status=
+//
+// Query Params:
+//   page   — page নম্বর (default: 1)
+//   limit  — প্রতি পাতায় (default: 10, max: 50)
+//   status — pending | confirmed | assigned | delivered | cancelled | all (default: all)
+// ============================================================
 const getMyOrderRequests = async (req, res) => {
     try {
         const { customer_id } = req.portalUser;
+
+        const page   = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit  = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+        const offset = (page - 1) * limit;
+        const status = req.query.status || 'all';
+
+        const validStatuses = ['pending', 'confirmed', 'assigned', 'delivered', 'cancelled'];
+        const statusFilter  = validStatuses.includes(status)
+            ? `AND cor.status = $2`
+            : '';  // 'all' বা অন্য কিছু → কোনো filter নেই
+
+        const baseParams = validStatuses.includes(status)
+            ? [customer_id, status]
+            : [customer_id];
+
+        const pLimit  = baseParams.length + 1;
+        const pOffset = baseParams.length + 2;
+
+        // মোট count — pagination metadata-র জন্য
+        const countRes = await query(
+            `SELECT COUNT(*) AS total
+             FROM customer_order_requests cor
+             WHERE cor.customer_id = $1 ${statusFilter}`,
+            baseParams
+        );
+        const total      = parseInt(countRes.rows[0].total);
+        const totalPages = Math.ceil(total / limit);
 
         const { rows } = await query(
             `SELECT
@@ -159,13 +195,24 @@ const getMyOrderRequests = async (req, res) => {
                 u.name_bn AS assigned_sr_name
              FROM customer_order_requests cor
              LEFT JOIN users u ON cor.assigned_to = u.id
-             WHERE cor.customer_id = $1
+             WHERE cor.customer_id = $1 ${statusFilter}
              ORDER BY cor.created_at DESC
-             LIMIT 20`,
-            [customer_id]
+             LIMIT $${pLimit} OFFSET $${pOffset}`,
+            [...baseParams, limit, offset]
         );
 
-        return res.status(200).json({ success: true, data: rows });
+        return res.status(200).json({
+            success: true,
+            data: rows,
+            pagination: {
+                page,
+                limit,
+                total,
+                total_pages: totalPages,
+                has_next:    page < totalPages,
+                has_prev:    page > 1,
+            },
+        });
 
     } catch (error) {
         console.error('❌ getMyOrderRequests Error:', error.message);
@@ -289,19 +336,35 @@ const getAllOrderRequests = async (req, res) => {
             params
         );
 
-        // প্রতিটা order এর items এ stock তথ্য যোগ করো
-        const enriched = await Promise.all(rows.map(async (row) => {
+        // ── N+1 Fix: সব order-এর সব product_id একসাথে collect করো ──────
+        // আগে: প্রতিটি item-এর জন্য আলাদা query (50 orders × 5 items = 250 queries)
+        // এখন: সব unique product_id → একটি WHERE id = ANY($1::uuid[]) query
+        const allProductIds = [];
+        const parsedRows = rows.map(row => {
             let items = row.items;
             if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
             if (!Array.isArray(items)) items = [];
+            items.forEach(item => { if (item.product_id) allProductIds.push(item.product_id); });
+            return { ...row, items };
+        });
 
-            const itemsWithStock = await Promise.all(items.map(async (item) => {
-                const stockRes = await query(
-                    `SELECT name, (stock - COALESCE(reserved_stock,0)) AS available_stock
-                     FROM products WHERE id = $1`,
-                    [item.product_id]
-                );
-                const p = stockRes.rows[0];
+        // Unique product_id গুলো নিয়ে একটি batch query
+        const productMap = {};
+        if (allProductIds.length > 0) {
+            const uniqueIds = [...new Set(allProductIds)];
+            const prodRes = await query(
+                `SELECT id, name, (stock - COALESCE(reserved_stock, 0)) AS available_stock
+                 FROM products
+                 WHERE id = ANY($1::uuid[])`,
+                [uniqueIds]
+            );
+            prodRes.rows.forEach(p => { productMap[p.id] = p; });
+        }
+
+        // In-memory map থেকে প্রতিটি item enrich করো — আর কোনো DB call নেই
+        const enriched = parsedRows.map(row => {
+            const itemsWithStock = row.items.map(item => {
+                const p         = productMap[item.product_id];
                 const available = p ? parseInt(p.available_stock) : 0;
                 return {
                     ...item,
@@ -309,11 +372,10 @@ const getAllOrderRequests = async (req, res) => {
                     available_stock: available,
                     stock_ok:        available >= parseInt(item.qty || 1),
                 };
-            }));
-
+            });
             const hasStockIssue = itemsWithStock.some(i => !i.stock_ok);
             return { ...row, items: itemsWithStock, has_stock_issue: hasStockIssue };
-        }));
+        });
 
         const countResult = await query(
             `SELECT COUNT(*) AS total
@@ -441,18 +503,57 @@ const updateOrderRequest = async (req, res) => {
 
 // ============================================================
 // 5. পোর্টালের জন্য পণ্য লিস্ট (public — শুধু active পণ্য)
-// GET /api/portal/products
+// GET /api/portal/products?page=1&limit=30&search=
+//
+// Query Params:
+//   page   — page নম্বর (default: 1)
+//   limit  — প্রতি পাতায় পণ্য সংখ্যা (default: 30, max: 100)
+//   search — নাম দিয়ে ফিল্টার (optional, case-insensitive)
+//
+// Response:
+//   data        — এই পাতার পণ্য তালিকা (price-enriched)
+//   pagination  — { page, limit, total, total_pages, has_next, has_prev }
 // ============================================================
 const getPortalProducts = async (req, res) => {
     try {
+        const page   = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 30));
+        const offset = (page - 1) * limit;
+        const search = (req.query.search || '').trim();
+
+        // Search filter — নাম দিয়ে partial match (ILIKE)
+        // search থাকলে: $1=search_term (count-এ), $1=limit $2=offset $3=search_term (list-এ)
+        // search না থাকলে: $1=limit $2=offset
+        const searchCondition = search ? `AND name ILIKE $3` : '';
+
+        // Count query — search থাকলে $1 = search term
+        const countRes = await query(
+            `SELECT COUNT(*) AS total
+             FROM products
+             WHERE is_active = true
+               AND (stock - COALESCE(reserved_stock, 0)) > 0
+               ${search ? 'AND name ILIKE $1' : ''}`,
+            search ? [`%${search}%`] : []
+        );
+        const total      = parseInt(countRes.rows[0].total);
+        const totalPages = Math.ceil(total / limit);
+
+        // List query — $1=limit, $2=offset, ($3=search যদি থাকে)
+        const listParams = search
+            ? [limit, offset, `%${search}%`]
+            : [limit, offset];
+
+        // Paginated product list
         const { rows } = await query(
             `SELECT id, name, price, vat, tax, unit, description, image_url,
                     (stock - COALESCE(reserved_stock, 0)) AS available_stock
              FROM products
              WHERE is_active = true
                AND (stock - COALESCE(reserved_stock, 0)) > 0
-             ORDER BY name ASC`,
-            []
+               ${searchCondition}
+             ORDER BY name ASC
+             LIMIT $1 OFFSET $2`,
+            listParams
         );
 
         // কাস্টমার যা দেবে সেটা final_price (VAT + Tax সহ)
@@ -466,15 +567,26 @@ const getPortalProducts = async (req, res) => {
                 description:     p.description,
                 image_url:       p.image_url,
                 available_stock: p.available_stock,
-                base_price:      parseFloat(p.price),   // মূল দাম
-                vat_amount:      vatAmount,              // VAT টাকা
-                tax_amount:      taxAmount,              // Tax টাকা
-                final_price:     finalPrice,             // কাস্টমার যা দেবে
+                base_price:      parseFloat(p.price),
+                vat_amount:      vatAmount,
+                tax_amount:      taxAmount,
+                final_price:     finalPrice,
                 has_extra:       vatAmount > 0 || taxAmount > 0,
             };
         });
 
-        return res.status(200).json({ success: true, data: enriched });
+        return res.status(200).json({
+            success: true,
+            data: enriched,
+            pagination: {
+                page,
+                limit,
+                total,
+                total_pages: totalPages,
+                has_next:    page < totalPages,
+                has_prev:    page > 1,
+            },
+        });
 
     } catch (error) {
         console.error('❌ getPortalProducts Error:', error.message);
