@@ -205,7 +205,7 @@ const createEmployee = async (req, res) => {
 
         // অস্থায়ী পাসওয়ার্ড তৈরি
         const tempPassword = generateTempPassword();
-        const passwordHash = await bcrypt.hash(tempPassword, 12);
+        const passwordHash = await bcrypt.hash(tempPassword, 10) // 12→10: Render free CPU অপ্টিমাইজড;
 
         // DB তে সেভ (pending status)
         const result = await query(
