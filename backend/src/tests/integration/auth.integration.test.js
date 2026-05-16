@@ -92,9 +92,9 @@ describe('GET /api/auth/me', () => {
         const res = await authGet('/api/auth/me', 'admin');
 
         expectSuccess(res);
-        expect(res.body.user).toHaveProperty('id');
-        expect(res.body.user).toHaveProperty('name_bn');
-        expect(res.body.user).toHaveProperty('role');
+        expect(res.body.data).toHaveProperty('id');
+        expect(res.body.data).toHaveProperty('name_bn');
+        expect(res.body.data).toHaveProperty('role');
     });
 
     test('token ছাড়া — 401', async () => {
@@ -144,12 +144,12 @@ describe('Role-based access control', () => {
     test('worker হিসেবে login করলে role = worker', async () => {
         const res = await authGet('/api/auth/me', 'worker');
         expectSuccess(res);
-        expect(res.body.user.role).toBe('worker');
+        expect(res.body.data.role).toBe('worker');
     });
 
     test('manager হিসেবে login করলে role = manager', async () => {
         const res = await authGet('/api/auth/me', 'manager');
         expectSuccess(res);
-        expect(res.body.user.role).toBe('manager');
+        expect(res.body.data.role).toBe('manager');
     });
 });
