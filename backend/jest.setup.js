@@ -16,7 +16,9 @@ process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY ||
     'abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890';
 
 // DB — integration test-এ real DB লাগে, unit test-এ লাগে না
+// CI-তে secrets থেকে আসবে, local-এ .env থেকে আসবে
 process.env.DB_HOST     = process.env.DB_HOST     || 'localhost';
+process.env.DB_PORT     = process.env.DB_PORT     || '5432';   // ← আগে ছিল না, db.js এটা parse করে
 process.env.DB_NAME     = process.env.DB_NAME     || 'postgres';
 process.env.DB_USER     = process.env.DB_USER     || 'postgres';
 process.env.DB_PASSWORD = process.env.DB_PASSWORD || 'postgres';
