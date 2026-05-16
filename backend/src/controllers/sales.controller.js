@@ -287,9 +287,10 @@ const createSale = async (req, res) => {
             cashReceived = netAmount;
 
         } else if (payment_method === 'credit') {
-            // ক্রেডিট লিমিট যাচাই
-            const newCredit = parseFloat(cust.current_credit) + netAmount;
-            if (newCredit > parseFloat(cust.credit_limit)) {
+            // ক্রেডিট লিমিট প্রাথমিক চেক — race condition এড়াতে
+            // চূড়ান্ত চেক transaction-এর ভেতরে FOR UPDATE দিয়ে হবে (নিচে)
+            const prelimCredit = parseFloat(cust.current_credit) + netAmount;
+            if (prelimCredit > parseFloat(cust.credit_limit)) {
                 return res.status(400).json({
                     success: false,
                     message: `ক্রেডিট লিমিট পার হবে। বর্তমান বাকি: ৳${cust.current_credit}, লিমিট: ৳${cust.credit_limit}`
@@ -320,6 +321,43 @@ const createSale = async (req, res) => {
 
         // বিক্রয় সেভ
         const saleResult = await withTransaction(async (client) => {
+
+            // ── Customer Row Lock — Credit Race Condition Fix ────────────────
+            // Transaction-এর বাইরে cust.current_credit পড়া হয়েছিল —
+            // দুইজন SR একসাথে একই কাস্টমারে credit sale করলে উভয়েই
+            // চেক পাস করত এবং লিমিট exceed হতো।
+            // Fix: FOR UPDATE দিয়ে customer row lock করে fresh data নিয়ে
+            //      চূড়ান্ত credit check করা হচ্ছে।
+            //      অন্য transaction এই row-এ পৌঁছালে lock ছাড়া পর্যন্ত wait করবে।
+            if (payment_method === 'credit') {
+                const lockedCustomer = await client.query(
+                    `SELECT current_credit, credit_limit
+                     FROM customers
+                     WHERE id = $1
+                     FOR UPDATE`,
+                    [customer_id]
+                );
+
+                if (lockedCustomer.rows.length === 0) {
+                    throw Object.assign(
+                        new Error('CUSTOMER_NOT_FOUND'),
+                        { statusCode: 404, clientMessage: 'কাস্টমার পাওয়া যায়নি।' }
+                    );
+                }
+
+                const freshCust    = lockedCustomer.rows[0];
+                const finalCredit  = parseFloat(freshCust.current_credit) + netAmount;
+
+                if (finalCredit > parseFloat(freshCust.credit_limit)) {
+                    throw Object.assign(
+                        new Error('CREDIT_LIMIT_EXCEEDED'),
+                        {
+                            statusCode: 400,
+                            clientMessage: `ক্রেডিট লিমিট পার হবে। বর্তমান বাকি: ৳${freshCust.current_credit}, লিমিট: ৳${freshCust.credit_limit}`
+                        }
+                    );
+                }
+            }
 
             // ── Order Lock — Race Condition Fix ─────────────────────────────
             // FOR UPDATE: এই row অন্য কেউ একই সময়ে lock করতে পারবে না
@@ -516,11 +554,12 @@ const createSale = async (req, res) => {
     } catch (error) {
         console.error('❌ Create Sale Error:', error.message);
 
-        // Order lock error — race condition বা unavailable order
-        if (error.message === 'ORDER_UNAVAILABLE') {
-            return res.status(error.statusCode || 403).json({
+        // Known business errors — transaction-এর ভেতর থেকে throw হওয়া
+        const knownErrors = ['ORDER_UNAVAILABLE', 'CREDIT_LIMIT_EXCEEDED', 'CUSTOMER_NOT_FOUND'];
+        if (knownErrors.includes(error.message)) {
+            return res.status(error.statusCode || 400).json({
                 success: false,
-                message: error.clientMessage || 'অর্ডার পাওয়া যায়নি।'
+                message: error.clientMessage || 'বিক্রয়ে সমস্যা হয়েছে।'
             });
         }
 
