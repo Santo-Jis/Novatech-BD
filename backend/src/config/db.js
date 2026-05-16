@@ -17,7 +17,7 @@ const pool = new Pool({
     // Connection pool settings — Render free tier + Supabase free tier অপ্টিমাইজড
     // Supabase free: max 60 connection। Render free: single instance।
     // 10 রাখলে একসাথে ৫০+ request এলেও queue হবে, crash করবে না।
-    max:             10,    // সর্বোচ্চ ১০টি connection (আগে ২০, Supabase free-তে বেশি হলে timeout)
+    max:             15,    // ১৫টি connection — ৫০+ concurrent request সামলাতে পারবে (আগে ১০ ছিল, queue জমত)
     min:             2,     // সবসময় ২টি connection ready রাখো (cold start দ্রুত হবে)
     idleTimeoutMillis: 60000,   // ৬০ সেকেন্ড idle থাকলে বন্ধ (আগে ৩০s, বেশি reconnect হত)
     connectionTimeoutMillis: 10000, // ১০ সেকেন্ডের মধ্যে connect না হলে error (আগে ৩০s, বেশি অপেক্ষা হত)
