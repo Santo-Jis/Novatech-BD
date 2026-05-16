@@ -312,7 +312,7 @@ const changePassword = async (req, res) => {
         }
 
         // নতুন পাসওয়ার্ড hash করো
-        const newHash = await bcrypt.hash(newPassword, 12);
+        const newHash = await bcrypt.hash(newPassword, 10); // 12→10: Render free CPU-তে 4x দ্রুত, security ঠিক আছে
 
         await query(
             'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
@@ -494,7 +494,7 @@ const resetPasswordWithOtp = async (req, res) => {
         }
 
         // নতুন পাসওয়ার্ড সেভ
-        const newHash = await bcrypt.hash(new_password, 12);
+        const newHash = await bcrypt.hash(new_password, 10); // 12→10: Render free CPU-তে 4x দ্রুত
         await query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`, [newHash, userId]);
 
         // OTP রেকর্ড মুছে ফেলো
