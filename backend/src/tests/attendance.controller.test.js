@@ -416,7 +416,10 @@ describe('reviewLeaveRequest — আবেদন অনুমোদন/প্র
             { params: { id: 'leave-1' }, body: { status: 'approved' }, user: managerUser },
             res
         );
-        expect(res.status).toHaveBeenCalledWith(200);
+        // controller res.json() সরাসরি call করে
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ success: true, message: expect.stringContaining('অনুমোদিত') })
+        );
     });
 
     test('pending request reject — 200', async () => {
@@ -429,7 +432,9 @@ describe('reviewLeaveRequest — আবেদন অনুমোদন/প্র
             { params: { id: 'leave-1' }, body: { status: 'rejected', reviewer_note: 'যুক্তিসঙ্গত কারণ নেই' }, user: managerUser },
             res
         );
-        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ success: true, message: expect.stringContaining('প্রত্যাখ্যান') })
+        );
     });
 });
 
