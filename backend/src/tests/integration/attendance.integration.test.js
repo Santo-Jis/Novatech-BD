@@ -64,7 +64,8 @@ describe('GET /api/attendance/my — নিজের হাজিরা', () => 
     test('Worker: নিজের হাজিরা ইতিহাস দেখবে', async () => {
         const res = await authGet('/api/attendance/my', 'worker');
         expectSuccess(res);
-        expect(res.body.data).toBeInstanceOf(Array);
+        // data = { attendance: [], summary: {}, bonus_progress: {} }
+        expect(res.body.data.attendance).toBeInstanceOf(Array);
     });
 
     test('month, year filter কাজ করে', async () => {
@@ -87,7 +88,8 @@ describe('GET /api/attendance/today — আজকের লাইভ হাজ�
     test('Manager: দলের আজকের হাজিরা দেখবে', async () => {
         const res = await authGet('/api/attendance/today', 'manager');
         expectSuccess(res);
-        expect(res.body.data).toBeInstanceOf(Array);
+        // data = { workers: [], summary: {}, date: '' }
+        expect(res.body.data.workers).toBeInstanceOf(Array);
     });
 
     test('Admin: সব worker এর আজকের হাজিরা দেখবে', async () => {
@@ -290,34 +292,34 @@ describe('GET /api/attendance/leave/all — সব আবেদন', () => {
 
 describe('PUT /api/attendance/leave/:id/review — আবেদন রিভিউ', () => {
 
-    test('action না দিলে 400', async () => {
+    test('status না দিলে 400', async () => {
         const res = await authPut('/api/attendance/leave/some-id/review', {}, 'manager');
         expectError(res, 400);
     });
 
-    test('অবৈধ action — 400', async () => {
-        const res = await authPut('/api/attendance/leave/some-id/review', { action: 'delete' }, 'manager');
+    test('অবৈধ status (approved/rejected ছাড়া) — 400', async () => {
+        const res = await authPut('/api/attendance/leave/some-id/review', { status: 'delete' }, 'manager');
         expectError(res, 400);
     });
 
     test('অজানা leave ID — 404', async () => {
         const res = await authPut(
             '/api/attendance/leave/00000000-0000-0000-0000-000000000000/review',
-            { action: 'approve' },
+            { status: 'approved' },
             'manager'
         );
         expectError(res, 404);
     });
 
     test('Worker: রিভিউ করতে পারবে না — 403', async () => {
-        const res = await authPut('/api/attendance/leave/some-id/review', { action: 'approve' }, 'worker');
+        const res = await authPut('/api/attendance/leave/some-id/review', { status: 'approved' }, 'worker');
         expectError(res, 403);
     });
 
     test('Token ছাড়া — 401', async () => {
         const res = await request(getApp())
             .put('/api/attendance/leave/some-id/review')
-            .send({ action: 'approve' });
+            .send({ status: 'approved' });
         expectError(res, 401);
     });
 });
