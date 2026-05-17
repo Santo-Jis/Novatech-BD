@@ -254,7 +254,7 @@ describeIf('POST /api/customers — কাস্টমার তৈরি (Real 
         }, 'admin');
 
         expectSuccess(res, 201);
-        expect(res.body.data.credit_limit).toBe(15000);
+        expect(Number(res.body.data.credit_limit)).toBe(15000);
         if (res.body.data?.id) {
             createdCustomerIds.push(res.body.data.id);
         }
@@ -267,7 +267,7 @@ describeIf('POST /api/customers — কাস্টমার তৈরি (Real 
         }, 'admin');
 
         expectSuccess(res, 201);
-        expect(res.body.data.credit_limit).toBe(5000);
+        expect(Number(res.body.data.credit_limit)).toBe(5000);
         if (res.body.data?.id) {
             createdCustomerIds.push(res.body.data.id);
         }
@@ -367,7 +367,7 @@ describeIf('PUT /api/customers/:id/credit-limit — ক্রেডিট লি
             'admin'
         );
         expectSuccess(res);
-        expect(res.body.data.credit_limit).toBe(20000);
+        expect(Number(res.body.data.credit_limit)).toBe(20000);
     });
 
     test('negative credit_limit → 400', async () => {
@@ -552,7 +552,7 @@ describeIf('PUT /api/customers/visit-order — Visit ক্রম (Real DB)', ()
 afterAll(async () => {
     if (!hasDbEnv || createdCustomerIds.length === 0) return;
 
-    const { query } = require('../config/db');
+    const { query } = require('../../config/db');
     for (const id of createdCustomerIds) {
         try {
             await query(
