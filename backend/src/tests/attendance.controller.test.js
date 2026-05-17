@@ -197,7 +197,7 @@ describe('checkIn — চেক-ইন', () => {
 
         expect(res.status).toHaveBeenCalledWith(200);
         const body = res.json.mock.calls[0][0];
-        expect(body.data).toHaveProperty('late_minutes');
+        expect(body.data).toHaveProperty('lateMinutes');
     });
 
     test('সেলফি সহ চেক-ইন — Cloudinary আপলোড হয়', async () => {
@@ -250,7 +250,8 @@ describe('checkIn — চেক-ইন', () => {
 describe('checkOut — চেক-আউট', () => {
 
     test('আজকে চেক-ইন না থাকলে 400', async () => {
-        canCheckOut.mockResolvedValue({ allowed: false, message: 'আজকে চেক-ইন নেই।' });
+        // controller নিজেই DB query করে চেক-ইন আছে কিনা দেখে
+        query.mockResolvedValueOnce({ rows: [] }); // attendance record নেই
 
         const res = mockRes();
         await checkOut({ body: {}, user: workerUser, file: null }, res);
@@ -259,7 +260,8 @@ describe('checkOut — চেক-আউট', () => {
     });
 
     test('আগেই চেক-আউট হয়েছে — 400', async () => {
-        canCheckOut.mockResolvedValue({ allowed: false, message: 'আজকে ইতিমধ্যে চেক-আউট হয়েছে।', attendance: null });
+        // attendance আছে কিন্তু check_out_time আছে
+        query.mockResolvedValueOnce({ rows: [{ id: 'att-1', check_in_time: '09:00:00', check_out_time: '17:00:00' }] });
 
         const res = mockRes();
         await checkOut({ body: {}, user: workerUser, file: null }, res);
@@ -271,11 +273,13 @@ describe('checkOut — চেক-আউট', () => {
     });
 
     test('সঠিক চেক-আউট — 200', async () => {
-        canCheckOut.mockResolvedValue({
-            allowed:    true,
-            attendance: { id: 'att-1', check_in_time: '09:00:00' },
-        });
-        query.mockResolvedValueOnce({ rows: [{ id: 'att-1', check_out_time: '17:00:00' }] });
+        // attendance আছে, check_in আছে, check_out নেই
+        query
+            .mockResolvedValueOnce({ rows: [{ id: 'att-1', check_in_time: '09:00:00', check_out_time: null }] }) // SELECT attendance
+            .mockResolvedValueOnce({ rows: [] }); // UPDATE
+
+        // worker role-এর জন্য canCheckOut call হয়
+        canCheckOut.mockResolvedValue({ allowed: true });
 
         const res = mockRes();
         await checkOut({ body: {}, user: workerUser, file: null }, res);
@@ -284,9 +288,6 @@ describe('checkOut — চেক-আউট', () => {
     });
 
     test('DB error — 500', async () => {
-        canCheckOut.mockResolvedValue({
-            allowed: true, attendance: { id: 'att-1', check_in_time: '09:00:00' },
-        });
         query.mockRejectedValueOnce(new Error('DB failed'));
 
         const res = mockRes();
@@ -358,7 +359,7 @@ describe('applyLeave — ছুটির আবেদন', () => {
 
 describe('reviewLeaveRequest — আবেদন অনুমোদন/প্রত্যাখ্যান', () => {
 
-    test('action না দিলে 400', async () => {
+    test('status না দিলে 400', async () => {
         const res = mockRes();
         await reviewLeaveRequest(
             { params: { id: 'leave-1' }, body: {}, user: managerUser },
@@ -367,58 +368,65 @@ describe('reviewLeaveRequest — আবেদন অনুমোদন/প্র
         expect(res.status).toHaveBeenCalledWith(400);
     });
 
-    test('অবৈধ action — 400', async () => {
+    test('অবৈধ status (approved/rejected ছাড়া) — 400', async () => {
         const res = mockRes();
         await reviewLeaveRequest(
-            { params: { id: 'leave-1' }, body: { action: 'delete' }, user: managerUser },
+            { params: { id: 'leave-1' }, body: { status: 'delete' }, user: managerUser },
             res
         );
         expect(res.status).toHaveBeenCalledWith(400);
     });
 
-    test('request না পাওয়া গেলে 404', async () => {
+    test('request না পাওয়া গেলে বা ইতিমধ্যে reviewed — 404', async () => {
+        // controller UPDATE ... WHERE status='pending' RETURNING * → rows খালি মানে 404
         query.mockResolvedValueOnce({ rows: [] });
 
         const res = mockRes();
         await reviewLeaveRequest(
-            { params: { id: 'unknown' }, body: { action: 'approve' }, user: managerUser },
+            { params: { id: 'unknown' }, body: { status: 'approved' }, user: managerUser },
             res
         );
         expect(res.status).toHaveBeenCalledWith(404);
     });
 
-    test('আগে অনুমোদিত request আবার approve — 400', async () => {
-        query.mockResolvedValueOnce({ rows: [{ id: 'leave-1', status: 'approved' }] });
+    test('আগে অনুমোদিত request আবার approve — 404 (WHERE pending fail)', async () => {
+        // already approved → pending filter → rows empty → 404
+        query.mockResolvedValueOnce({ rows: [] });
 
         const res = mockRes();
         await reviewLeaveRequest(
-            { params: { id: 'leave-1' }, body: { action: 'approve' }, user: managerUser },
+            { params: { id: 'leave-1' }, body: { status: 'approved' }, user: managerUser },
             res
         );
-        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.status).toHaveBeenCalledWith(404);
     });
 
     test('pending request approve — 200', async () => {
+        const leaveRow = {
+            id: 'leave-1', status: 'approved',
+            user_id: 'worker-uuid-1',
+            start_date: '2026-06-10', end_date: '2026-06-10'
+        };
         query
-            .mockResolvedValueOnce({ rows: [{ id: 'leave-1', status: 'pending', user_id: 'worker-uuid-1' }] })
-            .mockResolvedValueOnce({ rows: [{ id: 'leave-1', status: 'approved' }] });
+            .mockResolvedValueOnce({ rows: [leaveRow] }) // UPDATE leave_requests RETURNING
+            .mockResolvedValueOnce({ rows: [] });         // INSERT attendance (leave day)
 
         const res = mockRes();
         await reviewLeaveRequest(
-            { params: { id: 'leave-1' }, body: { action: 'approve' }, user: managerUser },
+            { params: { id: 'leave-1' }, body: { status: 'approved' }, user: managerUser },
             res
         );
         expect(res.status).toHaveBeenCalledWith(200);
     });
 
     test('pending request reject — 200', async () => {
-        query
-            .mockResolvedValueOnce({ rows: [{ id: 'leave-1', status: 'pending', user_id: 'worker-uuid-1' }] })
-            .mockResolvedValueOnce({ rows: [{ id: 'leave-1', status: 'rejected' }] });
+        query.mockResolvedValueOnce({
+            rows: [{ id: 'leave-1', status: 'rejected', user_id: 'worker-uuid-1', start_date: '2026-06-10', end_date: '2026-06-10' }]
+        });
 
         const res = mockRes();
         await reviewLeaveRequest(
-            { params: { id: 'leave-1' }, body: { action: 'reject', note: 'যুক্তিসঙ্গত কারণ নেই' }, user: managerUser },
+            { params: { id: 'leave-1' }, body: { status: 'rejected', reviewer_note: 'যুক্তিসঙ্গত কারণ নেই' }, user: managerUser },
             res
         );
         expect(res.status).toHaveBeenCalledWith(200);
@@ -432,6 +440,7 @@ describe('reviewLeaveRequest — আবেদন অনুমোদন/প্র
 describe('getAttendanceSettings — সেটিংস', () => {
 
     test('সেটিংস সফলভাবে আসে', async () => {
+        // getSettings() → query('SELECT key, value FROM system_settings')
         query.mockResolvedValueOnce({
             rows: [
                 { key: 'attendance_checkin_start', value: '09:00' },
@@ -443,8 +452,13 @@ describe('getAttendanceSettings — সেটিংস', () => {
         const res = mockRes();
         await getAttendanceSettings({ user: workerUser }, res);
 
-        expect(res.status).toHaveBeenCalledWith(200);
-        expect(res.json.mock.calls[0][0].success).toBe(true);
+        // controller res.json() সরাসরি call করে (status 200 implicitly)
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ success: true })
+        );
+        const data = res.json.mock.calls[0][0].data;
+        expect(data).toHaveProperty('attendance_checkin_start');
+        expect(data).toHaveProperty('attendance_checkin_end');
     });
 });
 
