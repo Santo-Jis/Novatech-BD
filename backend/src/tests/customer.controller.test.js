@@ -113,7 +113,7 @@ const sampleCustomer = {
 };
 
 beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -1329,10 +1329,10 @@ describe('Customer Business Logic — Pure Calculations', () => {
     const isValidCoords = (lat, lng) => {
         const parsedLat = parseFloat(lat);
         const parsedLng = parseFloat(lng);
-        return lat && lng
+        return !!(lat && lng
             && isFinite(parsedLat) && isFinite(parsedLng)
             && parsedLat >= -90  && parsedLat <= 90
-            && parsedLng >= -180 && parsedLng <= 180;
+            && parsedLng >= -180 && parsedLng <= 180);
     };
 
     describe('GPS Coordinate Validation', () => {
