@@ -107,6 +107,8 @@ jobs:
           TEST_WORKER_EMAIL: ${{ secrets.TEST_WORKER_EMAIL }}
           TEST_WORKER_PASSWORD: ${{ secrets.TEST_WORKER_PASSWORD }}
           TEST_WORKER_CODE: ${{ secrets.TEST_WORKER_CODE }}
+          TEST_CUSTOMER_ID: ${{ secrets.TEST_CUSTOMER_ID }}
+          TEST_ROUTE_ID: ${{ secrets.TEST_ROUTE_ID }}
         run: npm run test:integration
 
       - name: Upload integration test coverage
