@@ -1438,3 +1438,42 @@ describe('Customer Business Logic — Pure Calculations', () => {
         test('null → false',                  () => expect(isValidEmail(null)).toBeFalsy());
     });
 });
+
+// ════════════════════════════════════════════════════════════════
+// EXTRA LOGIC TESTS (merged from Claude's version)
+// ════════════════════════════════════════════════════════════════
+
+describe('Credit Limit Guard (canGiveCredit)', () => {
+
+    const canGiveCredit = (current, limit, amount) =>
+        parseFloat(current) + amount <= parseFloat(limit);
+
+    test('লিমিটের মধ্যে — ক্রেডিট দেওয়া যাবে',      () => expect(canGiveCredit('3000', '10000', 5000)).toBe(true));
+    test('ঠিক লিমিটে — ক্রেডিট দেওয়া যাবে',          () => expect(canGiveCredit('5000', '10000', 5000)).toBe(true));
+    test('লিমিট পার — ক্রেডিট দেওয়া যাবে না',        () => expect(canGiveCredit('9000', '10000', 2000)).toBe(false));
+    test('current_credit string হলেও সঠিক',           () => expect(canGiveCredit('1000.50', '5000', 2000)).toBe(true));
+});
+
+describe('Credit Balance Apply', () => {
+
+    const applyCreditBalance = (balance, total) => {
+        const b = parseFloat(balance) || 0;
+        if (b <= 0) return { used: 0, remaining: b };
+        const used = Math.min(b, total);
+        return { used, remaining: b - used };
+    };
+
+    test('balance ০ — ব্যবহার ০',                       () => expect(applyCreditBalance('0', 5000).used).toBe(0));
+    test('balance < total — পুরো balance ব্যবহার',      () => expect(applyCreditBalance('2000', 5000).used).toBe(2000));
+    test('balance > total — শুধু total ব্যবহার',        () => expect(applyCreditBalance('8000', 5000).used).toBe(5000));
+    test('balance > total — remaining সঠিক',            () => expect(applyCreditBalance('8000', 5000).remaining).toBe(3000));
+});
+
+describe('Customer Code Format', () => {
+
+    const isValidCustomerCode = (code) => /^C-\d{4}-\d{3,}$/.test(code);
+
+    test('সঠিক format (C-2024-001) → true',   () => expect(isValidCustomerCode('C-2024-001')).toBe(true));
+    test('ভুল format → false',                 () => expect(isValidCustomerCode('CUST-0042')).toBe(false));
+    test('সংখ্যা ছাড়া — false',               () => expect(isValidCustomerCode('C-ABCD-XYZ')).toBe(false));
+});
