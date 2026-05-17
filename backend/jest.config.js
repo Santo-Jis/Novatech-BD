@@ -44,8 +44,9 @@ module.exports = {
         '**/src/tests/**/*.test.js'
     ],
 
-    // integration test-এ pool.end() করি তাই open handle থাকবে না
-    // কিন্তু unit test-এ jest worker hung না হতে এটা রাখো
-    forceExit: false,
+    // integration test-এ server.js-এর DB pool (auth.integration → testSetup → server → db.js)
+    // pool.end() না করায় TCPWRAP open handle থেকে যায়।
+    // forceExit: true — সব test শেষে Jest process জোর করে বন্ধ করে।
+    forceExit: true,
     detectOpenHandles: true,
 };
