@@ -15,7 +15,13 @@
     "test:watch": "jest --watch",
     "test:customer": "jest --testPathPattern=customer.controller",
     "test:customer:int": "jest --testPathPattern=customer.integration",
-    "test:customer:load": "node customer.load-test.js"
+    "test:customer:load": "node customer.load-test.js",
+    "test:salary": "jest --testPathPattern=salary.controller",
+    "test:salary:int": "jest --testPathPattern=salary.integration",
+    "test:attendance": "jest --testPathPattern=attendance.controller",
+    "test:attendance:int": "jest --testPathPattern=attendance.integration",
+    "test:load": "node load-test.js",
+    "test:load:priority": "node load-test-priority.js"
   },
   "dependencies": {
     "express": "^4.18.2",
