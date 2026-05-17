@@ -21,6 +21,9 @@ jest.mock('../controllers/ledger.controller', () => ({ addLedgerEntry:       jes
 
 // ─── Imports ──────────────────────────────────────────────────
 const { query, withTransaction } = require('../config/db');
+const { firebaseNotify }       = require('../services/firebase.notify');
+const { sendPushNotification } = require('../services/fcm.service');
+const { addLedgerEntry }       = require('../controllers/ledger.controller');
 const {
     createSettlement,
     approveSettlement,
@@ -40,14 +43,25 @@ const workerUser  = { id: 'worker-uuid-1', role: 'worker',  name_bn: 'আলী'
 const managerUser = { id: 'manager-uuid-1', role: 'manager', name_bn: 'ম্যানেজার' };
 
 beforeEach(() => {
-    // resetAllMocks clears call history AND the mockResolvedValueOnce queue,
-    // preventing leftover mocks from bleeding into subsequent tests.
+    // resetAllMocks — call history ও mockResolvedValueOnce queue দুটোই পরিষ্কার করে।
+    // ফলে একটা test-এর বাড়তি mock পরের test-এ যায় না।
+    // সতর্কতা: এটা jest.mock() factory-তে দেওয়া initial implementation-ও মুছে দেয়,
+    // তাই নিচে service mock গুলো আবার সেট করতে হচ্ছে।
     jest.resetAllMocks();
 
-    // Default query implementation — returns empty rows unless overridden by mockResolvedValueOnce
+    // ─── Service mock restore ────────────────────────────────
+    // resetAllMocks() এর পরে firebaseNotify/sendPushNotification/addLedgerEntry
+    // সব undefined হয়ে যায় → controller-এ await করলে crash → 500।
+    // প্রতিটা test-এর আগে resolved mock ফিরিয়ে দিচ্ছি।
+    firebaseNotify.mockResolvedValue({});
+    sendPushNotification.mockResolvedValue({});
+    addLedgerEntry.mockResolvedValue({});
+
+    // ─── DB mock defaults ────────────────────────────────────
+    // query-এর default: { rows: [] } — mockResolvedValueOnce দিয়ে override করা যাবে
     query.mockResolvedValue({ rows: [] });
 
-    // withTransaction default
+    // withTransaction default: cb কে client দিয়ে চালায় এবং result return করে
     withTransaction.mockImplementation(async (cb) => {
         const client = { query: jest.fn().mockResolvedValue({ rows: [{ id: 200 }] }) };
         return await cb(client);
