@@ -57,6 +57,9 @@ jest.mock('../config/encryption', () => ({
 
 // ─── IMPORTS (mock এর পরে) ────────────────────────────────────────
 const { query } = require('../config/db');
+const { uploadToCloudinary, generateCustomerCode } = require('../services/employee.service');
+const { sendWelcomeEmail, sendOTPEmail } = require('../services/email.service');
+const { generateOTP } = require('../config/encryption');
 
 const {
     getCustomers,
@@ -114,6 +117,13 @@ const sampleCustomer = {
 
 beforeEach(() => {
     jest.resetAllMocks();
+    // service mock গুলো প্রতিটি test-এ default value দাও
+    // (resetAllMocks mockResolvedValue implementation-ও clear করে)
+    uploadToCloudinary.mockResolvedValue('https://cloudinary.test/shop.jpg');
+    generateCustomerCode.mockResolvedValue('C-2024-001');
+    sendWelcomeEmail.mockResolvedValue({ success: true });
+    sendOTPEmail.mockResolvedValue({ success: true });
+    generateOTP.mockReturnValue('123456');
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -408,9 +418,9 @@ describe('createCustomer — নতুন কাস্টমার তৈরি'
     });
 
     test('email থাকলে welcome email পাঠানো হয়', async () => {
-        const { sendWelcomeEmail } = require('../services/email.service');
         query
-            .mockResolvedValueOnce({ rows: [sampleCustomer] }) // INSERT
+            .mockResolvedValueOnce({ rows: [sampleCustomer] })                                     // INSERT customer
+            .mockResolvedValueOnce({ rows: [] })                                                   // INSERT customer_assignments (worker)
             .mockResolvedValueOnce({ rows: [{ name_bn: 'আলী', name_en: 'Ali', phone: '017' }] }); // worker info
 
         const req = {
