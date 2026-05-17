@@ -403,6 +403,18 @@ async function main() {
 
     const startTime = Date.now();
 
+    // ── Warm-up: Render cold start জাগানো ─────────────────
+    console.log('\n⏳ Server warm-up হচ্ছে (Render cold start)...');
+    for (let attempt = 1; attempt <= 5; attempt++) {
+        const res = await request('POST', '/api/auth/login', USERS.admin);
+        if (res.status === 200) {
+            console.log(`✅ Server ready (attempt ${attempt})`);
+            break;
+        }
+        console.log(`  ⏳ Attempt ${attempt}: status=${res.status}, retrying...`);
+        await new Promise(r => setTimeout(r, 3000));
+    }
+
     // ── Phase 1: ১০ জন SR একসাথে ──────────────────────────
     console.log('\n━━━ Phase 1: ১০ জন SR একসাথে কাজ করছে ━━━');
     await Promise.all(
