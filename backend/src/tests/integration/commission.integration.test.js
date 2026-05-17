@@ -14,11 +14,11 @@
  * ─────────────────────────────────────────────────────────────
  */
 
-const { query, pool } = require('../../../config/db');
+const { query, pool } = require('../../config/db');
 const {
     calculateCommission,
     calculateCommissionRate,
-} = require('../../../services/commission.service');
+} = require('../../services/commission.service');
 
 // ─── DB connection cleanup ────────────────────────────────────
 afterAll(async () => {
