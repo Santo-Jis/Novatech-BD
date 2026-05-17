@@ -49,4 +49,8 @@ module.exports = {
     // forceExit: true — সব test শেষে Jest process জোর করে বন্ধ করে।
     forceExit: true,
     detectOpenHandles: true,
+
+    // integration test গুলো sequential চালাও — Supabase free tier-এ
+    // একসাথে অনেক connection হলে "max clients reached" error আসে।
+    runInBand: true,
 };
