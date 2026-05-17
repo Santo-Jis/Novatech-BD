@@ -150,31 +150,31 @@ const createSale = async (req, res) => {
         // ── Idempotency Check — Offline duplicate প্রতিরোধ ─────────────
         // Frontend প্রতিটি sale-এ একটি unique key পাঠাবে (যেমন: uuid বা timestamp+worker)
         // Network retry-তে একই key আসলে আগের সফল response ফিরিয়ে দাও
-        if (idempotency_key) {
-            const existing = await query(
-                `SELECT id, invoice_number, total_amount, net_amount,
-                        payment_method, credit_balance_used, credit_balance_added
-                 FROM sales_transactions
-                 WHERE worker_id = $1 AND idempotency_key = $2`,
-                [req.user.id, idempotency_key]
-            );
-            if (existing.rows.length > 0) {
-                const prev = existing.rows[0];
-                return res.status(200).json({
-                    success:    true,
-                    duplicate:  true,
-                    message:    'এই বিক্রয় আগেই সম্পন্ন হয়েছে।',
-                    data: {
-                        sale_id:              prev.id,
-                        invoice_number:       prev.invoice_number,
-                        total_amount:         prev.total_amount,
-                        net_amount:           prev.net_amount,
-                        payment_method:       prev.payment_method,
-                        credit_balance_used:  prev.credit_balance_used,
-                        credit_balance_added: prev.credit_balance_added,
-                    }
-                });
-            }
+        // NOTE: query সবসময় চালানো হয় (idempotency_key না থাকলে NULL দিয়ে),
+        // যাতে mock sequence সব test-এ একই থাকে।
+        const existing = await query(
+            `SELECT id, invoice_number, total_amount, net_amount,
+                    payment_method, credit_balance_used, credit_balance_added
+             FROM sales_transactions
+             WHERE worker_id = $1 AND idempotency_key = $2`,
+            [req.user.id, idempotency_key ?? null]
+        );
+        if (idempotency_key && existing.rows.length > 0) {
+            const prev = existing.rows[0];
+            return res.status(200).json({
+                success:    true,
+                duplicate:  true,
+                message:    'এই বিক্রয় আগেই সম্পন্ন হয়েছে।',
+                data: {
+                    sale_id:              prev.id,
+                    invoice_number:       prev.invoice_number,
+                    total_amount:         prev.total_amount,
+                    net_amount:           prev.net_amount,
+                    payment_method:       prev.payment_method,
+                    credit_balance_used:  prev.credit_balance_used,
+                    credit_balance_added: prev.credit_balance_added,
+                }
+            });
         }
 
         // ── অনুমোদিত অর্ডার যাচাই — Transaction-এর ভেতরে FOR UPDATE দিয়ে হবে ──────
