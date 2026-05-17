@@ -293,12 +293,12 @@ describe('GET /api/attendance/leave/all — সব আবেদন', () => {
 describe('PUT /api/attendance/leave/:id/review — আবেদন রিভিউ', () => {
 
     test('status না দিলে 400', async () => {
-        const res = await authPut('/api/attendance/leave/some-id/review', {}, 'manager');
+        const res = await authPut('/api/attendance/leave/00000000-0000-0000-0000-000000000000/review', {}, 'manager');
         expectError(res, 400);
     });
 
     test('অবৈধ status (approved/rejected ছাড়া) — 400', async () => {
-        const res = await authPut('/api/attendance/leave/some-id/review', { status: 'delete' }, 'manager');
+        const res = await authPut('/api/attendance/leave/00000000-0000-0000-0000-000000000000/review', { status: 'delete' }, 'manager');
         expectError(res, 400);
     });
 
@@ -312,13 +312,13 @@ describe('PUT /api/attendance/leave/:id/review — আবেদন রিভি�
     });
 
     test('Worker: রিভিউ করতে পারবে না — 403', async () => {
-        const res = await authPut('/api/attendance/leave/some-id/review', { status: 'approved' }, 'worker');
+        const res = await authPut('/api/attendance/leave/00000000-0000-0000-0000-000000000000/review', { status: 'approved' }, 'worker');
         expectError(res, 403);
     });
 
     test('Token ছাড়া — 401', async () => {
         const res = await request(getApp())
-            .put('/api/attendance/leave/some-id/review')
+            .put('/api/attendance/leave/00000000-0000-0000-0000-000000000000/review')
             .send({ status: 'approved' });
         expectError(res, 401);
     });
