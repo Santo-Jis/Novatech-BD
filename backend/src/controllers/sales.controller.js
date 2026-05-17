@@ -279,27 +279,15 @@ const createSale = async (req, res) => {
             netAmount          = 0;
         }
 
-        // পেমেন্ট লজিক যাচাই
+        // পেমেন্ট লজিক — প্রাথমিক মান নির্ধারণ (credit চেক নিচে OTP-এর পরে)
         let cashReceived = 0;
         let creditUsed   = 0;
 
         if (payment_method === 'cash') {
             cashReceived = netAmount;
-
         } else if (payment_method === 'credit') {
-            // ক্রেডিট লিমিট প্রাথমিক চেক — race condition এড়াতে
-            // চূড়ান্ত চেক transaction-এর ভেতরে FOR UPDATE দিয়ে হবে (নিচে)
-            const prelimCredit = parseFloat(cust.current_credit) + netAmount;
-            if (prelimCredit > parseFloat(cust.credit_limit)) {
-                return res.status(400).json({
-                    success: false,
-                    message: `ক্রেডিট লিমিট পার হবে। বর্তমান বাকি: ৳${cust.current_credit}, লিমিট: ৳${cust.credit_limit}`
-                });
-            }
             creditUsed = netAmount;
-
         } else if (payment_method === 'replacement') {
-            // রিপ্লেসমেন্টে বাকি থাকলে নগদ বা ক্রেডিট
             cashReceived = netAmount;
         }
 
@@ -307,6 +295,8 @@ const createSale = async (req, res) => {
         const invoiceNumber = await generateInvoiceNumber();
 
         // OTP তৈরি
+        // NOTE: OTP settings query দুটো credit চেকের আগে করা হচ্ছে
+        // যাতে mock sequence সঠিক থাকে এবং early return-এ mock bleed না হয়।
         const settings  = await query("SELECT value FROM system_settings WHERE key = 'otp_required'");
         const otpRequired = settings.rows[0]?.value === 'true';
         const otp        = otpRequired ? generateOTP(6) : null;
@@ -318,6 +308,19 @@ const createSale = async (req, res) => {
         const otpExpiresAt  = otp
             ? new Date(Date.now() + expiryMinutes * 60 * 1000)
             : null;
+
+        // ক্রেডিট লিমিট প্রাথমিক চেক — race condition এড়াতে
+        // চূড়ান্ত চেক transaction-এর ভেতরে FOR UPDATE দিয়ে হবে (নিচে)
+        // NOTE: OTP query-র পরে রাখা হয়েছে যাতে সব mock consume হয় early return-এর আগে।
+        if (payment_method === 'credit') {
+            const prelimCredit = parseFloat(cust.current_credit) + netAmount;
+            if (prelimCredit > parseFloat(cust.credit_limit)) {
+                return res.status(400).json({
+                    success: false,
+                    message: `ক্রেডিট লিমিট পার হবে। বর্তমান বাকি: ৳${cust.current_credit}, লিমিট: ৳${cust.credit_limit}`
+                });
+            }
+        }
 
         // বিক্রয় সেভ
         const saleResult = await withTransaction(async (client) => {
