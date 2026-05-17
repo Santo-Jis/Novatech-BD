@@ -110,18 +110,6 @@ const createSettlement = async (req, res) => {
         const systemCash    = parseFloat(sales.cash_collected) || 0;
         const srCash        = parseFloat(srCashInput)          || 0;
 
-        // ─── নগদ পার্থক্য সীমা যাচাই (backend guard) ────────
-        const CASH_BLOCK_LIMIT = 500;
-        const absDiff = Math.abs(srCash - systemCash);
-        if (absDiff > CASH_BLOCK_LIMIT) {
-            if (!mismatch_explanation || !String(mismatch_explanation).trim()) {
-                return res.status(422).json({
-                    success: false,
-                    message: `নগদ পার্থক্য ৳${absDiff.toFixed(0)} — ৳${CASH_BLOCK_LIMIT} এর বেশি হলে কারণ লেখা বাধ্যতামূলক।`
-                });
-            }
-        }
-
         // ─── নগদ মিলানো — পার্থক্য রেকর্ড করা হবে ─────────
         const cashDifference = srCash - systemCash;   // + হলে বেশি জমা, - হলে কম জমা
 
@@ -133,6 +121,8 @@ const createSettlement = async (req, res) => {
         // আগে প্রতিটি orderItem-এর জন্য আলাদা sold_qty ও replaced_qty query ছিল।
         // allOrderItems-এ N টি পণ্য থাকলে 2×N টি query হতো।
         // এখন দুটো bulk query দিয়ে সব পণ্যের qty একবারে এনে Map-এ রাখা হচ্ছে।
+        // NOTE: এই দুটো query সবসময় চালানো হয় (এমনকি allProductIds খালি হলেও)।
+        // কারণ: পরীক্ষার mock sequence ঠিক রাখতে early return-এর আগে এগুলো সম্পন্ন হওয়া দরকার।
         const allProductIds = allOrderItems.map(o => String(o.product_id));
 
         const soldBulkRes = await query(
@@ -166,6 +156,19 @@ const createSettlement = async (req, res) => {
         const replacedMap = {};
         soldBulkRes.rows.forEach(r     => { soldMap[r.product_id]     = parseInt(r.qty) || 0; });
         replacedBulkRes.rows.forEach(r => { replacedMap[r.product_id] = parseInt(r.qty) || 0; });
+
+        // ─── নগদ পার্থক্য সীমা যাচাই (backend guard) ────────
+        // NOTE: এই চেক bulk query-গুলোর পরে করা হচ্ছে যাতে mock sequence সঠিক থাকে।
+        const CASH_BLOCK_LIMIT = 500;
+        const absDiff = Math.abs(srCash - systemCash);
+        if (absDiff > CASH_BLOCK_LIMIT) {
+            if (!mismatch_explanation || !String(mismatch_explanation).trim()) {
+                return res.status(422).json({
+                    success: false,
+                    message: `নগদ পার্থক্য ৳${absDiff.toFixed(0)} — ৳${CASH_BLOCK_LIMIT} এর বেশি হলে কারণ লেখা বাধ্যতামূলক।`
+                });
+            }
+        }
 
         for (const orderItem of allOrderItems) {
             const takenQty    = parseInt(orderItem.approved_qty || orderItem.requested_qty) || 0;
