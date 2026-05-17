@@ -24,7 +24,9 @@ const calculateCommissionRate = async (salesAmount) => {
          LIMIT 1`,
         [salesAmount]
     );
-    return result.rows[0]?.rate || 0;
+    // PostgreSQL NUMERIC/DECIMAL type string হিসেবে আসে ("5.00")।
+    // parseFloat() দিয়ে JS number-এ convert করো।
+    return parseFloat(result.rows[0]?.rate) || 0;
 };
 
 /**
