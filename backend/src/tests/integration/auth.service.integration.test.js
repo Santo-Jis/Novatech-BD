@@ -16,7 +16,7 @@
  */
 
 const jwt    = require('jsonwebtoken');
-const { query, pool } = require('../../../config/db');
+const { query, pool } = require('../../config/db');
 const {
     generateAccessToken,
     generateRefreshToken,
@@ -24,7 +24,7 @@ const {
     verifyRefreshToken,
     deleteRefreshToken,
     cleanExpiredSessions,
-} = require('../../../services/auth.service');
+} = require('../../services/auth.service');
 
 // ─── Test user — DB-তে যে admin আছে সেটা ব্যবহার করব ─────────
 
