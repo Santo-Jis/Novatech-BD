@@ -1,6 +1,7 @@
 const { query, withTransaction } = require('../config/db');
-const { uploadToCloudinary }     = require('../services/employee.service');
-const { generateCustomerCode }   = require('../services/employee.service');
+const { uploadToCloudinary, generateCustomerCode } = require('../services/employee.service');
+const { sendWelcomeEmail, sendOTPEmail } = require('../services/email.service');
+const { generateOTP } = require('../config/encryption');
 
 // ============================================================
 // GET CUSTOMERS
@@ -181,6 +182,9 @@ const getCustomer = async (req, res) => {
 
         // Manager শুধু নিজের রুটের customer দেখতে পারবে
         if (req.user.role === 'manager') {
+            if (!customer.route_id) {
+                return res.status(403).json({ success: false, message: 'এই কাস্টমার আপনার টিমে নেই।' });
+            }
             const routeCheck = await query(
                 `SELECT id FROM routes WHERE id = $1 AND manager_id = $2`,
                 [customer.route_id, req.user.id]
@@ -291,8 +295,6 @@ const createCustomer = async (req, res) => {
         // ✅ স্বাগতম Email পাঠাও (email থাকলে)
         if (email) {
             try {
-                const { sendWelcomeEmail } = require('../services/email.service');
-
                 // SR এর তথ্য আনো (worker হলে)
                 let workerInfo = null;
                 if (req.user.role === 'worker') {
@@ -790,6 +792,9 @@ const rejectCustomerEdit = async (req, res) => {
             paramCount++;
             rollbackParams.push(editReq.customer_id);
             await query(`UPDATE customers SET ${rollbackFields.join(', ')}, updated_at = NOW() WHERE id = $${paramCount}`, rollbackParams);
+        } else {
+            // কোনো rollback field না থাকলেও updated_at রিফ্রেশ (query order consistent)
+            await query(`UPDATE customers SET updated_at = NOW() WHERE id = $1`, [editReq.customer_id]);
         }
         await query(`UPDATE customer_edit_requests SET status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_note = $2 WHERE id = $3`, [req.user.id, reason || 'ম্যানেজার কর্তৃক বাতিল', requestId]);
         await query(`UPDATE customers SET has_pending_edit = false WHERE id = $1`, [editReq.customer_id]);
@@ -815,8 +820,6 @@ const sendEmailVerifyOTP = async (req, res) => {
             return res.status(400).json({ success: false, message: 'সঠিক Email দিন।' });
         }
 
-        const { generateOTP } = require('../config/encryption');
-        const { sendOTPEmail } = require('../services/email.service');
 
         const otp        = generateOTP(6);
         const expiresAt  = new Date(Date.now() + 10 * 60 * 1000); // 10 মিনিট
