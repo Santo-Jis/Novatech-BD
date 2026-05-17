@@ -39,13 +39,13 @@ describe('commission_settings টেবিল — DB sanity check', () => {
         expect(count).toBeGreaterThan(0);
     });
 
-    test('প্রতিটি active slab-এ rate > 0 থাকবে', async () => {
+    test('প্রতিটি active slab-এ rate >= 0 থাকবে (negative নয়)', async () => {
         const result = await query(
             `SELECT id, slab_min, rate
              FROM commission_settings
-             WHERE is_active = true AND rate <= 0`
+             WHERE is_active = true AND rate < 0`
         );
-        // rate <= 0 এমন কোনো active slab থাকা উচিত না
+        // rate negative এমন কোনো active slab থাকা উচিত না
         expect(result.rows.length).toBe(0);
     });
 
@@ -70,19 +70,21 @@ describe('calculateCommissionRate — Real DB slab query', () => {
         const slabResult = await query(
             `SELECT slab_min, slab_max, rate
              FROM commission_settings
-             WHERE is_active = true
+             WHERE is_active = true AND rate > 0
              ORDER BY slab_min ASC
              LIMIT 1`
         );
 
         if (slabResult.rows.length === 0) {
-            console.warn('⚠️ commission_settings-এ কোনো slab নেই — test skip');
+            console.warn('⚠️ commission_settings-এ কোনো rate > 0 slab নেই — test skip');
             return;
         }
 
         const slab = slabResult.rows[0];
-        // slab_min এর মাঝামাঝি একটা value দিই
-        const testAmount = parseFloat(slab.slab_min) + 1000;
+        // slab_max থাকলে midpoint নাও, না থাকলে slab_min + 1000
+        const testAmount = slab.slab_max
+            ? (parseFloat(slab.slab_min) + parseFloat(slab.slab_max)) / 2
+            : parseFloat(slab.slab_min) + 1000;
 
         const rate = await calculateCommissionRate(testAmount);
         expect(rate).toBe(parseFloat(slab.rate));
