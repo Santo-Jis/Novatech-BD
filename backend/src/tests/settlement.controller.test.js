@@ -40,7 +40,12 @@ const workerUser  = { id: 'worker-uuid-1', role: 'worker',  name_bn: 'আলী'
 const managerUser = { id: 'manager-uuid-1', role: 'manager', name_bn: 'ম্যানেজার' };
 
 beforeEach(() => {
-    jest.clearAllMocks();
+    // resetAllMocks clears call history AND the mockResolvedValueOnce queue,
+    // preventing leftover mocks from bleeding into subsequent tests.
+    jest.resetAllMocks();
+
+    // Default query implementation — returns empty rows unless overridden by mockResolvedValueOnce
+    query.mockResolvedValue({ rows: [] });
 
     // withTransaction default
     withTransaction.mockImplementation(async (cb) => {
