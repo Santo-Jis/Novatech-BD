@@ -719,6 +719,12 @@ const reviewLeaveRequest = async (req, res) => {
         const { id }     = req.params;
         const { status, reviewer_note } = req.body;
 
+        // ID অবশ্যই integer হতে হবে
+        const parsedId = parseInt(id, 10);
+        if (isNaN(parsedId)) {
+            return res.status(404).json({ success: false, message: 'আবেদনটি পাওয়া যায়নি।' });
+        }
+
         if (!['approved', 'rejected'].includes(status)) {
             return res.status(400).json({ success: false, message: 'স্ট্যাটাস approved বা rejected হতে হবে।' });
         }
@@ -728,7 +734,7 @@ const reviewLeaveRequest = async (req, res) => {
              SET status = $1, reviewed_by = $2, reviewed_at = NOW(), reviewer_note = $3
              WHERE id = $4 AND status = 'pending'
              RETURNING *`,
-            [status, reviewerId, reviewer_note || null, id]
+            [status, reviewerId, reviewer_note || null, parsedId]
         );
 
         if (leaveResult.rows.length === 0) {
