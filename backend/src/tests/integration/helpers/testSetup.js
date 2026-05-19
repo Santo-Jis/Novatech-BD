@@ -20,6 +20,14 @@
  */
 
 const request = require('supertest');
+const { pool } = require('../../../config/db');
+
+// ─── Global teardown — DB pool বন্ধ করো ──────────────────────
+afterAll(async () => {
+    if (pool && typeof pool.end === 'function') {
+        await pool.end();
+    }
+});
 
 // ─── App import (server start না করে) ────────────────────────
 // server.js module.exports = app করে, তাই সরাসরি import করা যায়
