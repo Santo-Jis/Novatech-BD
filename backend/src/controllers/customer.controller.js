@@ -163,6 +163,12 @@ const getCustomers = async (req, res) => {
 
 const getCustomer = async (req, res) => {
     try {
+        // UUID format validation
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(req.params.id)) {
+            return res.status(400).json({ success: false, message: 'অবৈধ ID ফরম্যাট।' });
+        }
+
         const result = await query(
             `SELECT c.*,
                     r.name AS route_name,
