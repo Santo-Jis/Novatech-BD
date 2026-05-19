@@ -52,5 +52,5 @@ module.exports = {
 
     // integration test গুলো sequential চালাও — Supabase free tier-এ
     // একসাথে অনেক connection হলে "max clients reached" error আসে।
-    runInBand: true,
+    // runInBand: CLI flag হিসেবে দেওয়া হয়েছে (jest.config-এ valid না)
 };
