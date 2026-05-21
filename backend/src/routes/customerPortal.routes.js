@@ -1,5 +1,5 @@
 // ============================================================
-// CUSTOMER PORTAL ROUTES
+// CUSTOMER PORTAL ROUTES — Multi-Device Whitelist Edition
 // Base: /api/portal
 // ============================================================
 
@@ -13,6 +13,9 @@ const {
     verifyPortalToken,
     deviceLogin,
     googleAuth,
+    listCustomerDevices,
+    revokeDevice,
+    revokeAllDevices,
     getCustomerDashboard,
     getCustomerInvoices,
     getPaymentHistory,
@@ -39,34 +42,24 @@ const {
     getMyReturnRequests,
 } = require('../controllers/customerOrderRequest.controller');
 
-const { auth } = require('../middlewares/auth');
+const { auth }          = require('../middlewares/auth');
 const { aiTokenBucket } = require('../middlewares/aiTokenBucket');
 const { customerAiChat, getCustomerChatHistory } = require('../controllers/customerAiChat.controller');
-const { query } = require('../config/db');
-
-// ── customerAiLimiter সরানো হয়েছে → aiTokenBucket middleware ব্যবহার হচ্ছে
+const { query }         = require('../config/db');
 
 // ============================================================
 // PORTAL AUTH CACHE
-// ============================================================
 // Redis নেই — in-process Map দিয়ে TTL cache।
 //
-// কী cache করা হচ্ছে:
-//   key   → customer_id
-//   value → { token_version, cachedAt }
+// key   → customer_id
+// value → { token_version, cachedAt }
+// TTL   → 60 সেকেন্ড
 //
-// TTL: 60 সেকেন্ড।
-//   - এই সময়ের মধ্যে deactivate হলে সর্বোচ্চ ৬০ সেকেন্ড পুরনো
-//     session চলবে — acceptable trade-off (employee auth-এ ১৫ মিনিট)।
-//   - sendPortalLink বা deactivate হলে invalidatePortalAuthCache(id)
-//     call করলে তাৎক্ষণিক বাদ পড়বে।
-//
-// Memory: প্রতিটি entry ~150 bytes। ১০,০০০ customer = ~1.5 MB — safe।
+// Memory: ~150 bytes/entry × ১০,০০০ customer = ~1.5 MB — safe।
 // ============================================================
-const PORTAL_AUTH_CACHE_TTL_MS = 60 * 1000; // ৬০ সেকেন্ড
-const portalAuthCache = new Map(); // customer_id → { token_version, cachedAt }
+const PORTAL_AUTH_CACHE_TTL_MS = 60 * 1000;
+const portalAuthCache = new Map();
 
-// Cache থেকে পড়ো — মেয়াদ শেষ হলে delete করে null দাও
 const getCached = (customerId) => {
     const entry = portalAuthCache.get(customerId);
     if (!entry) return null;
@@ -77,15 +70,12 @@ const getCached = (customerId) => {
     return entry;
 };
 
-// নতুন লিংক পাঠালে বা admin deactivate করলে cache বাতিল করুন।
-// customerPortal.controller.js-এ sendPortalLink থেকে call করুন:
-//   const { invalidatePortalAuthCache } = require('../routes/customerPortal.routes');
-//   invalidatePortalAuthCache(customerId);
+// নতুন লিংক পাঠালে বা admin deactivate করলে বাতিল করুন
 const invalidatePortalAuthCache = (customerId) => {
     portalAuthCache.delete(customerId);
 };
 
-// ── Portal JWT Middleware (কাস্টমার ড্যাশবোর্ডের জন্য) ──────
+// ── Portal JWT Middleware ────────────────────────────────────
 const portalAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith('Bearer ')) {
@@ -98,8 +88,6 @@ const portalAuth = async (req, res, next) => {
 
     const token = authHeader.split(' ')[1];
     try {
-        // শুধুমাত্র JWT_PORTAL_SECRET দিয়ে verify — JWT_ACCESS_SECRET fallback নেই।
-        // algorithms সুনির্দিষ্ট করা — 'none' algorithm attack বন্ধ।
         const decoded = jwt.verify(token, process.env.JWT_PORTAL_SECRET, {
             algorithms: ['HS256']
         });
@@ -112,16 +100,13 @@ const portalAuth = async (req, res, next) => {
             return res.status(403).json({ success: false, message: 'অবৈধ টোকেন — customer_id নেই।' });
         }
 
-        const customerId  = decoded.customer_id;
-        const jwtVersion  = decoded.token_version || 1;
+        const customerId = decoded.customer_id;
+        const jwtVersion = decoded.token_version || 1;
 
-        // ── Cache-first DB check ──────────────────────────────
-        // আগে: প্রতি request-এ দুটো DB query (active check + token_version check)
-        // এখন: cache hit হলে শূন্য DB query; miss হলে একটি query
+        // Cache-first — hit হলে DB query নেই
         let cached = getCached(customerId);
 
         if (!cached) {
-            // Cache miss — DB থেকে একটি query-তে সব তথ্য আনো
             try {
                 const authCheck = await query(
                     `SELECT c.id, c.is_active, cpt.token_version AS current_version
@@ -139,8 +124,6 @@ const portalAuth = async (req, res, next) => {
                 }
 
                 const currentVersion = authCheck.rows[0].current_version || 1;
-
-                // Cache-এ রাখো — পরের ৬০ সেকেন্ড DB query লাগবে না
                 cached = { token_version: currentVersion, cachedAt: Date.now() };
                 portalAuthCache.set(customerId, cached);
 
@@ -150,9 +133,7 @@ const portalAuth = async (req, res, next) => {
             }
         }
 
-        // Token version মেলাও — cache থেকে (DB query ছাড়াই)
         if (jwtVersion !== cached.token_version) {
-            // Version mismatch → cache stale হতে পারে, তাই বাতিল করে দাও
             invalidatePortalAuthCache(customerId);
             return res.status(401).json({
                 success:    false,
@@ -168,92 +149,94 @@ const portalAuth = async (req, res, next) => {
     }
 };
 
-// ── SR বা System: কাস্টমারকে WhatsApp লিংক পাঠাবে ──────────
+// ============================================================
+// AUTH ROUTES (login flow)
+// ============================================================
+
+// SR বা System: WhatsApp লিংক পাঠাবে
 // POST /api/portal/send-link/:customerId
 router.post('/send-link/:customerId', auth, sendPortalLink);
 
-// ── Fix 1: redirect_id → actual portal_token (POST body) ────
+// redirect_id → actual portal_token (POST body — URL-এ token নেই)
 // POST /api/portal/resolve-link  { redirect_id }
-// URL-এ token নেই — WhatsApp preview / server log / history safe
 router.post('/resolve-link', resolveLink);
 
-// ── কাস্টমার লিংক খুললে টোকেন যাচাই ──────────────────────
-// GET /api/portal/verify-token?token=xxx
+// Pre-login check: token valid? device whitelisted? Google skip যাবে?
+// GET /api/portal/verify-token?token=xxx&device_id=xxx
 router.get('/verify-token', verifyPortalToken);
 
-// ── Google OAuth → কাস্টমার লগইন (প্রথমবার — device lock হয়) ─
-// POST /api/portal/google-auth
+// Google OAuth → email lock + device whitelist-এ add
+// POST /api/portal/google-auth  { google_token, portal_token, device_id }
 router.post('/google-auth', googleAuth);
 
-// ── Device Re-login (Google ছাড়া, fingerprint দিয়ে) ─────────
-// POST /api/portal/device-login
+// Whitelisted device-এ Google ছাড়া login
+// POST /api/portal/device-login  { portal_token, device_id }
 router.post('/device-login', deviceLogin);
 
-// ── কাস্টমার ড্যাশবোর্ড ডেটা ──────────────────────────────
+// ============================================================
+// DEVICE MANAGEMENT ROUTES (Admin/SR)
+// ============================================================
+
+// কাস্টমারের সব whitelisted device দেখো
+// GET /api/portal/devices/:customerId
+router.get('/devices/:customerId', auth, listCustomerDevices);
+
+// সব device revoke (কাস্টমারকে Google দিয়ে নতুন করে login করতে বাধ্য করো)
+// DELETE /api/portal/devices/:customerId
+router.delete('/devices/:customerId', auth, revokeAllDevices);
+
+// নির্দিষ্ট একটি device revoke
+// DELETE /api/portal/devices/:customerId/:deviceId
+router.delete('/devices/:customerId/:deviceId', auth, revokeDevice);
+
+// ============================================================
+// CUSTOMER PORTAL DASHBOARD ROUTES
+// ============================================================
+
 // GET /api/portal/dashboard
 router.get('/dashboard', portalAuth, getCustomerDashboard);
 
-// ── কাস্টমারের Paginated Invoice List (search + filter সহ) ──
-// GET /api/portal/invoices?page=1&limit=15&search=INV&payment_method=cash&date_from=2025-01-01&date_to=2025-03-31
+// GET /api/portal/invoices?page=1&limit=15&search=INV&payment_method=cash
 router.get('/invoices', portalAuth, getCustomerInvoices);
 
-// ── সম্পূর্ণ Payment History (নগদ + credit একসাথে) ─────────
 // GET /api/portal/payment-history?page=1&type=cash&date_from=2025-01-01
 router.get('/payment-history', portalAuth, getPaymentHistory);
 
-// ── মাসিক সারসংক্ষেপ (একাধিক মাস) ──────────────────────────
 // GET /api/portal/monthly-summary?months=6
-// GET /api/portal/monthly-summary?year=2025&month=3  (নির্দিষ্ট মাস)
+// GET /api/portal/monthly-summary?year=2025&month=3
 router.get('/monthly-summary', portalAuth, getMonthlySummary);
 
-// ── Credit Overview (limit vs বাকি comparison) ───────────────
 // GET /api/portal/credit-overview
 router.get('/credit-overview', portalAuth, getCreditOverview);
 
-// ── SR ম্যানুয়ালি reminder পাঠাবে ──────────────────────────
-// POST /api/portal/send-reminder/:customerId
+// ============================================================
+// OTHER PORTAL ROUTES
+// ============================================================
+
+// Credit reminder
 router.post('/send-reminder/:customerId', auth, sendCreditReminder);
 
-// ── Customer FCM Token (Web Push) ───────────────────────────
-// POST /api/portal/save-fcm-token
-router.post('/save-fcm-token', portalAuth, saveCustomerFCMToken);
+// FCM + Notifications
+router.post('/save-fcm-token',              portalAuth, saveCustomerFCMToken);
+router.get('/notifications',                portalAuth, getNotifications);
+router.patch('/notifications/read-all',     portalAuth, markAllRead);
+router.patch('/notifications/:id/read',     portalAuth, markOneRead);
 
-// ── Customer In-App Notifications ───────────────────────────
-// GET    /api/portal/notifications
-router.get('/notifications', portalAuth, getNotifications);
-// PATCH  /api/portal/notifications/read-all
-router.patch('/notifications/read-all', portalAuth, markAllRead);
-// PATCH  /api/portal/notifications/:id/read
-router.patch('/notifications/:id/read', portalAuth, markOneRead);
+// Products + Order Requests
+router.get('/products',                     portalAuth, getPortalProducts);
+router.get('/products/:id',                 portalAuth, getPortalProductDetail);
+router.post('/order-request',               portalAuth, createOrderRequest);
+router.get('/order-requests',               portalAuth, getMyOrderRequests);
+router.patch('/order-requests/:id/cancel',  portalAuth, cancelMyOrderRequest);
+router.get('/order-requests/:id/tracking',  portalAuth, getOrderTracking);
 
-// ── Customer Order Request (পোর্টাল) ────────────────────────
-// GET  /api/portal/products  — সব পণ্য (list + ছবি + দাম)
-router.get('/products', portalAuth, getPortalProducts);
-// GET  /api/portal/products/:id  — একটি পণ্যের বিস্তারিত + ছবি + price breakdown
-router.get('/products/:id', portalAuth, getPortalProductDetail);
-// POST /api/portal/order-request
-router.post('/order-request', portalAuth, createOrderRequest);
-// GET  /api/portal/order-requests
-router.get('/order-requests', portalAuth, getMyOrderRequests);
-// PATCH /api/portal/order-requests/:id/cancel — pending অর্ডার বাতিল
-router.patch('/order-requests/:id/cancel', portalAuth, cancelMyOrderRequest);
+// Return Requests
+router.post('/return-request',              portalAuth, createReturnRequest);
+router.get('/return-requests',              portalAuth, getMyReturnRequests);
 
-// ── অর্ডার ট্র্যাকিং (রিয়েলটাইম status timeline) ───────────
-// GET /api/portal/order-requests/:id/tracking
-router.get('/order-requests/:id/tracking', portalAuth, getOrderTracking);
-
-// ── পণ্য ফেরতের অনুরোধ ──────────────────────────────────────
-// POST /api/portal/return-request
-router.post('/return-request', portalAuth, createReturnRequest);
-// GET  /api/portal/return-requests?page=1&status=all
-router.get('/return-requests', portalAuth, getMyReturnRequests);
-
-// ── Customer AI Chat ─────────────────────────────────────────
-// POST /api/portal/ai-chat        — AI-এর সাথে কথা বলো
-// GET  /api/portal/ai-chat/history — পুরনো chat দেখো
+// AI Chat
 router.post('/ai-chat',         portalAuth, aiTokenBucket, customerAiChat);
 router.get('/ai-chat/history',  portalAuth, getCustomerChatHistory);
 
 module.exports = router;
 module.exports.invalidatePortalAuthCache = invalidatePortalAuthCache;
-
