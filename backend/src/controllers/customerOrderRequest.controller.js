@@ -435,6 +435,17 @@ const updateOrderRequest = async (req, res) => {
         if (status) {
             updates.push(`status = $${paramIdx++}`);
             values.push(status);
+
+            // ── status_history-এ নতুন entry append করো ────────
+            // JSONB array-এ নতুন object push: { status, changed_at, changed_by }
+            // এটা getOrderTracking()-এ timeline দেখাতে ব্যবহার হয়।
+            // coalesce: column null হলে empty array দিয়ে শুরু করো।
+            updates.push(`status_history = COALESCE(status_history, '[]'::jsonb) || $${paramIdx++}::jsonb`);
+            values.push(JSON.stringify([{
+                status,
+                changed_at: new Date().toISOString(),
+                changed_by: req.user?.id || null,
+            }]));
         }
         if (assigned_to !== undefined) {
             updates.push(`assigned_to = $${paramIdx++}`);
@@ -658,6 +669,368 @@ const notifyAdminStockWarning = async (req, res) => {
 };
 
 
+// ============================================================
+// 6. কাস্টমার একটি নির্দিষ্ট অর্ডারের রিয়েলটাইম ট্র্যাকিং দেখবে
+// GET /api/portal/order-requests/:id/tracking
+// portalAuth middleware দরকার
+//
+// Response:
+//   current_status  — বর্তমান অবস্থা
+//   status_history  — কখন কোন status হয়েছিল (timeline)
+//   assigned_sr     — কোন SR দায়িত্বে আছে (নাম + ফোন)
+//   estimated_info  — admin_note থেকে delivery সংক্রান্ত তথ্য
+//   items           — অর্ডারের পণ্যসমূহ
+//
+// কেন status_history JSON column?
+//   customer_order_requests table-এ আলাদা history table নেই।
+//   status পরিবর্তনের সময় status_history JSONB column-এ append করা হয়।
+//   updateOrderRequest() এই column আপডেট করে।
+//   মাইগ্রেশন: migration_new_features.sql-এ নিচে যোগ করা হয়েছে।
+// ============================================================
+
+// Status বাংলা label map — getOrderTracking ও updateOrderRequest দুজায়গায় ব্যবহার হয়
+// const দিয়ে define, তাই getOrderTracking-এর আগে রাখা জরুরি
+const STATUS_LABELS = {
+    pending:   'অপেক্ষমাণ',
+    confirmed: 'কনফার্ম হয়েছে',
+    assigned:  'SR রওনা দিয়েছে',
+    delivered: 'ডেলিভারি সম্পন্ন',
+    cancelled: 'বাতিল',
+};
+
+const getOrderTracking = async (req, res) => {
+    try {
+        const { customer_id } = req.portalUser;
+        const { id }          = req.params;
+
+        const result = await query(
+            `SELECT
+                cor.id, cor.status, cor.items, cor.note, cor.admin_note,
+                cor.status_history,
+                cor.created_at, cor.updated_at,
+                u.name_bn  AS sr_name,
+                u.phone    AS sr_phone
+             FROM customer_order_requests cor
+             LEFT JOIN users u ON cor.assigned_to = u.id
+             WHERE cor.id = $1 AND cor.customer_id = $2`,
+            [id, customer_id]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'অর্ডার পাওয়া যায়নি।'
+            });
+        }
+
+        const order = result.rows[0];
+
+        // ── Status pipeline — সব ধাপ ও বর্তমান অবস্থান ─────
+        // Frontend এটা দিয়ে progress bar বানাতে পারবে।
+        // cancelled হলে pipeline ভিন্ন।
+        const pipeline = ['pending', 'confirmed', 'assigned', 'delivered'];
+        const currentIdx = pipeline.indexOf(order.status);
+
+        const steps = pipeline.map((step, idx) => {
+            // status_history-তে এই step-এর timestamp খোঁজো
+            let completedAt = null;
+            if (Array.isArray(order.status_history)) {
+                const found = order.status_history.find(h => h.status === step);
+                if (found) completedAt = found.changed_at;
+            }
+            // pending step সবসময় created_at-এ হয়
+            if (step === 'pending' && !completedAt) completedAt = order.created_at;
+
+            return {
+                step,
+                label:        STATUS_LABELS[step] || step,
+                completed:    order.status === 'cancelled' ? false : idx <= currentIdx,
+                active:       order.status !== 'cancelled' && idx === currentIdx,
+                completed_at: completedAt,
+            };
+        });
+
+        // items parse (JSONB হলে already object, string হলে parse করো)
+        let items = order.items;
+        if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                order_id:       order.id,
+                current_status: order.status,
+                is_cancelled:   order.status === 'cancelled',
+                created_at:     order.created_at,
+                updated_at:     order.updated_at,
+                note:           order.note,
+                admin_note:     order.admin_note,
+                steps,
+                assigned_sr: order.sr_name ? {
+                    name:  order.sr_name,
+                    phone: order.sr_phone,
+                } : null,
+                items,
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ getOrderTracking Error:', error.message);
+        return res.status(500).json({ success: false, message: 'ট্র্যাকিং তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// 7. কাস্টমার পণ্য ফেরতের অনুরোধ করবে
+// POST /api/portal/return-request
+// portalAuth middleware দরকার
+//
+// Body:
+//   invoice_number  — কোন ইনভয়েসের পণ্য ফেরত দিতে চায়
+//   items           — [{ product_id, product_name, qty, reason }]
+//   note            — অতিরিক্ত বিবরণ (optional)
+//
+// নিয়ম:
+//   - ইনভয়েস এই কাস্টমারের হতে হবে
+//   - ইনভয়েস delivered/completed হতে হবে (otp_verified বা otp_skipped)
+//   - একই ইনভয়েসে duplicate pending return request থাকলে block করবে
+//   - Admin/Manager কে push notification যাবে
+//
+// DB: customer_return_requests table (মাইগ্রেশনে নিচে যোগ)
+// ============================================================
+const createReturnRequest = async (req, res) => {
+    try {
+        const { customer_id } = req.portalUser;
+        const { invoice_number, items, note } = req.body;
+
+        // ── Validation ────────────────────────────────────────
+        if (!invoice_number || !invoice_number.trim()) {
+            return res.status(400).json({ success: false, message: 'ইনভয়েস নম্বর দিন।' });
+        }
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ success: false, message: 'কমপক্ষে একটি পণ্য সিলেক্ট করুন।' });
+        }
+        for (const item of items) {
+            if (!item.product_name || !item.qty || parseInt(item.qty) <= 0) {
+                return res.status(400).json({ success: false, message: 'পণ্যের তথ্য সঠিক নয়।' });
+            }
+            if (!item.reason || !item.reason.trim()) {
+                return res.status(400).json({ success: false, message: 'প্রতিটি পণ্যের ফেরতের কারণ দিন।' });
+            }
+        }
+
+        // ── ইনভয়েস যাচাই — এই কাস্টমারের এবং completed ──────
+        const invoiceCheck = await query(
+            `SELECT invoice_number, net_amount, created_at
+             FROM sales_transactions
+             WHERE invoice_number = $1
+               AND customer_id = $2
+               AND (otp_verified = true OR otp_skipped = true)`,
+            [invoice_number.trim(), customer_id]
+        );
+        if (invoiceCheck.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'এই ইনভয়েস পাওয়া যায়নি বা এটি আপনার নয়।'
+            });
+        }
+
+        // ── Duplicate check — একই ইনভয়েসে pending return আছে? ─
+        const dupCheck = await query(
+            `SELECT id FROM customer_return_requests
+             WHERE customer_id = $1
+               AND invoice_number = $2
+               AND status = 'pending'`,
+            [customer_id, invoice_number.trim()]
+        );
+        if (dupCheck.rows.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'এই ইনভয়েসে ইতোমধ্যে একটি ফেরতের অনুরোধ প্রক্রিয়াধীন আছে।',
+                error_code: 'DUPLICATE_RETURN_REQUEST'
+            });
+        }
+
+        // ── items sanitize ────────────────────────────────────
+        const sanitizedItems = items.map(item => ({
+            product_id:   item.product_id   || null,
+            product_name: item.product_name,
+            qty:          parseInt(item.qty),
+            reason:       item.reason.trim(),
+        }));
+
+        // ── DB-তে সেভ করো ─────────────────────────────────────
+        const result = await query(
+            `INSERT INTO customer_return_requests
+                 (customer_id, invoice_number, items, note, status)
+             VALUES ($1, $2, $3::jsonb, $4, 'pending')
+             RETURNING id, created_at`,
+            [customer_id, invoice_number.trim(), JSON.stringify(sanitizedItems), note || null]
+        );
+        const newRequest = result.rows[0];
+
+        // ── কাস্টমার তথ্য (notification-এর জন্য) ─────────────
+        const custRes = await query(
+            `SELECT shop_name, owner_name, customer_code FROM customers WHERE id = $1`,
+            [customer_id]
+        );
+        const customer = custRes.rows[0] || {};
+
+        // ── Admin/Manager-কে push notification ────────────────
+        try {
+            const adminIds = await getAdminManagerIds();
+            if (adminIds.length > 0) {
+                await sendPushToMany(adminIds, {
+                    title: `↩️ পণ্য ফেরতের অনুরোধ`,
+                    body:  `${customer.shop_name || ''} (${customer.customer_code || ''}) — ইনভয়েস: ${invoice_number}, ${sanitizedItems.length}টি পণ্য।`,
+                    type:  'return_request',
+                    data:  { return_request_id: newRequest.id },
+                });
+            }
+        } catch (pushErr) {
+            console.error('[ReturnRequest] Push error:', pushErr.message);
+        }
+
+        return res.status(201).json({
+            success: true,
+            message: 'ফেরতের অনুরোধ পাঠানো হয়েছে। শীঘ্রই SR যোগাযোগ করবে।',
+            data: {
+                return_request_id: newRequest.id,
+                created_at:        newRequest.created_at,
+                invoice_number,
+                items_count:       sanitizedItems.length,
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ createReturnRequest Error:', error.message);
+        return res.status(500).json({ success: false, message: 'অনুরোধ পাঠাতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// 8. কাস্টমার তার ফেরতের অনুরোধ লিস্ট দেখবে
+// GET /api/portal/return-requests?page=1&status=all
+// portalAuth middleware দরকার
+// ============================================================
+const getMyReturnRequests = async (req, res) => {
+    try {
+        const { customer_id } = req.portalUser;
+        const page   = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit  = Math.min(50, parseInt(req.query.limit) || 10);
+        const offset = (page - 1) * limit;
+        const status = req.query.status || 'all';
+
+        const validStatuses = ['pending', 'approved', 'rejected', 'completed'];
+        const statusFilter  = validStatuses.includes(status) ? `AND status = $2` : '';
+        const baseParams    = validStatuses.includes(status) ? [customer_id, status] : [customer_id];
+
+        const pLimit  = baseParams.length + 1;
+        const pOffset = baseParams.length + 2;
+
+        const { rows } = await query(
+            `SELECT id, invoice_number, items, note, status,
+                    admin_note, created_at, updated_at
+             FROM customer_return_requests
+             WHERE customer_id = $1 ${statusFilter}
+             ORDER BY created_at DESC
+             LIMIT $${pLimit} OFFSET $${pOffset}`,
+            [...baseParams, limit, offset]
+        );
+
+        const countRes = await query(
+            `SELECT COUNT(*) AS total FROM customer_return_requests
+             WHERE customer_id = $1 ${statusFilter}`,
+            baseParams
+        );
+        const total      = parseInt(countRes.rows[0].total);
+        const totalPages = Math.ceil(total / limit);
+
+        // Status বাংলায় দেখাও
+        const STATUS_BN = {
+            pending:   'অপেক্ষমাণ',
+            approved:  'অনুমোদিত',
+            rejected:  'প্রত্যাখ্যাত',
+            completed: 'সম্পন্ন',
+        };
+        const enriched = rows.map(r => ({
+            ...r,
+            status_bn: STATUS_BN[r.status] || r.status,
+        }));
+
+        return res.status(200).json({
+            success: true,
+            data:    enriched,
+            pagination: { page, limit, total, totalPages },
+        });
+
+    } catch (error) {
+        console.error('❌ getMyReturnRequests Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// 9. পোর্টালে একটি পণ্যের বিস্তারিত তথ্য + ছবি
+// GET /api/portal/products/:id
+// portalAuth middleware দরকার
+//
+// getPortalProducts()-এ list-এ image_url ও description আছে,
+// কিন্তু কাস্টমার একটি পণ্যে ক্লিক করলে আরো বিস্তারিত দেখাবে:
+//   - সম্পূর্ণ description
+//   - price breakdown (base + vat + tax = final)
+//   - available stock
+//   - unit (পিস/কেজি/বাক্স ইত্যাদি)
+// ============================================================
+const getPortalProductDetail = async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        const { rows } = await query(
+            `SELECT id, name, price, vat, tax, unit, description, image_url,
+                    (stock - COALESCE(reserved_stock, 0)) AS available_stock
+             FROM products
+             WHERE id = $1::uuid
+               AND is_active = true`,
+            [id]
+        );
+
+        if (rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'পণ্য পাওয়া যায়নি।' });
+        }
+
+        const p = rows[0];
+
+        // ── Price breakdown ───────────────────────────────────
+        const { calcFinalPrice } = require('../services/price.utils');
+        const { vatAmount, taxAmount, finalPrice } = calcFinalPrice(p.price, p.vat, p.tax);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                id:              p.id,
+                name:            p.name,
+                unit:            p.unit,
+                description:     p.description || '',
+                image_url:       p.image_url   || null,
+                available_stock: parseInt(p.available_stock),
+                in_stock:        parseInt(p.available_stock) > 0,
+                // Price breakdown — কাস্টমার দেখতে পাবে কোথায় কত যাচ্ছে
+                pricing: {
+                    base_price:  parseFloat(p.price),
+                    vat_amount:  vatAmount,
+                    tax_amount:  taxAmount,
+                    final_price: finalPrice,
+                    has_extra:   vatAmount > 0 || taxAmount > 0,
+                },
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ getPortalProductDetail Error:', error.message);
+        return res.status(500).json({ success: false, message: 'পণ্যের তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     createOrderRequest,
     getMyOrderRequests,
@@ -666,4 +1039,8 @@ module.exports = {
     updateOrderRequest,
     notifyAdminStockWarning,
     getPortalProducts,
+    getPortalProductDetail,
+    getOrderTracking,
+    createReturnRequest,
+    getMyReturnRequests,
 };
