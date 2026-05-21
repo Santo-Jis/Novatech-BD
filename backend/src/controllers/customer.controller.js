@@ -598,6 +598,14 @@ const collectCredit = async (req, res) => {
             [customerId, req.user.id, amount, notes || null]
         );
 
+        // ✅ কাস্টমারকে payment confirmation notification দাও
+        const remainingCredit = Math.max(0, parseFloat(customer.rows[0].current_credit) - parseFloat(amount));
+        sendCustomerNotification(customerId, {
+            title: '💳 পেমেন্ট নিশ্চিত হয়েছে',
+            body:  `আপনার ৳${parseFloat(amount).toLocaleString('bn-BD')} পেমেন্ট গ্রহণ করা হয়েছে। বর্তমান বাকি: ৳${remainingCredit.toLocaleString('bn-BD')}`,
+            type:  'payment_received',
+        }).catch(e => console.error('[CollectCredit] Notification error:', e.message));
+
         return res.status(200).json({
             success: true,
             message: `৳${amount} বাকি আদায় সফল।`
