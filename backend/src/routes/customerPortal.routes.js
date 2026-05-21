@@ -6,7 +6,6 @@
 const express    = require('express');
 const router     = express.Router();
 const jwt        = require('jsonwebtoken');
-const rateLimit  = require('express-rate-limit');
 
 const {
     sendPortalLink,
@@ -41,37 +40,11 @@ const {
 } = require('../controllers/customerOrderRequest.controller');
 
 const { auth } = require('../middlewares/auth');
+const { aiTokenBucket } = require('../middlewares/aiTokenBucket');
 const { customerAiChat, getCustomerChatHistory } = require('../controllers/customerAiChat.controller');
 const { query } = require('../config/db');
 
-// ============================================================
-// PER-CUSTOMER AI CHAT RATE LIMITER
-//
-// সমস্যা ১: global apiLimiter (১৫ মিনিটে ৩০০) শুধু সব request গণে।
-//            একজন কাস্টমার burst করলে সবার AI budget শেষ হয়।
-// সমস্যা ২: AI call প্রতিটি দুটি LLM pass করে (intent + final) —
-//            cost সাধারণ endpoint-এর চেয়ে ~১০x বেশি।
-//
-// সমাধান:  ai-chat route-এ আলাদা, কড়া limiter।
-//   • ১ মিনিটে সর্বোচ্চ ৫টি AI request (burst রোধ)
-//   • Key: customer_id (JWT থেকে) — IP নয়, shared WiFi-তেও আলাদা count
-//   • portalAuth middleware-এর পরে চলে তাই req.portalUser নিশ্চিত
-// ============================================================
-const customerAiLimiter = rateLimit({
-    windowMs: 1 * 60 * 1000,   // ১ মিনিট window
-    max: 5,                      // ১ মিনিটে ৫টি AI request
-    keyGenerator: (req) => {
-        // portalAuth-এর পরে চলে — customer_id সবসময় থাকবে
-        return `ai_cust_${req.portalUser.customer_id}`;
-    },
-    standardHeaders: true,
-    legacyHeaders:   false,
-    message: {
-        success: false,
-        message: 'একটু থামুন! প্রতি মিনিটে সর্বোচ্চ ৫টি AI প্রশ্ন করা যাবে। ১ মিনিট পরে আবার চেষ্টা করুন।',
-        error_code: 'AI_RATE_LIMIT'
-    }
-});
+// ── customerAiLimiter সরানো হয়েছে → aiTokenBucket middleware ব্যবহার হচ্ছে
 
 // ============================================================
 // PORTAL AUTH CACHE
@@ -278,12 +251,9 @@ router.get('/return-requests', portalAuth, getMyReturnRequests);
 // ── Customer AI Chat ─────────────────────────────────────────
 // POST /api/portal/ai-chat        — AI-এর সাথে কথা বলো
 // GET  /api/portal/ai-chat/history — পুরনো chat দেখো
-router.post('/ai-chat',         portalAuth, customerAiLimiter, customerAiChat);
+router.post('/ai-chat',         portalAuth, aiTokenBucket, customerAiChat);
 router.get('/ai-chat/history',  portalAuth, getCustomerChatHistory);
 
 module.exports = router;
 module.exports.invalidatePortalAuthCache = invalidatePortalAuthCache;
 
-// ── Customer AI Chat ─────────────────────────────────────────
-// POST /api/portal/ai-chat
-// GET  /api/portal/ai-chat/history
