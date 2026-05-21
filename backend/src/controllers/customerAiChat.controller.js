@@ -1,3 +1,13 @@
+// ============================================================
+// Customer AI Chat Controller  (updated)
+// File: backend/src/controllers/customerAiChat.controller.js
+//
+// পরিবর্তন:
+//   • response-এ tokens_remaining, refill_in_seconds যোগ হয়েছে
+//     (aiTokenBucket middleware req.aiTokens set করে)
+//   • বাকি সব আগের মতোই
+// ============================================================
+
 const { query }          = require('../config/db');
 const { callAI }         = require('../services/ai.service');
 const { writeAiChatLog, getDB } = require('../config/firebase');
@@ -8,12 +18,7 @@ const {
     parseToolCall,
 } = require('../services/customerAiChat.service');
 
-// ============================================================
-// Customer AI Chat Controller
-// চ্যাট হিস্টরি → Firebase Realtime Database
-// Structure: aiChatLogs/{customerId}/{timestamp}
-// ============================================================
-
+// ── Save to Firebase (non-critical) ─────────────────────────
 const saveToLog = async (customerId, message, reply) => {
     try {
         await writeAiChatLog(customerId, message, reply);
@@ -21,10 +26,9 @@ const saveToLog = async (customerId, message, reply) => {
 };
 
 // ── Constants ────────────────────────────────────────────────
-// AI-তে পাঠানোর আগে message ও history কতটুকু accept করব
-const MAX_MESSAGE_LENGTH  = 500;   // user message-এর সর্বোচ্চ character
-const MAX_HISTORY_TURNS   = 6;     // শেষ কতটি turn history পাঠাব
-const MAX_HISTORY_CONTENT = 300;   // history-র প্রতিটি item সর্বোচ্চ character
+const MAX_MESSAGE_LENGTH  = 500;
+const MAX_HISTORY_TURNS   = 6;
+const MAX_HISTORY_CONTENT = 300;
 
 const customerAiChat = async (req, res) => {
     try {
@@ -35,18 +39,17 @@ const customerAiChat = async (req, res) => {
             return res.status(400).json({ success: false, message: 'বার্তা দিন।' });
         }
 
-        // Message length check — token abuse ও cost spike রোধ
         if (message.trim().length > MAX_MESSAGE_LENGTH) {
             return res.status(400).json({
-                success:    false,
-                message:    `বার্তা সর্বোচ্চ ${MAX_MESSAGE_LENGTH} অক্ষরের মধ্যে রাখুন।`,
-                error_code: 'MESSAGE_TOO_LONG',
-                max_length: MAX_MESSAGE_LENGTH,
+                success:     false,
+                message:     `বার্তা সর্বোচ্চ ${MAX_MESSAGE_LENGTH} অক্ষরের মধ্যে রাখুন।`,
+                error_code:  'MESSAGE_TOO_LONG',
+                max_length:  MAX_MESSAGE_LENGTH,
                 sent_length: message.trim().length,
             });
         }
 
-        // ⚠️ SECURITY: customerId সবসময় JWT থেকে — user input থেকে নয়
+        // ⚠️ SECURITY: customerId সবসময় JWT থেকে
         const customerId = req.portalUser.customer_id;
 
         const customerResult = await query(
@@ -60,7 +63,7 @@ const customerAiChat = async (req, res) => {
         const customerInfo = customerResult.rows[0];
         const systemPrompt = buildSystemPrompt(customerInfo);
 
-        // ── Pass 1: কোন tool দরকার? ──────────────────────────
+        // ── Pass 1: Tool Detection ────────────────────────────
         const toolListText = CUSTOMER_TOOLS.map(t => `- ${t.name}: ${t.description}`).join('\n');
         const intentPrompt =
             `User message: "${message.trim()}"\n\n` +
@@ -90,8 +93,6 @@ const customerAiChat = async (req, res) => {
         }
 
         // ── Pass 2: Final Answer ──────────────────────────────
-        // History: শেষ N turn, প্রতিটি item MAX_HISTORY_CONTENT-এ truncate
-        // — কেউ ইচ্ছাকৃতভাবে বড় history inject করলেও token খরচ bounded থাকবে
         const chatHistory = history
             .slice(-MAX_HISTORY_TURNS)
             .map(h => ({
@@ -119,9 +120,23 @@ const customerAiChat = async (req, res) => {
         const reply = await callAI(finalPrompt, 'daily', systemPrompt, chatHistory);
         await saveToLog(customerId, message.trim(), reply);
 
+        // ── Token Info (aiTokenBucket middleware থেকে) ───────
+        // req.aiTokens না থাকলে (middleware bypass হলে) gracefully handle
+        const tokenInfo = req.aiTokens || null;
+
         return res.status(200).json({
             success: true,
-            data: { reply, tool_used: toolName || null }
+            data: {
+                reply,
+                tool_used: toolName || null,
+                // কাস্টমারকে দেখাতে পারবেন: "আপনার ১৬টি টোকেন বাকি"
+                ...(tokenInfo && {
+                    tokens_remaining:  tokenInfo.remaining,
+                    tokens_max:        tokenInfo.max,
+                    cost_this_request: tokenInfo.cost,
+                    refill_in_seconds: tokenInfo.refill_in_seconds,
+                }),
+            },
         });
 
     } catch (error) {
@@ -132,13 +147,12 @@ const customerAiChat = async (req, res) => {
     }
 };
 
+// ── Chat History (অপরিবর্তিত) ────────────────────────────────
 const getCustomerChatHistory = async (req, res) => {
     try {
         const customerId = req.portalUser.customer_id;
         const limit = Math.min(50, parseInt(req.query.limit) || 20);
 
-        // Firebase Realtime Database থেকে চ্যাট হিস্টরি আনো
-        // timestamp key দিয়ে sort হয়, শেষ N টা নাও
         const snapshot = await getDB()
             .ref(`aiChatLogs/${customerId}`)
             .orderByKey()
@@ -151,19 +165,18 @@ const getCustomerChatHistory = async (req, res) => {
             return res.status(200).json({ success: true, data: [] });
         }
 
-        // timestamp key দিয়ে sort করে array বানাও
         const history = Object.entries(data)
             .sort(([a], [b]) => Number(a) - Number(b))
             .map(([ts, entry]) => ({
-                message:    entry.message,
-                reply:      entry.reply,
-                time:       new Date(Number(ts)).toLocaleString('bn-BD', {
-                                timeZone: 'Asia/Dhaka',
-                                day:      '2-digit',
-                                month:    'short',
-                                hour:     '2-digit',
-                                minute:   '2-digit',
-                            }),
+                message: entry.message,
+                reply:   entry.reply,
+                time:    new Date(Number(ts)).toLocaleString('bn-BD', {
+                    timeZone: 'Asia/Dhaka',
+                    day:      '2-digit',
+                    month:    'short',
+                    hour:     '2-digit',
+                    minute:   '2-digit',
+                }),
             }));
 
         return res.status(200).json({ success: true, data: history });
