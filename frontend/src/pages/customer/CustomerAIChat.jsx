@@ -197,25 +197,40 @@ export default function CustomerAIChat() {
       .catch(() => setMessages([welcome]))
   }, [customerInfo, historyLoaded])
 
+  // Token info state
+  const [tokenInfo, setTokenInfo] = useState(null)
+
   // Send message
   const send = useCallback(async (text) => {
     const msg = (text || input).trim()
     if (!msg || loading) return
 
     setInput('')
+
+    // ✅ Fix: recentHistory নেওয়া হচ্ছে setMessages-এর আগে
+    // যাতে নতুন userMsg history-তে duplicate না হয়
+    const recentHistory = messages.slice(-6).map(m => ({
+      role: m.role, content: m.content
+    }))
+
     const userMsg = { role: 'user', content: msg, time: null }
     setMessages(prev => [...prev, userMsg])
     setLoading(true)
 
     try {
-      const recentHistory = messages.slice(-8).map(m => ({
-        role: m.role, content: m.content
-      }))
-
       const res = await portalPost('/portal/ai-chat', {
         message: msg,
         history: recentHistory,
       })
+
+      // Token info আপডেট করো (backend থেকে আসে)
+      if (res.data.tokens_remaining !== undefined) {
+        setTokenInfo({
+          remaining:       res.data.tokens_remaining,
+          max:             res.data.tokens_max,
+          resetIn:         res.data.reset_in_minutes,
+        })
+      }
 
       const aiMsg = {
         role:    'assistant',
@@ -319,12 +334,40 @@ export default function CustomerAIChat() {
         borderRadius: 10,
         background: 'rgba(34,197,94,0.08)',
         border: '1px solid rgba(34,197,94,0.2)',
-        display: 'flex', alignItems: 'center', gap: 8,
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
-        <span style={{ fontSize: 13 }}>🔒</span>
-        <span style={{ fontSize: 11, color: '#4ade80', fontWeight: 600 }}>
-          শুধু আপনার তথ্য দেখানো হয় — সম্পূর্ণ নিরাপদ
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13 }}>🔒</span>
+          <span style={{ fontSize: 11, color: '#4ade80', fontWeight: 600 }}>
+            শুধু আপনার তথ্য দেখানো হয় — সম্পূর্ণ নিরাপদ
+          </span>
+        </div>
+        {/* Token indicator */}
+        {tokenInfo !== null && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 5,
+            padding: '3px 8px', borderRadius: 8,
+            background: tokenInfo.remaining <= 5
+              ? 'rgba(239,68,68,0.1)'
+              : 'rgba(99,102,241,0.1)',
+            border: `1px solid ${tokenInfo.remaining <= 5
+              ? 'rgba(239,68,68,0.3)'
+              : 'rgba(99,102,241,0.25)'}`,
+          }}>
+            <span style={{ fontSize: 11 }}>⚡</span>
+            <span style={{
+              fontSize: 11, fontWeight: 700,
+              color: tokenInfo.remaining <= 5 ? '#f87171' : '#a5b4fc',
+            }}>
+              {tokenInfo.remaining}/{tokenInfo.max}
+            </span>
+            {tokenInfo.remaining <= 5 && (
+              <span style={{ fontSize: 10, color: '#f87171' }}>
+                · {tokenInfo.resetIn}মি পরে reset
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Messages ────────────────────────────────────────── */}
