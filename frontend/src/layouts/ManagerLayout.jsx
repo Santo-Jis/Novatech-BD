@@ -2,24 +2,30 @@ import { useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
-import { FiHome, FiUsers, FiShoppingCart, FiCheckSquare, FiCalendar, FiMapPin, FiUser, FiBell, FiMenu, FiX, FiLogOut, FiMessageSquare, FiList, FiFileText, FiRefreshCw } from 'react-icons/fi'
+import {
+  FiHome, FiUsers, FiShoppingCart, FiCheckSquare,
+  FiCalendar, FiMapPin, FiUser, FiBell, FiMenu, FiX,
+  FiLogOut, FiMessageSquare, FiList, FiFileText,
+  FiRefreshCw, FiShield
+} from 'react-icons/fi'
 
 const navItems = [
-  { path: '/manager/dashboard',     icon: <FiHome />,         label: 'ড্যাশবোর্ড' },
-  { path: '/manager/live-tracking', icon: <FiMapPin />,       label: 'লাইভ ট্র্যাকিং' },
-  { path: '/manager/trail-history', icon: <FiMapPin />,       label: 'Trail History' },
-  { path: '/manager/team',          icon: <FiUsers />,        label: 'আমার টিম' },
-  { path: '/manager/orders',        icon: <FiShoppingCart />, label: 'অর্ডার' },
+  { path: '/manager/dashboard',      icon: <FiHome />,         label: 'ড্যাশবোর্ড' },
+  { path: '/manager/live-tracking',  icon: <FiMapPin />,       label: 'লাইভ ট্র্যাকিং' },
+  { path: '/manager/trail-history',  icon: <FiMapPin />,       label: 'Trail History' },
+  { path: '/manager/team',           icon: <FiUsers />,        label: 'আমার টিম' },
+  { path: '/manager/orders',         icon: <FiShoppingCart />, label: 'অর্ডার' },
   { path: '/manager/order-ledger',   icon: <FiFileText />,     label: 'অর্ডার লেজার' },
-  { path: '/manager/settlements',   icon: <FiCheckSquare />,  label: 'হিসাব' },
-  { path: '/manager/expense',       icon: <FiFileText />,     label: 'খরচ অনুমোদন' },
-  { path: '/manager/returns',       icon: <FiRefreshCw />,    label: 'রিটার্ন অনুমোদন' },
-  { path: '/manager/attendance',    icon: <FiCalendar />,     label: 'হাজিরা' },
-  { path: '/manager/customers',     icon: <FiUser />,         label: 'কাস্টমার' },
-  { path: '/manager/routes',        icon: <FiMapPin />,       label: 'রুট' },
-  { path: '/manager/visit-order',   icon: <FiList />,         label: 'Visit ক্রম' },
-  { path: '/manager/ai-chat',       icon: <FiMessageSquare />,label: 'AI চ্যাট' },
-  { path: '/manager/notices',       icon: <FiBell />,         label: 'নোটিশ' },
+  { path: '/manager/settlements',    icon: <FiCheckSquare />,  label: 'হিসাব' },
+  { path: '/manager/expense',        icon: <FiFileText />,     label: 'খরচ অনুমোদন' },
+  { path: '/manager/returns',        icon: <FiRefreshCw />,    label: 'রিটার্ন অনুমোদন' },
+  { path: '/manager/attendance',     icon: <FiCalendar />,     label: 'হাজিরা' },
+  { path: '/manager/customers',      icon: <FiUser />,         label: 'কাস্টমার' },
+  { path: '/manager/portal-devices', icon: <FiShield />,       label: 'পোর্টাল Device' },
+  { path: '/manager/routes',         icon: <FiMapPin />,       label: 'রুট' },
+  { path: '/manager/visit-order',    icon: <FiList />,         label: 'Visit ক্রম' },
+  { path: '/manager/ai-chat',        icon: <FiMessageSquare />,label: 'AI চ্যাট' },
+  { path: '/manager/notices',        icon: <FiBell />,         label: 'নোটিশ' },
 ]
 
 export default function ManagerLayout() {
