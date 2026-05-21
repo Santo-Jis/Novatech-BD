@@ -6,6 +6,76 @@
 
 const { query } = require('../config/db');
 const { sendCustomerPush } = require('../services/fcm.service');
+const nodemailer = require('nodemailer');
+
+// ── Email Transporter (Brevo SMTP) ──────────────────────────
+// FCM push fail হলে বা FCM token না থাকলে email fallback
+const emailEnabled = process.env.EMAIL_ENABLED === 'true';
+const transporter  = emailEnabled ? nodemailer.createTransport({
+    host:   process.env.EMAIL_HOST,
+    port:   parseInt(process.env.EMAIL_PORT) || 587,
+    secure: false,
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+    },
+}) : null;
+
+// notification type → emoji map (email subject-এ ব্যবহার)
+const TYPE_EMOJI = {
+    payment_received:     '💳',
+    new_invoice:          '🧾',
+    order_request:        '📦',
+    credit_reminder:      '⚠️',
+    general:              '🔔',
+};
+
+/**
+ * sendFallbackEmail — FCM fail হলে বা token না থাকলে email পাঠাও
+ * কাস্টমারের email না থাকলে silently skip করো
+ */
+const sendFallbackEmail = async (customerId, { title, body, type }) => {
+    if (!emailEnabled || !transporter) return;
+    try {
+        const { rows } = await query(
+            `SELECT email, owner_name, shop_name FROM customers WHERE id = $1 AND email IS NOT NULL AND email != ''`,
+            [customerId]
+        );
+        if (!rows.length) return; // email নেই — skip
+
+        const emoji   = TYPE_EMOJI[type] || '🔔';
+        const toName  = rows[0].owner_name || rows[0].shop_name || 'কাস্টমার';
+
+        await transporter.sendMail({
+            from:    process.env.EMAIL_FROM,
+            to:      rows[0].email,
+            subject: `${emoji} ${title}`,
+            html: `
+                <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;background:#f8fafc;border-radius:12px;overflow:hidden">
+                    <div style="background:linear-gradient(135deg,#6366f1,#7c3aed);padding:20px 24px">
+                        <h2 style="color:#fff;margin:0;font-size:18px">${emoji} ${title}</h2>
+                    </div>
+                    <div style="padding:20px 24px;background:#fff">
+                        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px">
+                            প্রিয় ${toName},
+                        </p>
+                        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 20px">
+                            ${body}
+                        </p>
+                        <div style="background:#f1f5f9;border-radius:8px;padding:12px 16px">
+                            <p style="color:#6b7280;font-size:12px;margin:0">
+                                NovaTech BD • স্বয়ংক্রিয় বার্তা — উত্তর দেওয়ার দরকার নেই
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            `,
+        });
+        console.log(`📧 Email fallback sent → ${rows[0].email} (type: ${type})`);
+    } catch (e) {
+        console.error('[EmailFallback] Error:', e.message);
+    }
+};
 
 // ============================================================
 // DB Table (Supabase এ একবার run করুন):
@@ -166,20 +236,35 @@ const saveCustomerFCMToken = async (req, res) => {
 // ============================================================
 const sendCustomerNotificationFull = async (customerId, { title, body, type = 'general' }) => {
     try {
-        // In-App notification
+        // ১. In-App notification (সবসময়)
         await query(`
             INSERT INTO customer_notifications (customer_id, title, body, type)
             VALUES ($1, $2, $3, $4)
         `, [customerId, title, body, type]);
 
-        // Web Push — customer এর FCM token আছে কিনা দেখো
+        // ২. Web Push চেষ্টা করো
         const { rows } = await query(
-            `SELECT fcm_token FROM customers WHERE id = $1 AND fcm_token IS NOT NULL`,
+            `SELECT fcm_token, email FROM customers WHERE id = $1`,
             [customerId]
         );
-        if (rows.length && rows[0].fcm_token) {
-            await sendCustomerPush(rows[0].fcm_token, { title, body, type });
+
+        const customer    = rows[0] || {};
+        let   pushSuccess = false;
+
+        if (customer.fcm_token) {
+            try {
+                await sendCustomerPush(customer.fcm_token, { title, body, type });
+                pushSuccess = true;
+            } catch (pushErr) {
+                console.warn(`[CustomerNotification] FCM failed (type: ${type}):`, pushErr.message);
+            }
         }
+
+        // ৩. FCM fail বা token না থাকলে Email fallback
+        if (!pushSuccess) {
+            await sendFallbackEmail(customerId, { title, body, type });
+        }
+
     } catch (e) {
         console.error('[CustomerNotification] Error:', e.message);
     }
