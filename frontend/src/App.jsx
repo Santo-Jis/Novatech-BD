@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { useAuthStore } from './store/auth.store'
 import { FirebaseProvider } from './firebase/notifications'
 import PermissionSetup, { usePermissionSetup } from './components/PermissionSetup'
-import AppUpdateDialog from './components/AppUpdateDialog'   // ← নতুন
+import AppUpdateDialog from './components/AppUpdateDialog'
 
 // Layouts
 import AdminLayout    from './layouts/AdminLayout'
@@ -42,11 +42,7 @@ import CustomerAIChat   from './pages/customer/CustomerAIChat'
 import CustomerLogin    from './pages/customer/CustomerLogin'
 
 // ── Google OAuth Popup Callback ──────────────────────────────
-// Web login-এ popup redirect হয়ে এখানে আসবে
-// token URL hash-এ থাকবে, opener window polling করে নেবে
 const PortalOAuthCallback = () => {
-  // এই page-এ কিছু render করার দরকার নেই
-  // webGoogleLogin() এর polling এই page-এর URL থেকে token নেবে
   return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
       minHeight:'100vh', background:'#f0f4ff', flexDirection:'column', gap:12 }}>
@@ -59,21 +55,22 @@ const PortalOAuthCallback = () => {
 }
 
 // Manager Pages
-import ManagerDashboard   from './pages/manager/Dashboard'
-import ManagerTeam        from './pages/manager/Team'
-import VisitLog           from './pages/manager/VisitLog'
-import ManagerOrders      from './pages/manager/Orders'
-import ManagerSettlements from './pages/manager/Settlements'
-import SRLedger           from './pages/manager/SRLedger'
-import SalesOrderLedger   from './pages/manager/SalesOrderLedger'
-import ManagerAttendance  from './pages/manager/Attendance'
-import ManagerCustomers   from './pages/manager/Customers'
-import ManagerRoutes      from './pages/manager/Routes'
-import VisitOrder         from './pages/manager/VisitOrder'
-import LiveTracking       from './pages/manager/LiveTracking'
-import TrailHistory      from './pages/manager/TrailHistory'
-import ExpenseApprovals  from './pages/manager/ExpenseApprovals'
-import ReturnApprovals  from './pages/manager/ReturnApprovals'
+import ManagerDashboard      from './pages/manager/Dashboard'
+import ManagerTeam           from './pages/manager/Team'
+import VisitLog              from './pages/manager/VisitLog'
+import ManagerOrders         from './pages/manager/Orders'
+import ManagerSettlements    from './pages/manager/Settlements'
+import SRLedger              from './pages/manager/SRLedger'
+import SalesOrderLedger      from './pages/manager/SalesOrderLedger'
+import ManagerAttendance     from './pages/manager/Attendance'
+import ManagerCustomers      from './pages/manager/Customers'
+import ManagerRoutes         from './pages/manager/Routes'
+import VisitOrder            from './pages/manager/VisitOrder'
+import LiveTracking          from './pages/manager/LiveTracking'
+import TrailHistory          from './pages/manager/TrailHistory'
+import ExpenseApprovals      from './pages/manager/ExpenseApprovals'
+import ReturnApprovals       from './pages/manager/ReturnApprovals'
+import ManagerPortalDevices  from './pages/manager/PortalDevices'   // ← নতুন
 
 // Worker Pages
 import WorkerDashboard  from './pages/worker/Dashboard'
@@ -103,7 +100,6 @@ import ReturnHistory    from './pages/worker/ReturnHistory'
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, token, authReady } = useAuthStore()
 
-  // silentRefresh এখনও চলছে — render করো না
   if (!authReady) {
     return (
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh' }}>
@@ -132,16 +128,12 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 const HomeRedirect = () => {
   const { user } = useAuthStore()
 
-  // portal_jwt থাকলে → customer dashboard
   const hasPortalJWT = typeof window !== 'undefined' &&
     Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
   if (hasPortalJWT && !user) return <Navigate to="/customer/dashboard" replace />
 
-  // login নেই → LandingPage দেখাও
   if (!user) return <LandingPage />
 
-  // logged-in → dashboard-এ পাঠাও, কিন্তু history তে /landing রেখে যাও
-  // যাতে back বাটনে LandingPage দেখা যায়
   switch (user.role) {
     case 'admin':
       return <Navigate to="/admin/dashboard" replace={false} />
@@ -159,7 +151,7 @@ const HomeRedirect = () => {
 }
 
 // ============================================================
-// Customer Guard — portal_jwt চেক করে
+// Customer Guard
 // ============================================================
 
 import { Outlet } from 'react-router-dom'
@@ -168,15 +160,12 @@ const CustomerGuard = () => {
   const hasPortalJWT = typeof window !== 'undefined' &&
     Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
 
-  // portal_jwt আছে → ভেতরে যাও
   if (hasPortalJWT) return <Outlet />
 
-  // URL-এ ?token= আছে (WhatsApp লিংক) → CustomerPortal নিজেই handle করবে
   const params = new URLSearchParams(window.location.search)
   const urlToken = params.get('token')
   if (urlToken) return <Outlet />
 
-  // কোনো token নেই → LandingPage এ পাঠাও
   return <Navigate to="/landing" replace />
 }
 
@@ -188,20 +177,15 @@ function AppWithPermissions() {
   const { show: showPermissions, close: closePermissions } = usePermissionSetup()
   const { silentRefresh, user, authReady } = useAuthStore()
 
-  // ✅ Page refresh হলে accessToken memory থেকে হারায়।
-  // App mount-এ একবার /auth/refresh call করে HttpOnly cookie থেকে
-  // নতুন accessToken নেওয়া হয় — user logged-in থাকে।
-  // authReady store-এ থাকে — ProtectedRoute-ও সরাসরি check করতপারে।
   useEffect(() => {
     if (user) {
-      silentRefresh() // authReady: true store-এ set হবে (.finally নেই — store handle করছে)
+      silentRefresh()
     } else {
-      useAuthStore.setState({ authReady: true }) // user নেই — আর wait করার দরকার নেই
+      useAuthStore.setState({ authReady: true })
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!authReady) {
-    // token refresh চলছে — blank screen বা spinner দেখাও
     return (
       <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh' }}>
         <div style={{ width:36, height:36, border:'4px solid #e0e7ff',
@@ -213,22 +197,20 @@ function AppWithPermissions() {
 
   return (
     <>
-      {/* Auto Update Dialog — Android App এ নতুন version থাকলে দেখাবে */}
       <AppUpdateDialog />
 
-      {/* Permission Setup Modal */}
       {showPermissions && (
         <PermissionSetup onDone={closePermissions} />
       )}
 
       <Routes>
       {/* Public */}
-      <Route path="/"                      element={<HomeRedirect />} />
-      <Route path="/landing"              element={<LandingPage />} />
-      <Route path="/login"                element={<Login />} />
-      <Route path="/customer-login"       element={<CustomerLogin />} />
-      <Route path="/apply/sr"             element={<SRApplicationForm />} />
-      <Route path="/customer-portal"      element={<Navigate to="/customer/dashboard" replace />} />
+      <Route path="/"                       element={<HomeRedirect />} />
+      <Route path="/landing"               element={<LandingPage />} />
+      <Route path="/login"                 element={<Login />} />
+      <Route path="/customer-login"        element={<CustomerLogin />} />
+      <Route path="/apply/sr"              element={<SRApplicationForm />} />
+      <Route path="/customer-portal"       element={<Navigate to="/customer/dashboard" replace />} />
       <Route path="/portal-oauth-callback" element={<PortalOAuthCallback />} />
 
       {/* ── CUSTOMER ROUTES ── */}
@@ -241,7 +223,7 @@ function AppWithPermissions() {
           <Route path="payments"        element={<CustomerPortal defaultTab="payments" />} />
           <Route path="notifications"   element={<CustomerPortal defaultTab="notifications" />} />
           <Route path="profile"         element={<CustomerPortal defaultTab="summary"  />} />
-          <Route path="ai-chat"          element={<CustomerAIChat />} />
+          <Route path="ai-chat"         element={<CustomerAIChat />} />
         </Route>
       </Route>
 
@@ -285,24 +267,25 @@ function AppWithPermissions() {
           <ManagerLayout />
         </ProtectedRoute>
       }>
-        <Route index               element={<Navigate to="dashboard" replace />} />
-        <Route path="dashboard"    element={<ManagerDashboard />} />
-        <Route path="team"                        element={<ManagerTeam />} />
-        <Route path="team/:workerId/visits"       element={<VisitLog />} />
-        <Route path="orders"       element={<ManagerOrders />} />
-        <Route path="settlements"  element={<ManagerSettlements />} />
-        <Route path="attendance"   element={<ManagerAttendance />} />
-        <Route path="customers"    element={<ManagerCustomers />} />
-        <Route path="routes"       element={<ManagerRoutes />} />
-        <Route path="visit-order"  element={<VisitOrder />} />
-        <Route path="live-tracking" element={<LiveTracking />} />
-        <Route path="trail-history" element={<TrailHistory />} />
-        <Route path="sr-ledger"    element={<SRLedger />} />
-        <Route path="order-ledger"  element={<SalesOrderLedger />} />
-        <Route path="expense"      element={<ExpenseApprovals />} />
-        <Route path="returns"      element={<ReturnApprovals />} />
-        <Route path="ai-chat"      element={<AIChat />} />
-        <Route path="notices"      element={<NoticesView />} />
+        <Route index                              element={<Navigate to="dashboard" replace />} />
+        <Route path="dashboard"                  element={<ManagerDashboard />} />
+        <Route path="team"                       element={<ManagerTeam />} />
+        <Route path="team/:workerId/visits"      element={<VisitLog />} />
+        <Route path="orders"                     element={<ManagerOrders />} />
+        <Route path="settlements"                element={<ManagerSettlements />} />
+        <Route path="attendance"                 element={<ManagerAttendance />} />
+        <Route path="customers"                  element={<ManagerCustomers />} />
+        <Route path="routes"                     element={<ManagerRoutes />} />
+        <Route path="visit-order"                element={<VisitOrder />} />
+        <Route path="live-tracking"              element={<LiveTracking />} />
+        <Route path="trail-history"              element={<TrailHistory />} />
+        <Route path="sr-ledger"                  element={<SRLedger />} />
+        <Route path="order-ledger"               element={<SalesOrderLedger />} />
+        <Route path="expense"                    element={<ExpenseApprovals />} />
+        <Route path="returns"                    element={<ReturnApprovals />} />
+        <Route path="portal-devices"             element={<ManagerPortalDevices />} />
+        <Route path="ai-chat"                    element={<AIChat />} />
+        <Route path="notices"                    element={<NoticesView />} />
       </Route>
 
       {/* ── WORKER ROUTES ── */}
@@ -311,27 +294,27 @@ function AppWithPermissions() {
           <WorkerLayout />
         </ProtectedRoute>
       }>
-        <Route index               element={<Navigate to="dashboard" replace />} />
-        <Route path="dashboard"    element={<WorkerDashboard />} />
-        <Route path="attendance"   element={<WorkerAttendance />} />
-        <Route path="route"        element={<RouteSelect />} />
-        <Route path="order"        element={<OrderForm />} />
-        <Route path="customers"    element={<CustomerList />} />
-        <Route path="visit/:id"    element={<VisitPage />} />
-        <Route path="sales/:id"    element={<SalesForm />} />
-        <Route path="otp/:id"      element={<OTPVerify />} />
-        <Route path="settlement"   element={<WorkerSettlement />} />
-        <Route path="commission"   element={<Commission />} />
-        <Route path="salary-history" element={<SalaryHistory />} />
-        <Route path="profile"      element={<Profile />} />
-        <Route path="sales-history" element={<SalesHistory />} />
-        <Route path="stock-status"  element={<StockStatus />} />
-        <Route path="ledger-history" element={<LedgerHistory />} />
-        <Route path="expense"          element={<ExpenseForm />} />
-        <Route path="expense-history"  element={<ExpenseHistory />} />
-        <Route path="return-form"      element={<ReturnForm />} />
-        <Route path="return-history"   element={<ReturnHistory />} />
-        <Route path="notices"      element={<NoticesView />} />
+        <Route index                  element={<Navigate to="dashboard" replace />} />
+        <Route path="dashboard"       element={<WorkerDashboard />} />
+        <Route path="attendance"      element={<WorkerAttendance />} />
+        <Route path="route"           element={<RouteSelect />} />
+        <Route path="order"           element={<OrderForm />} />
+        <Route path="customers"       element={<CustomerList />} />
+        <Route path="visit/:id"       element={<VisitPage />} />
+        <Route path="sales/:id"       element={<SalesForm />} />
+        <Route path="otp/:id"         element={<OTPVerify />} />
+        <Route path="settlement"      element={<WorkerSettlement />} />
+        <Route path="commission"      element={<Commission />} />
+        <Route path="salary-history"  element={<SalaryHistory />} />
+        <Route path="profile"         element={<Profile />} />
+        <Route path="sales-history"   element={<SalesHistory />} />
+        <Route path="stock-status"    element={<StockStatus />} />
+        <Route path="ledger-history"  element={<LedgerHistory />} />
+        <Route path="expense"         element={<ExpenseForm />} />
+        <Route path="expense-history" element={<ExpenseHistory />} />
+        <Route path="return-form"     element={<ReturnForm />} />
+        <Route path="return-history"  element={<ReturnHistory />} />
+        <Route path="notices"         element={<NoticesView />} />
       </Route>
 
       {/* 404 */}
