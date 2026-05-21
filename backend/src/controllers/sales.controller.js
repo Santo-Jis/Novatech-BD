@@ -520,6 +520,16 @@ const createSale = async (req, res) => {
             saleResult, cust, req.user, processedItems
         );
 
+        // ✅ কাস্টমারকে নতুন invoice notification দাও
+        sendCustomerNotification(customer_id, {
+            title: '🧾 নতুন ইনভয়েস',
+            body:  `Invoice ${invoiceNumber} — মোট: ৳${netAmount.toLocaleString('bn-BD')} (${
+                payment_method === 'cash'   ? 'নগদ' :
+                payment_method === 'credit' ? 'বাকি' : 'মিশ্র'
+            })`,
+            type:  'new_invoice',
+        }).catch(e => console.error('[Sale] Invoice notification error:', e.message));
+
         // Firebase → Manager রিয়েলটাইম আপডেট
         if (req.user.manager_id) {
             await firebaseNotify(
