@@ -730,21 +730,72 @@ const getCustomerDashboard = async (req, res) => {
 };
 
 // ============================================================
-// GET /api/portal/invoices?page=1&limit=15
+// ============================================================
+// GET /api/portal/invoices
+// Query params:
+//   page          — পেজ নম্বর (default: 1)
+//   limit         — প্রতি পেজে কতটি (default: 15, max: 50)
+//   search        — invoice_number বা sr_name দিয়ে খোঁজ (optional)
+//   payment_method— 'cash' | 'credit' | 'mixed' ফিল্টার (optional)
+//   date_from     — শুরুর তারিখ YYYY-MM-DD (optional)
+//   date_to       — শেষের তারিখ YYYY-MM-DD (optional)
 // ============================================================
 const getCustomerInvoices = async (req, res) => {
     try {
-        const customer_id = req.portalUser.customer_id;
-        const page        = Math.max(1, parseInt(req.query.page)  || 1);
-        const limit       = Math.min(50, parseInt(req.query.limit) || 15);
-        const offset      = (page - 1) * limit;
+        const customer_id    = req.portalUser.customer_id;
+        const page           = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit          = Math.min(50, parseInt(req.query.limit) || 15);
+        const offset         = (page - 1) * limit;
+        const search         = (req.query.search || '').trim();
+        const payment_method = (req.query.payment_method || '').trim().toLowerCase();
+        const date_from      = req.query.date_from || null;
+        const date_to        = req.query.date_to   || null;
 
-        // ── আগে: ২টি আলাদা query — COUNT(*) তারপর data fetch
-        // ── এখন: ১টি query — COUNT(*) OVER() window function
-        //
-        // COUNT(*) OVER() প্রতিটি row-এ total count যোগ করে দেয়।
-        // PostgreSQL একটি pass-এই data ও count দুটো বের করে —
-        // table দুবার scan হয় না। প্রথম row থেকে total নিলেই হয়।
+        // ── Dynamic WHERE clause builder ───────────────────────
+        // customer_id সবসময় থাকবে ($1)। বাকি filters optional।
+        // params array-এ sequentially push করে $N placeholder বাড়াই।
+        const params  = [customer_id];
+        const filters = [
+            'st.customer_id = $1',
+            '(st.otp_verified = true OR st.otp_skipped = true)',
+        ];
+
+        // invoice_number বা SR নামে free-text সার্চ
+        // ILIKE case-insensitive; % দুই দিকে = substring match
+        if (search) {
+            params.push(`%${search}%`);
+            filters.push(`(st.invoice_number ILIKE $${params.length} OR u.name_bn ILIKE $${params.length})`);
+        }
+
+        // payment_method ফিল্টার
+        // 'mixed' মানে cash_received > 0 AND credit_used > 0
+        if (payment_method === 'cash') {
+            filters.push(`st.payment_method = 'cash'`);
+        } else if (payment_method === 'credit') {
+            filters.push(`st.payment_method = 'credit'`);
+        } else if (payment_method === 'mixed') {
+            filters.push(`st.payment_method = 'mixed'`);
+        }
+
+        // তারিখ রেঞ্জ ফিল্টার — date_from এবং date_to উভয়ই optional
+        if (date_from) {
+            params.push(date_from);
+            filters.push(`st.created_at >= $${params.length}::date`);
+        }
+        if (date_to) {
+            params.push(date_to);
+            // date_to দিনটি inclusive করতে পরের দিনের শুরু পর্যন্ত
+            filters.push(`st.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+        }
+
+        const whereClause = filters.join(' AND ');
+
+        // LIMIT ও OFFSET params-এ যোগ করো
+        params.push(limit, offset);
+        const limitIdx  = params.length - 1;
+        const offsetIdx = params.length;
+
+        // COUNT(*) OVER() — একটি query-তেই total count ও data
         const result = await query(
             `SELECT st.invoice_number, st.items, st.total_amount,
                     st.discount_amount, st.net_amount,
@@ -755,28 +806,339 @@ const getCustomerInvoices = async (req, res) => {
                     COUNT(*) OVER() AS total_count
              FROM sales_transactions st
              JOIN users u ON st.worker_id = u.id
-             WHERE st.customer_id = $1
-               AND (st.otp_verified = true OR st.otp_skipped = true)
+             WHERE ${whereClause}
              ORDER BY st.created_at DESC
-             LIMIT $2 OFFSET $3`,
-            [customer_id, limit, offset]
+             LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+            params
         );
 
         const total      = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
         const totalPages = Math.ceil(total / limit);
 
-        // total_count প্রতিটি row-এ আছে — response-এ পাঠানোর দরকার নেই
+        // total_count response-এ পাঠানোর দরকার নেই — pagination-এ আছে
         const rows = result.rows.map(({ total_count, ...rest }) => rest);
 
         return res.status(200).json({
             success: true,
-            data: rows,
+            data:    rows,
+            filters: { search: search || null, payment_method: payment_method || null, date_from, date_to },
             pagination: { page, limit, total, totalPages }
         });
 
     } catch (error) {
         console.error('❌ Invoice List Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/payment-history
+// নগদ ও credit উভয় ধরনের পেমেন্ট একসাথে দেখাবে।
+// Query params:
+//   page      — পেজ নম্বর (default: 1)
+//   limit     — প্রতি পেজে কতটি (default: 20, max: 50)
+//   type      — 'cash' | 'credit' — ফিল্টার (optional, সব দেখাতে বাদ দিন)
+//   date_from — শুরুর তারিখ YYYY-MM-DD (optional)
+//   date_to   — শেষের তারিখ YYYY-MM-DD (optional)
+//
+// কেন আলাদা endpoint?
+//   Dashboard-এ শুধু credit_payments দেখাতো।
+//   নগদ পেমেন্ট sales_transactions-এ cash_received হিসেবে থাকে।
+//   এই endpoint দুটো source UNION করে chronological order-এ দেখায়।
+// ============================================================
+const getPaymentHistory = async (req, res) => {
+    try {
+        const customer_id = req.portalUser.customer_id;
+        const page        = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit       = Math.min(50, parseInt(req.query.limit) || 20);
+        const offset      = (page - 1) * limit;
+        const typeFilter  = (req.query.type || '').trim().toLowerCase(); // 'cash' | 'credit' | ''
+        const date_from   = req.query.date_from || null;
+        const date_to     = req.query.date_to   || null;
+
+        // ── তারিখ filter clause (উভয় branch-এ একই প্যাটার্ন) ──
+        // params শুরু করব $1 = customer_id দিয়ে।
+        // date filter params shared হবে — তাই আলাদা করে build করি।
+        const params = [customer_id];
+
+        let dateClause = '';
+        if (date_from) {
+            params.push(date_from);
+            dateClause += ` AND created_at >= $${params.length}::date`;
+        }
+        if (date_to) {
+            params.push(date_to);
+            dateClause += ` AND created_at < ($${params.length}::date + INTERVAL '1 day')`;
+        }
+
+        // ── UNION query তৈরি ───────────────────────────────────
+        // Branch A: নগদ পেমেন্ট — sales_transactions থেকে cash_received
+        //   শুধু সেই invoices যেখানে কিছু নগদ দেওয়া হয়েছে
+        // Branch B: credit পেমেন্ট — credit_payments table থেকে
+        //   SR যখন বাকি আদায় করেছে
+        //
+        // typeFilter দিয়ে শুধু একটি branch active রাখা যায়।
+        // উভয় branch-এ একই column structure: amount, type, note, collected_by, created_at
+
+        const cashBranch = `
+            SELECT
+                st.cash_received         AS amount,
+                'cash'                   AS payment_type,
+                st.invoice_number        AS reference,
+                u.name_bn                AS collected_by,
+                st.created_at
+            FROM sales_transactions st
+            JOIN users u ON st.worker_id = u.id
+            WHERE st.customer_id = $1
+              AND (st.otp_verified = true OR st.otp_skipped = true)
+              AND st.cash_received > 0
+              ${dateClause}`;
+
+        const creditBranch = `
+            SELECT
+                cp.amount                AS amount,
+                'credit'                 AS payment_type,
+                cp.notes                 AS reference,
+                u.name_bn                AS collected_by,
+                cp.created_at
+            FROM credit_payments cp
+            JOIN users u ON cp.worker_id = u.id
+            WHERE cp.customer_id = $1
+              ${dateClause}`;
+
+        // typeFilter অনুযায়ী branch নির্বাচন
+        let unionSQL;
+        if (typeFilter === 'cash') {
+            unionSQL = cashBranch;
+        } else if (typeFilter === 'credit') {
+            unionSQL = creditBranch;
+        } else {
+            unionSQL = `${cashBranch} UNION ALL ${creditBranch}`;
+        }
+
+        // LIMIT ও OFFSET যোগ করো
+        params.push(limit, offset);
+        const limitIdx  = params.length - 1;
+        const offsetIdx = params.length;
+
+        const result = await query(
+            `SELECT *, COUNT(*) OVER() AS total_count
+             FROM (${unionSQL}) AS combined
+             ORDER BY created_at DESC
+             LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+            params
+        );
+
+        const total      = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
+        const totalPages = Math.ceil(total / limit);
+        const rows       = result.rows.map(({ total_count, ...rest }) => rest);
+
+        // ── Summary: মোট নগদ ও credit আদায় ──────────────────
+        // Frontend chart বা summary card-এর জন্য aggregate দেওয়া হচ্ছে
+        const summaryResult = await query(
+            `SELECT
+                 COALESCE(SUM(CASE WHEN payment_type = 'cash'   THEN amount ELSE 0 END), 0) AS total_cash_received,
+                 COALESCE(SUM(CASE WHEN payment_type = 'credit' THEN amount ELSE 0 END), 0) AS total_credit_collected,
+                 COUNT(*) AS total_transactions
+             FROM (
+                 SELECT cash_received AS amount, 'cash' AS payment_type
+                 FROM sales_transactions
+                 WHERE customer_id = $1
+                   AND (otp_verified = true OR otp_skipped = true)
+                   AND cash_received > 0
+                 UNION ALL
+                 SELECT amount, 'credit' AS payment_type
+                 FROM credit_payments
+                 WHERE customer_id = $1
+             ) AS all_payments`,
+            [customer_id]
+        );
+
+        return res.status(200).json({
+            success: true,
+            data:    rows,
+            summary: summaryResult.rows[0],
+            filters: { type: typeFilter || null, date_from, date_to },
+            pagination: { page, limit, total, totalPages }
+        });
+
+    } catch (error) {
+        console.error('❌ Payment History Error:', error.message);
+        return res.status(500).json({ success: false, message: 'পেমেন্ট ইতিহাস আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/monthly-summary
+// কাস্টমার নির্দিষ্ট মাসের বা সর্বশেষ N মাসের summary দেখবে।
+// Query params:
+//   months — কতটি মাস দেখাবে (default: 6, max: 24)
+//   year   — নির্দিষ্ট বছর (optional)
+//   month  — নির্দিষ্ট মাস 1-12 (optional, year সহ দিলে শুধু সেই মাস)
+//
+// Response: প্রতিটি মাসের purchase, cash, credit, replacement summary
+// ============================================================
+const getMonthlySummary = async (req, res) => {
+    try {
+        const customer_id  = req.portalUser.customer_id;
+        const monthsBack   = Math.min(24, Math.max(1, parseInt(req.query.months) || 6));
+        const specificYear = req.query.year  ? parseInt(req.query.year)  : null;
+        const specificMonth= req.query.month ? parseInt(req.query.month) : null;
+
+        // ── নির্দিষ্ট মাস বা সর্বশেষ N মাস ─────────────────────
+        // specificYear + specificMonth দিলে শুধু সেই একটি মাস।
+        // অন্যথায় সর্বশেষ monthsBack মাস।
+        let whereExtra = '';
+        const params   = [customer_id];
+
+        if (specificYear && specificMonth) {
+            // নির্দিষ্ট মাস: যেমন year=2025&month=3 → March 2025
+            params.push(specificYear, specificMonth);
+            whereExtra = `AND EXTRACT(YEAR  FROM created_at) = $${params.length - 1}
+                          AND EXTRACT(MONTH FROM created_at) = $${params.length}`;
+        } else {
+            // সর্বশেষ N মাস: এই মাস সহ পেছনে N মাস
+            params.push(monthsBack - 1);
+            whereExtra = `AND date_trunc('month', created_at) >=
+                              date_trunc('month', NOW()) - ($${params.length} * INTERVAL '1 month')`;
+        }
+
+        const result = await query(
+            `SELECT
+                 date_trunc('month', created_at)              AS month_start,
+                 TO_CHAR(created_at, 'YYYY-MM')               AS month_label,
+                 COUNT(*)                                      AS total_invoices,
+                 COALESCE(SUM(net_amount), 0)                  AS total_purchase,
+                 COALESCE(SUM(cash_received), 0)               AS total_cash,
+                 COALESCE(SUM(credit_used), 0)                 AS total_credit,
+                 COALESCE(SUM(discount_amount), 0)             AS total_discount,
+                 COALESCE(SUM(replacement_value), 0)           AS total_replacement,
+                 COALESCE(SUM(credit_balance_added), 0)        AS total_credit_earned,
+                 COALESCE(SUM(credit_balance_used), 0)         AS total_credit_balance_used
+             FROM sales_transactions
+             WHERE customer_id = $1
+               AND (otp_verified = true OR otp_skipped = true)
+               ${whereExtra}
+             GROUP BY date_trunc('month', created_at), TO_CHAR(created_at, 'YYYY-MM')
+             ORDER BY month_start DESC`,
+            params
+        );
+
+        // ── Credit payment আদায় (মাস অনুযায়ী) ─────────────────
+        // credit_payments table-এ SR-এর আদায় আছে।
+        // sales-এর সাথে মাস মেলাতে আলাদা query।
+        const creditPaymentsResult = await query(
+            `SELECT
+                 TO_CHAR(created_at, 'YYYY-MM')   AS month_label,
+                 COALESCE(SUM(amount), 0)          AS total_credit_collected
+             FROM credit_payments
+             WHERE customer_id = $1
+             GROUP BY TO_CHAR(created_at, 'YYYY-MM')`,
+            [customer_id]
+        );
+
+        // credit_payments map তৈরি করো: month_label → total_credit_collected
+        const creditMap = {};
+        for (const row of creditPaymentsResult.rows) {
+            creditMap[row.month_label] = parseFloat(row.total_credit_collected);
+        }
+
+        // Sales summary-তে credit_collected merge করো
+        const merged = result.rows.map(row => ({
+            ...row,
+            total_credit_collected: creditMap[row.month_label] || 0,
+        }));
+
+        return res.status(200).json({
+            success: true,
+            data:    merged,
+            meta: {
+                months_shown: merged.length,
+                query_type: specificYear && specificMonth ? 'specific_month' : 'last_n_months',
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Monthly Summary Error:', error.message);
+        return res.status(500).json({ success: false, message: 'মাসিক সারসংক্ষেপ আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/credit-overview
+// Credit limit, বর্তমান বাকি ও available credit একসাথে দেখাবে।
+// Dashboard-এ এককভাবে credit_limit দেখাতো; এটি comparative view।
+//
+// Response fields:
+//   credit_limit       — অনুমোদিত সর্বোচ্চ বাকির সীমা
+//   current_credit     — বর্তমানে মোট বাকি (outstanding)
+//   available_credit   — আরো কত বাকিতে কিনতে পারবে = limit - current
+//   credit_balance     — return থেকে পাওয়া credit balance (খরচযোগ্য)
+//   utilization_pct    — ব্যবহারের শতাংশ = (current / limit) × 100
+//   recent_payments    — সর্বশেষ ৫টি credit payment (quick view)
+// ============================================================
+const getCreditOverview = async (req, res) => {
+    try {
+        const customer_id = req.portalUser.customer_id;
+
+        const [customerResult, paymentsResult] = await Promise.all([
+            query(
+                `SELECT
+                     credit_limit,
+                     current_credit,
+                     credit_balance,
+                     -- available = limit - current (কখনো negative নয়)
+                     GREATEST(0, credit_limit - current_credit) AS available_credit,
+                     -- utilization percentage (limit = 0 হলে 0%)
+                     CASE
+                         WHEN credit_limit > 0
+                         THEN ROUND((current_credit::numeric / credit_limit) * 100, 1)
+                         ELSE 0
+                     END AS utilization_pct
+                 FROM customers
+                 WHERE id = $1`,
+                [customer_id]
+            ),
+            // সর্বশেষ ৫টি credit payment — quick summary card-এর জন্য
+            query(
+                `SELECT cp.amount, cp.notes, cp.created_at,
+                        u.name_bn AS collected_by
+                 FROM credit_payments cp
+                 JOIN users u ON cp.worker_id = u.id
+                 WHERE cp.customer_id = $1
+                 ORDER BY cp.created_at DESC
+                 LIMIT 5`,
+                [customer_id]
+            ),
+        ]);
+
+        if (customerResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'তথ্য পাওয়া যায়নি।' });
+        }
+
+        const creditInfo = customerResult.rows[0];
+
+        // ── Status tag — frontend badge-এর জন্য ────────────────
+        // utilization_pct অনুযায়ী রঙিন badge দেখাতে সহায়তা করে
+        let status;
+        const pct = parseFloat(creditInfo.utilization_pct);
+        if (pct >= 100)       status = 'exceeded';   // সীমা পেরিয়ে গেছে
+        else if (pct >= 80)   status = 'critical';   // বিপজ্জনক
+        else if (pct >= 50)   status = 'warning';    // সতর্কতা
+        else                  status = 'healthy';     // স্বাভাবিক
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                ...creditInfo,
+                status,
+                recent_payments: paymentsResult.rows,
+            }
+        });
+
+    } catch (error) {
+        console.error('❌ Credit Overview Error:', error.message);
+        return res.status(500).json({ success: false, message: 'ক্রেডিট তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
 
@@ -787,5 +1149,8 @@ module.exports = {
     deviceLogin,
     googleAuth,
     getCustomerDashboard,
-    getCustomerInvoices
+    getCustomerInvoices,
+    getPaymentHistory,
+    getMonthlySummary,
+    getCreditOverview,
 };
