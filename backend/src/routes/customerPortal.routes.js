@@ -15,7 +15,10 @@ const {
     deviceLogin,
     googleAuth,
     getCustomerDashboard,
-    getCustomerInvoices
+    getCustomerInvoices,
+    getPaymentHistory,
+    getMonthlySummary,
+    getCreditOverview,
 } = require('../controllers/customerPortal.controller');
 
 const { sendCreditReminder } = require('../controllers/creditReminder.controller');
@@ -31,6 +34,10 @@ const {
     getMyOrderRequests,
     cancelMyOrderRequest,
     getPortalProducts,
+    getPortalProductDetail,
+    getOrderTracking,
+    createReturnRequest,
+    getMyReturnRequests,
 } = require('../controllers/customerOrderRequest.controller');
 
 const { auth } = require('../middlewares/auth');
@@ -213,9 +220,22 @@ router.post('/device-login', deviceLogin);
 // GET /api/portal/dashboard
 router.get('/dashboard', portalAuth, getCustomerDashboard);
 
-// ── কাস্টমারের Paginated Invoice List ──────────────────────
-// GET /api/portal/invoices?page=1&limit=15
+// ── কাস্টমারের Paginated Invoice List (search + filter সহ) ──
+// GET /api/portal/invoices?page=1&limit=15&search=INV&payment_method=cash&date_from=2025-01-01&date_to=2025-03-31
 router.get('/invoices', portalAuth, getCustomerInvoices);
+
+// ── সম্পূর্ণ Payment History (নগদ + credit একসাথে) ─────────
+// GET /api/portal/payment-history?page=1&type=cash&date_from=2025-01-01
+router.get('/payment-history', portalAuth, getPaymentHistory);
+
+// ── মাসিক সারসংক্ষেপ (একাধিক মাস) ──────────────────────────
+// GET /api/portal/monthly-summary?months=6
+// GET /api/portal/monthly-summary?year=2025&month=3  (নির্দিষ্ট মাস)
+router.get('/monthly-summary', portalAuth, getMonthlySummary);
+
+// ── Credit Overview (limit vs বাকি comparison) ───────────────
+// GET /api/portal/credit-overview
+router.get('/credit-overview', portalAuth, getCreditOverview);
 
 // ── SR ম্যানুয়ালি reminder পাঠাবে ──────────────────────────
 // POST /api/portal/send-reminder/:customerId
@@ -233,15 +253,27 @@ router.patch('/notifications/read-all', portalAuth, markAllRead);
 // PATCH  /api/portal/notifications/:id/read
 router.patch('/notifications/:id/read', portalAuth, markOneRead);
 
-// ── Customer Order Request (নতুন) ───────────────────────────
-// GET  /api/portal/products
+// ── Customer Order Request (পোর্টাল) ────────────────────────
+// GET  /api/portal/products  — সব পণ্য (list + ছবি + দাম)
 router.get('/products', portalAuth, getPortalProducts);
+// GET  /api/portal/products/:id  — একটি পণ্যের বিস্তারিত + ছবি + price breakdown
+router.get('/products/:id', portalAuth, getPortalProductDetail);
 // POST /api/portal/order-request
 router.post('/order-request', portalAuth, createOrderRequest);
 // GET  /api/portal/order-requests
 router.get('/order-requests', portalAuth, getMyOrderRequests);
-// PATCH /api/portal/order-requests/:id/cancel — কাস্টমার pending অর্ডার বাতিল করবে
+// PATCH /api/portal/order-requests/:id/cancel — pending অর্ডার বাতিল
 router.patch('/order-requests/:id/cancel', portalAuth, cancelMyOrderRequest);
+
+// ── অর্ডার ট্র্যাকিং (রিয়েলটাইম status timeline) ───────────
+// GET /api/portal/order-requests/:id/tracking
+router.get('/order-requests/:id/tracking', portalAuth, getOrderTracking);
+
+// ── পণ্য ফেরতের অনুরোধ ──────────────────────────────────────
+// POST /api/portal/return-request
+router.post('/return-request', portalAuth, createReturnRequest);
+// GET  /api/portal/return-requests?page=1&status=all
+router.get('/return-requests', portalAuth, getMyReturnRequests);
 
 // ── Customer AI Chat ─────────────────────────────────────────
 // POST /api/portal/ai-chat        — AI-এর সাথে কথা বলো
