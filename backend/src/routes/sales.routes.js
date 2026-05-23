@@ -20,7 +20,8 @@ const {
     getSaleDetail,
     getMyMonthlySales,
     getMyVisitStats,
-    getVisitStatus
+    getVisitStatus,
+    uploadReceipt
 } = require('../controllers/sales.controller');
 
 // ============================================================
@@ -43,6 +44,15 @@ router.post('/',        auth, allowRoles('worker'), requireCheckin, createSale);
 
 // Invoice পাঠানো (WhatsApp/SMS)
 router.post('/invoice/send',  auth, allowRoles('worker'), sendInvoice);
+
+// রসিদের ছবি আপলোড — বিক্রয় তৈরির আগে আলাদাভাবে call করা হয়
+// Frontend থেকে receipt_photo field হিসেবে multipart/form-data আসে
+router.post('/upload-receipt',
+    auth,
+    allowRoles('worker'),
+    upload.single('receipt_photo'),
+    uploadReceipt
+);
 
 // OTP যাচাই
 router.post('/verify-otp',    auth, allowRoles('worker'), verifyOTP);
