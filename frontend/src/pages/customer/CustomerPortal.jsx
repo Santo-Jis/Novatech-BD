@@ -1037,7 +1037,13 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
 
   // ── RENDER: DASHBOARD ─────────────────────────────────────
   if (phase === 'dashboard' && dashboard) {
-    const { customer, sales, credit_payments, monthly_summary, total_summary } = dashboard
+    const {
+      customer,
+      sales           = [],
+      credit_payments = [],
+      monthly_summary = {},
+      total_summary   = {},
+    } = dashboard
     const tabs = [
       { id: 'summary',  label: 'সারসংক্ষেপ' },
       { id: 'orders',   label: '🛒 অর্ডার' },
@@ -1170,10 +1176,10 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">এই মাস</p>
                     <div className="grid grid-cols-2 gap-3">
                       {[
-                        { label: 'মোট কেনাকাটা', value: `৳${fmt(monthly_summary.total_purchase)}`, color: 'text-gray-900' },
-                        { label: 'ইনভয়েস সংখ্যা', value: monthly_summary.total_invoices, color: 'text-indigo-600' },
-                        { label: 'নগদ দিয়েছেন', value: `৳${fmt(monthly_summary.total_cash)}`, color: 'text-green-600' },
-                        { label: 'বাকি রেখেছেন', value: `৳${fmt(monthly_summary.total_credit)}`, color: 'text-red-500' },
+                        { label: 'মোট কেনাকাটা', value: `৳${fmt(monthly_summary?.total_purchase)}`, color: 'text-gray-900' },
+                        { label: 'ইনভয়েস সংখ্যা', value: monthly_summary?.total_invoices ?? 0, color: 'text-indigo-600' },
+                        { label: 'নগদ দিয়েছেন', value: `৳${fmt(monthly_summary?.total_cash)}`, color: 'text-green-600' },
+                        { label: 'বাকি রেখেছেন', value: `৳${fmt(monthly_summary?.total_credit)}`, color: 'text-red-500' },
                       ].map((item, i) => (
                         <div key={i} className="bg-gray-50 rounded-xl p-3">
                           <p className="text-xs text-gray-400">{item.label}</p>
@@ -1186,10 +1192,10 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">সর্বমোট</p>
                     <div className="grid grid-cols-2 gap-3">
                       {[
-                        { label: 'মোট কেনাকাটা', value: `৳${fmt(total_summary.total_purchase)}`, color: 'text-gray-900' },
-                        { label: 'মোট ইনভয়েস', value: total_summary.total_invoices, color: 'text-indigo-600' },
-                        { label: 'মোট নগদ', value: `৳${fmt(total_summary.total_cash)}`, color: 'text-green-600' },
-                        { label: 'মোট বাকি', value: `৳${fmt(total_summary.total_credit)}`, color: 'text-red-500' },
+                        { label: 'মোট কেনাকাটা', value: `৳${fmt(total_summary?.total_purchase)}`, color: 'text-gray-900' },
+                        { label: 'মোট ইনভয়েস', value: total_summary?.total_invoices ?? 0, color: 'text-indigo-600' },
+                        { label: 'মোট নগদ', value: `৳${fmt(total_summary?.total_cash)}`, color: 'text-green-600' },
+                        { label: 'মোট বাকি', value: `৳${fmt(total_summary?.total_credit)}`, color: 'text-red-500' },
                       ].map((item, i) => (
                         <div key={i} className="bg-gray-50 rounded-xl p-3">
                           <p className="text-xs text-gray-400">{item.label}</p>
