@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
-import { FiTrendingUp, FiGift, FiDollarSign, FiCalendar, FiChevronLeft, FiChevronRight, FiCheckCircle, FiClock, FiUser, FiHash, FiInfo } from 'react-icons/fi'
+import { FiTrendingUp, FiGift, FiDollarSign, FiCalendar, FiChevronLeft, FiChevronRight, FiCheckCircle, FiClock, FiUser, FiHash, FiInfo, FiAward, FiStar } from 'react-icons/fi'
 
 // ─── বাংলা মাসের নাম ───────────────────────────────
 const MONTHS_BN = ['', 'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
@@ -45,7 +45,10 @@ export default function Commission() {
   const [year, setYear]   = useState(now.getFullYear())
   const [data, setData]   = useState(null)
   const [loading, setLoading] = useState(true)
-  const [expandedRow, setExpandedRow] = useState(null)
+  const [expandedRow,  setExpandedRow]  = useState(null)
+  const [bonusStatus,  setBonusStatus]  = useState(null)
+  const [bonusLoading, setBonusLoading] = useState(true)
+  const [showBonus,    setShowBonus]    = useState(false)
 
   const fetchData = () => {
     setLoading(true)
@@ -55,7 +58,16 @@ export default function Commission() {
       .finally(() => setLoading(false))
   }
 
+  const fetchBonusStatus = () => {
+    setBonusLoading(true)
+    api.get('/commission/bonus-status')
+      .then(res => setBonusStatus(res.data.data))
+      .catch(() => setBonusStatus(null))
+      .finally(() => setBonusLoading(false))
+  }
+
   useEffect(() => { fetchData() }, [month, year])
+  useEffect(() => { fetchBonusStatus() }, [])
 
   // মাস নেভিগেশন
   const prevMonth = () => {
@@ -174,6 +186,142 @@ export default function Commission() {
               </div>
             </div>
           )}
+
+          {/* ─── বোনাস স্ট্যাটাস Accordion ─── */}
+          <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden', marginBottom: 14 }}>
+            <button
+              onClick={() => setShowBonus(v => !v)}
+              style={{
+                width: '100%', padding: '14px 16px', border: 'none', background: 'none',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ background: '#f0fdf4', color: '#15803d', padding: '5px 6px', borderRadius: 8, display: 'flex' }}>
+                  <FiAward size={15} />
+                </span>
+                <span style={{ fontWeight: 700, color: '#1e293b', fontSize: 14 }}>উপস্থিতি বোনাস স্ট্যাটাস</span>
+                {bonusStatus && bonusStatus.perfect_months > 0 && (
+                  <span style={{
+                    background: '#fef9c3', color: '#b45309', fontSize: 11,
+                    fontWeight: 700, padding: '2px 7px', borderRadius: 20
+                  }}>
+                    {bonusStatus.perfect_months} মাস পূর্ণ
+                  </span>
+                )}
+              </div>
+              <span style={{ color: '#6b7280', fontSize: '1.1rem', transition: 'transform 0.2s', display: 'inline-block', transform: showBonus ? 'rotate(180deg)' : 'none' }}>▼</span>
+            </button>
+
+            {showBonus && (
+              <div style={{ borderTop: '1px solid #f1f5f9', padding: 16 }}>
+                {bonusLoading ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {[1,2,3].map(i => <div key={i} style={{ height: 44, background: '#f8fafc', borderRadius: 10 }} />)}
+                  </div>
+                ) : !bonusStatus ? (
+                  <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>তথ্য পাওয়া যায়নি</p>
+                ) : (
+                  <>
+                    {/* Top Summary */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                      <div style={{ background: '#f0fdf4', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+                        <p style={{ fontSize: 22, fontWeight: 800, color: '#15803d', margin: 0 }}>{bonusStatus.perfect_months}</p>
+                        <p style={{ fontSize: 11, color: '#15803d', margin: '4px 0 0 0' }}>পূর্ণ উপস্থিতি মাস</p>
+                      </div>
+                      <div style={{ background: '#fffbeb', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
+                        <p style={{ fontSize: 22, fontWeight: 800, color: '#b45309', margin: 0 }}>
+                          ৳{parseInt(bonusStatus.pending_bonus || 0).toLocaleString('en-IN')}
+                        </p>
+                        <p style={{ fontSize: 11, color: '#b45309', margin: '4px 0 0 0' }}>অপরিশোধিত বোনাস</p>
+                      </div>
+                    </div>
+
+                    {/* 8-month progress bar */}
+                    <div style={{ background: '#f8fafc', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                          🏆 ৮ মাসের মধ্যে পূর্ণ উপস্থিতি
+                        </span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d' }}>
+                          {bonusStatus.perfect_months}/{bonusStatus.total_8_months}
+                        </span>
+                      </div>
+                      <div style={{ background: '#e2e8f0', borderRadius: 20, height: 8, overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%', borderRadius: 20, background: '#22c55e',
+                          width: `${Math.min(100, (bonusStatus.perfect_months / bonusStatus.total_8_months) * 100)}%`,
+                          transition: 'width 0.5s ease'
+                        }} />
+                      </div>
+                      {bonusStatus.next_bonus_in > 0 && (
+                        <p style={{ fontSize: 11, color: '#64748b', marginTop: 6, textAlign: 'center' }}>
+                          আরো <strong>{bonusStatus.next_bonus_in}</strong> মাস পূর্ণ উপস্থিতি হলে বোনাস সাইকেল সম্পন্ন
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Month-by-month rows */}
+                    {bonusStatus.months && bonusStatus.months.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {bonusStatus.months.map((m, i) => {
+                          const MONTHS_BN_SHORT = ['','জানু','ফেব্রু','মার্চ','এপ্রি','মে','জুন','জুলা','আগস্ট','সেপ্টে','অক্টো','নভে','ডিসে']
+                          const pct = m.working_days > 0 ? Math.min(100, Math.round((m.present_days / m.working_days) * 100)) : 0
+                          return (
+                            <div key={i} style={{
+                              display: 'flex', alignItems: 'center', gap: 10,
+                              padding: '8px 10px', borderRadius: 10,
+                              background: m.is_perfect ? '#f0fdf4' : '#fafafa',
+                              border: `1px solid ${m.is_perfect ? '#bbf7d0' : '#f1f5f9'}`
+                            }}>
+                              {/* Month label */}
+                              <div style={{ width: 44, flexShrink: 0 }}>
+                                <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', margin: 0 }}>
+                                  {MONTHS_BN_SHORT[m.month]}
+                                </p>
+                                <p style={{ fontSize: 10, color: '#94a3b8', margin: 0 }}>{m.year}</p>
+                              </div>
+
+                              {/* Progress bar */}
+                              <div style={{ flex: 1 }}>
+                                <div style={{ background: '#e2e8f0', borderRadius: 20, height: 6, overflow: 'hidden' }}>
+                                  <div style={{
+                                    height: '100%', borderRadius: 20,
+                                    background: m.is_perfect ? '#22c55e' : '#94a3b8',
+                                    width: `${pct}%`
+                                  }} />
+                                </div>
+                                <p style={{ fontSize: 10, color: '#64748b', margin: '3px 0 0 0' }}>
+                                  {m.present_days}/{m.working_days} দিন
+                                </p>
+                              </div>
+
+                              {/* Status */}
+                              <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                                {m.is_perfect ? (
+                                  <>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                      <FiStar size={11} color="#f59e0b" fill="#f59e0b" />
+                                      <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d' }}>পূর্ণ</span>
+                                    </div>
+                                    <p style={{ fontSize: 10, color: m.bonus_paid ? '#64748b' : '#b45309', margin: '2px 0 0 0', fontWeight: 600 }}>
+                                      {m.bonus_paid ? '✅ পরিশোধিত' : `৳${parseInt(m.bonus_amount || 0).toLocaleString()}`}
+                                    </p>
+                                  </>
+                                ) : (
+                                  <span style={{ fontSize: 11, color: '#94a3b8' }}>—</span>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* ─── দৈনিক ইতিহাস ─── */}
           <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
