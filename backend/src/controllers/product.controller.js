@@ -20,7 +20,7 @@ const getProducts = async (req, res) => {
         }
 
         const result = await query(
-            `SELECT id, name, sku, price, stock, reserved_stock,
+            `SELECT id, name, sku, price, stock, reserved_stock, return_stock, defective_stock,
                     (stock - COALESCE((
                         SELECT SUM((item->>'quantity')::int)
                         FROM orders o,
