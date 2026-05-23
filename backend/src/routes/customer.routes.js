@@ -23,7 +23,8 @@ const {
     rejectCustomerEdit,
     sendEmailVerifyOTP,
     confirmEmailVerifyOTP,
-    updateVisitOrder
+    updateVisitOrder,
+    getMyPendingReturnRequests
 } = require('../controllers/customer.controller');
 
 // ============================================================
@@ -54,6 +55,10 @@ router.put('/visit-order', auth, allowRoles('admin', 'manager', 'supervisor'), u
 
 // Worker এর মোট কাস্টমার সংখ্যা
 router.get('/my-count',  auth, getMyCustomerCount);
+
+// SR-এর assigned customer-দের approved return/replacement list
+// ?type=return | ?type=replacement | (কিছু না = সব)
+router.get('/my-return-requests', auth, getMyPendingReturnRequests);
 
 // Edit request routes (specific routes before /:id)
 router.get('/edit-requests/pending', auth, allowRoles('admin', 'manager', 'supervisor'), getPendingCustomerEdits);
