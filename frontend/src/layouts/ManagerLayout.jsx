@@ -6,7 +6,7 @@ import {
   FiHome, FiUsers, FiShoppingCart, FiCheckSquare,
   FiCalendar, FiMapPin, FiUser, FiBell, FiMenu, FiX,
   FiLogOut, FiMessageSquare, FiList, FiFileText,
-  FiRefreshCw, FiShield
+  FiRefreshCw, FiShield, FiDollarSign
 } from 'react-icons/fi'
 
 const navItems = [
@@ -23,6 +23,7 @@ const navItems = [
   { path: '/manager/customers',      icon: <FiUser />,         label: 'কাস্টমার' },
   { path: '/manager/portal-devices', icon: <FiShield />,       label: 'পোর্টাল Device' },
   { path: '/manager/routes',         icon: <FiMapPin />,       label: 'রুট' },
+  { path: '/manager/commission/team',icon: <FiDollarSign />,   label: 'টিম কমিশন' },
   { path: '/manager/visit-order',    icon: <FiList />,         label: 'Visit ক্রম' },
   { path: '/manager/ai-chat',        icon: <FiMessageSquare />,label: 'AI চ্যাট' },
   { path: '/manager/notices',        icon: <FiBell />,         label: 'নোটিশ' },
