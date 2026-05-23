@@ -31,6 +31,14 @@ const {
     getPortalStats,
 } = require('../controllers/adminDevice.controller');
 
+// ✅ নতুন — Customer Portal Return Request Review
+const {
+    getPortalReturnRequests,
+    getPortalReturnRequestDetail,
+    reviewPortalReturnRequest,
+    completePortalReturnRequest,
+} = require('../controllers/customerPortalReturn.controller');
+
 // ── System Settings (Admin only) ─────────────────────────────
 router.get('/settings',        auth, isAdmin, getSettings);
 router.put('/settings',        auth, isAdmin, updateSettings);
@@ -61,5 +69,20 @@ router.get('/portal-devices/:customerId',                       auth, isAdminOrM
 router.delete('/portal-devices/:customerId',                    auth, isAdminOrManager, revokeAllDevices);
 router.delete('/portal-devices/:customerId/:deviceId',          auth, isAdminOrManager, revokeDevice);
 router.patch('/portal-devices/:customerId/:deviceId/restore',   auth, isAdminOrManager, restoreDevice);
+
+// ── Customer Portal Return Requests (Admin + Manager + Supervisor) ──
+//
+// GET    /api/admin/portal-returns                  → সব লিস্ট (filter করা যাবে)
+// GET    /api/admin/portal-returns/:id              → বিবরণ (invoice info সহ)
+// PATCH  /api/admin/portal-returns/:id/review       → approve / reject
+// PATCH  /api/admin/portal-returns/:id/complete     → পণ্য হাতে পেলে complete
+
+const CAN_VIEW_RETURNS   = allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant');
+const CAN_REVIEW_RETURNS = allowRoles('admin', 'manager', 'supervisor');
+
+router.get('/portal-returns',              auth, CAN_VIEW_RETURNS,   getPortalReturnRequests);
+router.get('/portal-returns/:id',          auth, CAN_VIEW_RETURNS,   getPortalReturnRequestDetail);
+router.patch('/portal-returns/:id/review', auth, CAN_REVIEW_RETURNS, reviewPortalReturnRequest);
+router.patch('/portal-returns/:id/complete', auth, CAN_REVIEW_RETURNS, completePortalReturnRequest);
 
 module.exports = router;
