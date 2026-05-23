@@ -112,13 +112,23 @@ const getCustomers = async (req, res) => {
                     ca.visit_order,
                     ST_Y(c.location::geometry) AS latitude,
                     ST_X(c.location::geometry) AS longitude
-                    ${distanceSelect}
+                    ${distanceSelect},
+                    COALESCE(crr.pending_return, 0)::int      AS pending_return_count,
+                    COALESCE(crr.pending_replacement, 0)::int AS pending_replacement_count
              FROM customers c
              LEFT JOIN routes r ON c.route_id = r.id
              LEFT JOIN customer_assignments ca
                ON ca.customer_id = c.id
                AND ca.is_active = true
                ${caWorkerCondition}
+             LEFT JOIN (
+                 SELECT customer_id,
+                        COUNT(*) FILTER (WHERE type = 'return'      AND status = 'approved') AS pending_return,
+                        COUNT(*) FILTER (WHERE type = 'replacement' AND status = 'approved') AS pending_replacement
+                 FROM customer_return_requests
+                 WHERE status = 'approved'
+                 GROUP BY customer_id
+             ) crr ON crr.customer_id = c.id
              WHERE ${whereClause}
              ORDER BY ${orderBy}
              LIMIT $${paramCount - 1} OFFSET $${paramCount}`,
@@ -142,7 +152,11 @@ const getCustomers = async (req, res) => {
 
         const customers = result.rows.map(c => ({
             ...c,
-            visited_today: visitedToday.includes(c.id)
+            visited_today: visitedToday.includes(c.id),
+            has_pending_request: (
+                parseInt(c.pending_return_count || 0) +
+                parseInt(c.pending_replacement_count || 0)
+            ) > 0
         }));
 
         return res.status(200).json({
@@ -964,6 +978,65 @@ const updateVisitOrder = async (req, res) => {
     }
 };
 
+
+// ============================================================
+// GET /api/customers/my-return-requests
+// SR নিজের assigned customer-দের approved return/replacement দেখবে
+// ============================================================
+const getMyPendingReturnRequests = async (req, res) => {
+    try {
+        const workerId = req.user.id;
+        const type     = req.query.type; // 'return' | 'replacement' | undefined = সব
+
+        const typeFilter = (type && ['return','replacement'].includes(type))
+            ? `AND crr.type = '${type}'` : '';
+
+        const { rows } = await query(
+            `SELECT
+                crr.id,
+                crr.type,
+                crr.invoice_number,
+                crr.items,
+                crr.note,
+                crr.status,
+                crr.admin_note,
+                crr.reviewed_at,
+                crr.created_at,
+                c.id           AS customer_id,
+                c.shop_name,
+                c.owner_name,
+                c.customer_code,
+                c.whatsapp,
+                r.name         AS route_name,
+                CASE crr.type
+                    WHEN 'replacement' THEN 'রিপ্লেসমেন্ট'
+                    ELSE 'পণ্য ফেরত'
+                END AS type_bn
+             FROM customer_return_requests crr
+             JOIN customers c ON c.id = crr.customer_id
+             LEFT JOIN routes r ON r.id = c.route_id
+             WHERE crr.status = 'approved'
+               ${typeFilter}
+               AND c.id IN (
+                   SELECT customer_id FROM customer_assignments
+                   WHERE worker_id = $1 AND is_active = true
+               )
+             ORDER BY crr.reviewed_at DESC`,
+            [workerId]
+        );
+
+        return res.json({
+            success: true,
+            data: rows,
+            total: rows.length
+        });
+
+    } catch (error) {
+        console.error('❌ getMyPendingReturnRequests Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getCustomers,
     getCustomer,
@@ -979,5 +1052,6 @@ module.exports = {
     rejectCustomerEdit,
     sendEmailVerifyOTP,
     confirmEmailVerifyOTP,
-    updateVisitOrder
+    updateVisitOrder,
+    getMyPendingReturnRequests
 };
