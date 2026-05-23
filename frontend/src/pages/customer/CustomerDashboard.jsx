@@ -188,7 +188,7 @@ export default function CustomerDashboard() {
     else setGreeting('শুভ সন্ধ্যা')
 
     const jwt = getPortalJWT()
-    if (!jwt) { navigate('/login', { replace: true }); return }
+    if (!jwt) { navigate('/customer-login', { replace: true }); return }
 
     portalFetch('/portal/dashboard', jwt)
       .then(data => { setDashboard(data.data); setLoading(false) })
@@ -224,7 +224,7 @@ export default function CustomerDashboard() {
       <div style={{ fontSize: 48 }}>⚠️</div>
       <p style={{ color: '#f87171', fontSize: 14, textAlign: 'center' }}>{error}</p>
       <button
-        onClick={() => navigate('/login', { replace: true })}
+        onClick={() => navigate('/customer-login', { replace: true })}
         style={{
           background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
           border: 'none', borderRadius: 14, padding: '12px 28px',
@@ -236,7 +236,11 @@ export default function CustomerDashboard() {
 
   if (!dashboard) return null
 
-  const { customer, monthly_summary, total_summary } = dashboard
+  const {
+    customer,
+    monthly_summary = {},
+    total_summary   = {},
+  } = dashboard
   const creditUsedPct = Math.min(100, Math.round(
     (parseFloat(customer.current_credit || 0) / Math.max(1, parseFloat(customer.credit_limit || 1))) * 100
   ))
@@ -374,10 +378,10 @@ export default function CustomerDashboard() {
               <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#e2e8f0' }}>এই মাসের সারসংক্ষেপ</p>
             </div>
             <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <SummaryRow label="মোট কেনাকাটা"  value={`৳${fmt(monthly_summary.total_purchase)}`}  color="#e2e8f0" delay={400} />
-              <SummaryRow label="ইনভয়েস সংখ্যা" value={monthly_summary.total_invoices}             color="#a5b4fc" delay={480} />
-              <SummaryRow label="নগদ দিয়েছেন"   value={`৳${fmt(monthly_summary.total_cash)}`}     color="#86efac" delay={560} />
-              <SummaryRow label="বাকি রেখেছেন"  value={`৳${fmt(monthly_summary.total_credit)}`}   color="#fca5a5" delay={640} />
+              <SummaryRow label="মোট কেনাকাটা"  value={`৳${fmt(monthly_summary?.total_purchase)}`}  color="#e2e8f0" delay={400} />
+              <SummaryRow label="ইনভয়েস সংখ্যা" value={monthly_summary?.total_invoices ?? 0}           color="#a5b4fc" delay={480} />
+              <SummaryRow label="নগদ দিয়েছেন"   value={`৳${fmt(monthly_summary?.total_cash)}`}        color="#86efac" delay={560} />
+              <SummaryRow label="বাকি রেখেছেন"  value={`৳${fmt(monthly_summary?.total_credit)}`}      color="#fca5a5" delay={640} />
             </div>
           </div>
 
@@ -403,10 +407,10 @@ export default function CustomerDashboard() {
               <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#e2e8f0' }}>সর্বমোট লেনদেন</p>
             </div>
             <div style={{ padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <SummaryRow label="মোট কেনাকাটা"  value={`৳${fmt(total_summary.total_purchase)}`}  color="#e2e8f0" delay={500} />
-              <SummaryRow label="মোট ইনভয়েস"   value={total_summary.total_invoices}              color="#a5b4fc" delay={570} />
-              <SummaryRow label="মোট নগদ"       value={`৳${fmt(total_summary.total_cash)}`}      color="#86efac" delay={640} />
-              <SummaryRow label="মোট বাকি"      value={`৳${fmt(total_summary.total_credit)}`}    color="#fca5a5" delay={710} />
+              <SummaryRow label="মোট কেনাকাটা"  value={`৳${fmt(total_summary?.total_purchase)}`}  color="#e2e8f0" delay={500} />
+              <SummaryRow label="মোট ইনভয়েস"   value={total_summary?.total_invoices ?? 0}          color="#a5b4fc" delay={570} />
+              <SummaryRow label="মোট নগদ"       value={`৳${fmt(total_summary?.total_cash)}`}       color="#86efac" delay={640} />
+              <SummaryRow label="মোট বাকি"      value={`৳${fmt(total_summary?.total_credit)}`}     color="#fca5a5" delay={710} />
             </div>
           </div>
 
