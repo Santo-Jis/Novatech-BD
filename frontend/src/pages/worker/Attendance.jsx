@@ -803,31 +803,118 @@ export default function WorkerAttendance() {
   )
 
   // ── Done ──
-  if (step === 'done') return (
-    <div style={{ padding:16, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'60vh' }}>
-      <span style={{ fontSize:'4rem' }}>🎉</span>
-      <h2 style={{ fontSize:'1.3rem', fontWeight:800, color:'#1f2937', marginTop:12 }}>
-        {mode === 'checkin' ? 'চেক-ইন সফল!' : 'চেক-আউট সফল!'}
-      </h2>
-      {lateInfo && (
-        <div style={{ marginTop:16, background:'#fffbeb', borderRadius:14, padding:16, textAlign:'center', width:'100%' }}>
-          <p style={{ color:'#b45309', fontWeight:700 }}>⚠️ দেরি হয়েছে</p>
-          <p style={{ color:'#92400e', fontSize:'0.88rem', marginTop:4 }}>
-            {lateInfo.lateMinutes} মিনিট দেরি — কর্তন: ৳{lateInfo.deduction}
+  if (step === 'done') {
+    // চেক-ইন ও চেক-আউটের সময় todayAtt থেকে পাই (fetchHistory ইতিমধ্যে refresh হয়েছে)
+    const checkInTime  = todayAtt?.check_in_time
+    const checkOutTime = todayAtt?.check_out_time
+    const workDuration = getWorkDuration(checkInTime, checkOutTime)
+    const isCheckout   = mode === 'checkout'
+
+    return (
+      <div style={{ padding:16, paddingBottom:32 }}>
+        {/* Success animation area */}
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', paddingTop:32, paddingBottom:24 }}>
+          <div style={{
+            width:80, height:80, borderRadius:'50%',
+            background: isCheckout ? '#dbeafe' : '#d1fae5',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            marginBottom:12
+          }}>
+            <span style={{ fontSize:'3rem' }}>{isCheckout ? '👋' : '🎉'}</span>
+          </div>
+          <h2 style={{ fontSize:'1.3rem', fontWeight:800, color:'#1f2937', margin:0 }}>
+            {isCheckout ? 'চেক-আউট সফল!' : 'চেক-ইন সফল!'}
+          </h2>
+          <p style={{ color:'#6b7280', fontSize:'0.85rem', marginTop:4 }}>
+            {new Date().toLocaleTimeString('bn-BD', { hour:'2-digit', minute:'2-digit' })}
           </p>
         </div>
-      )}
-      <button
-        onClick={() => navigate('/worker/dashboard')}
-        style={{
-          marginTop:24, width:'100%', padding:'14px',
-          borderRadius:14, border:'none',
-          background:'#1e3a8a', color:'#fff',
-          fontWeight:800, fontSize:'1rem', cursor:'pointer'
-        }}
-      >
-        ড্যাশবোর্ডে যান
-      </button>
-    </div>
-  )
+
+        {/* Summary Card */}
+        <div style={{
+          background:'#fff', borderRadius:16,
+          boxShadow:'0 1px 4px rgba(0,0,0,0.08)', padding:16, marginBottom:16
+        }}>
+          <p style={{ fontWeight:700, color:'#374151', marginBottom:12, fontSize:'0.9rem' }}>আজকের সারসংক্ষেপ</p>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+            <div style={{ background:'#f0fdf4', borderRadius:12, padding:'10px 8px', textAlign:'center' }}>
+              <p style={{ fontSize:'0.72rem', color:'#64748b', margin:0 }}>চেক-ইন</p>
+              <p style={{ fontWeight:800, color:'#065f46', marginTop:4, fontSize:'0.95rem' }}>
+                {checkInTime
+                  ? new Date(checkInTime).toLocaleTimeString('bn-BD', { hour:'2-digit', minute:'2-digit' })
+                  : '—'}
+              </p>
+            </div>
+            <div style={{ background: isCheckout ? '#eff6ff' : '#f9fafb', borderRadius:12, padding:'10px 8px', textAlign:'center' }}>
+              <p style={{ fontSize:'0.72rem', color:'#64748b', margin:0 }}>চেক-আউট</p>
+              <p style={{ fontWeight:800, color: isCheckout ? '#1e3a8a' : '#d1d5db', marginTop:4, fontSize:'0.95rem' }}>
+                {checkOutTime
+                  ? new Date(checkOutTime).toLocaleTimeString('bn-BD', { hour:'2-digit', minute:'2-digit' })
+                  : '—'}
+              </p>
+            </div>
+          </div>
+
+          {/* কাজের মোট সময় — শুধু checkout-এ দেখাবে */}
+          {isCheckout && workDuration && (
+            <div style={{
+              marginTop:12, background:'#f0f9ff', borderRadius:12,
+              padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center'
+            }}>
+              <span style={{ fontSize:'0.82rem', color:'#0369a1', fontWeight:600 }}>⏱ মোট কাজের সময়</span>
+              <span style={{ fontSize:'1rem', fontWeight:800, color:'#0369a1' }}>{workDuration}</span>
+            </div>
+          )}
+
+          {/* দেরির তথ্য */}
+          {lateInfo && (
+            <div style={{ marginTop:12, background:'#fffbeb', borderRadius:12, padding:'10px 14px' }}>
+              <p style={{ color:'#b45309', fontWeight:700, fontSize:'0.85rem', margin:'0 0 4px 0' }}>⚠️ দেরি হয়েছে</p>
+              <p style={{ color:'#92400e', fontSize:'0.82rem', margin:0 }}>
+                {lateInfo.lateMinutes} মিনিট দেরি — কর্তন: ৳{lateInfo.deduction}
+              </p>
+            </div>
+          )}
+
+          {/* Checkout-এ bonus progress hint */}
+          {isCheckout && (
+            <div style={{ marginTop:12, background:'#f8fafc', borderRadius:12, padding:'10px 14px',
+              display:'flex', alignItems:'center', gap:8 }}>
+              <span style={{ fontSize:'1rem' }}>🏆</span>
+              <p style={{ fontSize:'0.78rem', color:'#64748b', margin:0 }}>
+                আজকের হাজিরা বোনাস progress-এ গণনা হয়েছে।
+                <span style={{ color:'#7c3aed', fontWeight:600 }}> কমিশন পেজে</span> বিস্তারিত দেখুন।
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <button
+            onClick={() => navigate('/worker/dashboard')}
+            style={{
+              width:'100%', padding:'14px', borderRadius:14, border:'none',
+              background: isCheckout ? '#1e3a8a' : '#065f46',
+              color:'#fff', fontWeight:800, fontSize:'1rem', cursor:'pointer'
+            }}
+          >
+            ড্যাশবোর্ডে যান
+          </button>
+          {isCheckout && (
+            <button
+              onClick={() => navigate('/worker/commission')}
+              style={{
+                width:'100%', padding:'12px', borderRadius:14,
+                border:'2px solid #7c3aed', background:'#faf5ff',
+                color:'#7c3aed', fontWeight:700, fontSize:'0.92rem', cursor:'pointer'
+              }}
+            >
+              🏆 কমিশন ও বোনাস দেখুন
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
 }
