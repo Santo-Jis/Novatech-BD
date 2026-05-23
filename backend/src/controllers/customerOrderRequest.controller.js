@@ -800,12 +800,18 @@ const getOrderTracking = async (req, res) => {
 const createReturnRequest = async (req, res) => {
     try {
         const { customer_id } = req.portalUser;
-        const { invoice_number, items, note } = req.body;
+        const { invoice_number, note } = req.body;
+        let { items } = req.body;
+
+        // type: 'return' (বিক্রি হয়নি) অথবা 'replacement' (warranty-তে নষ্ট)
+        const VALID_TYPES = ['return', 'replacement'];
+        const type = VALID_TYPES.includes(req.body.type) ? req.body.type : 'return';
 
         // ── Validation ────────────────────────────────────────
         if (!invoice_number || !invoice_number.trim()) {
             return res.status(400).json({ success: false, message: 'ইনভয়েস নম্বর দিন।' });
         }
+        if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
         if (!items || !Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ success: false, message: 'কমপক্ষে একটি পণ্য সিলেক্ট করুন।' });
         }
@@ -814,11 +820,11 @@ const createReturnRequest = async (req, res) => {
                 return res.status(400).json({ success: false, message: 'পণ্যের তথ্য সঠিক নয়।' });
             }
             if (!item.reason || !item.reason.trim()) {
-                return res.status(400).json({ success: false, message: 'প্রতিটি পণ্যের ফেরতের কারণ দিন।' });
+                return res.status(400).json({ success: false, message: 'প্রতিটি পণ্যের কারণ দিন।' });
             }
         }
 
-        // ── ইনভয়েস যাচাই — এই কাস্টমারের এবং completed ──────
+        // ── ইনভয়েস যাচাই ────────────────────────────────────
         const invoiceCheck = await query(
             `SELECT invoice_number, net_amount, created_at
              FROM sales_transactions
@@ -834,53 +840,87 @@ const createReturnRequest = async (req, res) => {
             });
         }
 
-        // ── Duplicate check — একই ইনভয়েসে pending return আছে? ─
+        // ── Duplicate check — একই invoice + type pending নেই? ─
         const dupCheck = await query(
             `SELECT id FROM customer_return_requests
              WHERE customer_id = $1
                AND invoice_number = $2
+               AND type = $3
                AND status = 'pending'`,
-            [customer_id, invoice_number.trim()]
+            [customer_id, invoice_number.trim(), type]
         );
         if (dupCheck.rows.length > 0) {
+            const typeBn = type === 'replacement' ? 'রিপ্লেসমেন্ট' : 'ফেরত';
             return res.status(400).json({
                 success: false,
-                message: 'এই ইনভয়েসে ইতোমধ্যে একটি ফেরতের অনুরোধ প্রক্রিয়াধীন আছে।',
+                message: `এই ইনভয়েসে ইতোমধ্যে একটি ${typeBn} অনুরোধ প্রক্রিয়াধীন আছে।`,
                 error_code: 'DUPLICATE_RETURN_REQUEST'
             });
         }
 
-        // ── items sanitize ────────────────────────────────────
-        const sanitizedItems = items.map(item => ({
-            product_id:   item.product_id   || null,
-            product_name: item.product_name,
-            qty:          parseInt(item.qty),
-            reason:       item.reason.trim(),
-        }));
+        // ── product_id থাকলে DB থেকে মূল্য নিয়ে subtotal হিসাব ─
+        const productIds = [...new Set(
+            items.map(i => i.product_id).filter(Boolean)
+        )];
+        const productMap = {};
+        if (productIds.length > 0) {
+            const pRes = await query(
+                `SELECT id, price, vat, tax, unit FROM products
+                 WHERE id = ANY($1) AND is_active = true`,
+                [productIds]
+            );
+            pRes.rows.forEach(p => { productMap[p.id] = p; });
+        }
 
-        // ── DB-তে সেভ করো ─────────────────────────────────────
+        let totalReturnValue = 0;
+        const sanitizedItems = items.map(item => {
+            const prod = productMap[item.product_id] || null;
+            let unitPrice = 0;
+            let subtotal  = 0;
+            if (prod) {
+                const base = parseFloat(prod.price) || 0;
+                const vat  = parseFloat(prod.vat)   || 0;
+                const tax  = parseFloat(prod.tax)   || 0;
+                unitPrice  = parseFloat((base + base*vat/100 + base*tax/100).toFixed(2));
+                subtotal   = parseFloat((unitPrice * parseInt(item.qty)).toFixed(2));
+                totalReturnValue += subtotal;
+            }
+            return {
+                product_id:   item.product_id   || null,
+                product_name: item.product_name,
+                qty:          parseInt(item.qty),
+                unit_price:   unitPrice,
+                subtotal,
+                reason:       item.reason.trim(),
+            };
+        });
+
+        // ── DB-তে সেভ ─────────────────────────────────────────
         const result = await query(
             `INSERT INTO customer_return_requests
-                 (customer_id, invoice_number, items, note, status)
-             VALUES ($1, $2, $3::jsonb, $4, 'pending')
+                 (customer_id, invoice_number, type, items, total_return_value, note, status)
+             VALUES ($1, $2, $3, $4::jsonb, $5, $6, 'pending')
              RETURNING id, created_at`,
-            [customer_id, invoice_number.trim(), JSON.stringify(sanitizedItems), note || null]
+            [
+                customer_id, invoice_number.trim(), type,
+                JSON.stringify(sanitizedItems),
+                parseFloat(totalReturnValue.toFixed(2)),
+                note || null
+            ]
         );
         const newRequest = result.rows[0];
 
-        // ── কাস্টমার তথ্য (notification-এর জন্য) ─────────────
-        const custRes = await query(
-            `SELECT shop_name, owner_name, customer_code FROM customers WHERE id = $1`,
-            [customer_id]
-        );
-        const customer = custRes.rows[0] || {};
-
         // ── Admin/Manager-কে push notification ────────────────
         try {
+            const custRes = await query(
+                `SELECT shop_name, customer_code FROM customers WHERE id = $1`,
+                [customer_id]
+            );
+            const customer = custRes.rows[0] || {};
             const adminIds = await getAdminManagerIds();
             if (adminIds.length > 0) {
                 await sendPushToMany(adminIds, {
-                    title: `↩️ পণ্য ফেরতের অনুরোধ`,
+                    title: type === 'replacement' ? `🔄 রিপ্লেসমেন্ট অনুরোধ` : `↩️ পণ্য ফেরতের অনুরোধ`,
                     body:  `${customer.shop_name || ''} (${customer.customer_code || ''}) — ইনভয়েস: ${invoice_number}, ${sanitizedItems.length}টি পণ্য।`,
                     type:  'return_request',
                     data:  { return_request_id: newRequest.id },
@@ -890,14 +930,17 @@ const createReturnRequest = async (req, res) => {
             console.error('[ReturnRequest] Push error:', pushErr.message);
         }
 
+        const typeBn = type === 'replacement' ? 'রিপ্লেসমেন্ট' : 'ফেরত';
         return res.status(201).json({
             success: true,
-            message: 'ফেরতের অনুরোধ পাঠানো হয়েছে। শীঘ্রই SR যোগাযোগ করবে।',
+            message: `${typeBn} অনুরোধ পাঠানো হয়েছে। শীঘ্রই SR যোগাযোগ করবে।`,
             data: {
-                return_request_id: newRequest.id,
-                created_at:        newRequest.created_at,
+                return_request_id:  newRequest.id,
+                created_at:         newRequest.created_at,
                 invoice_number,
-                items_count:       sanitizedItems.length,
+                type,
+                items_count:        sanitizedItems.length,
+                total_return_value: parseFloat(totalReturnValue.toFixed(2)),
             }
         });
 
@@ -928,8 +971,10 @@ const getMyReturnRequests = async (req, res) => {
         const pOffset = baseParams.length + 2;
 
         const { rows } = await query(
-            `SELECT id, invoice_number, items, note, status,
-                    admin_note, created_at, updated_at
+            `SELECT id, invoice_number, type, items, total_return_value,
+                    note, status, admin_note,
+                    exchange_items, total_exchange_value,
+                    created_at, updated_at, reviewed_at, completed_at
              FROM customer_return_requests
              WHERE customer_id = $1 ${statusFilter}
              ORDER BY created_at DESC
@@ -952,9 +997,14 @@ const getMyReturnRequests = async (req, res) => {
             rejected:  'প্রত্যাখ্যাত',
             completed: 'সম্পন্ন',
         };
+        const TYPE_BN = { return: 'পণ্য ফেরত', replacement: 'রিপ্লেসমেন্ট' };
         const enriched = rows.map(r => ({
             ...r,
-            status_bn: STATUS_BN[r.status] || r.status,
+            status_bn:    STATUS_BN[r.status] || r.status,
+            type_bn:      TYPE_BN[r.type]     || r.type,
+            extra_credit: r.total_exchange_value && r.total_return_value
+                ? Math.max(0, parseFloat(r.total_exchange_value) - parseFloat(r.total_return_value))
+                : 0,
         }));
 
         return res.status(200).json({
