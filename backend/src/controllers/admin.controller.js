@@ -238,10 +238,54 @@ const getSystemStats = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET PUBLIC SETTINGS
+// GET /api/settings/public
+// লগইন করা যেকোনো user এই endpoint call করতে পারবে।
+// শুধু public/safe keys ফেরত দেয় — sensitive keys (sms_api_key ইত্যাদি) দেয় না।
+// ExpenseForm, worker dashboard ইত্যাদি এটি ব্যবহার করে।
+// ============================================================
+
+const PUBLIC_SETTINGS_KEYS = [
+    'expense_daily_limit',
+    'expense_transport_limit',
+    'expense_food_limit',
+    'expense_misc_limit',
+    'attendance_checkin_time',
+    'attendance_checkout_time',
+    'attendance_late_threshold',
+    'commission_slab',
+    'max_credit_limit',
+];
+
+const getPublicSettings = async (req, res) => {
+    try {
+        const placeholders = PUBLIC_SETTINGS_KEYS.map((_, i) => `$${i + 1}`).join(', ');
+
+        const result = await query(
+            `SELECT key, value FROM system_settings WHERE key IN (${placeholders}) ORDER BY key`,
+            PUBLIC_SETTINGS_KEYS
+        );
+
+        // Array → Object: { expense_daily_limit: '500', ... }
+        const data = {};
+        for (const row of result.rows) {
+            data[row.key] = row.value;
+        }
+
+        return res.status(200).json({ success: true, data });
+
+    } catch (error) {
+        console.error('❌ Get Public Settings Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সেটিংস আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getSettings,
     updateSettings,
     getAuditLogs,
     getSystemStats,
-    testSmsGateway
+    testSmsGateway,
+    getPublicSettings
 };
