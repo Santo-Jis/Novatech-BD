@@ -91,7 +91,8 @@ import LedgerHistory    from './pages/worker/LedgerHistory'
 import ExpenseForm      from './pages/worker/ExpenseForm'
 import ExpenseHistory   from './pages/worker/ExpenseHistory'
 import ReturnForm       from './pages/worker/ReturnForm'
-import ReturnHistory    from './pages/worker/ReturnHistory'
+import ReturnHistory      from './pages/worker/ReturnHistory'
+import MyReturnRequests  from './pages/worker/MyReturnRequests'
 
 // ============================================================
 // Protected Route Component
@@ -313,7 +314,8 @@ function AppWithPermissions() {
         <Route path="expense"         element={<ExpenseForm />} />
         <Route path="expense-history" element={<ExpenseHistory />} />
         <Route path="return-form"     element={<ReturnForm />} />
-        <Route path="return-history"  element={<ReturnHistory />} />
+        <Route path="return-history"      element={<ReturnHistory />} />
+        <Route path="my-return-requests" element={<MyReturnRequests />} />
         <Route path="notices"         element={<NoticesView />} />
       </Route>
 
