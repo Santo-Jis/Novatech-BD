@@ -7,7 +7,7 @@ import toast from 'react-hot-toast'
 import {
   FiCheck, FiX, FiEdit, FiUser, FiRefreshCw,
   FiDollarSign, FiSliders, FiSearch,
-  FiAlertCircle, FiCreditCard
+  FiAlertCircle, FiCreditCard, FiBell
 } from 'react-icons/fi'
 
 // ── Tab constants ────────────────────────────────────────────
@@ -190,7 +190,7 @@ function CreditLimitModal({ customer, onClose, onSuccess }) {
 }
 
 // ── Customer Credit Card ─────────────────────────────────────
-function CustomerCreditCard({ customer, onCollect, onSetLimit }) {
+function CustomerCreditCard({ customer, onCollect, onSetLimit, onRemind, reminding }) {
   const credit      = parseFloat(customer.current_credit || 0)
   const limit       = parseFloat(customer.credit_limit   || 0)
   const balance     = parseFloat(customer.credit_balance || 0)
@@ -239,14 +239,24 @@ function CustomerCreditCard({ customer, onCollect, onSetLimit }) {
 
       <div className="flex gap-2">
         <button onClick={() => onSetLimit(customer)}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-blue-50 text-blue-600 text-sm font-semibold">
-          <FiSliders size={14} />
-          লিমিট পরিবর্তন
+          className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-blue-50 text-blue-600 text-xs font-semibold">
+          <FiSliders size={13} />
+          লিমিট
         </button>
         <button onClick={() => onCollect(customer)} disabled={credit <= 0}
           className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-green-500 text-white text-sm font-semibold disabled:opacity-40 disabled:bg-gray-100 disabled:text-gray-400">
           <FiDollarSign size={14} />
           বাকি আদায়
+        </button>
+        <button
+          onClick={() => onRemind(customer)}
+          disabled={credit <= 0 || reminding === customer.id}
+          className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-orange-50 text-orange-500 text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+          title="Credit Reminder পাঠান"
+        >
+          {reminding === customer.id
+            ? <span className="w-3.5 h-3.5 border-2 border-orange-300 border-t-orange-500 rounded-full animate-spin" />
+            : <FiBell size={14} />}
         </button>
       </div>
     </div>
@@ -264,6 +274,7 @@ export default function ManagerCustomers() {
   const [search,       setSearch]       = useState('')
   const [collectModal, setCollectModal] = useState(null)
   const [limitModal,   setLimitModal]   = useState(null)
+  const [reminding,    setReminding]    = useState(null)  // customerId being reminded
 
   const loadRequests = async () => {
     setLoadingEdits(true)
@@ -293,6 +304,26 @@ export default function ManagerCustomers() {
   useEffect(() => {
     if (activeTab === 'credit' && customers.length === 0) loadCustomers()
   }, [activeTab])
+
+  const handleReminder = async (customer) => {
+    if (reminding) return
+    setReminding(customer.id)
+    try {
+      await api.post(`/portal/send-reminder/${customer.id}`)
+      toast.success(`✅ ${customer.shop_name}-কে Credit Reminder পাঠানো হয়েছে।`)
+    } catch (err) {
+      const msg = err.response?.data?.message
+      if (err.response?.status === 429) {
+        toast.error(msg || '⚠️ আজকে এই কাস্টমারকে ইতিমধ্যে reminder পাঠানো হয়েছে।')
+      } else if (err.response?.status === 400) {
+        toast.error(msg || 'কাস্টমারের বাকি নেই বা email নেই।')
+      } else {
+        toast.error(msg || 'Reminder পাঠাতে সমস্যা হয়েছে।')
+      }
+    } finally {
+      setReminding(null)
+    }
+  }
 
   const handleApprove = async (requestId, shopName) => {
     setProcessing(p => ({ ...p, [requestId]: true }))
@@ -475,6 +506,8 @@ export default function ManagerCustomers() {
                   customer={customer}
                   onCollect={(c) => setCollectModal(c)}
                   onSetLimit={(c) => setLimitModal(c)}
+                  onRemind={handleReminder}
+                  reminding={reminding}
                 />
               ))}
             </div>
