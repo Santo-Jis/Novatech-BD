@@ -5,7 +5,7 @@ import { useAppStore }  from '../store/app.store'
 import {
   FiHome, FiMapPin, FiShoppingBag, FiDollarSign, FiUser,
   FiBell, FiMoon, FiSun, FiUsers, FiMenu, FiX, FiLogOut,
-  FiClipboard, FiAlertTriangle, FiRefreshCw, FiTrendingUp, FiPackage, FiCreditCard, FiFileText
+  FiClipboard, FiAlertTriangle, FiRefreshCw, FiTrendingUp, FiPackage, FiCreditCard, FiFileText, FiInbox
 } from 'react-icons/fi'
 import OfflineStatusBar from '../components/OfflineStatusBar'
 import { useOffline } from '../store/useOffline'
@@ -55,6 +55,11 @@ const menuItems = [
     icon: <FiRefreshCw />,
     label: 'রিটার্ন / রিপ্লেসমেন্ট',
     path: '/worker/return-history',
+  },
+  {
+    icon: <FiInbox />,
+    label: 'অনুমোদিত রিটার্ন',
+    path: '/worker/my-return-requests',
   },
   {
     icon: <FiFileText />,
