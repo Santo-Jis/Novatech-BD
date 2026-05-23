@@ -1338,6 +1338,51 @@ const getTeamVisits = async (req, res) => {
     }
 };
 
+// ============================================================
+// UPLOAD RECEIPT PHOTO
+// POST /api/sales/upload-receipt
+// বিক্রয়ের রসিদ/মেমো ছবি Cloudinary তে আপলোড করে URL ফেরত দেয়।
+// Sale তৈরির আগে আলাদাভাবে call করা হয়, URL পরে /sales payload-এ যায়।
+// ============================================================
+
+const uploadReceipt = async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({
+                success: false,
+                message: 'রসিদের ছবি দিন। (receipt_photo field)'
+            });
+        }
+
+        const workerId  = req.user.id;
+        const timestamp = Date.now();
+
+        const url = await uploadToCloudinary(
+            req.file.buffer,
+            'receipt_photos',
+            `receipt_${workerId}_${timestamp}`,
+            req.file.mimetype
+        );
+
+        if (!url) {
+            return res.status(500).json({
+                success: false,
+                message: 'ছবি আপলোড করা সম্ভব হয়নি। পরে চেষ্টা করুন।'
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            message: 'রসিদের ছবি আপলোড সফল।',
+            data: { url }
+        });
+
+    } catch (error) {
+        console.error('❌ Upload Receipt Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     createVisit,
     createSale,
@@ -1351,5 +1396,6 @@ module.exports = {
     getSaleDetail,
     getMyMonthlySales,
     getMyVisitStats,
-    getVisitStatus
+    getVisitStatus,
+    uploadReceipt
 };
