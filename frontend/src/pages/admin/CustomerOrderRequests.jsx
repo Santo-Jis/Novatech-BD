@@ -58,7 +58,7 @@ export default function CustomerOrderRequests() {
   // SR লিস্ট লোড (assign করার জন্য)
   const loadWorkers = async () => {
     try {
-      const res = await api.get('/employees?role=worker&is_active=true')
+      const res = await api.get('/employees?role=worker&status=active')
       setWorkers(res.data.data || [])
     } catch (e) {
       console.error(e)
