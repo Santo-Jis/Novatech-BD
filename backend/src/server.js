@@ -138,6 +138,7 @@ const customerOrderReqRoutes    = require('./routes/customerOrderRequest.routes'
 const appRoutes                 = require('./routes/app.routes');       // ← নতুন
 const expenseRoutes             = require('./routes/expense.routes');
 const returnRoutes              = require('./routes/return.routes');
+const settingsRoutes            = require('./routes/settings.routes');   // ✅ public settings
 
 app.use('/api/auth',        loginLimiter, authRoutes);
 app.use('/api/portal',     loginLimiter, portalRoutes); // ✅ customer portal login-এও limiter
@@ -163,6 +164,7 @@ app.use('/api/ledger',     ledgerRoutes);
 app.use('/api/customer-order-requests', customerOrderReqRoutes);
 app.use('/api/app',                     appRoutes);            // ← নতুন
 app.use('/api/expense',                 expenseRoutes);
+app.use('/api/settings',                settingsRoutes);       // ✅ public settings (expense limits etc.)
 app.use('/api/return',                  returnRoutes);
 
 // ============================================================
