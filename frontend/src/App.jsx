@@ -70,7 +70,8 @@ import LiveTracking          from './pages/manager/LiveTracking'
 import TrailHistory          from './pages/manager/TrailHistory'
 import ExpenseApprovals      from './pages/manager/ExpenseApprovals'
 import ReturnApprovals       from './pages/manager/ReturnApprovals'
-import ManagerPortalDevices  from './pages/manager/PortalDevices'   // ← নতুন
+import ManagerPortalDevices  from './pages/manager/PortalDevices'
+import CommissionTeam        from './pages/manager/CommissionTeam'
 
 // Worker Pages
 import WorkerDashboard  from './pages/worker/Dashboard'
@@ -285,6 +286,7 @@ function AppWithPermissions() {
         <Route path="expense"                    element={<ExpenseApprovals />} />
         <Route path="returns"                    element={<ReturnApprovals />} />
         <Route path="portal-devices"             element={<ManagerPortalDevices />} />
+        <Route path="commission/team"            element={<CommissionTeam />} />
         <Route path="ai-chat"                    element={<AIChat />} />
         <Route path="notices"                    element={<NoticesView />} />
       </Route>
