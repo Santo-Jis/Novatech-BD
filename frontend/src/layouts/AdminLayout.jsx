@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
-import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard } from 'react-icons/fi'
+import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw } from 'react-icons/fi'
 
 const navItems = [
   { path: '/admin/dashboard',       icon: <FiHome />,         label: 'ড্যাশবোর্ড' },
@@ -11,12 +11,14 @@ const navItems = [
   { path: '/admin/recruitment',     icon: <FiUserPlus />,     label: 'SR নিয়োগ' },
   { path: '/admin/pending',         icon: <FiCheckSquare />,  label: 'অনুমোদন বাকি' },
   { path: '/admin/products',        icon: <FiPackage />,      label: 'পণ্য' },
+  { path: '/admin/portal-returns',  icon: <FiRotateCcw />,    label: 'পোর্টাল রিটার্ন' },
   { path: '/admin/commission-pay',  icon: <FiDollarSign />,   label: 'কমিশন পরিশোধ' },
   { path: '/admin/salary-pay',      icon: <FiCreditCard />,   label: 'বেতন পরিশোধ' },
   { path: '/admin/reports',         icon: <FiBarChart2 />,    label: 'রিপোর্ট' },
   { path: '/admin/ai-insights',     icon: <FiCpu />,          label: 'AI বিশ্লেষণ' },
   { path: '/admin/ai-chat',         icon: <FiMessageSquare />,label: 'AI চ্যাট' },
   { path: '/admin/notices',         icon: <FiBell />,         label: 'নোটিশ বোর্ড' },
+  { path: '/admin/audit-logs',      icon: <FiShield />,       label: 'অডিট লগ' },
   { path: '/admin/settings',        icon: <FiSettings />,     label: 'সেটিংস' },
 ]
 
