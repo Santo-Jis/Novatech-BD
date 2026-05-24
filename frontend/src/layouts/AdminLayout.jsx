@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
-import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw } from 'react-icons/fi'
+import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox } from 'react-icons/fi'
 
 const navItems = [
   { path: '/admin/dashboard',       icon: <FiHome />,         label: 'ড্যাশবোর্ড' },
@@ -19,6 +19,7 @@ const navItems = [
   { path: '/admin/ai-chat',         icon: <FiMessageSquare />,label: 'AI চ্যাট' },
   { path: '/admin/notices',         icon: <FiBell />,         label: 'নোটিশ বোর্ড' },
   { path: '/admin/audit-logs',      icon: <FiShield />,       label: 'অডিট লগ' },
+  { path: '/admin/customer-requests', icon: <FiInbox />,        label: 'কাস্টমার রিকোয়েস্ট' },
   { path: '/admin/settings',        icon: <FiSettings />,     label: 'সেটিংস' },
 ]
 
