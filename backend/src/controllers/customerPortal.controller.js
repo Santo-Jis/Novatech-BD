@@ -678,10 +678,17 @@ const getCustomerDashboard = async (req, res) => {
             `SELECT c.shop_name, c.owner_name, c.customer_code, c.email,
                     c.credit_limit, c.current_credit, c.credit_balance,
                     c.business_type, c.whatsapp,
-                    r.name AS route_name
+                    r.name AS route_name,
+                    u.name_bn  AS assigned_sr_name,
+                    u.phone    AS assigned_sr_phone,
+                    u.employee_code AS assigned_sr_code
              FROM customers c
              LEFT JOIN routes r ON c.route_id = r.id
-             WHERE c.id = $1`,
+             LEFT JOIN customer_assignments ca
+               ON ca.customer_id = c.id AND ca.is_active = true
+             LEFT JOIN users u ON u.id = ca.worker_id
+             WHERE c.id = $1
+             LIMIT 1`,
             [customer_id]
         );
 
@@ -1133,4 +1140,225 @@ module.exports = {
     getPaymentHistory,
     getMonthlySummary,
     getCreditOverview,
+    getCustomerStatement,
+};
+
+// ============================================================
+// STATEMENT PDF DOWNLOAD
+// GET /api/portal/statement?from=2025-01-01&to=2025-12-31
+// কাস্টমারের পুরো হিসাবের PDF statement
+// ============================================================
+const getCustomerStatement = async (req, res) => {
+    try {
+        const { customer_id } = req.portalUser;
+        const date_from = req.query.from || null;
+        const date_to   = req.query.to   || null;
+
+        // Customer তথ্য
+        const custResult = await query(
+            `SELECT shop_name, owner_name, customer_code, whatsapp, email,
+                    credit_limit, current_credit, credit_balance
+             FROM customers WHERE id = $1`,
+            [customer_id]
+        );
+        if (custResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'তথ্য পাওয়া যায়নি।' });
+        }
+        const cust = custResult.rows[0];
+
+        // Date filter তৈরি
+        const params  = [customer_id];
+        let dateClause = '';
+        if (date_from) { params.push(date_from); dateClause += ` AND st.created_at >= $${params.length}::date`; }
+        if (date_to)   { params.push(date_to);   dateClause += ` AND st.created_at < ($${params.length}::date + INTERVAL '1 day')`; }
+
+        // Sales + Credit payments একসাথে
+        const [salesRes, paymentsRes] = await Promise.all([
+            query(
+                `SELECT st.invoice_number, st.items, st.total_amount,
+                        st.net_amount, st.payment_method,
+                        st.cash_received, st.credit_used,
+                        st.discount_amount, st.replacement_value,
+                        st.created_at, u.name_bn AS sr_name
+                 FROM sales_transactions st
+                 JOIN users u ON st.worker_id = u.id
+                 WHERE st.customer_id = $1
+                   AND (st.otp_verified = true OR st.otp_skipped = true)
+                   ${dateClause}
+                 ORDER BY st.created_at ASC`,
+                params
+            ),
+            query(
+                `SELECT cp.amount, cp.notes, cp.created_at, u.name_bn AS collected_by
+                 FROM credit_payments cp
+                 JOIN users u ON cp.worker_id = u.id
+                 WHERE cp.customer_id = $1
+                   ${date_from ? `AND cp.created_at >= '${date_from}'::date` : ''}
+                   ${date_to   ? `AND cp.created_at < ('${date_to}'::date + INTERVAL '1 day')` : ''}
+                 ORDER BY cp.created_at ASC`,
+                [customer_id]
+            ),
+        ]);
+
+        const sales    = salesRes.rows;
+        const payments = paymentsRes.rows;
+
+        // Summary হিসাব
+        const totalPurchase       = sales.reduce((s, r) => s + parseFloat(r.net_amount || 0), 0);
+        const totalCash           = sales.reduce((s, r) => s + parseFloat(r.cash_received || 0), 0);
+        const totalCredit         = sales.reduce((s, r) => s + parseFloat(r.credit_used || 0), 0);
+        const totalCreditPaid     = payments.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+
+        // PDFKit দিয়ে তৈরি
+        const PDFDocument = require('pdfkit');
+        const doc    = new PDFDocument({ margin: 40, size: 'A4' });
+        const chunks = [];
+
+        doc.on('data', c => chunks.push(c));
+        doc.on('end', () => {
+            const buffer = Buffer.concat(chunks);
+            const label  = date_from && date_to
+                ? `${date_from}_to_${date_to}`
+                : 'full';
+            res.set({
+                'Content-Type':        'application/pdf',
+                'Content-Disposition': `attachment; filename="statement_${cust.customer_code}_${label}.pdf"`,
+                'Content-Length':      buffer.length,
+            });
+            res.send(buffer);
+        });
+
+        const fmt = (n) => parseFloat(n || 0).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-BD', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
+
+        // ── Header ──────────────────────────────────────────
+        doc.fontSize(18).font('Helvetica-Bold').text('NovaTech BD (Ltd.)', { align: 'center' });
+        doc.fontSize(9).font('Helvetica').fillColor('#555')
+           .text('Janaki Singha Road, Barisal — 1200 | inf.novatechbd@gmail.com', { align: 'center' });
+        doc.moveDown(0.5);
+
+        doc.fontSize(13).font('Helvetica-Bold').fillColor('#1e40af')
+           .text('ACCOUNT STATEMENT', { align: 'center' });
+
+        if (date_from || date_to) {
+            doc.fontSize(9).font('Helvetica').fillColor('#555')
+               .text(`Period: ${date_from || 'Start'} to ${date_to || 'Today'}`, { align: 'center' });
+        }
+        doc.moveDown(0.5);
+        doc.moveTo(40, doc.y).lineTo(555, doc.y).lineWidth(1.5).strokeColor('#1e40af').stroke();
+        doc.moveDown(0.5);
+
+        // ── Customer Info ────────────────────────────────────
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Customer Information');
+        doc.moveDown(0.3);
+        const infoY = doc.y;
+        doc.fontSize(9).font('Helvetica').fillColor('#333')
+           .text(`Shop: ${cust.shop_name}`, 40, infoY)
+           .text(`Owner: ${cust.owner_name}`, 40, infoY + 15)
+           .text(`Code: ${cust.customer_code}`, 40, infoY + 30)
+           .text(`WhatsApp: ${cust.whatsapp || '—'}`, 300, infoY)
+           .text(`Credit Limit: ৳${fmt(cust.credit_limit)}`, 300, infoY + 15)
+           .text(`Current Due: ৳${fmt(cust.current_credit)}`, 300, infoY + 30);
+        doc.y = infoY + 50;
+        doc.moveDown(0.5);
+        doc.moveTo(40, doc.y).lineTo(555, doc.y).lineWidth(0.5).strokeColor('#ccc').stroke();
+        doc.moveDown(0.5);
+
+        // ── Summary Box ──────────────────────────────────────
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Summary');
+        doc.moveDown(0.3);
+        const sumY = doc.y;
+        doc.rect(40, sumY, 515, 72).fillColor('#f0f4ff').fill();
+        doc.fillColor('#1e3a8a');
+        doc.fontSize(9).font('Helvetica-Bold')
+           .text(`Total Invoices: ${sales.length}`,       50, sumY + 8)
+           .text(`Total Purchase: ৳${fmt(totalPurchase)}`, 50, sumY + 24)
+           .text(`Cash Paid: ৳${fmt(totalCash)}`,         50, sumY + 40)
+           .text(`Credit Remaining: ৳${fmt(totalCredit - totalCreditPaid)}`, 50, sumY + 56)
+           .text(`Credit Collected: ৳${fmt(totalCreditPaid)}`, 300, sumY + 8)
+           .text(`Balance: ৳${fmt(cust.credit_balance)}`,  300, sumY + 24)
+           .text(`Generated: ${new Date().toLocaleDateString('en-BD')}`, 300, sumY + 56);
+        doc.y = sumY + 80;
+        doc.moveDown(0.5);
+
+        // ── Transactions Table ───────────────────────────────
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Transaction History');
+        doc.moveDown(0.3);
+
+        // Table Header
+        const col = { date: 40, invoice: 110, sr: 230, method: 330, amount: 420, cash: 480 };
+        const rowH = 18;
+        let y = doc.y;
+
+        doc.rect(40, y, 515, rowH).fillColor('#1e40af').fill();
+        doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold')
+           .text('তারিখ',     col.date,    y + 5)
+           .text('Invoice',   col.invoice,  y + 5)
+           .text('SR',        col.sr,       y + 5)
+           .text('Method',    col.method,   y + 5)
+           .text('Amount ৳',  col.amount,   y + 5)
+           .text('Cash ৳',    col.cash,     y + 5);
+        y += rowH;
+
+        let rowIdx = 0;
+        for (const sale of sales) {
+            if (y > 720) { doc.addPage(); y = 40; }
+            const bg = rowIdx % 2 === 0 ? '#f9f9ff' : '#fff';
+            doc.rect(40, y, 515, rowH).fillColor(bg).fill();
+            doc.fillColor('#333').fontSize(7.5).font('Helvetica')
+               .text(fmtDate(sale.created_at),   col.date,    y + 5, { width: 68 })
+               .text(sale.invoice_number || '—', col.invoice,  y + 5, { width: 115 })
+               .text(sale.sr_name || '—',        col.sr,       y + 5, { width: 95 })
+               .text(sale.payment_method || '—', col.method,   y + 5, { width: 85 })
+               .text(fmt(sale.net_amount),        col.amount,   y + 5, { width: 55, align: 'right' })
+               .text(fmt(sale.cash_received),     col.cash,     y + 5, { width: 55, align: 'right' });
+            y += rowH;
+            rowIdx++;
+        }
+
+        // Credit Payments section
+        if (payments.length > 0) {
+            if (y > 680) { doc.addPage(); y = 40; }
+            y += 15;
+            doc.y = y;
+            doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Credit Collections');
+            y = doc.y + 5;
+
+            doc.rect(40, y, 515, rowH).fillColor('#166534').fill();
+            doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold')
+               .text('তারিখ',           col.date,    y + 5)
+               .text('Collected By',    col.invoice,  y + 5)
+               .text('নোট',             col.sr,       y + 5)
+               .text('Amount ৳',        col.amount,   y + 5, { width: 115, align: 'right' });
+            y += rowH;
+
+            rowIdx = 0;
+            for (const p of payments) {
+                if (y > 720) { doc.addPage(); y = 40; }
+                const bg = rowIdx % 2 === 0 ? '#f0fdf4' : '#fff';
+                doc.rect(40, y, 515, rowH).fillColor(bg).fill();
+                doc.fillColor('#333').fontSize(7.5).font('Helvetica')
+                   .text(fmtDate(p.created_at),   col.date,    y + 5, { width: 68 })
+                   .text(p.collected_by || '—',   col.invoice,  y + 5, { width: 115 })
+                   .text(p.notes || '—',           col.sr,       y + 5, { width: 200 })
+                   .text(fmt(p.amount),             col.amount,   y + 5, { width: 115, align: 'right' });
+                y += rowH;
+                rowIdx++;
+            }
+        }
+
+        // Footer
+        doc.y = y + 20;
+        doc.moveTo(40, doc.y).lineTo(555, doc.y).lineWidth(0.5).strokeColor('#ccc').stroke();
+        doc.moveDown(0.3);
+        doc.fontSize(8).font('Helvetica').fillColor('#999')
+           .text('This is a system-generated statement. For queries, contact your SR.', { align: 'center' })
+           .text('NovaTech BD (Ltd.) — Barisal, Bangladesh', { align: 'center' });
+
+        doc.end();
+
+    } catch (error) {
+        console.error('❌ Statement PDF Error:', error.message);
+        return res.status(500).json({ success: false, message: 'Statement তৈরি করতে সমস্যা হয়েছে।' });
+    }
 };
