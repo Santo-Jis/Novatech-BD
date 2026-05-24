@@ -4,10 +4,11 @@ import Table from '../../components/ui/Table'
 import Button from '../../components/ui/Button'
 import Input, { Textarea } from '../../components/ui/Input'
 import Modal from '../../components/ui/Modal'
+import StockMovementsModal from '../../components/StockMovementsModal'
 import toast from 'react-hot-toast'
 import {
   FiPlus, FiEdit, FiPackage, FiTrendingUp,
-  FiImage, FiPercent, FiTag, FiInfo, FiDollarSign, FiX, FiPlusCircle
+  FiImage, FiPercent, FiTag, FiInfo, FiDollarSign, FiX, FiPlusCircle, FiList
 } from 'react-icons/fi'
 
 // ─── ছবি আপলোড প্রিভিউ কম্পোনেন্ট ──────────────────────────
@@ -140,6 +141,8 @@ export default function AdminProducts() {
   const [adjustForm, setAdjustForm] = useState({ quantity: '', note: '' })
   const [saving,     setSaving]     = useState(false)
   const [tab,        setTab]        = useState('basic') // 'basic' | 'pricing' | 'image'
+  const [movOpen,    setMovOpen]    = useState(false)
+  const [movProduct, setMovProduct] = useState(null)
 
   const fetchProducts = async () => {
     try {
@@ -336,6 +339,13 @@ export default function AdminProducts() {
             title="স্টক এডজাস্ট"
           >
             <FiTrendingUp size={15} />
+          </button>
+          <button
+            onClick={() => { setMovProduct(row); setMovOpen(true) }}
+            className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-500"
+            title="স্টক মুভমেন্ট ইতিহাস"
+          >
+            <FiList size={15} />
           </button>
         </div>
       )
@@ -722,6 +732,14 @@ export default function AdminProducts() {
           </div>
         )}
       </Modal>
+
+      {/* Stock Movements Modal */}
+      <StockMovementsModal
+        isOpen={movOpen}
+        onClose={() => { setMovOpen(false); setMovProduct(null) }}
+        productId={movProduct?.id}
+        productName={movProduct?.name}
+      />
     </div>
   )
 }
