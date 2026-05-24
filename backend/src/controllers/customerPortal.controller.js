@@ -1126,6 +1126,163 @@ const getCreditOverview = async (req, res) => {
     }
 };
 
+
+// ============================================================
+// CREDIT LIMIT INCREASE REQUEST
+// POST /api/portal/credit-limit-request
+// GET  /api/portal/credit-limit-request (নিজের আবেদন দেখো)
+// ============================================================
+const submitCreditLimitRequest = async (req, res) => {
+    try {
+        const { customer_id } = req.portalUser;
+        const { requested_amount, reason } = req.body;
+
+        if (!requested_amount || isNaN(requested_amount) || parseFloat(requested_amount) <= 0) {
+            return res.status(400).json({ success: false, message: 'সঠিক পরিমাণ দিন।' });
+        }
+
+        // কাস্টমার তথ্য আনো
+        const custResult = await query(
+            `SELECT shop_name, customer_code, credit_limit FROM customers WHERE id = $1`,
+            [customer_id]
+        );
+        if (custResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
+        }
+        const cust = custResult.rows[0];
+
+        // ইতোমধ্যে pending আবেদন আছে কিনা
+        const existingResult = await query(
+            `SELECT id FROM credit_limit_requests
+             WHERE customer_id = $1 AND status = 'pending'
+             LIMIT 1`,
+            [customer_id]
+        );
+        if (existingResult.rows.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message: 'আপনার একটি আবেদন ইতোমধ্যে প্রক্রিয়াধীন আছে। অনুমোদনের অপেক্ষা করুন।'
+            });
+        }
+
+        const result = await query(
+            `INSERT INTO credit_limit_requests
+                 (customer_id, current_limit, requested_amount, reason, status)
+             VALUES ($1, $2, $3, $4, 'pending')
+             RETURNING id, created_at`,
+            [customer_id, cust.credit_limit, parseFloat(requested_amount), reason || null]
+        );
+
+        // Manager/Admin notification
+        const { sendCustomerNotification } = require('./customerNotification.controller');
+        // Admin-level DB notification (internal log)
+        await query(
+            `INSERT INTO customer_notifications (customer_id, title, body, type)
+             VALUES ($1, $2, $3, 'credit_request')`,
+            [
+                customer_id,
+                '📋 ক্রেডিট লিমিট আবেদন জমা হয়েছে',
+                `আপনার ৳${parseFloat(requested_amount).toLocaleString()} ক্রেডিট লিমিট বৃদ্ধির আবেদন জমা হয়েছে। Manager অনুমোদন দিলে আপনাকে জানানো হবে।`
+            ]
+        );
+
+        return res.status(201).json({
+            success: true,
+            message: 'আবেদন সফলভাবে জমা হয়েছে।',
+            data: { id: result.rows[0].id, created_at: result.rows[0].created_at }
+        });
+
+    } catch (error) {
+        console.error('❌ Credit Limit Request Error:', error.message);
+        return res.status(500).json({ success: false, message: 'আবেদন জমা দিতে সমস্যা হয়েছে।' });
+    }
+};
+
+const getMyLimitRequests = async (req, res) => {
+    try {
+        const { customer_id } = req.portalUser;
+        const result = await query(
+            `SELECT id, current_limit, requested_amount, reason,
+                    status, admin_note, created_at, resolved_at
+             FROM credit_limit_requests
+             WHERE customer_id = $1
+             ORDER BY created_at DESC
+             LIMIT 10`,
+            [customer_id]
+        );
+        return res.status(200).json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ Get Limit Requests Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+
+// ============================================================
+// COMPLAINT / FEEDBACK SYSTEM
+// POST /api/portal/complaint         — নতুন অভিযোগ/ফিডব্যাক
+// GET  /api/portal/complaint         — নিজের অভিযোগগুলো দেখো
+// ============================================================
+const submitComplaint = async (req, res) => {
+    try {
+        const { customer_id } = req.portalUser;
+        const { type, subject, description } = req.body;
+        // type: 'complaint' | 'feedback' | 'delivery_issue' | 'product_issue' | 'payment_issue' | 'other'
+
+        if (!subject || !description) {
+            return res.status(400).json({ success: false, message: 'বিষয় ও বিস্তারিত বিবরণ দিন।' });
+        }
+
+        const result = await query(
+            `INSERT INTO customer_complaints
+                 (customer_id, type, subject, description, status)
+             VALUES ($1, $2, $3, $4, 'open')
+             RETURNING id, created_at`,
+            [customer_id, type || 'complaint', subject.trim(), description.trim()]
+        );
+
+        // কাস্টমারকে confirmation notification পাঠাও
+        await query(
+            `INSERT INTO customer_notifications (customer_id, title, body, type)
+             VALUES ($1, $2, $3, 'complaint')`,
+            [
+                customer_id,
+                '✅ আপনার অভিযোগ গ্রহণ হয়েছে',
+                `"${subject.trim()}" — আমরা শীঘ্রই আপনার সাথে যোগাযোগ করব।`
+            ]
+        );
+
+        return res.status(201).json({
+            success: true,
+            message: 'অভিযোগ/ফিডব্যাক সফলভাবে জমা হয়েছে।',
+            data: { id: result.rows[0].id, created_at: result.rows[0].created_at }
+        });
+
+    } catch (error) {
+        console.error('❌ Submit Complaint Error:', error.message);
+        return res.status(500).json({ success: false, message: 'অভিযোগ জমা দিতে সমস্যা হয়েছে।' });
+    }
+};
+
+const getMyComplaints = async (req, res) => {
+    try {
+        const { customer_id } = req.portalUser;
+        const result = await query(
+            `SELECT id, type, subject, description, status,
+                    admin_reply, created_at, resolved_at
+             FROM customer_complaints
+             WHERE customer_id = $1
+             ORDER BY created_at DESC
+             LIMIT 20`,
+            [customer_id]
+        );
+        return res.status(200).json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ Get Complaints Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     sendPortalLink,
     resolveLink,
@@ -1141,6 +1298,10 @@ module.exports = {
     getMonthlySummary,
     getCreditOverview,
     getCustomerStatement,
+    submitCreditLimitRequest,
+    getMyLimitRequests,
+    submitComplaint,
+    getMyComplaints,
 };
 
 // ============================================================
