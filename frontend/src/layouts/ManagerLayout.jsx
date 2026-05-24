@@ -3,7 +3,7 @@ import { Outlet, NavLink } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
 import {
-  FiHome, FiUsers, FiShoppingCart, FiCheckSquare,
+  FiHome, FiUsers, FiShoppingCart, FiCheckSquare, FiInbox,
   FiCalendar, FiMapPin, FiUser, FiBell, FiMenu, FiX,
   FiLogOut, FiMessageSquare, FiList, FiFileText,
   FiRefreshCw, FiShield, FiDollarSign
@@ -25,6 +25,7 @@ const navItems = [
   { path: '/manager/routes',         icon: <FiMapPin />,       label: 'রুট' },
   { path: '/manager/commission/team',icon: <FiDollarSign />,   label: 'টিম কমিশন' },
   { path: '/manager/visit-order',    icon: <FiList />,         label: 'Visit ক্রম' },
+  { path: '/manager/customer-requests', icon: <FiInbox />,      label: 'কাস্টমার রিকোয়েস্ট' },
   { path: '/manager/ai-chat',        icon: <FiMessageSquare />,label: 'AI চ্যাট' },
   { path: '/manager/notices',        icon: <FiBell />,         label: 'নোটিশ' },
 ]
