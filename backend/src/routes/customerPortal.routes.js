@@ -22,6 +22,10 @@ const {
     getMonthlySummary,
     getCreditOverview,
     getCustomerStatement,
+    submitCreditLimitRequest,
+    getMyLimitRequests,
+    submitComplaint,
+    getMyComplaints,
 } = require('../controllers/customerPortal.controller');
 
 const { sendCreditReminder } = require('../controllers/creditReminder.controller');
@@ -238,6 +242,18 @@ router.get('/return-requests',              portalAuth, getMyReturnRequests);
 // Statement PDF Download
 // GET /api/portal/statement?from=YYYY-MM-DD&to=YYYY-MM-DD
 router.get('/statement', portalAuth, getCustomerStatement);
+
+// Credit Limit Request
+// POST /api/portal/credit-limit-request
+// GET  /api/portal/credit-limit-request
+router.post('/credit-limit-request', portalAuth, submitCreditLimitRequest);
+router.get('/credit-limit-request',  portalAuth, getMyLimitRequests);
+
+// Complaint / Feedback
+// POST /api/portal/complaint
+// GET  /api/portal/complaint
+router.post('/complaint', portalAuth, submitComplaint);
+router.get('/complaint',  portalAuth, getMyComplaints);
 
 // AI Chat
 router.post('/ai-chat',         portalAuth, aiTokenBucket, customerAiChat);
