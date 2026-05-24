@@ -5,6 +5,7 @@ import api from '../../api/axios'
 import { KPICard, Card } from '../../components/ui/Badge'
 import { SalesChart, WorkerSalesChart, AttendancePieChart } from '../../components/charts/Charts'
 import Badge from '../../components/ui/Badge'
+import CommissionSummaryCard from '../../components/CommissionSummaryCard'
 import {
   FiUsers, FiShoppingBag, FiDollarSign,
   FiAlertTriangle, FiCheckSquare, FiTrendingUp,
@@ -218,8 +219,14 @@ export default function AdminDashboard() {
         </Card>
       )}
 
+      {/* Commission Summary + Quick Actions */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1">
+          <CommissionSummaryCard />
+        </div>
+        <div className="lg:col-span-2">
       {/* Quick Actions */}
-      <Card title="দ্রুত কার্যক্রম">
+      <Card title="দ্রুত কার্যক্রম" className="h-full">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
             { label: 'নতুন কর্মচারী',   icon: '👤', path: '/admin/employees/new',  color: 'bg-primary/10 text-primary' },
@@ -238,6 +245,8 @@ export default function AdminDashboard() {
           ))}
         </div>
       </Card>
+        </div>
+      </div>
 
       {/* Top Products & Shops */}
       {(topProds.length > 0 || topShops.length > 0) && (
