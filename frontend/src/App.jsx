@@ -30,6 +30,8 @@ import AIInsights       from './pages/admin/AIInsights'
 import AdminSettings    from './pages/admin/Settings'
 import AdminProducts    from './pages/admin/Products'
 import AdminNotices     from './pages/admin/Notices'
+import AuditLogs        from './pages/admin/AuditLogs'
+import PortalReturnRequests from './pages/admin/PortalReturnRequests'
 import SRRecruitmentDashboard from './pages/admin/SRRecruitmentDashboard'
 import AdminTeams from './pages/admin/Teams'
 
@@ -261,6 +263,8 @@ function AppWithPermissions() {
         <Route path="teams"           element={<AdminTeams />} />
         <Route path="settings"        element={<AdminSettings />} />
         <Route path="products"        element={<AdminProducts />} />
+        <Route path="audit-logs"      element={<AuditLogs />} />
+        <Route path="portal-returns"  element={<PortalReturnRequests />} />
       </Route>
 
       {/* ── MANAGER ROUTES ── */}
