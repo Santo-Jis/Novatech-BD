@@ -32,6 +32,7 @@ import AdminProducts    from './pages/admin/Products'
 import AdminNotices     from './pages/admin/Notices'
 import AuditLogs        from './pages/admin/AuditLogs'
 import PortalReturnRequests from './pages/admin/PortalReturnRequests'
+import CustomerRequestsPage from './pages/admin/CustomerRequestsPage'
 import SRRecruitmentDashboard from './pages/admin/SRRecruitmentDashboard'
 import AdminTeams from './pages/admin/Teams'
 
@@ -265,6 +266,7 @@ function AppWithPermissions() {
         <Route path="products"        element={<AdminProducts />} />
         <Route path="audit-logs"      element={<AuditLogs />} />
         <Route path="portal-returns"  element={<PortalReturnRequests />} />
+        <Route path="customer-requests" element={<CustomerRequestsPage />} />
       </Route>
 
       {/* ── MANAGER ROUTES ── */}
@@ -293,6 +295,7 @@ function AppWithPermissions() {
         <Route path="commission/team"            element={<CommissionTeam />} />
         <Route path="ai-chat"                    element={<AIChat />} />
         <Route path="notices"                    element={<NoticesView />} />
+        <Route path="customer-requests"          element={<CustomerRequestsPage />} />
       </Route>
 
       {/* ── WORKER ROUTES ── */}
