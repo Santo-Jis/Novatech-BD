@@ -21,6 +21,7 @@ const {
     getPaymentHistory,
     getMonthlySummary,
     getCreditOverview,
+    getCustomerStatement,
 } = require('../controllers/customerPortal.controller');
 
 const { sendCreditReminder } = require('../controllers/creditReminder.controller');
@@ -233,6 +234,10 @@ router.get('/order-requests/:id/tracking',  portalAuth, getOrderTracking);
 // Return Requests
 router.post('/return-request',              portalAuth, createReturnRequest);
 router.get('/return-requests',              portalAuth, getMyReturnRequests);
+
+// Statement PDF Download
+// GET /api/portal/statement?from=YYYY-MM-DD&to=YYYY-MM-DD
+router.get('/statement', portalAuth, getCustomerStatement);
 
 // AI Chat
 router.post('/ai-chat',         portalAuth, aiTokenBucket, customerAiChat);
