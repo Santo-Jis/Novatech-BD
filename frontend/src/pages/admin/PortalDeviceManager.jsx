@@ -1,70 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
+import api from "../../api/axios";
 
-// ─── Mock Data ───────────────────────────────────────────────
-const MOCK_STATS = {
-  total_portal_customers: 142,
-  customers_with_active_device: 89,
-  total_active_devices: 134,
-  active_last_7_days: 23,
-  active_last_30_days: 67,
-};
-
-const MOCK_RECENT = [
-  { shop_name: "মেসার্স রহিম স্টোর", owner_name: "আব্দুর রহিম", customer_code: "C-0012", last_login: "2026-05-21T04:30:00Z", portal_email: "rahim@gmail.com" },
-  { shop_name: "করিম ট্রেডার্স", owner_name: "মো. করিম", customer_code: "C-0034", last_login: "2026-05-20T22:10:00Z", portal_email: "karim99@gmail.com" },
-  { shop_name: "নিলুফার এন্টারপ্রাইজ", owner_name: "নিলুফার বেগম", customer_code: "C-0078", last_login: "2026-05-20T18:45:00Z", portal_email: "nilufar.bd@gmail.com" },
-  { shop_name: "হাসান ব্রাদার্স", owner_name: "হাসান মাহমুদ", customer_code: "C-0091", last_login: "2026-05-20T11:22:00Z", portal_email: "hasan.m@gmail.com" },
-  { shop_name: "সুমাইয়া শপ", owner_name: "সুমাইয়া আক্তার", customer_code: "C-0055", last_login: "2026-05-19T09:15:00Z", portal_email: "sumaiya.aktar@gmail.com" },
-];
-
-const MOCK_CUSTOMERS = [
-  {
-    id: "aaa-001", customer_code: "C-0012", shop_name: "মেসার্স রহিম স্টোর", owner_name: "আব্দুর রহিম",
-    whatsapp: "01712345678", email: "rahim@gmail.com", is_active: true,
-    portal_email: "rahim@gmail.com", last_login: "2026-05-21T04:30:00Z",
-    link_expires_at: "2026-05-28T04:00:00Z", token_version: 3,
-    active_device_count: 2, total_device_count: 3,
-  },
-  {
-    id: "bbb-002", customer_code: "C-0034", shop_name: "করিম ট্রেডার্স", owner_name: "মো. করিম",
-    whatsapp: "01812345678", email: "karim99@gmail.com", is_active: true,
-    portal_email: "karim99@gmail.com", last_login: "2026-05-20T22:10:00Z",
-    link_expires_at: "2026-05-27T22:00:00Z", token_version: 1,
-    active_device_count: 1, total_device_count: 1,
-  },
-  {
-    id: "ccc-003", customer_code: "C-0057", shop_name: "খালেদ মার্কেট", owner_name: "খালেদ হোসেন",
-    whatsapp: "01912345678", email: null, is_active: true,
-    portal_email: null, last_login: null,
-    link_expires_at: null, token_version: null,
-    active_device_count: 0, total_device_count: 0,
-  },
-  {
-    id: "ddd-004", customer_code: "C-0091", shop_name: "হাসান ব্রাদার্স", owner_name: "হাসান মাহমুদ",
-    whatsapp: "01612345678", email: "hasan.m@gmail.com", is_active: true,
-    portal_email: "hasan.m@gmail.com", last_login: "2026-05-20T11:22:00Z",
-    link_expires_at: "2026-05-20T11:00:00Z", token_version: 2,
-    active_device_count: 3, total_device_count: 5,
-  },
-];
-
-const MOCK_DEVICES = {
-  "aaa-001": [
-    { id: "d-001", device_label: "Android · Chrome", google_email: "rahim@gmail.com", is_active: true, added_at: "2026-05-14T10:00:00Z", last_used_at: "2026-05-21T04:30:00Z" },
-    { id: "d-002", device_label: "Windows · Chrome", google_email: "rahim@gmail.com", is_active: true, added_at: "2026-05-16T14:20:00Z", last_used_at: "2026-05-20T20:00:00Z" },
-    { id: "d-003", device_label: "iPhone · Safari", google_email: "rahim@gmail.com", is_active: false, added_at: "2026-05-10T08:00:00Z", last_used_at: "2026-05-11T09:00:00Z" },
-  ],
-  "bbb-002": [
-    { id: "d-004", device_label: "Android · Samsung Browser", google_email: "karim99@gmail.com", is_active: true, added_at: "2026-05-18T09:00:00Z", last_used_at: "2026-05-20T22:10:00Z" },
-  ],
-  "ddd-004": [
-    { id: "d-005", device_label: "Mac · Chrome", google_email: "hasan.m@gmail.com", is_active: true, added_at: "2026-05-12T11:00:00Z", last_used_at: "2026-05-20T11:22:00Z" },
-    { id: "d-006", device_label: "Android · Chrome", google_email: "hasan.m@gmail.com", is_active: true, added_at: "2026-05-13T13:00:00Z", last_used_at: "2026-05-19T08:00:00Z" },
-    { id: "d-007", device_label: "iPad · Safari", google_email: "hasan.m@gmail.com", is_active: true, added_at: "2026-05-15T07:00:00Z", last_used_at: "2026-05-18T15:00:00Z" },
-    { id: "d-008", device_label: "Windows · Firefox", google_email: "hasan.m@gmail.com", is_active: false, added_at: "2026-05-10T10:00:00Z", last_used_at: "2026-05-10T12:00:00Z" },
-    { id: "d-009", device_label: "Linux · Chrome", google_email: "hasan.m@gmail.com", is_active: false, added_at: "2026-05-08T16:00:00Z", last_used_at: "2026-05-09T10:00:00Z" },
-  ],
-};
+// ─── Helpers ─────────────────────────────────────────────────
 
 // ─── Helpers ─────────────────────────────────────────────────
 const fmtDate = (iso) => {
@@ -200,33 +137,70 @@ const DeviceRow = ({ device, onRevoke, onRestore }) => {
 
 // ─── Customer Detail Drawer ───────────────────────────────────
 const CustomerDrawer = ({ customer, onClose, onDeviceChange }) => {
-  const [devices, setDevices]   = useState(MOCK_DEVICES[customer.id] || []);
-  const [confirm, setConfirm]   = useState(null);
-  const [toast, setToast]       = useState(null);
+  const [devices, setDevices]       = useState([]);
+  const [loading, setLoading]       = useState(true);
+  const [confirm, setConfirm]       = useState(null);
+  const [toast, setToast]           = useState(null);
   const [alsoRevoke, setAlsoRevoke] = useState(false);
+  const [acting, setActing]         = useState(false);
 
   const showToast = (msg, type="success") => setToast({ msg, type });
 
-  const doRevoke = (device) => {
-    setDevices(ds => ds.map(d => d.id===device.id ? {...d, is_active:false} : d));
-    showToast(`"${device.device_label}" revoke করা হয়েছে।`);
-    setConfirm(null);
-    onDeviceChange();
+  // ── Fetch devices from real API ──
+  useEffect(() => {
+    setLoading(true);
+    api.get(`/admin/portal-devices/${customer.id}`)
+      .then(res => setDevices(res.data.data || []))
+      .catch(() => showToast("ডিভাইস তথ্য আনতে সমস্যা।", "error"))
+      .finally(() => setLoading(false));
+  }, [customer.id]);
+
+  const doRevoke = async (device) => {
+    setActing(true);
+    try {
+      await api.delete(`/admin/portal-devices/${customer.id}/${device.id}`);
+      setDevices(ds => ds.map(d => d.id === device.id ? { ...d, is_active: false } : d));
+      showToast(`"${device.device_label}" revoke করা হয়েছে।`);
+      onDeviceChange();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "সমস্যা হয়েছে।", "error");
+    } finally {
+      setActing(false);
+      setConfirm(null);
+    }
   };
 
-  const doRestore = (device) => {
-    setDevices(ds => ds.map(d => d.id===device.id ? {...d, is_active:true} : d));
-    showToast(`"${device.device_label}" পুনরায় সক্রিয় করা হয়েছে।`);
-    setConfirm(null);
-    onDeviceChange();
+  const doRestore = async (device) => {
+    setActing(true);
+    try {
+      await api.patch(`/admin/portal-devices/${customer.id}/${device.id}/restore`);
+      setDevices(ds => ds.map(d => d.id === device.id ? { ...d, is_active: true } : d));
+      showToast(`"${device.device_label}" পুনরায় সক্রিয় করা হয়েছে।`);
+      onDeviceChange();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "সমস্যা হয়েছে।", "error");
+    } finally {
+      setActing(false);
+      setConfirm(null);
+    }
   };
 
-  const doRevokeAll = () => {
-    setDevices(ds => ds.map(d => ({...d, is_active:false})));
-    showToast(`সব device revoke করা হয়েছে।${alsoRevoke?" Link-ও বাতিল।":""}`);
-    setConfirm(null);
-    setAlsoRevoke(false);
-    onDeviceChange();
+  const doRevokeAll = async () => {
+    setActing(true);
+    try {
+      await api.delete(`/admin/portal-devices/${customer.id}`, {
+        data: { also_revoke_link: alsoRevoke }
+      });
+      setDevices(ds => ds.map(d => ({ ...d, is_active: false })));
+      showToast(`সব device revoke করা হয়েছে।${alsoRevoke ? " Link-ও বাতিল।" : ""}`);
+      onDeviceChange();
+    } catch (err) {
+      showToast(err?.response?.data?.message || "সমস্যা হয়েছে।", "error");
+    } finally {
+      setActing(false);
+      setConfirm(null);
+      setAlsoRevoke(false);
+    }
   };
 
   const activeCount   = devices.filter(d=>d.is_active).length;
@@ -307,6 +281,13 @@ const CustomerDrawer = ({ customer, onClose, onDeviceChange }) => {
 
         {/* Body */}
         <div style={{ padding:"20px 28px", flex:1 }}>
+          {loading ? (
+            <div style={{ textAlign:"center", padding:"60px 0", color:"#475569" }}>
+              <div style={{ fontSize:28, marginBottom:12, animation:"spin 1s linear infinite", display:"inline-block" }}>⟳</div>
+              <div style={{ fontSize:13 }}>ডিভাইস লোড হচ্ছে…</div>
+            </div>
+          ) : (
+            <>
           {/* Revoke all action */}
           {activeCount > 0 && (
             <div style={{
@@ -320,10 +301,10 @@ const CustomerDrawer = ({ customer, onClose, onDeviceChange }) => {
                   কাস্টমার নতুন করে Google login করতে বাধ্য হবে
                 </div>
               </div>
-              <button onClick={()=>setConfirm("all")} style={{
+              <button onClick={()=>setConfirm("all")} disabled={acting} style={{
                 padding:"8px 16px", borderRadius:8, border:"1px solid rgba(239,68,68,0.4)",
                 background:"rgba(239,68,68,0.15)", color:"#f87171", cursor:"pointer",
-                fontSize:12, fontWeight:700, whiteSpace:"nowrap",
+                fontSize:12, fontWeight:700, whiteSpace:"nowrap", opacity: acting ? 0.6 : 1,
               }}>সব Revoke</button>
             </div>
           )}
@@ -347,10 +328,12 @@ const CustomerDrawer = ({ customer, onClose, onDeviceChange }) => {
                   key={device.id}
                   device={device}
                   onRevoke={d => setConfirm({type:"single", device:d})}
-                  onRestore={d => doRestore(d)}
+                  onRestore={d => setConfirm({type:"restore", device:d})}
                 />
               ))}
             </div>
+          )}
+            </>
           )}
         </div>
       </div>
@@ -383,6 +366,15 @@ const CustomerDrawer = ({ customer, onClose, onDeviceChange }) => {
           onCancel={() => setConfirm(null)}
         />
       )}
+      {confirm?.type === "restore" && (
+        <ConfirmModal
+          title={`"${confirm.device.device_label}" Restore?`}
+          desc="এই device থেকে আবার portal-এ login করা যাবে।"
+          danger={false}
+          onConfirm={() => doRestore(confirm.device)}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
 
       {toast && <Toast {...toast} onClose={()=>setToast(null)} />}
     </div>
@@ -391,14 +383,37 @@ const CustomerDrawer = ({ customer, onClose, onDeviceChange }) => {
 
 // ─── Main Component ───────────────────────────────────────────
 export default function PortalDeviceManager() {
-  const [tab, setTab]           = useState("overview"); // "overview" | "list"
-  const [search, setSearch]     = useState("");
-  const [filter, setFilter]     = useState("all"); // "all" | "yes" | "no"
-  const [selected, setSelected] = useState(null);
-  const [customers, setCustomers] = useState(MOCK_CUSTOMERS);
-  const [toast, setToast]       = useState(null);
+  const [tab, setTab]             = useState("overview");
+  const [search, setSearch]       = useState("");
+  const [filter, setFilter]       = useState("all");
+  const [selected, setSelected]   = useState(null);
+  const [customers, setCustomers] = useState([]);
+  const [stats, setStats]         = useState(null);
+  const [recent, setRecent]       = useState([]);
+  const [loading, setLoading]     = useState(true);
+  const [toast, setToast]         = useState(null);
 
   const showToast = (msg, type="success") => setToast({ msg, type });
+
+  // Fetch overview (stats + recent logins + customer list)
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [overviewRes, listRes] = await Promise.all([
+        api.get("/admin/portal-devices/stats"),
+        api.get("/admin/portal-devices"),
+      ]);
+      setStats(overviewRes.data.data || overviewRes.data);
+      setRecent(overviewRes.data.recent_logins || []);
+      setCustomers(listRes.data.data || []);
+    } catch {
+      showToast("তথ্য লোড করতে সমস্যা হয়েছে।", "error");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const filtered = customers.filter(c => {
     const q = search.toLowerCase();
@@ -411,14 +426,8 @@ export default function PortalDeviceManager() {
     return matchSearch && matchFilter;
   });
 
-  const refreshCustomer = () => {
-    // Refresh selected customer badge counts from mock
-    setCustomers(cs => cs.map(c => {
-      if (c.id !== selected?.id) return c;
-      const devs = MOCK_DEVICES[c.id] || [];
-      return { ...c, active_device_count: devs.filter(d=>d.is_active).length, total_device_count: devs.length };
-    }));
-  };
+  // After device action inside drawer, refresh customer list to update badge counts
+  const refreshCustomer = () => { fetchAll(); };
 
   return (
     <div style={{
@@ -480,17 +489,25 @@ export default function PortalDeviceManager() {
         {tab === "overview" && (
           <div>
             {/* Stats */}
-            <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:28 }}>
-              <StatCard label="মোট Portal কাস্টমার" value={MOCK_STATS.total_portal_customers}
-                accent="linear-gradient(90deg,#60a5fa,#818cf8)" />
-              <StatCard label="Active Device আছে" value={MOCK_STATS.customers_with_active_device}
-                accent="linear-gradient(90deg,#4ade80,#22d3ee)"
-                sub={`${MOCK_STATS.total_active_devices} টি device`} />
-              <StatCard label="সক্রিয় (৭ দিন)" value={MOCK_STATS.active_last_7_days}
-                accent="linear-gradient(90deg,#fb923c,#f59e0b)" />
-              <StatCard label="সক্রিয় (৩০ দিন)" value={MOCK_STATS.active_last_30_days}
-                accent="linear-gradient(90deg,#c084fc,#e879f9)" />
-            </div>
+            {loading ? (
+              <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:28 }}>
+                {[...Array(4)].map((_,i) => (
+                  <div key={i} style={{ flex:1, minWidth:140, height:90, background:"rgba(255,255,255,0.03)", borderRadius:14, animation:"pulse 1.5s ease infinite" }} />
+                ))}
+              </div>
+            ) : (
+              <div style={{ display:"flex", gap:12, flexWrap:"wrap", marginBottom:28 }}>
+                <StatCard label="মোট Portal কাস্টমার" value={stats?.total_portal_customers ?? "—"}
+                  accent="linear-gradient(90deg,#60a5fa,#818cf8)" />
+                <StatCard label="Active Device আছে" value={stats?.customers_with_active_device ?? "—"}
+                  accent="linear-gradient(90deg,#4ade80,#22d3ee)"
+                  sub={`${stats?.total_active_devices ?? 0} টি device`} />
+                <StatCard label="সক্রিয় (৭ দিন)" value={stats?.active_last_7_days ?? "—"}
+                  accent="linear-gradient(90deg,#fb923c,#f59e0b)" />
+                <StatCard label="সক্রিয় (৩০ দিন)" value={stats?.active_last_30_days ?? "—"}
+                  accent="linear-gradient(90deg,#c084fc,#e879f9)" />
+              </div>
+            )}
 
             {/* Recent logins */}
             <div style={{
@@ -506,11 +523,15 @@ export default function PortalDeviceManager() {
                   fontSize:12, color:"#60a5fa", background:"none", border:"none", cursor:"pointer", fontWeight:600,
                 }}>সব দেখুন →</button>
               </div>
-              {MOCK_RECENT.map((r,i) => (
+              {recent.length === 0 ? (
+                <div style={{ padding:"32px 20px", textAlign:"center", color:"#475569", fontSize:13 }}>
+                  {loading ? "লোড হচ্ছে…" : "সাম্প্রতিক login নেই।"}
+                </div>
+              ) : recent.map((r,i) => (
                 <div key={i} style={{
                   display:"flex", alignItems:"center", gap:14,
                   padding:"12px 20px",
-                  borderBottom: i < MOCK_RECENT.length-1 ? "1px solid rgba(255,255,255,0.04)" : "none",
+                  borderBottom: i < recent.length-1 ? "1px solid rgba(255,255,255,0.04)" : "none",
                 }}>
                   <div style={{
                     width:36, height:36, borderRadius:9,
