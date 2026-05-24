@@ -135,7 +135,8 @@ const salaryRoutes      = require('./routes/salary.routes');
 const locationRoutes    = require('./routes/location.routes');
 const portalRoutes              = require('./routes/customerPortal.routes');
 const customerOrderReqRoutes    = require('./routes/customerOrderRequest.routes');
-const appRoutes                 = require('./routes/app.routes');       // ← নতুন
+const appRoutes                 = require('./routes/app.routes');
+const customerRequestsRoutes    = require('./routes/customerRequests.routes');       // ← নতুন
 const expenseRoutes             = require('./routes/expense.routes');
 const returnRoutes              = require('./routes/return.routes');
 const settingsRoutes            = require('./routes/settings.routes');   // ✅ public settings
@@ -162,7 +163,8 @@ app.use('/api/location',   locationRoutes);
 app.use('/api/ledger',     ledgerRoutes);
 // /api/portal — উপরে loginLimiter সহ mount করা হয়েছে
 app.use('/api/customer-order-requests', customerOrderReqRoutes);
-app.use('/api/app',                     appRoutes);            // ← নতুন
+app.use('/api/app',                     appRoutes);
+app.use('/api/customer-requests',       customerRequestsRoutes);            // ← নতুন
 app.use('/api/expense',                 expenseRoutes);
 app.use('/api/settings',                settingsRoutes);       // ✅ public settings (expense limits etc.)
 app.use('/api/return',                  returnRoutes);
