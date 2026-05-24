@@ -234,6 +234,157 @@ const portalFetch = async (path, options = {}, retries = 1) => {
 const fmt     = (n) => parseFloat(n || 0).toLocaleString('bn-BD', { minimumFractionDigits: 0 })
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('bn-BD', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
+// ── Monthly Trend Chart (SVG-based, no deps) ─────────────────
+function MonthlyTrendChart({ portalJWT }) {
+  const [data,    setData]    = useState([])
+  const [loading, setLoading] = useState(true)
+  const [metric,  setMetric]  = useState('total_purchase') // or 'total_invoices'
+
+  useEffect(() => {
+    portalFetch('/portal/monthly-summary?months=6', {
+      headers: { Authorization: `Bearer ${portalJWT}` }
+    })
+    .then(res => {
+      // oldest first for chart
+      setData([...(res.data || [])].reverse())
+    })
+    .catch(console.error)
+    .finally(() => setLoading(false))
+  }, [portalJWT])
+
+  if (loading) return (
+    <div style={{ height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 28, height: 28, border: '3px solid #e0e7ff', borderTopColor: '#4f46e5', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+    </div>
+  )
+
+  if (!data.length) return (
+    <p style={{ textAlign: 'center', color: '#aaa', fontSize: 13, padding: '16px 0' }}>এখনও তথ্য নেই।</p>
+  )
+
+  const values   = data.map(d => parseFloat(d[metric] || 0))
+  const maxVal   = Math.max(...values, 1)
+  const W = 300, H = 120, PAD = { t: 12, r: 12, b: 32, l: 48 }
+  const chartW   = W - PAD.l - PAD.r
+  const chartH   = H - PAD.t - PAD.b
+  const stepX    = values.length > 1 ? chartW / (values.length - 1) : chartW
+
+  const pts = values.map((v, i) => ({
+    x: PAD.l + i * stepX,
+    y: PAD.t + chartH - (v / maxVal) * chartH,
+    v,
+  }))
+
+  // smooth bezier path
+  const pathD = pts.reduce((acc, pt, i) => {
+    if (i === 0) return `M${pt.x},${pt.y}`
+    const prev = pts[i - 1]
+    const cx   = (prev.x + pt.x) / 2
+    return acc + ` C${cx},${prev.y} ${cx},${pt.y} ${pt.x},${pt.y}`
+  }, '')
+
+  const areaD = pathD + ` L${pts[pts.length-1].x},${PAD.t+chartH} L${pts[0].x},${PAD.t+chartH} Z`
+
+  const fmtBn = (n) => {
+    if (metric === 'total_invoices') return String(Math.round(n))
+    if (n >= 100000)  return `${(n/100000).toFixed(1)}L`
+    if (n >= 1000)    return `${(n/1000).toFixed(0)}K`
+    return String(Math.round(n))
+  }
+
+  const monthLabel = (ml) => {
+    if (!ml) return ''
+    const [y, m] = ml.split('-')
+    const names = ['', 'জান', 'ফেব', 'মার', 'এপ্র', 'মে', 'জুন', 'জুল', 'আগ', 'সেপ', 'অক্ট', 'নভ', 'ডিস']
+    return names[parseInt(m)] || m
+  }
+
+  return (
+    <div>
+      {/* Metric Toggle */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        {[
+          { key: 'total_purchase', label: '৳ কেনাকাটা' },
+          { key: 'total_invoices', label: '# ইনভয়েস' },
+          { key: 'total_cash',     label: '৳ নগদ' },
+        ].map(({ key, label }) => (
+          <button key={key} onClick={() => setMetric(key)}
+            style={{
+              padding: '4px 12px', borderRadius: 20, border: 'none', cursor: 'pointer',
+              fontSize: 11, fontWeight: 600,
+              background: metric === key ? '#4f46e5' : '#f3f4f6',
+              color: metric === key ? 'white' : '#6b7280',
+              transition: 'all 0.2s',
+            }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* SVG Chart */}
+      <div style={{ background: 'linear-gradient(135deg,#f0f4ff,#faf5ff)', borderRadius: 16, padding: '12px 8px 4px', overflow: 'hidden' }}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', display: 'block' }}>
+          <defs>
+            <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%"   stopColor="#6366f1" stopOpacity="0.35"/>
+              <stop offset="100%" stopColor="#6366f1" stopOpacity="0.02"/>
+            </linearGradient>
+          </defs>
+
+          {/* Y-axis grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map(pct => {
+            const y = PAD.t + chartH - pct * chartH
+            return (
+              <g key={pct}>
+                <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y}
+                  stroke="#e0e7ff" strokeWidth="0.7" strokeDasharray="3,3"/>
+                <text x={PAD.l - 4} y={y + 3.5} textAnchor="end"
+                  fontSize="8" fill="#a5b4fc">
+                  {fmtBn(maxVal * pct)}
+                </text>
+              </g>
+            )
+          })}
+
+          {/* Area fill */}
+          <path d={areaD} fill="url(#chartGrad)"/>
+
+          {/* Line */}
+          <path d={pathD} fill="none" stroke="#6366f1" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+
+          {/* Data points + labels */}
+          {pts.map((pt, i) => (
+            <g key={i}>
+              <circle cx={pt.x} cy={pt.y} r="4" fill="#fff" stroke="#6366f1" strokeWidth="2"/>
+              <text x={pt.x} y={pt.y - 7} textAnchor="middle" fontSize="8" fill="#4f46e5" fontWeight="600">
+                {fmtBn(pt.v)}
+              </text>
+              {/* X-axis label */}
+              <text x={pt.x} y={H - 6} textAnchor="middle" fontSize="8.5" fill="#7c3aed">
+                {monthLabel(data[i]?.month_label)}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+
+      {/* Legend row */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10 }}>
+        {data.map((d, i) => (
+          <div key={i} style={{ flex: 1, textAlign: 'center' }}>
+            <p style={{ margin: 0, fontSize: 9, color: '#7c3aed', fontWeight: 700 }}>
+              {monthLabel(d.month_label)}
+            </p>
+            <p style={{ margin: 0, fontSize: 9, color: '#6b7280' }}>
+              {d.total_invoices || 0}টি
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Payment Badge ─────────────────────────────────────────────
 const PayBadge = ({ method }) => {
   const map = {
@@ -322,17 +473,138 @@ function InvoiceCard({ sale }) {
   )
 }
 
+// ── Order Tracking Detail Modal ──────────────────────────────
+function OrderTrackingModal({ orderId, jwt, onClose }) {
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!orderId) return
+    portalFetch(`/portal/order-requests/${orderId}/tracking`, {
+      headers: { Authorization: `Bearer ${jwt}` }
+    }).then(r => setData(r.data)).catch(console.error).finally(() => setLoading(false))
+  }, [orderId])
+
+  if (!orderId) return null
+
+  const stepIcons = { pending: '⏳', confirmed: '✅', assigned: '🚶', delivered: '📦' }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+      onClick={onClose}>
+      <div style={{ background: 'white', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, maxHeight: '80vh', overflowY: 'auto', padding: 20 }}
+        onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1e1e1e' }}>📦 অর্ডার ট্র্যাকিং</h3>
+          <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 16, color: '#555' }}>✕</button>
+        </div>
+
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '32px 0' }}>
+            <div style={{ width: 32, height: 32, border: '4px solid #e0e7ff', borderTopColor: '#4f46e5', borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 12px' }} />
+            <p style={{ color: '#aaa', fontSize: 13 }}>লোড হচ্ছে...</p>
+          </div>
+        ) : data ? (
+          <div>
+            {/* Progress Steps */}
+            {!data.is_cancelled && (
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, marginBottom: 20 }}>
+                {data.steps.map((step, idx) => (
+                  <div key={step.step} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                      {idx > 0 && (
+                        <div style={{ flex: 1, height: 3, background: step.completed ? '#4f46e5' : '#e5e7eb', transition: 'background 0.3s' }} />
+                      )}
+                      <div style={{
+                        width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                        background: step.active ? '#4f46e5' : step.completed ? '#6366f1' : '#f3f4f6',
+                        color: step.completed || step.active ? 'white' : '#9ca3af',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 16, border: step.active ? '3px solid #818cf8' : 'none',
+                        boxShadow: step.active ? '0 0 0 4px #e0e7ff' : 'none',
+                        transition: 'all 0.3s'
+                      }}>
+                        {stepIcons[step.step] || '•'}
+                      </div>
+                      {idx < data.steps.length - 1 && (
+                        <div style={{ flex: 1, height: 3, background: data.steps[idx+1]?.completed ? '#4f46e5' : '#e5e7eb' }} />
+                      )}
+                    </div>
+                    <p style={{ fontSize: 9, color: step.active ? '#4f46e5' : step.completed ? '#6b7280' : '#9ca3af', textAlign: 'center', marginTop: 6, fontWeight: step.active ? 700 : 400, lineHeight: 1.3 }}>
+                      {step.label}
+                    </p>
+                    {step.completed_at && (
+                      <p style={{ fontSize: 8, color: '#aaa', textAlign: 'center' }}>
+                        {new Date(step.completed_at).toLocaleDateString('bn-BD', { day: '2-digit', month: 'short' })}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {data.is_cancelled && (
+              <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
+                <p style={{ margin: 0, color: '#be123c', fontWeight: 700 }}>❌ অর্ডার বাতিল</p>
+                {data.admin_note && <p style={{ margin: '4px 0 0', color: '#9f1239', fontSize: 13 }}>{data.admin_note}</p>}
+              </div>
+            )}
+
+            {/* SR Info */}
+            {data.assigned_sr && (
+              <div style={{ background: '#f5f3ff', borderRadius: 12, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span style={{ fontSize: 20 }}>🚶</span>
+                <div>
+                  <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#3b0764' }}>SR: {data.assigned_sr.name}</p>
+                  {data.assigned_sr.phone && (
+                    <a href={`tel:${data.assigned_sr.phone}`} style={{ color: '#7c3aed', fontSize: 12, textDecoration: 'none' }}>
+                      📞 {data.assigned_sr.phone}
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Items */}
+            {data.items?.length > 0 && (
+              <div style={{ background: '#f9fafb', borderRadius: 12, padding: '12px 14px' }}>
+                <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>অর্ডার করা পণ্য</p>
+                {data.items.map((item, i) => (
+                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#374151', padding: '3px 0' }}>
+                    <span>{item.product_name || item.name}</span>
+                    <span style={{ fontWeight: 600 }}>× {item.qty}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {data.note && (
+              <div style={{ background: '#eff6ff', borderRadius: 10, padding: '8px 12px', marginTop: 10 }}>
+                <p style={{ margin: 0, fontSize: 12, color: '#3b82f6' }}>💬 আপনার নোট: {data.note}</p>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p style={{ textAlign: 'center', color: '#aaa', fontSize: 13, padding: 20 }}>তথ্য আনতে সমস্যা হয়েছে।</p>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── Order Request Tab ─────────────────────────────────────────
 function OrderRequestTab({ portalJWT }) {
-  const [phase,      setPhase]      = useState('list')
-  const [products,   setProducts]   = useState([])
-  const [requests,   setRequests]   = useState([])
-  const [cart,       setCart]       = useState({})
-  const [note,       setNote]       = useState('')
-  const [loading,    setLoading]    = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [successMsg, setSuccessMsg] = useState('')
-  const [errorMsg,   setErrorMsg]   = useState('')
+  const [phase,        setPhase]        = useState('list')
+  const [products,     setProducts]     = useState([])
+  const [requests,     setRequests]     = useState([])
+  const [cart,         setCart]         = useState({})
+  const [note,         setNote]         = useState('')
+  const [loading,      setLoading]      = useState(false)
+  const [submitting,   setSubmitting]   = useState(false)
+  const [successMsg,   setSuccessMsg]   = useState('')
+  const [errorMsg,     setErrorMsg]     = useState('')
+  const [trackingId,   setTrackingId]   = useState(null)
+  const [deliveredToast, setDeliveredToast] = useState(null)
 
   const loadRequests = async () => {
     setLoading(true)
@@ -345,19 +617,60 @@ function OrderRequestTab({ portalJWT }) {
     finally { setLoading(false) }
   }
 
-  const loadProducts = async () => {
+  const [catalogSearch,   setCatalogSearch]   = useState('')
+  const [catalogHasNext,  setCatalogHasNext]  = useState(false)
+  const [catalogPage,     setCatalogPage]     = useState(1)
+  const [catalogTotal,    setCatalogTotal]    = useState(0)
+  const [selectedProduct, setSelectedProduct] = useState(null)
+
+  const loadProducts = async (search = '', page = 1, append = false) => {
     setLoading(true)
     try {
-      const data = await portalFetch('/portal/products', {
+      const params = new URLSearchParams({ page, limit: 12 })
+      if (search) params.set('search', search)
+      const data = await portalFetch(`/portal/products?${params}`, {
         headers: { Authorization: `Bearer ${portalJWT}` }
       })
-      setProducts(data.data || [])
+      const prods = data.data || []
+      if (append) setProducts(prev => [...prev, ...prods])
+      else setProducts(prods)
+      setCatalogPage(data.pagination?.page || page)
+      setCatalogTotal(data.pagination?.total || 0)
+      setCatalogHasNext(data.pagination?.has_next || false)
     } catch { setErrorMsg('পণ্য তালিকা আনতে সমস্যা হয়েছে।') }
     finally { setLoading(false) }
   }
 
   useEffect(() => { loadRequests() }, [])
-  useEffect(() => { if (phase === 'new' && products.length === 0) loadProducts() }, [phase])
+  useEffect(() => { if ((phase === 'new' || phase === 'catalog') && products.length === 0) loadProducts() }, [phase])
+
+  // ── Delivered Notification Polling ────────────────────────
+  // প্রতি ৩০ সেকেন্ডে অর্ডার refresh করো — status পরিবর্তন detect করো
+  useEffect(() => {
+    if (phase !== 'list') return
+    const prevStatuses = {}
+    requests.forEach(r => { prevStatuses[r.id] = r.status })
+
+    const interval = setInterval(async () => {
+      try {
+        const data = await portalFetch('/portal/order-requests', {
+          headers: { Authorization: `Bearer ${portalJWT}` }
+        })
+        const updated = data.data || []
+        // Delivered transition detect করো
+        const newlyDelivered = updated.find(r =>
+          r.status === 'delivered' && prevStatuses[r.id] && prevStatuses[r.id] !== 'delivered'
+        )
+        if (newlyDelivered) {
+          setDeliveredToast(newlyDelivered)
+          setTimeout(() => setDeliveredToast(null), 6000)
+        }
+        setRequests(updated)
+      } catch { /* silent */ }
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [phase, requests, portalJWT])
 
   const cartCount = Object.values(cart).filter(q => q > 0).length
 
@@ -395,9 +708,194 @@ function OrderRequestTab({ portalJWT }) {
     } finally { setSubmitting(false) }
   }
 
+  // ── CATALOG VIEW ──────────────────────────────────────────
+  if (phase === 'catalog') return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <button onClick={() => { setPhase('list'); setProducts([]); setCatalogSearch(''); setSelectedProduct(null) }}
+          className="w-9 h-9 bg-gray-100 hover:bg-gray-200 rounded-xl flex items-center justify-center text-gray-600 font-bold transition-colors">
+          ←
+        </button>
+        <div>
+          <h3 className="font-bold text-gray-800">পণ্য ক্যাটালগ</h3>
+          <p className="text-xs text-gray-400">{catalogTotal > 0 ? `${catalogTotal}টি পণ্য` : 'সব পণ্য দেখুন'} — কার্টে যোগ করুন</p>
+        </div>
+      </div>
+
+      {/* Product Detail Modal */}
+      {selectedProduct && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 300, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+          onClick={() => setSelectedProduct(null)}>
+          <div style={{ background: 'white', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, maxHeight: '85vh', overflowY: 'auto', padding: 0 }}
+            onClick={e => e.stopPropagation()}>
+            {selectedProduct.image_url && (
+              <div style={{ height: 220, background: '#f3f4f6', borderRadius: '20px 20px 0 0', overflow: 'hidden' }}>
+                <img src={selectedProduct.image_url} alt={selectedProduct.name}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              </div>
+            )}
+            <div style={{ padding: '20px 20px 32px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: '#1e1e1e', flex: 1, paddingRight: 8 }}>{selectedProduct.name}</h3>
+                <button onClick={() => setSelectedProduct(null)}
+                  style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 16, color: '#555', flexShrink: 0 }}>✕</button>
+              </div>
+              <p style={{ margin: '0 0 4px', fontSize: 22, fontWeight: 800, color: '#4f46e5' }}>
+                ৳{parseFloat(selectedProduct.final_price || selectedProduct.base_price || 0).toFixed(2)}
+                <span style={{ fontSize: 12, fontWeight: 400, color: '#9ca3af', marginLeft: 6 }}>/ {selectedProduct.unit || 'পিস'}</span>
+              </p>
+              {selectedProduct.has_extra && (
+                <p style={{ margin: '0 0 8px', fontSize: 11, color: '#6b7280' }}>
+                  বেস মূল্য ৳{parseFloat(selectedProduct.base_price).toFixed(2)}
+                  {selectedProduct.vat_amount > 0 && ` + VAT ৳${selectedProduct.vat_amount.toFixed(2)}`}
+                  {selectedProduct.tax_amount > 0 && ` + Tax ৳${selectedProduct.tax_amount.toFixed(2)}`}
+                </p>
+              )}
+              <p style={{ margin: '0 0 12px', fontSize: 12, color: selectedProduct.available_stock > 0 ? '#16a34a' : '#dc2626', fontWeight: 600 }}>
+                {selectedProduct.available_stock > 0 ? `✅ স্টক: ${selectedProduct.available_stock} ${selectedProduct.unit || 'পিস'}` : '❌ স্টক নেই'}
+              </p>
+              {selectedProduct.description && (
+                <p style={{ margin: '0 0 16px', fontSize: 13, color: '#555', lineHeight: 1.6 }}>{selectedProduct.description}</p>
+              )}
+              {/* কার্ট কন্ট্রোল */}
+              {selectedProduct.available_stock > 0 && (
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', border: '1.5px solid #e0e7ff', borderRadius: 12, overflow: 'hidden', background: '#f5f7ff' }}>
+                    <button onClick={() => setCart(prev => { const q = Math.max(0, (prev[selectedProduct.id] || 0) - 1); if (q === 0) { const n = { ...prev }; delete n[selectedProduct.id]; return n } return { ...prev, [selectedProduct.id]: q } })}
+                      style={{ width: 40, height: 44, border: 'none', background: 'transparent', fontSize: 20, cursor: 'pointer', color: '#4f46e5', fontWeight: 700 }}>−</button>
+                    <span style={{ minWidth: 36, textAlign: 'center', fontWeight: 800, fontSize: 16, color: '#1e1e1e' }}>
+                      {cart[selectedProduct.id] || 0}
+                    </span>
+                    <button onClick={() => setCart(prev => ({ ...prev, [selectedProduct.id]: (prev[selectedProduct.id] || 0) + 1 }))}
+                      style={{ width: 40, height: 44, border: 'none', background: 'transparent', fontSize: 20, cursor: 'pointer', color: '#4f46e5', fontWeight: 700 }}>+</button>
+                  </div>
+                  <button onClick={() => { setCart(prev => ({ ...prev, [selectedProduct.id]: Math.max(1, prev[selectedProduct.id] || 1) })); setSelectedProduct(null) }}
+                    style={{ flex: 1, height: 44, background: 'linear-gradient(135deg, #4f46e5, #7c3aed)', border: 'none', borderRadius: 12, color: 'white', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                    🛒 কার্টে যোগ করুন
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Search */}
+      <div className="flex gap-2">
+        <input type="text" value={catalogSearch}
+          onChange={e => setCatalogSearch(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { setProducts([]); loadProducts(catalogSearch, 1) } }}
+          placeholder="পণ্য খুঁজুন..."
+          className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-400" />
+        <button onClick={() => { setProducts([]); loadProducts(catalogSearch, 1) }}
+          className="px-4 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors">
+          খুঁজুন
+        </button>
+      </div>
+
+      {/* Cart Badge */}
+      {Object.keys(cart).length > 0 && (
+        <div style={{ background: 'linear-gradient(135deg,#065f46,#047857)', borderRadius: 14, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <p style={{ margin: 0, color: 'white', fontWeight: 700, fontSize: 13 }}>
+              🛒 {Object.keys(cart).length}টি পণ্য — {Object.values(cart).reduce((a,b)=>a+b,0)}টি আইটেম
+            </p>
+            <p style={{ margin: '2px 0 0', color: '#a7f3d0', fontSize: 11 }}>অর্ডার করতে নিচে যান</p>
+          </div>
+          <button onClick={() => setPhase('new')}
+            style={{ background: 'white', border: 'none', borderRadius: 10, padding: '8px 14px', color: '#065f46', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>
+            অর্ডার করুন →
+          </button>
+        </div>
+      )}
+
+      {/* Product Grid */}
+      {loading && products.length === 0 ? (
+        <div className="grid grid-cols-2 gap-3">
+          {[...Array(6)].map((_, i) => (
+            <div key={i} className="h-48 bg-gray-100 rounded-2xl animate-pulse" />
+          ))}
+        </div>
+      ) : products.length === 0 ? (
+        <div className="text-center py-12">
+          <p className="text-4xl mb-3">📦</p>
+          <p className="text-gray-400 text-sm">কোনো পণ্য পাওয়া যায়নি।</p>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            {products.map(prod => (
+              <div key={prod.id}
+                onClick={() => setSelectedProduct(prod)}
+                style={{ background: 'white', borderRadius: 16, overflow: 'hidden', border: '1.5px solid #f0f0f0', cursor: 'pointer', boxShadow: '0 1px 6px rgba(0,0,0,0.05)', transition: 'transform 0.15s', position: 'relative' }}>
+                {/* Image */}
+                <div style={{ height: 110, background: 'linear-gradient(135deg,#f5f3ff,#eff6ff)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  {prod.image_url
+                    ? <img src={prod.image_url} alt={prod.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : <span style={{ fontSize: 36 }}>📦</span>
+                  }
+                </div>
+                {/* Cart count badge */}
+                {cart[prod.id] > 0 && (
+                  <div style={{ position: 'absolute', top: 8, right: 8, background: '#4f46e5', color: 'white', borderRadius: '50%', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800 }}>
+                    {cart[prod.id]}
+                  </div>
+                )}
+                <div style={{ padding: '10px 10px 12px' }}>
+                  <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#1e1e1e', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                    {prod.name}
+                  </p>
+                  <p style={{ margin: '4px 0 0', fontSize: 13, fontWeight: 800, color: '#4f46e5' }}>
+                    ৳{parseFloat(prod.final_price || prod.base_price || 0).toFixed(0)}
+                    <span style={{ fontSize: 9, fontWeight: 400, color: '#9ca3af' }}>/{prod.unit || 'পিস'}</span>
+                  </p>
+                  <p style={{ margin: '3px 0 0', fontSize: 10, color: prod.available_stock > 0 ? '#16a34a' : '#dc2626' }}>
+                    {prod.available_stock > 0 ? `✅ ${prod.available_stock} ${prod.unit}` : '❌ স্টক নেই'}
+                  </p>
+                  {/* Quick add */}
+                  <button onClick={e => { e.stopPropagation(); setCart(prev => ({ ...prev, [prod.id]: (prev[prod.id] || 0) + 1 })) }}
+                    disabled={prod.available_stock === 0}
+                    style={{ marginTop: 8, width: '100%', background: cart[prod.id] > 0 ? '#e0e7ff' : '#4f46e5', color: cart[prod.id] > 0 ? '#4f46e5' : 'white', border: 'none', borderRadius: 8, padding: '7px 0', fontSize: 11, fontWeight: 700, cursor: prod.available_stock === 0 ? 'not-allowed' : 'pointer', opacity: prod.available_stock === 0 ? 0.5 : 1 }}>
+                    {cart[prod.id] > 0 ? `✓ ${cart[prod.id]}টি — আরো যোগ` : '+ কার্টে যোগ'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {catalogHasNext && (
+            <button onClick={() => loadProducts(catalogSearch, catalogPage + 1, true)}
+              disabled={loading}
+              className="w-full py-3 bg-white border border-gray-200 rounded-2xl text-sm text-indigo-600 font-semibold hover:bg-indigo-50 transition-colors disabled:opacity-50">
+              {loading ? '⏳ লোড হচ্ছে...' : `আরো পণ্য দেখুন (${products.length}/${catalogTotal})`}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  )
+
   // ── LIST VIEW ──────────────────────────────────────────────
   if (phase === 'list') return (
     <div className="space-y-4">
+      {/* Delivered Toast Notification */}
+      {deliveredToast && (
+        <div style={{ background: 'linear-gradient(135deg, #065f46, #047857)', borderRadius: 16, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'center', boxShadow: '0 4px 20px rgba(4,120,87,0.4)', animation: 'slideIn 0.3s ease' }}>
+          <span style={{ fontSize: 28 }}>📦</span>
+          <div style={{ flex: 1 }}>
+            <p style={{ margin: 0, color: 'white', fontWeight: 700, fontSize: 14 }}>অর্ডার ডেলিভারি সম্পন্ন!</p>
+            <p style={{ margin: '3px 0 0', color: '#a7f3d0', fontSize: 12 }}>
+              আপনার অর্ডার ({(deliveredToast.items || []).length}টি পণ্য) সফলভাবে পৌঁছে গেছে।
+            </p>
+          </div>
+          <button onClick={() => setDeliveredToast(null)} style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '4px 8px', color: 'white', cursor: 'pointer', fontSize: 14 }}>✕</button>
+        </div>
+      )}
+
+      {/* Tracking Modal */}
+      <OrderTrackingModal orderId={trackingId} jwt={portalJWT} onClose={() => setTrackingId(null)} />
+
       {successMsg && (
         <div className="bg-green-50 border border-green-200 rounded-2xl p-4 flex items-start gap-3">
           <span className="text-2xl">✅</span>
@@ -463,6 +961,15 @@ function OrderRequestTab({ portalJWT }) {
                   💬 আপনার নোট: {req.note}
                 </div>
               )}
+              {/* Tracking Button */}
+              {['confirmed','assigned','delivered'].includes(req.status) && (
+                <button
+                  onClick={() => setTrackingId(req.id)}
+                  className="mt-3 w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1.5"
+                >
+                  📍 ট্র্যাকিং দেখুন
+                </button>
+              )}
             </div>
           )
         })
@@ -471,6 +978,10 @@ function OrderRequestTab({ portalJWT }) {
   )
 
   // ── NEW ORDER VIEW ─────────────────────────────────────────
+  const pendingOrders = requests.filter(r => r.status === 'pending')
+  const cartItemCount = Object.values(cart).reduce((a, b) => a + b, 0)
+  const cartProductCount = Object.keys(cart).length
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -482,9 +993,33 @@ function OrderRequestTab({ portalJWT }) {
         </button>
         <div>
           <h3 className="font-bold text-gray-800">নতুন অর্ডার রিকোয়েস্ট</h3>
-          <p className="text-xs text-gray-400">পণ্য বেছে পরিমাণ দিন</p>
+          <p className="text-xs text-gray-400">
+            {cartProductCount > 0
+              ? `${cartProductCount}টি পণ্য — ${cartItemCount}টি আইটেম বেছেছেন`
+              : 'পণ্য বেছে পরিমাণ দিন'}
+          </p>
         </div>
+        {/* ক্যাটালগ শর্টকাট */}
+        <button onClick={() => { setPhase('catalog'); loadProducts('', 1) }}
+          style={{ marginLeft: 'auto', background: '#ede9fe', border: 'none', borderRadius: 10, padding: '6px 12px', fontSize: 11, fontWeight: 700, color: '#5b21b6', cursor: 'pointer' }}>
+          🗂️ ক্যাটালগ
+        </button>
       </div>
+
+      {/* Multiple Pending Warning */}
+      {pendingOrders.length > 0 && (
+        <div style={{ background: 'linear-gradient(135deg,#fefce8,#fef9c3)', border: '1.5px solid #fde047', borderRadius: 14, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+          <span style={{ fontSize: 20, flexShrink: 0 }}>⚠️</span>
+          <div>
+            <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: '#854d0e' }}>
+              {pendingOrders.length}টি pending অর্ডার আছে
+            </p>
+            <p style={{ margin: '3px 0 0', fontSize: 11, color: '#92400e', lineHeight: 1.5 }}>
+              আপনি আরো অর্ডার দিতে পারবেন — একসাথে একাধিক অর্ডার রাখা যায়। SR আসলে সব একসাথে ডেলিভারি পাবেন।
+            </p>
+          </div>
+        </div>
+      )}
 
       {errorMsg && (
         <div className="bg-red-50 border border-red-100 rounded-xl p-3 text-sm text-red-600 text-center">
@@ -655,6 +1190,18 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
   const [invoiceTotal,    setInvoiceTotal]    = useState(0)
   const [invoiceLoading,  setInvoiceLoading]  = useState(false)
 
+  // ── Invoice Filter State ───────────────────────────────
+  const [invoiceSearch,   setInvoiceSearch]   = useState('')
+  const [invoicePayMethod, setInvoicePayMethod] = useState('')
+  const [invoiceDateFrom, setInvoiceDateFrom] = useState('')
+  const [invoiceDateTo,   setInvoiceDateTo]   = useState('')
+  const [filterOpen,      setFilterOpen]      = useState(false)
+  // Statement download state
+  const [stmtLoading,     setStmtLoading]     = useState(false)
+  const [stmtFrom,        setStmtFrom]        = useState('')
+  const [stmtTo,          setStmtTo]          = useState('')
+  const [stmtOpen,        setStmtOpen]        = useState(false)
+
   // ── সমস্যা ২ FIX: localStorage → sessionStorage (XSS ঝুঁকি কমানো) ──
   // sessionStorage ব্রাউজার ট্যাব বন্ধ হলে মুছে যায়, অন্য ট্যাবে শেয়ার হয় না
   const getStorageKey = (cid) => `portal_jwt_${cid}`
@@ -682,11 +1229,16 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
     }
   }
 
-  // ── Paginated invoice loader ───────────────────────────────
-  const loadInvoices = async (jwt, page = 1) => {
+  // ── Paginated invoice loader (filter support) ────────────
+  const loadInvoices = async (jwt, page = 1, filters = {}) => {
     setInvoiceLoading(true)
     try {
-      const data = await portalFetch(`/portal/invoices?page=${page}&limit=15`, {
+      const params = new URLSearchParams({ page, limit: 15 })
+      if (filters.search)      params.set('search',         filters.search)
+      if (filters.payMethod)   params.set('payment_method', filters.payMethod)
+      if (filters.dateFrom)    params.set('date_from',      filters.dateFrom)
+      if (filters.dateTo)      params.set('date_to',        filters.dateTo)
+      const data = await portalFetch(`/portal/invoices?${params}`, {
         headers: { Authorization: `Bearer ${jwt}` }
       })
       if (page === 1) {
@@ -696,12 +1248,44 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
       }
       setInvoicePage(data.pagination?.page || page)
       setInvoiceTotalPages(data.pagination?.totalPages || 1)
-      // সমস্যা ৩ FIX: API response-এর সঠিক field নাম ব্যবহার (total, totalPages)
       setInvoiceTotal(data.pagination?.total || 0)
     } catch (err) {
       console.error('Invoice load error:', err)
     } finally {
       setInvoiceLoading(false)
+    }
+  }
+
+  // ── Statement PDF download ────────────────────────────────
+  const downloadStatement = async () => {
+    setStmtLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (stmtFrom) params.set('from', stmtFrom)
+      if (stmtTo)   params.set('to',   stmtTo)
+      const BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+      const res = await fetch(`${BACKEND}/portal/statement?${params}`, {
+        headers: { Authorization: `Bearer ${portalJWT}` }
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || 'Download failed')
+      }
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      const label = stmtFrom && stmtTo ? `${stmtFrom}_to_${stmtTo}` : 'full'
+      a.download = `statement_${label}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      setStmtOpen(false)
+    } catch (e) {
+      alert('Statement ডাউনলোড ব্যর্থ: ' + e.message)
+    } finally {
+      setStmtLoading(false)
     }
   }
 
@@ -1055,8 +1639,30 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
     const handleTabChange = (tabId) => {
       setActiveTab(tabId)
       if (tabId === 'invoices' && invoices.length === 0 && !invoiceLoading) {
-        loadInvoices(portalJWT, 1)
+        loadInvoices(portalJWT, 1, {})
       }
+    }
+
+    // Invoice filter apply করো
+    const applyInvoiceFilter = () => {
+      setInvoices([])
+      setFilterOpen(false)
+      loadInvoices(portalJWT, 1, {
+        search:     invoiceSearch,
+        payMethod:  invoicePayMethod,
+        dateFrom:   invoiceDateFrom,
+        dateTo:     invoiceDateTo,
+      })
+    }
+
+    const clearInvoiceFilter = () => {
+      setInvoiceSearch('')
+      setInvoicePayMethod('')
+      setInvoiceDateFrom('')
+      setInvoiceDateTo('')
+      setInvoices([])
+      setFilterOpen(false)
+      loadInvoices(portalJWT, 1, {})
     }
 
     return (
@@ -1171,7 +1777,32 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
             <div className="p-4">
               {/* সারসংক্ষেপ */}
               {activeTab === 'summary' && (
-                <div className="space-y-4">
+                <div className="space-y-5">
+
+                  {/* ── SR Contact Card ── */}
+                  {customer?.assigned_sr_name && (
+                    <div style={{ background: 'linear-gradient(135deg,#4f46e5,#7c3aed)', borderRadius: 16, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>
+                        🧑‍💼
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <p style={{ margin: 0, fontSize: 10, color: 'rgba(255,255,255,0.65)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}>আপনার বিক্রয় প্রতিনিধি</p>
+                        <p style={{ margin: '2px 0 0', fontSize: 15, color: 'white', fontWeight: 700 }}>{customer.assigned_sr_name}</p>
+                        {customer.assigned_sr_code && (
+                          <p style={{ margin: '1px 0 0', fontSize: 10, color: 'rgba(255,255,255,0.55)' }}>কোড: {customer.assigned_sr_code}</p>
+                        )}
+                      </div>
+                      {customer?.assigned_sr_phone && (
+                        <a href={`tel:${customer.assigned_sr_phone}`}
+                          style={{ background: 'rgba(255,255,255,0.2)', border: 'none', borderRadius: 12, padding: '10px 14px', color: 'white', cursor: 'pointer', textDecoration: 'none', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                          <span style={{ fontSize: 20 }}>📞</span>
+                          <span style={{ fontSize: 9, fontWeight: 700 }}>কল করুন</span>
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── এই মাস ── */}
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">এই মাস</p>
                     <div className="grid grid-cols-2 gap-3">
@@ -1188,6 +1819,14 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
                       ))}
                     </div>
                   </div>
+
+                  {/* ── ৬ মাসের ট্রেন্ড চার্ট ── */}
+                  <div>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">গত ৬ মাসের ট্রেন্ড</p>
+                    <MonthlyTrendChart portalJWT={portalJWT} />
+                  </div>
+
+                  {/* ── সর্বমোট ── */}
                   <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">সর্বমোট</p>
                     <div className="grid grid-cols-2 gap-3">
@@ -1212,9 +1851,111 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
                 <OrderRequestTab portalJWT={portalJWT} />
               )}
 
-              {/* ইনভয়েস — Paginated */}
+              {/* ইনভয়েস — Search + Filter + Paginated */}
               {activeTab === 'invoices' && (
                 <div className="space-y-3">
+                  {/* ── Search + Filter Bar ── */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={invoiceSearch}
+                      onChange={e => setInvoiceSearch(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && applyInvoiceFilter()}
+                      placeholder="ইনভয়েস নম্বর বা SR নাম..."
+                      className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-indigo-400"
+                    />
+                    <button
+                      onClick={() => setFilterOpen(v => !v)}
+                      className={`px-3 py-2 rounded-xl border text-sm font-semibold transition-colors
+                        ${filterOpen || invoicePayMethod || invoiceDateFrom || invoiceDateTo
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}
+                    >
+                      🔍 ফিল্টার
+                    </button>
+                    <button
+                      onClick={applyInvoiceFilter}
+                      className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors"
+                    >
+                      খুঁজুন
+                    </button>
+                  </div>
+
+                  {/* ── Expanded Filter Panel ── */}
+                  {filterOpen && (
+                    <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 space-y-3">
+                      <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">ফিল্টার</p>
+
+                      {/* Payment Method */}
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">পেমেন্ট পদ্ধতি</p>
+                        <div className="flex gap-2 flex-wrap">
+                          {[['', 'সব'], ['cash', 'নগদ'], ['credit', 'বাকি'], ['mixed', 'মিশ্র']].map(([val, label]) => (
+                            <button key={val}
+                              onClick={() => setInvoicePayMethod(val)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors
+                                ${invoicePayMethod === val
+                                  ? 'bg-indigo-600 text-white border-indigo-600'
+                                  : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}
+                            >{label}</button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Date Range */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">তারিখ থেকে</p>
+                          <input type="date" value={invoiceDateFrom}
+                            onChange={e => setInvoiceDateFrom(e.target.value)}
+                            className="w-full border border-gray-200 rounded-xl px-2 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
+                        </div>
+                        <div>
+                          <p className="text-xs text-gray-500 mb-1">তারিখ পর্যন্ত</p>
+                          <input type="date" value={invoiceDateTo}
+                            onChange={e => setInvoiceDateTo(e.target.value)}
+                            className="w-full border border-gray-200 rounded-xl px-2 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 pt-1">
+                        <button onClick={applyInvoiceFilter}
+                          className="flex-1 bg-indigo-600 text-white rounded-xl py-2 text-sm font-bold hover:bg-indigo-700 transition-colors">
+                          ফিল্টার প্রয়োগ
+                        </button>
+                        <button onClick={clearInvoiceFilter}
+                          className="px-4 bg-white border border-gray-200 text-gray-500 rounded-xl py-2 text-sm hover:bg-gray-50 transition-colors">
+                          রিসেট
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Active Filter Tags */}
+                  {(invoicePayMethod || invoiceDateFrom || invoiceDateTo) && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {invoicePayMethod && (
+                        <span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-1 rounded-full flex items-center gap-1">
+                          💳 {invoicePayMethod === 'cash' ? 'নগদ' : invoicePayMethod === 'credit' ? 'বাকি' : 'মিশ্র'}
+                          <button onClick={() => { setInvoicePayMethod(''); applyInvoiceFilter() }} className="text-indigo-400 hover:text-indigo-700">✕</button>
+                        </span>
+                      )}
+                      {invoiceDateFrom && (
+                        <span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-1 rounded-full flex items-center gap-1">
+                          📅 {invoiceDateFrom}
+                          <button onClick={() => { setInvoiceDateFrom(''); applyInvoiceFilter() }} className="text-indigo-400 hover:text-indigo-700">✕</button>
+                        </span>
+                      )}
+                      {invoiceDateTo && (
+                        <span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-1 rounded-full flex items-center gap-1">
+                          📅 {invoiceDateTo} পর্যন্ত
+                          <button onClick={() => { setInvoiceDateTo(''); applyInvoiceFilter() }} className="text-indigo-400 hover:text-indigo-700">✕</button>
+                        </span>
+                      )}
+                      <span className="text-xs text-gray-400 py-1">— {invoiceTotal}টি পাওয়া গেছে</span>
+                    </div>
+                  )}
+
                   {invoiceLoading && invoices.length === 0 ? (
                     <div className="space-y-3">
                       {[...Array(3)].map((_, i) => (
@@ -1222,7 +1963,10 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
                       ))}
                     </div>
                   ) : invoices.length === 0 ? (
-                    <p className="text-center text-gray-400 text-sm py-8">কোনো ইনভয়েস নেই।</p>
+                    <div className="text-center py-8">
+                      <p className="text-3xl mb-2">🔍</p>
+                      <p className="text-gray-400 text-sm">কোনো ইনভয়েস পাওয়া যায়নি।</p>
+                    </div>
                   ) : (
                     <>
                       {invoices.map(sale => <InvoiceCard key={sale.invoice_number} sale={sale} />)}
@@ -1230,7 +1974,10 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
                       {/* Load More */}
                       {invoicePage < invoiceTotalPages && (
                         <button
-                          onClick={() => loadInvoices(portalJWT, invoicePage + 1)}
+                          onClick={() => loadInvoices(portalJWT, invoicePage + 1, {
+                            search: invoiceSearch, payMethod: invoicePayMethod,
+                            dateFrom: invoiceDateFrom, dateTo: invoiceDateTo,
+                          })}
                           disabled={invoiceLoading}
                           className="w-full py-3 bg-white border border-gray-200 rounded-2xl text-sm text-indigo-600 font-semibold hover:bg-indigo-50 transition-colors disabled:opacity-50"
                         >
@@ -1270,6 +2017,56 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* ── Statement Download ── */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <button
+              onClick={() => setStmtOpen(v => !v)}
+              className="w-full px-4 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">📄</span>
+                <div className="text-left">
+                  <p className="font-semibold text-gray-800 text-sm">Statement Download</p>
+                  <p className="text-xs text-gray-400">পুরো হিসাবের PDF ডাউনলোড করুন</p>
+                </div>
+              </div>
+              <span className="text-gray-400 text-sm">{stmtOpen ? '▲' : '▼'}</span>
+            </button>
+
+            {stmtOpen && (
+              <div className="border-t border-gray-100 p-4 bg-gray-50 space-y-3">
+                <p className="text-xs text-gray-500 font-semibold uppercase tracking-wider">তারিখ পরিসীমা (ঐচ্ছিক)</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">তারিখ থেকে</p>
+                    <input type="date" value={stmtFrom} onChange={e => setStmtFrom(e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:border-indigo-400 bg-white" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 mb-1">তারিখ পর্যন্ত</p>
+                    <input type="date" value={stmtTo} onChange={e => setStmtTo(e.target.value)}
+                      className="w-full border border-gray-200 rounded-xl px-2 py-2 text-xs focus:outline-none focus:border-indigo-400 bg-white" />
+                  </div>
+                </div>
+                <button
+                  onClick={downloadStatement}
+                  disabled={stmtLoading}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold
+                    py-3 rounded-xl flex items-center justify-center gap-2 transition-colors text-sm"
+                >
+                  {stmtLoading ? (
+                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> তৈরি হচ্ছে...</>
+                  ) : (
+                    <><span>⬇️</span> {stmtFrom || stmtTo ? 'নির্বাচিত সময়ের Statement' : 'সম্পূর্ণ Statement'} ডাউনলোড</>
+                  )}
+                </button>
+                <p className="text-xs text-gray-400 text-center">
+                  তারিখ না দিলে সব লেনদেনের Statement পাবেন
+                </p>
+              </div>
+            )}
           </div>
 
           <p className="text-center text-xs text-gray-400 pt-2">
