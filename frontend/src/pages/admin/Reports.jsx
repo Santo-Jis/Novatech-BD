@@ -15,6 +15,7 @@ const REPORT_TABS = [
   { key: 'commission', label: '💰 কমিশন' },
   { key: 'credit',     label: '💳 ক্রেডিট' },
   { key: 'expense',    label: '🧾 খরচ' },
+  { key: 'return',     label: '↩️ রিটার্ন' },
   { key: 'pl',         label: '📈 P&L' },
   { key: 'ledger',     label: '📒 লেজার' },
   { key: 'archive',    label: '🗄️ Archive' },
@@ -45,6 +46,7 @@ export default function AdminReports() {
       else if (tab === 'expense')    res = await api.get(`/reports/expense?year=${year}&month=${month}`)
       else if (tab === 'pl')         res = await api.get(`/reports/pl?from=${from}&to=${to}`)
       else if (tab === 'ledger')     res = await api.get(`/reports/ledger?from=${from}&to=${to}`)
+      else if (tab === 'return')     res = await api.get(`/reports/return?year=${year}&month=${month}`)
       else if (tab === 'archive')    res = await api.get(`/reports/archive?year=${year}&month=${month}`)
       else if (tab === 'top')        res = await Promise.all([
         api.get(`/reports/top-products?from=${from}&to=${to}`),
@@ -87,7 +89,7 @@ export default function AdminReports() {
         <Select label="গ্রুপ" value={groupBy} onChange={e => setGroupBy(e.target.value)}
           options={[{ value: 'day', label: 'দিন' }, { value: 'worker', label: 'SR' }]} className="w-28" />
       )}
-      {['attendance','commission','archive', 'expense'].includes(tab) && (
+      {['attendance','commission','archive', 'expense', 'return'].includes(tab) && (
         <>
           <Select label="মাস" options={months} value={month} onChange={e => setMonth(e.target.value)} className="w-36" />
           <Select label="বছর" options={years}  value={year}  onChange={e => setYear(e.target.value)}  className="w-28" />
@@ -354,6 +356,72 @@ export default function AdminReports() {
     }
   }
 
+  const renderReturn = () => {
+    if (!data) return null
+    const summary = data.summary || {}
+    const rows    = data.data    || []
+    return (
+      <div className="space-y-4">
+        {/* Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            ['মোট রিটার্ন',   summary.total_count     || 0,                          'text-primary'],
+            ['অনুমোদিত',     summary.approved_count  || 0,                          'text-emerald-600'],
+            ['মোট মূল্য',    `৳${parseFloat(summary.total_value    || 0).toLocaleString()}`, 'text-amber-600'],
+            ['অনুমোদিত মূল্য',`৳${parseFloat(summary.approved_value || 0).toLocaleString()}`, 'text-secondary'],
+          ].map(([l, v, c]) => (
+            <Card key={l} className="text-center">
+              <p className="text-xs text-gray-500 dark:text-gray-400">{l}</p>
+              <p className={`text-xl font-bold mt-1 ${c}`}>{v}</p>
+            </Card>
+          ))}
+        </div>
+        {/* Type breakdown */}
+        <div className="grid grid-cols-2 gap-4">
+          <Card className="text-center">
+            <p className="text-xs text-gray-500 dark:text-gray-400">রিটার্ন</p>
+            <p className="text-2xl font-bold text-primary mt-1">{summary.return_count || 0}</p>
+          </Card>
+          <Card className="text-center">
+            <p className="text-xs text-gray-500 dark:text-gray-400">রিপ্লেসমেন্ট</p>
+            <p className="text-2xl font-bold text-purple-600 mt-1">{summary.replacement_count || 0}</p>
+          </Card>
+        </div>
+        {/* Table */}
+        <Card title="রিটার্ন তালিকা">
+          <Table
+            columns={[
+              { title: 'SR', dataIndex: 'sr_name', render: (v, row) => (
+                <div>
+                  <p className="font-medium text-sm">{v}</p>
+                  <p className="text-xs text-gray-400">{row.employee_code}</p>
+                </div>
+              )},
+              { title: 'কাস্টমার', dataIndex: 'customer_name', render: (v, row) => (
+                <div>
+                  <p className="text-sm">{v}</p>
+                  <p className="text-xs text-gray-400">{row.shop_name}</p>
+                </div>
+              )},
+              { title: 'ধরন', dataIndex: 'type', render: v => (
+                <Badge variant={v === 'replacement' ? 'replacement' : 'info'} label={v === 'replacement' ? 'রিপ্লেসমেন্ট' : 'রিটার্ন'} size="xs" />
+              )},
+              { title: 'মূল্য', dataIndex: 'total_value', render: v => `৳${parseFloat(v || 0).toLocaleString()}` },
+              { title: 'স্ট্যাটাস', dataIndex: 'status', render: v => {
+                const map = { pending:'pending', approved:'approved', rejected:'rejected', completed:'active' }
+                const labelMap = { pending:'পেন্ডিং', approved:'অনুমোদিত', rejected:'বাতিল', completed:'সম্পন্ন' }
+                return <Badge variant={map[v] || 'gray'} label={labelMap[v] || v} size="xs" />
+              }},
+              { title: 'তারিখ', dataIndex: 'created_at', render: v => new Date(v).toLocaleDateString('bn-BD', { day:'2-digit', month:'short' }) },
+            ]}
+            data={rows}
+            compact
+          />
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
       <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">রিপোর্ট</h1>
@@ -372,6 +440,7 @@ export default function AdminReports() {
       <Card title="ফিল্টার">{renderFilters()}</Card>
 
       {/* Content */}
+      {tab === 'return'   && renderReturn()}
       {tab === 'pl'      && renderPL()}
       {tab === 'ledger'  && renderLedger()}
       {tab === 'archive' && renderArchive()}
