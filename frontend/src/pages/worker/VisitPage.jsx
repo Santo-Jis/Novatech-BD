@@ -10,18 +10,43 @@ import Camera from '../../components/Camera'
 import { enqueue, saveCache, getCache } from '../../api/offlineQueue'
 
 // GPS নেওয়ার helper
+// ✅ FIX #7: GeolocationPositionError.code দিয়ে আলাদা message
+// PERMISSION_DENIED (1) = user বা OS permission দেয়নি
+// POSITION_UNAVAILABLE (2) = GPS hardware বন্ধ বা signal নেই
+// TIMEOUT (3) = নির্ধারিত সময়ে location পাওয়া যায়নি
 function getGPS() {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error('এই ডিভাইসে GPS নেই'))
+      const err = new Error('এই ডিভাইসে GPS সাপোর্ট নেই।')
+      err.gpsCode = 0
+      reject(err)
       return
     }
     navigator.geolocation.getCurrentPosition(
       pos => resolve({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-      err => reject(new Error('GPS পাওয়া যায়নি। Location permission দিন।')),
+      (geoErr) => {
+        // ✅ error code সংরক্ষণ করো — handleGetGPS এ ব্যবহার হবে
+        const err = new Error(geoErr.message)
+        err.gpsCode = geoErr.code  // 1 | 2 | 3
+        reject(err)
+      },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     )
   })
+}
+
+// ✅ FIX #7: GPS error code → বাংলা ব্যাখ্যা + কী করতে হবে
+function gpsErrorMessage(gpsCode) {
+  switch (gpsCode) {
+    case 1: // PERMISSION_DENIED
+      return 'Location permission বন্ধ আছে। Settings → Apps → এই app → Permissions → Location চালু করুন।'
+    case 2: // POSITION_UNAVAILABLE
+      return 'GPS signal পাওয়া যাচ্ছে না। ডিভাইসের Location / GPS চালু আছে কিনা দেখুন এবং বাইরে যান।'
+    case 3: // TIMEOUT
+      return 'GPS সময়মতো সাড়া দেয়নি। একটু অপেক্ষা করে আবার চেষ্টা করুন।'
+    default:
+      return 'GPS পাওয়া যায়নি। Location চালু আছে কিনা নিশ্চিত করুন।'
+  }
 }
 
 // দূরত্ব badge
@@ -126,7 +151,8 @@ export default function VisitPage() {
       setLocation(loc)
       setGpsState('done')
     } catch (err) {
-      setGpsError(err.message)
+      // ✅ FIX #7: gpsCode দিয়ে specific বাংলা message — permission denied আর GPS বন্ধ আলাদা
+      setGpsError(gpsErrorMessage(err.gpsCode))
       setGpsState('error')
     }
   }
