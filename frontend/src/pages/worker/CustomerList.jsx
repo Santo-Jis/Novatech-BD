@@ -114,7 +114,7 @@ function StepBadge({ step }) {
 // ── Main Component ────────────────────────────────────────────
 export default function CustomerList() {
   const navigate        = useNavigate()
-  const { selectedRoute } = useAppStore()
+  const { selectedRoute, customerListView: viewMode, setCustomerListView: setViewMode } = useAppStore()
   const [customers,    setCustomers]    = useState([])
   const [routes,       setRoutes]       = useState([])
   const [loading,      setLoading]      = useState(true)
