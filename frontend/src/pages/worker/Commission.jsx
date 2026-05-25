@@ -27,15 +27,14 @@ const formatDateTime = (dateStr) => {
 // ─── Row Type ব্যাজ ──────────────────────────────────
 function TypeBadge({ type }) {
   const map = {
-    daily: { label: 'বিক্রয়', bg: '#eff6ff', color: '#1d4ed8' },
-    attendance_bonus: { label: 'বোনাস', bg: '#f0fdf4', color: '#15803d' },
+    daily:            { label: 'বিক্রয়', cls: 'bg-blue-50 text-blue-700' },
+    attendance_bonus: { label: 'বোনাস',  cls: 'bg-green-50 text-green-700' },
   }
-  const s = map[type] || { label: type, bg: '#f3f4f6', color: '#374151' }
+  const s = map[type] || { label: type, cls: 'bg-gray-100 text-gray-600' }
   return (
-    <span style={{
-      fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 20,
-      background: s.bg, color: s.color
-    }}>{s.label}</span>
+    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${s.cls}`}>
+      {s.label}
+    </span>
   )
 }
 
@@ -87,175 +86,161 @@ export default function Commission() {
   const preview  = data?.salary_preview || {}
 
   return (
-    <div style={{ padding: '16px', paddingBottom: 80, background: '#f8fafc', minHeight: '100vh' }}>
+    <div className="px-4 pb-20 bg-slate-50 min-h-screen">
 
       {/* ─── হেডার ─── */}
-      <h2 style={{ fontWeight: 700, fontSize: 18, color: '#1e293b', marginBottom: 12 }}>
+      <h2 className="font-bold text-lg text-slate-800 mb-3 pt-4">
         কমিশন বিবরণী
       </h2>
 
       {/* ─── মাস নেভিগেটর ─── */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: '#fff', borderRadius: 14, padding: '10px 14px',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.07)', marginBottom: 14
-      }}>
-        <button onClick={prevMonth} style={{ border: 'none', background: 'none', padding: 4, cursor: 'pointer', color: '#64748b' }}>
+      <div className="flex items-center justify-between bg-white rounded-2xl px-4 py-2.5 shadow-sm mb-3.5">
+        <button onClick={prevMonth} className="p-1 text-slate-500 hover:text-slate-800 transition-colors">
           <FiChevronLeft size={20} />
         </button>
-        <span style={{ fontWeight: 600, color: '#1e293b', fontSize: 15 }}>
+        <span className="font-semibold text-slate-800 text-[15px]">
           {MONTHS_BN[month]} {year}
         </span>
         <button
           onClick={nextMonth}
-          style={{ border: 'none', background: 'none', padding: 4, cursor: 'pointer', color: isCurrentMonth ? '#cbd5e1' : '#64748b' }}
           disabled={isCurrentMonth}
+          className={`p-1 transition-colors ${isCurrentMonth ? 'text-slate-300 cursor-not-allowed' : 'text-slate-500 hover:text-slate-800'}`}
         >
           <FiChevronRight size={20} />
         </button>
       </div>
 
       {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="flex flex-col gap-2.5">
           {[1,2,3,4].map(i => (
-            <div key={i} style={{ height: 60, background: '#fff', borderRadius: 14, animation: 'pulse 1.5s ease-in-out infinite' }} />
+            <div key={i} className="h-14 bg-white rounded-2xl animate-pulse" />
           ))}
         </div>
       ) : !data ? (
-        <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8', fontSize: 14 }}>
+        <div className="text-center py-10 text-slate-400 text-sm">
           তথ্য পাওয়া যায়নি
         </div>
       ) : (
         <>
           {/* ─── সারসংক্ষেপ কার্ড ৪টি ─── */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+          <div className="grid grid-cols-2 gap-2.5 mb-3.5">
             {[
-              { label: 'মোট বিক্রয়', value: taka(summary.total_sales), icon: <FiTrendingUp size={16} />, accent: '#1d4ed8', bg: '#eff6ff' },
-              { label: 'বিক্রয় কমিশন', value: taka(summary.daily_commission), icon: <FiDollarSign size={16} />, accent: '#7c3aed', bg: '#f5f3ff' },
-              { label: 'উপস্থিতি বোনাস', value: taka(summary.bonus), icon: <FiGift size={16} />, accent: '#15803d', bg: '#f0fdf4' },
-              { label: 'মোট কমিশন', value: taka(summary.total_commission), icon: <FiCalendar size={16} />, accent: '#b45309', bg: '#fffbeb' },
-            ].map(({ label, value, icon, accent, bg }) => (
-              <div key={label} style={{ background: '#fff', borderRadius: 14, padding: '12px 14px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                  <span style={{ background: bg, color: accent, padding: 5, borderRadius: 8, display: 'flex' }}>{icon}</span>
-                  <span style={{ fontSize: 11, color: '#64748b' }}>{label}</span>
+              { label: 'মোট বিক্রয়',    value: taka(summary.total_sales),       icon: <FiTrendingUp size={16} />, iconCls: 'bg-blue-50 text-blue-700' },
+              { label: 'বিক্রয় কমিশন', value: taka(summary.daily_commission),  icon: <FiDollarSign size={16} />, iconCls: 'bg-violet-50 text-violet-700' },
+              { label: 'উপস্থিতি বোনাস',value: taka(summary.bonus),             icon: <FiGift size={16} />,       iconCls: 'bg-green-50 text-green-700' },
+              { label: 'মোট কমিশন',     value: taka(summary.total_commission),  icon: <FiCalendar size={16} />,   iconCls: 'bg-amber-50 text-amber-700' },
+            ].map(({ label, value, icon, iconCls }) => (
+              <div key={label} className="bg-white rounded-2xl px-3.5 py-3 shadow-sm">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className={`p-1.5 rounded-lg flex ${iconCls}`}>{icon}</span>
+                  <span className="text-[11px] text-slate-500">{label}</span>
                 </div>
-                <p style={{ fontWeight: 700, fontSize: 16, color: '#1e293b', margin: 0 }}>{value}</p>
+                <p className="font-bold text-base text-slate-800 m-0">{value}</p>
               </div>
             ))}
           </div>
 
           {/* ─── বেতন প্রিভিউ ─── */}
           {preview.net_payable > 0 && (
-            <div style={{
-              background: 'linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%)',
-              borderRadius: 16, padding: '14px 16px', marginBottom: 14, color: '#fff'
-            }}>
-              <p style={{ fontSize: 12, opacity: 0.8, margin: '0 0 8px 0' }}>এই মাসের অনুমানিত পাওনা</p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 13, opacity: 0.85 }}>মূল বেতন</span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>{taka(preview.basic_salary)}</span>
+            <div className="bg-gradient-to-br from-blue-900 to-blue-600 rounded-2xl px-4 py-3.5 mb-3.5 text-white">
+              <p className="text-xs opacity-80 mb-2">এই মাসের অনুমানিত পাওনা</p>
+              <div className="flex justify-between mb-1.5">
+                <span className="text-sm opacity-85">মূল বেতন</span>
+                <span className="text-sm font-semibold">{taka(preview.basic_salary)}</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-                <span style={{ fontSize: 13, opacity: 0.85 }}>মোট কমিশন</span>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#93c5fd' }}>+ {taka(preview.total_commission)}</span>
+              <div className="flex justify-between mb-1.5">
+                <span className="text-sm opacity-85">মোট কমিশন</span>
+                <span className="text-sm font-semibold text-blue-300">+ {taka(preview.total_commission)}</span>
               </div>
               {preview.outstanding_dues > 0 && (
                 <>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                    <span style={{ fontSize: 13, opacity: 0.85 }}>বকেয়া কর্তন</span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: '#fca5a5' }}>− {taka(preview.outstanding_dues)}</span>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-sm opacity-85">বকেয়া কর্তন</span>
+                    <span className="text-sm font-semibold text-red-300">− {taka(preview.outstanding_dues)}</span>
                   </div>
                   {preview.product_dues > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: 10 }}>
-                      <span style={{ fontSize: 11, opacity: 0.65 }}>↳ পণ্য ঘাটতি</span>
-                      <span style={{ fontSize: 11, color: '#fca5a5', opacity: 0.85 }}>৳{parseInt(preview.product_dues).toLocaleString()}</span>
+                    <div className="flex justify-between pl-2.5">
+                      <span className="text-xs opacity-65">↳ পণ্য ঘাটতি</span>
+                      <span className="text-xs text-red-300 opacity-85">৳{parseInt(preview.product_dues).toLocaleString()}</span>
                     </div>
                   )}
                   {preview.cash_dues > 0 && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingLeft: 10, marginTop: 2 }}>
-                      <span style={{ fontSize: 11, opacity: 0.65 }}>↳ নগদ ঘাটতি</span>
-                      <span style={{ fontSize: 11, color: '#fca5a5', opacity: 0.85 }}>৳{parseInt(preview.cash_dues).toLocaleString()}</span>
+                    <div className="flex justify-between pl-2.5 mt-0.5">
+                      <span className="text-xs opacity-65">↳ নগদ ঘাটতি</span>
+                      <span className="text-xs text-red-300 opacity-85">৳{parseInt(preview.cash_dues).toLocaleString()}</span>
                     </div>
                   )}
                 </>
               )}
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.2)', marginTop: 8, paddingTop: 8, display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontWeight: 700, fontSize: 15 }}>নেট পাওনা</span>
-                <span style={{ fontWeight: 800, fontSize: 18 }}>{taka(preview.net_payable)}</span>
+              <div className="border-t border-white/20 mt-2 pt-2 flex justify-between">
+                <span className="font-bold text-[15px]">নেট পাওনা</span>
+                <span className="font-extrabold text-lg">{taka(preview.net_payable)}</span>
               </div>
             </div>
           )}
 
           {/* ─── বোনাস স্ট্যাটাস Accordion ─── */}
-          <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden', marginBottom: 14 }}>
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden mb-3.5">
             <button
               onClick={() => setShowBonus(v => !v)}
-              style={{
-                width: '100%', padding: '14px 16px', border: 'none', background: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer'
-              }}
+              className="w-full px-4 py-3.5 flex items-center justify-between cursor-pointer"
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ background: '#f0fdf4', color: '#15803d', padding: '5px 6px', borderRadius: 8, display: 'flex' }}>
+              <div className="flex items-center gap-2">
+                <span className="bg-green-50 text-green-700 p-1.5 rounded-lg flex">
                   <FiAward size={15} />
                 </span>
-                <span style={{ fontWeight: 700, color: '#1e293b', fontSize: 14 }}>উপস্থিতি বোনাস স্ট্যাটাস</span>
+                <span className="font-bold text-slate-800 text-sm">উপস্থিতি বোনাস স্ট্যাটাস</span>
                 {bonusStatus && bonusStatus.perfect_months > 0 && (
-                  <span style={{
-                    background: '#fef9c3', color: '#b45309', fontSize: 11,
-                    fontWeight: 700, padding: '2px 7px', borderRadius: 20
-                  }}>
+                  <span className="bg-yellow-100 text-amber-700 text-[11px] font-bold px-2 py-0.5 rounded-full">
                     {bonusStatus.perfect_months} মাস পূর্ণ
                   </span>
                 )}
               </div>
-              <span style={{ color: '#6b7280', fontSize: '1.1rem', transition: 'transform 0.2s', display: 'inline-block', transform: showBonus ? 'rotate(180deg)' : 'none' }}>▼</span>
+              <span className={`text-gray-500 text-base transition-transform duration-200 inline-block ${showBonus ? 'rotate-180' : ''}`}>▼</span>
             </button>
 
             {showBonus && (
-              <div style={{ borderTop: '1px solid #f1f5f9', padding: 16 }}>
+              <div className="border-t border-slate-100 p-4">
                 {bonusLoading ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                    {[1,2,3].map(i => <div key={i} style={{ height: 44, background: '#f8fafc', borderRadius: 10 }} />)}
+                  <div className="flex flex-col gap-2">
+                    {[1,2,3].map(i => <div key={i} className="h-11 bg-slate-50 rounded-xl" />)}
                   </div>
                 ) : !bonusStatus ? (
-                  <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>তথ্য পাওয়া যায়নি</p>
+                  <p className="text-center text-slate-400 text-sm">তথ্য পাওয়া যায়নি</p>
                 ) : (
                   <>
                     {/* Top Summary */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-                      <div style={{ background: '#f0fdf4', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
-                        <p style={{ fontSize: 22, fontWeight: 800, color: '#15803d', margin: 0 }}>{bonusStatus.perfect_months}</p>
-                        <p style={{ fontSize: 11, color: '#15803d', margin: '4px 0 0 0' }}>পূর্ণ উপস্থিতি মাস</p>
+                    <div className="grid grid-cols-2 gap-2.5 mb-3.5">
+                      <div className="bg-green-50 rounded-xl px-3.5 py-3 text-center">
+                        <p className="text-[22px] font-extrabold text-green-700 m-0">{bonusStatus.perfect_months}</p>
+                        <p className="text-[11px] text-green-700 mt-1 m-0">পূর্ণ উপস্থিতি মাস</p>
                       </div>
-                      <div style={{ background: '#fffbeb', borderRadius: 12, padding: '12px 14px', textAlign: 'center' }}>
-                        <p style={{ fontSize: 22, fontWeight: 800, color: '#b45309', margin: 0 }}>
+                      <div className="bg-amber-50 rounded-xl px-3.5 py-3 text-center">
+                        <p className="text-[22px] font-extrabold text-amber-700 m-0">
                           ৳{parseInt(bonusStatus.pending_bonus || 0).toLocaleString('en-IN')}
                         </p>
-                        <p style={{ fontSize: 11, color: '#b45309', margin: '4px 0 0 0' }}>অপরিশোধিত বোনাস</p>
+                        <p className="text-[11px] text-amber-700 mt-1 m-0">অপরিশোধিত বোনাস</p>
                       </div>
                     </div>
 
                     {/* 8-month progress bar */}
-                    <div style={{ background: '#f8fafc', borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: '#374151' }}>
+                    <div className="bg-slate-50 rounded-xl px-3.5 py-3 mb-3.5">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-xs font-semibold text-gray-700">
                           🏆 ৮ মাসের মধ্যে পূর্ণ উপস্থিতি
                         </span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d' }}>
+                        <span className="text-xs font-bold text-green-700">
                           {bonusStatus.perfect_months}/{bonusStatus.total_8_months}
                         </span>
                       </div>
-                      <div style={{ background: '#e2e8f0', borderRadius: 20, height: 8, overflow: 'hidden' }}>
-                        <div style={{
-                          height: '100%', borderRadius: 20, background: '#22c55e',
-                          width: `${Math.min(100, (bonusStatus.perfect_months / bonusStatus.total_8_months) * 100)}%`,
-                          transition: 'width 0.5s ease'
-                        }} />
+                      <div className="bg-slate-200 rounded-full h-2 overflow-hidden">
+                        <div
+                          className="h-full bg-green-500 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, (bonusStatus.perfect_months / bonusStatus.total_8_months) * 100)}%` }}
+                        />
                       </div>
                       {bonusStatus.next_bonus_in > 0 && (
-                        <p style={{ fontSize: 11, color: '#64748b', marginTop: 6, textAlign: 'center' }}>
+                        <p className="text-[11px] text-slate-500 mt-1.5 text-center">
                           আরো <strong>{bonusStatus.next_bonus_in}</strong> মাস পূর্ণ উপস্থিতি হলে বোনাস সাইকেল সম্পন্ন
                         </p>
                       )}
@@ -263,53 +248,52 @@ export default function Commission() {
 
                     {/* Month-by-month rows */}
                     {bonusStatus.months && bonusStatus.months.length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div className="flex flex-col gap-1.5">
                         {bonusStatus.months.map((m, i) => {
                           const MONTHS_BN_SHORT = ['','জানু','ফেব্রু','মার্চ','এপ্রি','মে','জুন','জুলা','আগস্ট','সেপ্টে','অক্টো','নভে','ডিসে']
                           const pct = m.working_days > 0 ? Math.min(100, Math.round((m.present_days / m.working_days) * 100)) : 0
                           return (
-                            <div key={i} style={{
-                              display: 'flex', alignItems: 'center', gap: 10,
-                              padding: '8px 10px', borderRadius: 10,
-                              background: m.is_perfect ? '#f0fdf4' : '#fafafa',
-                              border: `1px solid ${m.is_perfect ? '#bbf7d0' : '#f1f5f9'}`
-                            }}>
+                            <div
+                              key={i}
+                              className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl border ${
+                                m.is_perfect
+                                  ? 'bg-green-50 border-green-200'
+                                  : 'bg-slate-50 border-slate-100'
+                              }`}
+                            >
                               {/* Month label */}
-                              <div style={{ width: 44, flexShrink: 0 }}>
-                                <p style={{ fontSize: 11, fontWeight: 700, color: '#374151', margin: 0 }}>
-                                  {MONTHS_BN_SHORT[m.month]}
-                                </p>
-                                <p style={{ fontSize: 10, color: '#94a3b8', margin: 0 }}>{m.year}</p>
+                              <div className="w-11 shrink-0">
+                                <p className="text-[11px] font-bold text-gray-700 m-0">{MONTHS_BN_SHORT[m.month]}</p>
+                                <p className="text-[10px] text-slate-400 m-0">{m.year}</p>
                               </div>
 
                               {/* Progress bar */}
-                              <div style={{ flex: 1 }}>
-                                <div style={{ background: '#e2e8f0', borderRadius: 20, height: 6, overflow: 'hidden' }}>
-                                  <div style={{
-                                    height: '100%', borderRadius: 20,
-                                    background: m.is_perfect ? '#22c55e' : '#94a3b8',
-                                    width: `${pct}%`
-                                  }} />
+                              <div className="flex-1">
+                                <div className="bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full ${m.is_perfect ? 'bg-green-500' : 'bg-slate-400'}`}
+                                    style={{ width: `${pct}%` }}
+                                  />
                                 </div>
-                                <p style={{ fontSize: 10, color: '#64748b', margin: '3px 0 0 0' }}>
+                                <p className="text-[10px] text-slate-500 mt-0.5 m-0">
                                   {m.present_days}/{m.working_days} দিন
                                 </p>
                               </div>
 
                               {/* Status */}
-                              <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                              <div className="shrink-0 text-right">
                                 {m.is_perfect ? (
                                   <>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                    <div className="flex items-center gap-1">
                                       <FiStar size={11} color="#f59e0b" fill="#f59e0b" />
-                                      <span style={{ fontSize: 11, fontWeight: 700, color: '#15803d' }}>পূর্ণ</span>
+                                      <span className="text-[11px] font-bold text-green-700">পূর্ণ</span>
                                     </div>
-                                    <p style={{ fontSize: 10, color: m.bonus_paid ? '#64748b' : '#b45309', margin: '2px 0 0 0', fontWeight: 600 }}>
+                                    <p className={`text-[10px] mt-0.5 m-0 font-semibold ${m.bonus_paid ? 'text-slate-400' : 'text-amber-700'}`}>
                                       {m.bonus_paid ? '✅ পরিশোধিত' : `৳${parseInt(m.bonus_amount || 0).toLocaleString()}`}
                                     </p>
                                   </>
                                 ) : (
-                                  <span style={{ fontSize: 11, color: '#94a3b8' }}>—</span>
+                                  <span className="text-[11px] text-slate-400">—</span>
                                 )}
                               </div>
                             </div>
@@ -324,18 +308,18 @@ export default function Commission() {
           </div>
 
           {/* ─── দৈনিক ইতিহাস ─── */}
-          <div style={{ background: '#fff', borderRadius: 16, boxShadow: '0 1px 4px rgba(0,0,0,0.07)', overflow: 'hidden' }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid #f1f5f9' }}>
-              <h3 style={{ fontWeight: 700, fontSize: 14, color: '#1e293b', margin: 0 }}>
+          <div className="bg-white rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-slate-100">
+              <h3 className="font-bold text-sm text-slate-800 m-0">
                 দিনভিত্তিক বিবরণ
-                <span style={{ fontSize: 12, fontWeight: 400, color: '#94a3b8', marginLeft: 6 }}>
+                <span className="text-xs font-normal text-slate-400 ml-1.5">
                   ({daily.length}টি এন্ট্রি)
                 </span>
               </h3>
             </div>
 
             {daily.length === 0 ? (
-              <div style={{ padding: '32px 16px', textAlign: 'center', color: '#94a3b8', fontSize: 13 }}>
+              <div className="px-4 py-8 text-center text-slate-400 text-sm">
                 এই মাসে কোনো কমিশন তথ্য নেই
               </div>
             ) : (
@@ -345,28 +329,24 @@ export default function Commission() {
                   const isPaid = row.paid
 
                   return (
-                    <div key={i} style={{ borderBottom: i < daily.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                    <div key={i} className={i < daily.length - 1 ? 'border-b border-slate-100' : ''}>
                       {/* ─── মূল রো ─── */}
                       <div
                         onClick={() => setExpandedRow(isExpanded ? null : i)}
-                        style={{
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          padding: '11px 16px',
-                          background: isExpanded ? '#f0f9ff' : (i % 2 === 0 ? '#fff' : '#fafafa'),
-                          cursor: 'pointer',
-                          transition: 'background 0.15s'
-                        }}
+                        className={`flex items-center justify-between px-4 py-2.5 cursor-pointer transition-colors ${
+                          isExpanded ? 'bg-sky-50' : i % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'
+                        }`}
                       >
                         {/* বাম: তারিখ + ধরন */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                            <span style={{ fontWeight: 600, fontSize: 13, color: '#1e293b' }}>
+                        <div className="flex flex-col gap-0.5 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-semibold text-[13px] text-slate-800">
                               {formatDate(row.date)}
                             </span>
                             <TypeBadge type={row.type} />
                           </div>
                           {row.sales_amount > 0 && (
-                            <span style={{ fontSize: 11, color: '#94a3b8' }}>
+                            <span className="text-[11px] text-slate-400">
                               বিক্রয়: {taka(row.sales_amount)}
                               {row.commission_rate > 0 && ` · ${row.commission_rate}%`}
                             </span>
@@ -374,12 +354,12 @@ export default function Commission() {
                         </div>
 
                         {/* ডান: কমিশন + পেমেন্ট স্ট্যাটাস */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
-                          <span style={{ fontWeight: 700, fontSize: 14, color: '#1e293b' }}>
+                        <div className="flex flex-col items-end gap-0.5">
+                          <span className="font-bold text-sm text-slate-800">
                             {taka(row.commission_amount)}
                           </span>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: isPaid ? '#15803d' : '#b45309' }}>
+                          <div className="flex items-center gap-1">
+                            <span className={`flex items-center gap-0.5 text-[10px] ${isPaid ? 'text-green-700' : 'text-amber-700'}`}>
                               {isPaid
                                 ? <><FiCheckCircle size={10} /> পরিশোধিত</>
                                 : <><FiClock size={10} /> বাকি</>
@@ -394,79 +374,60 @@ export default function Commission() {
 
                       {/* ─── পেমেন্ট বিস্তারিত (expanded) ─── */}
                       {isExpanded && (
-                        <div style={{
-                          background: '#f0f9ff',
-                          borderTop: '1px dashed #bae6fd',
-                          padding: '10px 16px 12px 16px',
-                        }}>
+                        <div className="bg-sky-50 border-t border-dashed border-sky-200 px-4 pt-2.5 pb-3">
                           {isPaid ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                            <div className="flex flex-col gap-1.5">
                               {/* পরিশোধের তারিখ */}
                               {row.paid_at && (
-                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                                  <span style={{
-                                    background: '#dbeafe', color: '#1d4ed8',
-                                    borderRadius: 6, padding: '3px 5px', display: 'flex', flexShrink: 0
-                                  }}>
+                                <div className="flex items-start gap-2">
+                                  <span className="bg-blue-100 text-blue-700 rounded-md p-1 flex shrink-0">
                                     <FiCalendar size={11} />
                                   </span>
                                   <div>
-                                    <p style={{ fontSize: 10, color: '#64748b', margin: '0 0 1px 0' }}>পরিশোধের তারিখ ও সময়</p>
-                                    <p style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', margin: 0 }}>
-                                      {formatDateTime(row.paid_at)}
-                                    </p>
+                                    <p className="text-[10px] text-slate-500 m-0 mb-0.5">পরিশোধের তারিখ ও সময়</p>
+                                    <p className="text-xs font-semibold text-slate-800 m-0">{formatDateTime(row.paid_at)}</p>
                                   </div>
                                 </div>
                               )}
 
                               {/* অনুমোদনকারী */}
                               {row.approved_by_name && (
-                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                                  <span style={{
-                                    background: '#dcfce7', color: '#15803d',
-                                    borderRadius: 6, padding: '3px 5px', display: 'flex', flexShrink: 0
-                                  }}>
+                                <div className="flex items-start gap-2">
+                                  <span className="bg-green-100 text-green-700 rounded-md p-1 flex shrink-0">
                                     <FiUser size={11} />
                                   </span>
                                   <div>
-                                    <p style={{ fontSize: 10, color: '#64748b', margin: '0 0 1px 0' }}>অনুমোদন করেছেন</p>
-                                    <p style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', margin: 0 }}>
-                                      {row.approved_by_name}
-                                    </p>
+                                    <p className="text-[10px] text-slate-500 m-0 mb-0.5">অনুমোদন করেছেন</p>
+                                    <p className="text-xs font-semibold text-slate-800 m-0">{row.approved_by_name}</p>
                                   </div>
                                 </div>
                               )}
 
                               {/* পেমেন্ট রেফারেন্স */}
                               {row.payment_reference && (
-                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                                  <span style={{
-                                    background: '#fef3c7', color: '#b45309',
-                                    borderRadius: 6, padding: '3px 5px', display: 'flex', flexShrink: 0
-                                  }}>
+                                <div className="flex items-start gap-2">
+                                  <span className="bg-yellow-100 text-amber-700 rounded-md p-1 flex shrink-0">
                                     <FiHash size={11} />
                                   </span>
                                   <div>
-                                    <p style={{ fontSize: 10, color: '#64748b', margin: '0 0 1px 0' }}>পেমেন্ট রেফারেন্স</p>
-                                    <p style={{ fontSize: 12, fontWeight: 600, color: '#1e293b', margin: 0, fontFamily: 'monospace' }}>
-                                      {row.payment_reference}
-                                    </p>
+                                    <p className="text-[10px] text-slate-500 m-0 mb-0.5">পেমেন্ট রেফারেন্স</p>
+                                    <p className="text-xs font-semibold text-slate-800 m-0 font-mono">{row.payment_reference}</p>
                                   </div>
                                 </div>
                               )}
 
                               {/* কোনো তথ্য না থাকলে */}
                               {!row.paid_at && !row.approved_by_name && !row.payment_reference && (
-                                <p style={{ fontSize: 12, color: '#94a3b8', margin: 0, textAlign: 'center' }}>
+                                <p className="text-xs text-slate-400 m-0 text-center">
                                   পেমেন্টের বিস্তারিত তথ্য পাওয়া যায়নি
                                 </p>
                               )}
                             </div>
                           ) : (
                             /* বাকি থাকলে */
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <FiClock size={13} color='#b45309' />
-                              <p style={{ fontSize: 12, color: '#92400e', margin: 0 }}>
+                            <div className="flex items-center gap-2">
+                              <FiClock size={13} className="text-amber-600" />
+                              <p className="text-xs text-amber-800 m-0">
                                 এখনো পরিশোধ হয়নি — পেমেন্টের পর বিস্তারিত দেখা যাবে
                               </p>
                             </div>
@@ -482,15 +443,11 @@ export default function Commission() {
 
           {/* ─── মোট footer ─── */}
           {daily.length > 0 && (
-            <div style={{
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              background: '#fff', borderRadius: 12, padding: '12px 16px',
-              marginTop: 10, boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
-            }}>
-              <span style={{ fontSize: 13, color: '#64748b' }}>
+            <div className="flex justify-between items-center bg-white rounded-xl px-4 py-3 mt-2.5 shadow-sm">
+              <span className="text-sm text-slate-500">
                 {daily.length}টি দিনের মোট কমিশন
               </span>
-              <span style={{ fontWeight: 800, fontSize: 16, color: '#1e293b' }}>
+              <span className="font-extrabold text-base text-slate-800">
                 {taka(summary.total_commission)}
               </span>
             </div>
