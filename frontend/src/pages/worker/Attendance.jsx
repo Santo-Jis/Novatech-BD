@@ -13,7 +13,7 @@ function HoldButton({ label, color = 'blue', onDone }) {
   const [done, setDone]       = useState(false)
   const intervalRef           = useRef(null)
   const startRef              = useRef(null)
-  const DURATION              = 2500
+  const DURATION              = 3000
 
   const accent = color === 'green'
     ? { bg: '#065f46', light: '#d1fae5', text: '#065f46', border: '#6ee7b7' }
