@@ -4,23 +4,26 @@ import { useNavigate } from 'react-router-dom'
 import { FiArrowLeft, FiPlus, FiTrash2, FiCamera, FiCheck, FiChevronDown } from 'react-icons/fi'
 import api from '../../api/axios'
 import { toast } from 'react-hot-toast'
+import { useAppStore } from '../../store/app.store'  // ✅ FIX #5
 
 const REASONS = [
-  { value: 'damaged',         label: '⚠️ ক্ষতিগ্রস্ত পণ্য' },
-  { value: 'wrong_item',      label: '❌ ভুল পণ্য দেওয়া হয়েছে' },
-  { value: 'expired',         label: '📅 মেয়াদোত্তীর্ণ' },
-  { value: 'customer_reject', label: '🚫 কাস্টমার নিতে অস্বীকার' },
-  { value: 'other',           label: '📝 অন্যান্য' },
+  { value: 'damaged',         label: 'ক্ষতিগ্রস্ত পণ্য' },
+  { value: 'wrong_item',      label: 'ভুল পণ্য দেওয়া হয়েছে' },
+  { value: 'expired',         label: 'মেয়াদোত্তীর্ণ' },
+  { value: 'customer_reject', label: 'কাস্টমার নিতে অস্বীকার' },
+  { value: 'other',           label: 'অন্যান্য' },
 ]
 
 export default function ReturnForm() {
   const navigate = useNavigate()
+  const { selectedRoute } = useAppStore()  // ✅ FIX #5: route-filtered customers
 
   const [type,        setType]        = useState('return')
   const [customers,   setCustomers]   = useState([])
   const [products,    setProducts]    = useState([])
   const [customerId,  setCustomerId]  = useState('')
   const [saleId,      setSaleId]      = useState('')
+  const [saleIdError, setSaleIdError] = useState('')  // ✅ FIX #5: 403 → inline error
   const [reason,      setReason]      = useState('')
   const [note,        setNote]        = useState('')
   const [items,       setItems]       = useState([{ product_id: '', qty: 1, reason: '' }])
@@ -32,8 +35,12 @@ export default function ReturnForm() {
   useEffect(() => {
     const load = async () => {
       try {
+        // ✅ FIX #5: selectedRoute থাকলে শুধু সেই route-এর customer দেখাও
+        const custUrl = selectedRoute
+          ? `/customers?route_id=${selectedRoute.id}&limit=200&page=1`
+          : `/customers?limit=200&page=1`
         const [custRes, prodRes] = await Promise.all([
-          api.get('/customers?limit=200&page=1'),
+          api.get(custUrl),
           api.get('/products?is_active=true'),
         ])
         setCustomers(Array.isArray(custRes.data?.data) ? custRes.data.data : [])
@@ -42,7 +49,7 @@ export default function ReturnForm() {
       finally { setLoading(false) }
     }
     load()
-  }, [])
+  }, [selectedRoute])
 
   const [openPicker, setOpenPicker] = useState(null) // index of open product picker
 
@@ -87,6 +94,7 @@ export default function ReturnForm() {
     const validItems = items.filter(i => i.product_id && parseInt(i.qty) > 0)
     if (validItems.length === 0) { toast.error('কমপক্ষে একটি পণ্য দিন।'); return }
 
+    setSaleIdError('')  // ✅ FIX #5: submit-এ আগের error clear
     setSubmitting(true)
     try {
       await api.post('/return/submit', {
@@ -99,7 +107,13 @@ export default function ReturnForm() {
       toast.success(type === 'return' ? 'রিটার্ন রিকোয়েস্ট পাঠানো হয়েছে!' : 'রিপ্লেসমেন্ট রিকোয়েস্ট পাঠানো হয়েছে!')
       navigate('/worker/return-history')
     } catch (e) {
-      toast.error(e.response?.data?.message || 'সমস্যা হয়েছে।')
+      const msg = e.response?.data?.message || 'সমস্যা হয়েছে।'
+      // ✅ FIX #5: sale_id 403 → field-এর নিচে inline error, অন্য error → toast
+      if (e.response?.status === 403 && saleId) {
+        setSaleIdError('এই Invoice ID আপনার নয় বা এই কাস্টমারের সাথে মেলে না। সরিয়ে আবার চেষ্টা করুন।')
+      } else {
+        toast.error(msg)
+      }
     } finally { setSubmitting(false) }
   }
 
@@ -157,9 +171,16 @@ export default function ReturnForm() {
             <span className="text-gray-400 font-normal ml-1">(ঐচ্ছিক)</span>
           </label>
           <input type="text" value={saleId}
-            onChange={e => setSaleId(e.target.value)}
+            onChange={e => { setSaleId(e.target.value); setSaleIdError('') }}
             placeholder="Invoice নম্বর বা ID"
-            className="w-full border border-gray-200 rounded-xl px-3 py-3 text-sm focus:outline-none focus:border-indigo-400" />
+            className={`w-full border rounded-xl px-3 py-3 text-sm focus:outline-none
+              ${saleIdError ? 'border-red-400 focus:border-red-400 bg-red-50' : 'border-gray-200 focus:border-indigo-400'}`} />
+          {/* ✅ FIX #5: backend 403 হলে field-এর নিচে inline error */}
+          {saleIdError && (
+            <p className="mt-1.5 text-xs text-red-500 flex items-start gap-1">
+              <span>⚠️</span><span>{saleIdError}</span>
+            </p>
+          )}
         </div>
 
         {/* কারণ */}
