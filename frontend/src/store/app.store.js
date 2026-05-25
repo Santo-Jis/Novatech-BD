@@ -86,4 +86,14 @@ export const useAppStore = create((set, get) => ({
   // Current Sale (OTP flow)
   currentSale:    null,
   setCurrentSale: (sale) => set({ currentSale: sale }),
+
+  // Customer list view preference — 'list' | 'map'
+  // localStorage-এ manually persist হয় (page change-এও টিকে থাকবে)
+  customerListView: (() => {
+    try { return localStorage.getItem('customerListView') || 'list' } catch { return 'list' }
+  })(),
+  setCustomerListView: (view) => {
+    try { localStorage.setItem('customerListView', view) } catch {}
+    set({ customerListView: view })
+  },
 }))
