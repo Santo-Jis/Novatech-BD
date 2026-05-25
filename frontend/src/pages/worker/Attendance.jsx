@@ -13,7 +13,7 @@ function HoldButton({ label, color = 'blue', onDone }) {
   const [done, setDone]       = useState(false)
   const intervalRef           = useRef(null)
   const startRef              = useRef(null)
-  const DURATION              = 3000
+  const DURATION              = 2500
 
   const accent = color === 'green'
     ? { bg: '#065f46', light: '#d1fae5', text: '#065f46', border: '#6ee7b7' }
@@ -49,13 +49,11 @@ function HoldButton({ label, color = 'blue', onDone }) {
   const dash   = circ - (pct / 100) * circ
 
   return (
-    <div
-      style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:16, userSelect:'none', WebkitUserSelect:'none' }}
-    >
-      <div style={{ position:'relative', width:160, height:160, display:'flex', alignItems:'center', justifyContent:'center' }}>
+    <div className="flex flex-col items-center gap-4 select-none">
+      <div className="relative w-40 h-40 flex items-center justify-center">
 
         {/* SVG ring */}
-        <svg width="160" height="160" style={{ position:'absolute', inset:0, transform:'rotate(-90deg)' }}>
+        <svg width="160" height="160" className="absolute inset-0 -rotate-90">
           <circle cx="80" cy="80" r={radius} fill="none" stroke="#e5e7eb" strokeWidth="8"/>
           <circle
             cx="80" cy="80" r={radius}
@@ -71,12 +69,10 @@ function HoldButton({ label, color = 'blue', onDone }) {
 
         {/* Pulse ring */}
         {active && (
-          <div style={{
-            position:'absolute', inset:0, borderRadius:'50%',
-            border:`3px solid ${accent.bg}`,
-            animation:'ping 1s cubic-bezier(0,0,0.2,1) infinite',
-            opacity:0.3, pointerEvents:'none'
-          }}/>
+          <div
+            className="absolute inset-0 rounded-full opacity-30 pointer-events-none animate-ping"
+            style={{ border:`3px solid ${accent.bg}` }}
+          />
         )}
 
         {/* Circle button */}
@@ -88,35 +84,32 @@ function HoldButton({ label, color = 'blue', onDone }) {
           onTouchEnd={(e)   => { e.preventDefault(); stop()  }}
           onTouchCancel={(e)=> { e.preventDefault(); stop()  }}
           onContextMenu={(e)=> e.preventDefault()}
+          className="w-[120px] h-[120px] rounded-full flex flex-col items-center justify-center gap-1 cursor-pointer"
           style={{
-            width:120, height:120,
-            borderRadius:'50%',
             background: done ? '#d1fae5' : active ? accent.bg : accent.light,
             border: `4px solid ${done ? '#10b981' : accent.border}`,
-            display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:4,
-            cursor:'pointer',
             transform: active ? 'scale(0.93)' : 'scale(1)',
             transition:'transform 0.15s, background 0.2s',
             touchAction:'none',
             WebkitTapHighlightColor:'transparent',
           }}
         >
-          <span style={{ fontSize:'2.4rem', lineHeight:1 }}>
+          <span className="text-[2.4rem] leading-none">
             {done ? '✅' : active ? '👆' : '☝️'}
           </span>
-          <span style={{
-            fontSize:'0.72rem', fontWeight:700,
-            color: done ? '#059669' : active ? '#fff' : accent.text,
-          }}>
+          <span
+            className="text-[0.72rem] font-bold"
+            style={{ color: done ? '#059669' : active ? '#fff' : accent.text }}
+          >
             {done ? 'সম্পন্ন!' : active ? `${Math.round(pct)}%` : label}
           </span>
         </div>
       </div>
 
       {!done && (
-        <div style={{ textAlign:'center' }}>
-          <p style={{ fontWeight:700, color:'#1f2937', fontSize:'0.95rem' }}>{label}</p>
-          <p style={{ color:'#9ca3af', fontSize:'0.8rem', marginTop:2 }}>৩ সেকেন্ড চেপে ধরুন</p>
+        <div className="text-center">
+          <p className="font-bold text-gray-800 dark:text-gray-100 text-[0.95rem]">{label}</p>
+          <p className="text-gray-400 dark:text-gray-500 text-[0.8rem] mt-0.5">৩ সেকেন্ড চেপে ধরুন</p>
         </div>
       )}
     </div>
@@ -128,19 +121,16 @@ function HoldButton({ label, color = 'blue', onDone }) {
 // ─────────────────────────────────────────────
 function StatusBadge({ status }) {
   const map = {
-    present: { label: 'উপস্থিত', bg: '#d1fae5', color: '#065f46' },
-    late:    { label: 'দেরি',     bg: '#fef3c7', color: '#92400e' },
-    absent:  { label: 'অনুপস্থিত',bg: '#fee2e2', color: '#991b1b' },
-    leave:   { label: 'ছুটি',     bg: '#e0e7ff', color: '#3730a3' },
+    present: { label: 'উপস্থিত', cls: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' },
+    late:    { label: 'দেরি',     cls: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' },
+    absent:  { label: 'অনুপস্থিত',cls: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300' },
+    leave:   { label: 'ছুটি',     cls: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300' },
   }
-  const s = map[status] || { label: status, bg: '#f3f4f6', color: '#374151' }
+  const s = map[status] || { label: status, cls: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' }
   return (
-    <span style={{
-      background: s.bg, color: s.color,
-      fontSize: '0.72rem', fontWeight: 700,
-      padding: '2px 8px', borderRadius: 20,
-      whiteSpace: 'nowrap'
-    }}>{s.label}</span>
+    <span className={`text-[0.72rem] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${s.cls}`}>
+      {s.label}
+    </span>
   )
 }
 
@@ -247,7 +237,7 @@ export default function WorkerAttendance() {
   // চেক-ইন থেকে চেক-আউট পর্যন্ত কাজের সময়
   const getWorkDuration = (checkIn, checkOut) => {
     if (!checkIn || !checkOut) return null
-    const diff = Math.floor((new Date(checkOut) - new Date(checkIn)) / 60000) // মিনিট
+    const diff = Math.floor((new Date(checkOut) - new Date(checkIn)) / 60000)
     if (diff <= 0) return null
     const h = Math.floor(diff / 60)
     const m = diff % 60
@@ -256,7 +246,7 @@ export default function WorkerAttendance() {
     return `${h} ঘণ্টা ${m} মিনিট`
   }
 
-  // ছুটির দিন কিনা যাচাই (admin-defined + সাপ্তাহিক)
+  // ছুটির দিন কিনা যাচাই
   const isOffDay = (dateStr) => {
     const d = new Date(dateStr)
     if (d.getDay() === (settings.weekly_off_day ?? 5)) return 'weekly'
@@ -287,8 +277,6 @@ export default function WorkerAttendance() {
       toast.success(res.data.message)
       setStep('done')
 
-      // ✅ FIX: চেক-ইন/চেক-আউট সফলের পর todayAtt রিফ্রেশ করো
-      // না করলে CHECKIN_REQUIRED পপআপ আবার দেখায়
       const m = new Date().getMonth() + 1
       const y = new Date().getFullYear()
       fetchHistory(m, y)
@@ -311,36 +299,37 @@ export default function WorkerAttendance() {
 
   // ── Loading ──
   if (loading) return (
-    <div style={{ padding:16 }}>
-      <div style={{ height:200, background:'#f3f4f6', borderRadius:16, animation:'pulse 2s infinite' }}/>
+    <div className="p-4">
+      <div className="h-48 bg-gray-100 dark:bg-gray-800 rounded-2xl animate-pulse" />
     </div>
   )
 
   // ── হোম স্ক্রিন ──
   if (!mode) return (
-    <div style={{ padding:16, paddingBottom:32 }}>
+    <div className="p-4 pb-8">
+
       {/* হেডার */}
-      <h2 style={{ fontSize:'1.25rem', fontWeight:800, textAlign:'center', color:'#1f2937', marginBottom:16 }}>হাজিরা</h2>
+      <h2 className="text-xl font-extrabold text-center text-gray-800 dark:text-gray-100 mb-4">হাজিরা</h2>
 
       {/* আজকের অবস্থা */}
-      <div style={{ background:'#fff', borderRadius:16, padding:16, boxShadow:'0 1px 4px rgba(0,0,0,0.08)', marginBottom:16 }}>
-        <p style={{ fontWeight:700, color:'#374151', marginBottom:12, fontSize:'0.9rem' }}>আজকের অবস্থা</p>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm mb-4">
+        <p className="font-bold text-gray-700 dark:text-gray-300 mb-3 text-[0.9rem]">আজকের অবস্থা</p>
+        <div className="grid grid-cols-2 gap-2.5">
           {[
             { label:'চেক-ইন',  val: todayAtt?.check_in_time  },
             { label:'চেক-আউট', val: todayAtt?.check_out_time },
           ].map(({ label, val }) => (
-            <div key={label} style={{ background:'#f9fafb', borderRadius:12, padding:'10px 8px', textAlign:'center' }}>
-              <p style={{ fontSize:'0.75rem', color:'#6b7280' }}>{label}</p>
-              <p style={{ fontWeight:800, color: val ? '#1f2937' : '#d1d5db', marginTop:4, fontSize:'0.9rem' }}>
+            <div key={label} className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-2.5 text-center">
+              <p className="text-[0.75rem] text-gray-500 dark:text-gray-400">{label}</p>
+              <p className={`font-extrabold mt-1 text-[0.9rem] ${val ? 'text-gray-800 dark:text-gray-100' : 'text-gray-300 dark:text-gray-600'}`}>
                 {val ? new Date(val).toLocaleTimeString('bn-BD', { hour:'2-digit', minute:'2-digit' }) : '—'}
               </p>
             </div>
           ))}
         </div>
         {todayAtt?.late_minutes > 0 && (
-          <div style={{ marginTop:10, background:'#fffbeb', borderRadius:10, padding:'8px 12px', textAlign:'center' }}>
-            <p style={{ fontSize:'0.78rem', color:'#b45309' }}>
+          <div className="mt-2.5 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-2 text-center">
+            <p className="text-[0.78rem] text-yellow-700 dark:text-yellow-400">
               ⚠️ দেরি: {todayAtt.late_minutes} মিনিট | কর্তন: ৳{parseFloat(todayAtt.salary_deduction || 0).toFixed(0)}
             </p>
           </div>
@@ -348,16 +337,12 @@ export default function WorkerAttendance() {
       </div>
 
       {/* বাটন */}
-      <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:24 }}>
+      <div className="flex flex-col gap-3 mb-6">
         {canCheckIn && (
           <button
             onClick={() => startMode('checkin')}
-            style={{
-              width:'100%', padding:'16px', borderRadius:16, border:'none',
-              background:'#065f46', color:'#fff', fontSize:'1rem', fontWeight:800,
-              cursor:'pointer', boxShadow:'0 4px 14px rgba(6,95,70,0.35)',
-              display:'flex', alignItems:'center', justifyContent:'center', gap:8
-            }}
+            className="w-full py-4 rounded-2xl text-base font-extrabold text-white flex items-center justify-center gap-2
+              bg-emerald-800 shadow-lg shadow-emerald-800/30 active:scale-95 transition-transform"
           >
             ☝️ চেক-ইন করুন
           </button>
@@ -365,100 +350,89 @@ export default function WorkerAttendance() {
         {canCheckOut && (
           <button
             onClick={() => startMode('checkout')}
-            style={{
-              width:'100%', padding:'16px', borderRadius:16, border:'none',
-              background:'#1e3a8a', color:'#fff', fontSize:'1rem', fontWeight:800,
-              cursor:'pointer', boxShadow:'0 4px 14px rgba(30,58,138,0.35)',
-              display:'flex', alignItems:'center', justifyContent:'center', gap:8
-            }}
+            className="w-full py-4 rounded-2xl text-base font-extrabold text-white flex items-center justify-center gap-2
+              bg-blue-900 shadow-lg shadow-blue-900/30 active:scale-95 transition-transform"
           >
             👋 চেক-আউট করুন
           </button>
         )}
         {todayAtt?.check_out_time && (
-          <div style={{ textAlign:'center', padding:'16px 0' }}>
-            <span style={{ fontSize:'3rem' }}>✅</span>
-            <p style={{ color:'#374151', fontWeight:700, marginTop:8 }}>আজকের হাজিরা সম্পন্ন!</p>
+          <div className="text-center py-4">
+            <span className="text-5xl">✅</span>
+            <p className="text-gray-700 dark:text-gray-300 font-bold mt-2">আজকের হাজিরা সম্পন্ন!</p>
           </div>
         )}
         {!canCheckIn && !canCheckOut && !todayAtt?.check_out_time && (
-          <div style={{ textAlign:'center', padding:'16px 0', color:'#9ca3af' }}>
-            <p style={{ fontSize:'0.88rem' }}>
+          <div className="text-center py-4 text-gray-400 dark:text-gray-500">
+            <p className="text-[0.88rem]">
               চেক-ইনের সময়: {settings.attendance_checkin_start} — {settings.attendance_popup_cutoff}
             </p>
           </div>
         )}
 
-        {/* ─── ছুটির আবেদন বাটন ─── */}
+        {/* ছুটির আবেদন বাটন */}
         <button
           onClick={() => setShowLeaveModal(true)}
-          style={{
-            width:'100%', padding:'14px', borderRadius:16, border:'2px solid #7c3aed',
-            background:'#faf5ff', color:'#7c3aed', fontSize:'0.95rem', fontWeight:800,
-            cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8
-          }}
+          className="w-full py-3.5 rounded-2xl border-2 border-violet-600
+            bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300
+            text-[0.95rem] font-extrabold flex items-center justify-center gap-2
+            active:scale-95 transition-transform"
         >
           🏖️ ছুটির আবেদন করুন
         </button>
       </div>
 
-      {/* ─── ছুটির আবেদন ইতিহাস ─── */}
-      <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 1px 4px rgba(0,0,0,0.08)', overflow:'hidden', marginBottom:16 }}>
+      {/* ছুটির আবেদন ইতিহাস */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden mb-4">
         <button
           onClick={() => { setShowLeaveHistory(v => !v); if (!showLeaveHistory) fetchMyLeaves() }}
-          style={{
-            width:'100%', padding:'14px 16px', border:'none', background:'none',
-            display:'flex', alignItems:'center', justifyContent:'space-between', cursor:'pointer'
-          }}
+          className="w-full px-4 py-3.5 flex items-center justify-between bg-transparent border-none cursor-pointer"
         >
-          <span style={{ fontWeight:700, color:'#1f2937', fontSize:'0.95rem' }}>🏖️ আমার ছুটির আবেদন</span>
-          <span style={{ color:'#6b7280', fontSize:'1.1rem', transition:'transform 0.2s', transform: showLeaveHistory ? 'rotate(180deg)' : 'none' }}>▼</span>
+          <span className="font-bold text-gray-800 dark:text-gray-100 text-[0.95rem]">🏖️ আমার ছুটির আবেদন</span>
+          <span
+            className="text-gray-400 dark:text-gray-500 text-lg transition-transform duration-200"
+            style={{ transform: showLeaveHistory ? 'rotate(180deg)' : 'none' }}
+          >▼</span>
         </button>
 
         {showLeaveHistory && (
-          <div style={{ borderTop:'1px solid #f3f4f6', padding:16 }}>
+          <div className="border-t border-gray-100 dark:border-gray-700 p-4">
             {leaveHistLoading && (
-              <p style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.85rem' }}>লোড হচ্ছে...</p>
+              <p className="text-center text-gray-400 dark:text-gray-500 text-[0.85rem]">লোড হচ্ছে...</p>
             )}
             {!leaveHistLoading && myLeaves.length === 0 && (
-              <p style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.85rem', padding:'12px 0' }}>
-                কোনো আবেদন নেই।
-              </p>
+              <p className="text-center text-gray-400 dark:text-gray-500 text-[0.85rem] py-3">কোনো আবেদন নেই।</p>
             )}
             {!leaveHistLoading && myLeaves.map((lv, i) => {
               const statusMap = {
-                pending:  { label:'অপেক্ষমাণ', bg:'#fef3c7', color:'#92400e' },
-                approved: { label:'অনুমোদিত',  bg:'#d1fae5', color:'#065f46' },
-                rejected: { label:'প্রত্যাখ্যাত',bg:'#fee2e2', color:'#991b1b' },
+                pending:  { label:'অপেক্ষমাণ', cls:'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300' },
+                approved: { label:'অনুমোদিত',  cls:'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300' },
+                rejected: { label:'প্রত্যাখ্যাত',cls:'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300' },
               }
-              const s = statusMap[lv.status] || { label: lv.status, bg:'#f3f4f6', color:'#374151' }
+              const s = statusMap[lv.status] || { label: lv.status, cls:'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300' }
               const leaveTypeMap = { casual:'নৈমিত্তিক', sick:'অসুস্থতা', annual:'বার্ষিক', other:'অন্যান্য' }
               return (
-                <div key={i} style={{
-                  padding:'10px 8px', marginLeft:-8, marginRight:-8,
-                  borderBottom: i < myLeaves.length-1 ? '1px solid #f3f4f6' : 'none'
-                }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-                    <div style={{ flex:1 }}>
-                      <p style={{ fontSize:'0.82rem', fontWeight:700, color:'#1f2937' }}>
+                <div
+                  key={i}
+                  className={`py-2.5 -mx-2 px-2 ${i < myLeaves.length-1 ? 'border-b border-gray-100 dark:border-gray-700' : ''}`}
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <p className="text-[0.82rem] font-bold text-gray-800 dark:text-gray-100">
                         {new Date(lv.start_date).toLocaleDateString('bn-BD', { day:'numeric', month:'short' })}
                         {lv.start_date !== lv.end_date && ` — ${new Date(lv.end_date).toLocaleDateString('bn-BD', { day:'numeric', month:'short' })}`}
-                        <span style={{ fontWeight:400, color:'#6b7280', marginLeft:6, fontSize:'0.75rem' }}>
+                        <span className="font-normal text-gray-500 dark:text-gray-400 ml-1.5 text-[0.75rem]">
                           ({leaveTypeMap[lv.leave_type] || lv.leave_type})
                         </span>
                       </p>
-                      <p style={{ fontSize:'0.75rem', color:'#6b7280', marginTop:2 }}>{lv.reason}</p>
+                      <p className="text-[0.75rem] text-gray-500 dark:text-gray-400 mt-0.5">{lv.reason}</p>
                       {lv.reviewer_note && (
-                        <p style={{ fontSize:'0.72rem', color:'#7c3aed', marginTop:3, fontStyle:'italic' }}>
-                          📝 {lv.reviewer_note}
-                        </p>
+                        <p className="text-[0.72rem] text-violet-600 dark:text-violet-400 mt-1 italic">📝 {lv.reviewer_note}</p>
                       )}
                     </div>
-                    <span style={{
-                      background: s.bg, color: s.color,
-                      fontSize:'0.7rem', fontWeight:700,
-                      padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap', marginLeft:8
-                    }}>{s.label}</span>
+                    <span className={`text-[0.7rem] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ml-2 ${s.cls}`}>
+                      {s.label}
+                    </span>
                   </div>
                 </div>
               )
@@ -467,33 +441,25 @@ export default function WorkerAttendance() {
         )}
       </div>
 
-      {/* ─── ছুটির আবেদন Modal ─── */}
+      {/* ছুটির আবেদন Modal */}
       {showLeaveModal && (
-        <div style={{
-          position:'fixed', inset:0, background:'rgba(0,0,0,0.5)',
-          zIndex:1000, display:'flex', alignItems:'flex-end', justifyContent:'center'
-        }}
+        <div
+          className="fixed inset-0 bg-black/50 z-[1000] flex items-end justify-center"
           onClick={e => { if (e.target === e.currentTarget) setShowLeaveModal(false) }}
         >
-          <div style={{
-            background:'#fff', borderRadius:'20px 20px 0 0',
-            padding:24, width:'100%', maxWidth:480,
-            maxHeight:'85vh', overflowY:'auto'
-          }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:20 }}>
-              <h3 style={{ fontSize:'1.1rem', fontWeight:800, color:'#1f2937', margin:0 }}>🏖️ ছুটির আবেদন</h3>
+          <div className="bg-white dark:bg-gray-800 rounded-t-[20px] p-6 w-full max-w-lg max-h-[85vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="text-lg font-extrabold text-gray-800 dark:text-gray-100 m-0">🏖️ ছুটির আবেদন</h3>
               <button
                 onClick={() => setShowLeaveModal(false)}
-                style={{ background:'none', border:'none', fontSize:'1.4rem', color:'#9ca3af', cursor:'pointer', lineHeight:1 }}
+                className="bg-transparent border-none text-2xl text-gray-400 dark:text-gray-500 cursor-pointer leading-none"
               >×</button>
             </div>
 
             {/* ছুটির ধরন */}
-            <div style={{ marginBottom:14 }}>
-              <label style={{ fontSize:'0.82rem', fontWeight:700, color:'#374151', display:'block', marginBottom:6 }}>
-                ছুটির ধরন
-              </label>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+            <div className="mb-3.5">
+              <label className="text-[0.82rem] font-bold text-gray-700 dark:text-gray-300 block mb-1.5">ছুটির ধরন</label>
+              <div className="grid grid-cols-2 gap-2">
                 {[
                   { value:'casual', label:'নৈমিত্তিক' },
                   { value:'sick',   label:'অসুস্থতা' },
@@ -503,63 +469,56 @@ export default function WorkerAttendance() {
                   <button
                     key={t.value}
                     onClick={() => setLeaveForm(f => ({ ...f, leave_type: t.value }))}
-                    style={{
-                      padding:'10px', borderRadius:10, border:'2px solid',
-                      borderColor: leaveForm.leave_type === t.value ? '#7c3aed' : '#e5e7eb',
-                      background: leaveForm.leave_type === t.value ? '#faf5ff' : '#f9fafb',
-                      color: leaveForm.leave_type === t.value ? '#7c3aed' : '#6b7280',
-                      fontWeight:700, fontSize:'0.82rem', cursor:'pointer'
-                    }}
+                    className={`p-2.5 rounded-xl border-2 font-bold text-[0.82rem] cursor-pointer transition-colors
+                      ${leaveForm.leave_type === t.value
+                        ? 'border-violet-600 bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300'
+                        : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                      }`}
                   >{t.label}</button>
                 ))}
               </div>
             </div>
 
             {/* তারিখ */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:14 }}>
+            <div className="grid grid-cols-2 gap-2.5 mb-3.5">
               <div>
-                <label style={{ fontSize:'0.82rem', fontWeight:700, color:'#374151', display:'block', marginBottom:6 }}>শুরুর তারিখ</label>
+                <label className="text-[0.82rem] font-bold text-gray-700 dark:text-gray-300 block mb-1.5">শুরুর তারিখ</label>
                 <input
                   type="date"
                   value={leaveForm.start_date}
                   min={new Date().toISOString().split('T')[0]}
                   onChange={e => setLeaveForm(f => ({ ...f, start_date: e.target.value }))}
-                  style={{
-                    width:'100%', padding:'10px', borderRadius:10, border:'1px solid #e5e7eb',
-                    fontSize:'0.85rem', color:'#1f2937', background:'#f9fafb', boxSizing:'border-box'
-                  }}
+                  className="w-full p-2.5 rounded-xl border border-gray-200 dark:border-gray-600
+                    text-[0.85rem] text-gray-800 dark:text-gray-100
+                    bg-gray-50 dark:bg-gray-700 box-border"
                 />
               </div>
               <div>
-                <label style={{ fontSize:'0.82rem', fontWeight:700, color:'#374151', display:'block', marginBottom:6 }}>শেষ তারিখ</label>
+                <label className="text-[0.82rem] font-bold text-gray-700 dark:text-gray-300 block mb-1.5">শেষ তারিখ</label>
                 <input
                   type="date"
                   value={leaveForm.end_date}
                   min={leaveForm.start_date || new Date().toISOString().split('T')[0]}
                   onChange={e => setLeaveForm(f => ({ ...f, end_date: e.target.value }))}
-                  style={{
-                    width:'100%', padding:'10px', borderRadius:10, border:'1px solid #e5e7eb',
-                    fontSize:'0.85rem', color:'#1f2937', background:'#f9fafb', boxSizing:'border-box'
-                  }}
+                  className="w-full p-2.5 rounded-xl border border-gray-200 dark:border-gray-600
+                    text-[0.85rem] text-gray-800 dark:text-gray-100
+                    bg-gray-50 dark:bg-gray-700 box-border"
                 />
               </div>
             </div>
 
             {/* কারণ */}
-            <div style={{ marginBottom:20 }}>
-              <label style={{ fontSize:'0.82rem', fontWeight:700, color:'#374151', display:'block', marginBottom:6 }}>
-                ছুটির কারণ
-              </label>
+            <div className="mb-5">
+              <label className="text-[0.82rem] font-bold text-gray-700 dark:text-gray-300 block mb-1.5">ছুটির কারণ</label>
               <textarea
                 value={leaveForm.reason}
                 onChange={e => setLeaveForm(f => ({ ...f, reason: e.target.value }))}
                 placeholder="ছুটির কারণ লিখুন..."
                 rows={3}
-                style={{
-                  width:'100%', padding:'10px', borderRadius:10, border:'1px solid #e5e7eb',
-                  fontSize:'0.85rem', color:'#1f2937', background:'#f9fafb',
-                  resize:'none', boxSizing:'border-box', fontFamily:'inherit'
-                }}
+                className="w-full p-2.5 rounded-xl border border-gray-200 dark:border-gray-600
+                  text-[0.85rem] text-gray-800 dark:text-gray-100
+                  bg-gray-50 dark:bg-gray-700 resize-none box-border font-inherit
+                  placeholder:text-gray-400 dark:placeholder:text-gray-500"
               />
             </div>
 
@@ -567,12 +526,8 @@ export default function WorkerAttendance() {
             <button
               onClick={handleLeaveSubmit}
               disabled={leaveSubmitting}
-              style={{
-                width:'100%', padding:'14px', borderRadius:14, border:'none',
-                background: leaveSubmitting ? '#c4b5fd' : '#7c3aed',
-                color:'#fff', fontWeight:800, fontSize:'1rem',
-                cursor: leaveSubmitting ? 'not-allowed' : 'pointer',
-              }}
+              className={`w-full py-3.5 rounded-xl border-none text-white font-extrabold text-base transition-opacity
+                ${leaveSubmitting ? 'bg-violet-300 dark:bg-violet-800 cursor-not-allowed' : 'bg-violet-600 dark:bg-violet-700 cursor-pointer'}`}
             >
               {leaveSubmitting ? 'জমা হচ্ছে...' : '✅ আবেদন জমা দিন'}
             </button>
@@ -580,33 +535,30 @@ export default function WorkerAttendance() {
         </div>
       )}
 
-      {/* ─── মাসিক ইতিহাস ─── */}
-      <div style={{ background:'#fff', borderRadius:16, boxShadow:'0 1px 4px rgba(0,0,0,0.08)', overflow:'hidden' }}>
-        {/* Accordion Header */}
+      {/* মাসিক ইতিহাস */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
         <button
           onClick={() => setShowHistory(v => !v)}
-          style={{
-            width:'100%', padding:'14px 16px', border:'none', background:'none',
-            display:'flex', alignItems:'center', justifyContent:'space-between',
-            cursor:'pointer'
-          }}
+          className="w-full px-4 py-3.5 flex items-center justify-between bg-transparent border-none cursor-pointer"
         >
-          <span style={{ fontWeight:700, color:'#1f2937', fontSize:'0.95rem' }}>📅 মাসিক হাজিরা ইতিহাস</span>
-          <span style={{ color:'#6b7280', fontSize:'1.1rem', transition:'transform 0.2s', transform: showHistory ? 'rotate(180deg)' : 'none' }}>▼</span>
+          <span className="font-bold text-gray-800 dark:text-gray-100 text-[0.95rem]">📅 মাসিক হাজিরা ইতিহাস</span>
+          <span
+            className="text-gray-400 dark:text-gray-500 text-lg transition-transform duration-200"
+            style={{ transform: showHistory ? 'rotate(180deg)' : 'none' }}
+          >▼</span>
         </button>
 
         {showHistory && (
-          <div style={{ borderTop:'1px solid #f3f4f6', padding:16 }}>
+          <div className="border-t border-gray-100 dark:border-gray-700 p-4">
 
             {/* মাস/বছর সিলেক্টর */}
-            <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+            <div className="flex gap-2 mb-4">
               <select
                 value={histMonth}
                 onChange={e => handleMonthChange(parseInt(e.target.value), histYear)}
-                style={{
-                  flex:1, padding:'8px 10px', borderRadius:10, border:'1px solid #e5e7eb',
-                  fontSize:'0.85rem', fontWeight:600, color:'#1f2937', background:'#f9fafb'
-                }}
+                className="flex-1 px-2.5 py-2 rounded-xl border border-gray-200 dark:border-gray-600
+                  text-[0.85rem] font-semibold text-gray-800 dark:text-gray-100
+                  bg-gray-50 dark:bg-gray-700"
               >
                 {MONTHS_BN.map((m, i) => (
                   <option key={i+1} value={i+1}>{m}</option>
@@ -615,10 +567,9 @@ export default function WorkerAttendance() {
               <select
                 value={histYear}
                 onChange={e => handleMonthChange(histMonth, parseInt(e.target.value))}
-                style={{
-                  width:90, padding:'8px 10px', borderRadius:10, border:'1px solid #e5e7eb',
-                  fontSize:'0.85rem', fontWeight:600, color:'#1f2937', background:'#f9fafb'
-                }}
+                className="w-[90px] px-2.5 py-2 rounded-xl border border-gray-200 dark:border-gray-600
+                  text-[0.85rem] font-semibold text-gray-800 dark:text-gray-100
+                  bg-gray-50 dark:bg-gray-700"
               >
                 {[new Date().getFullYear()-1, new Date().getFullYear()].map(y => (
                   <option key={y} value={y}>{y}</option>
@@ -628,16 +579,16 @@ export default function WorkerAttendance() {
 
             {/* সারসংক্ষেপ কার্ড */}
             {historyData.summary && (
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16 }}>
+              <div className="grid grid-cols-4 gap-2 mb-4">
                 {[
-                  { label:'উপস্থিত', val: historyData.summary.present, color:'#065f46', bg:'#d1fae5' },
-                  { label:'দেরি',     val: historyData.summary.late,    color:'#92400e', bg:'#fef3c7' },
-                  { label:'অনুপস্থিত',val: historyData.summary.absent,  color:'#991b1b', bg:'#fee2e2' },
-                  { label:'ছুটি',     val: historyData.summary.leave,   color:'#3730a3', bg:'#e0e7ff' },
+                  { label:'উপস্থিত', val: historyData.summary.present, cls:'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300' },
+                  { label:'দেরি',     val: historyData.summary.late,    cls:'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-300' },
+                  { label:'অনুপস্থিত',val: historyData.summary.absent,  cls:'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300' },
+                  { label:'ছুটি',     val: historyData.summary.leave,   cls:'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300' },
                 ].map(s => (
-                  <div key={s.label} style={{ background: s.bg, borderRadius:10, padding:'8px 4px', textAlign:'center' }}>
-                    <p style={{ fontSize:'1.1rem', fontWeight:800, color: s.color }}>{s.val}</p>
-                    <p style={{ fontSize:'0.68rem', color: s.color, marginTop:2 }}>{s.label}</p>
+                  <div key={s.label} className={`rounded-xl p-2 text-center ${s.cls}`}>
+                    <p className="text-lg font-extrabold">{s.val}</p>
+                    <p className="text-[0.68rem] mt-0.5">{s.label}</p>
                   </div>
                 ))}
               </div>
@@ -645,9 +596,9 @@ export default function WorkerAttendance() {
 
             {/* মোট কর্তন */}
             {historyData.summary?.totalDeduction > 0 && (
-              <div style={{ background:'#fffbeb', borderRadius:10, padding:'10px 14px', marginBottom:14, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                <span style={{ fontSize:'0.82rem', color:'#92400e', fontWeight:600 }}>💸 এই মাসে মোট কর্তন</span>
-                <span style={{ fontSize:'1rem', fontWeight:800, color:'#b45309' }}>
+              <div className="bg-yellow-50 dark:bg-yellow-900/20 rounded-xl px-3.5 py-2.5 mb-3.5 flex justify-between items-center">
+                <span className="text-[0.82rem] text-yellow-800 dark:text-yellow-400 font-semibold">💸 এই মাসে মোট কর্তন</span>
+                <span className="text-base font-extrabold text-yellow-700 dark:text-yellow-300">
                   ৳{parseFloat(historyData.summary.totalDeduction).toFixed(0)}
                 </span>
               </div>
@@ -655,22 +606,21 @@ export default function WorkerAttendance() {
 
             {/* বোনাস প্রগ্রেস */}
             {historyData.bonus_progress && (
-              <div style={{ background:'#f0fdf4', borderRadius:10, padding:'10px 14px', marginBottom:16 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
-                  <span style={{ fontSize:'0.82rem', color:'#065f46', fontWeight:600 }}>🏆 পূর্ণ বোনাসের অগ্রগতি</span>
-                  <span style={{ fontSize:'0.82rem', fontWeight:800, color:'#065f46' }}>
+              <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl px-3.5 py-2.5 mb-4">
+                <div className="flex justify-between items-center mb-1.5">
+                  <span className="text-[0.82rem] text-emerald-800 dark:text-emerald-400 font-semibold">🏆 পূর্ণ বোনাসের অগ্রগতি</span>
+                  <span className="text-[0.82rem] font-extrabold text-emerald-800 dark:text-emerald-400">
                     {historyData.bonus_progress.present_days}/{historyData.bonus_progress.working_days} দিন
                   </span>
                 </div>
-                <div style={{ background:'#d1fae5', borderRadius:20, height:8, overflow:'hidden' }}>
-                  <div style={{
-                    height:'100%', borderRadius:20, background:'#10b981',
-                    width:`${Math.min(100, historyData.bonus_progress.percentage)}%`,
-                    transition:'width 0.4s ease'
-                  }}/>
+                <div className="bg-emerald-200 dark:bg-emerald-800/40 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-emerald-500 transition-all duration-400"
+                    style={{ width:`${Math.min(100, historyData.bonus_progress.percentage)}%` }}
+                  />
                 </div>
                 {historyData.bonus_progress.is_perfect && (
-                  <p style={{ fontSize:'0.75rem', color:'#059669', fontWeight:700, marginTop:6, textAlign:'center' }}>
+                  <p className="text-[0.75rem] text-emerald-600 dark:text-emerald-400 font-bold mt-1.5 text-center">
                     🎉 পূর্ণ উপস্থিতি বোনাস অর্জিত!
                   </p>
                 )}
@@ -679,16 +629,17 @@ export default function WorkerAttendance() {
 
             {/* লোডিং */}
             {histLoading && (
-              <div style={{ textAlign:'center', padding:'20px 0', color:'#9ca3af', fontSize:'0.85rem' }}>লোড হচ্ছে...</div>
+              <div className="text-center py-5 text-gray-400 dark:text-gray-500 text-[0.85rem]">লোড হচ্ছে...</div>
             )}
 
-            {/* দিনভিত্তিক তালিকা */}
+            {/* খালি */}
             {!histLoading && historyData.attendance.length === 0 && (
-              <p style={{ textAlign:'center', color:'#9ca3af', fontSize:'0.85rem', padding:'16px 0' }}>
+              <p className="text-center text-gray-400 dark:text-gray-500 text-[0.85rem] py-4">
                 এই মাসে কোনো হাজিরা রেকর্ড নেই।
               </p>
             )}
 
+            {/* দিনভিত্তিক তালিকা */}
             {!histLoading && historyData.attendance.map((row, i) => {
               const rawDate  = row.date?.split('T')[0] || row.date
               const d        = new Date(rawDate)
@@ -696,55 +647,47 @@ export default function WorkerAttendance() {
               const offDay   = isOffDay(rawDate)
               const duration = getWorkDuration(row.check_in_time, row.check_out_time)
 
-              // ছুটির দিন — লাল ব্যাকগ্রাউন্ড
-              const rowBg = offDay === 'holiday' ? '#fff1f2'
-                          : offDay === 'weekly'  ? '#fef2f2'
-                          : 'transparent'
+              const rowCls = offDay === 'holiday' ? 'bg-red-50 dark:bg-red-900/10'
+                           : offDay === 'weekly'  ? 'bg-red-50 dark:bg-red-900/10'
+                           : 'bg-transparent'
 
               return (
-                <div key={i} style={{
-                  display:'flex', alignItems:'flex-start', justifyContent:'space-between',
-                  padding:'10px 8px', marginLeft:-8, marginRight:-8,
-                  borderRadius:10, background: rowBg,
-                  borderBottom: i < historyData.attendance.length-1 ? '1px solid #f3f4f6' : 'none'
-                }}>
-                  <div style={{ flex:1 }}>
-                    {/* তারিখ + ছুটির লেবেল */}
-                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                      <p style={{ fontSize:'0.82rem', fontWeight:700, color: offDay ? '#dc2626' : '#1f2937' }}>
+                <div
+                  key={i}
+                  className={`flex items-start justify-between py-2.5 -mx-2 px-2 rounded-xl
+                    ${rowCls}
+                    ${i < historyData.attendance.length-1 ? 'border-b border-gray-100 dark:border-gray-700' : ''}`}
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className={`text-[0.82rem] font-bold ${offDay ? 'text-red-600 dark:text-red-400' : 'text-gray-800 dark:text-gray-100'}`}>
                         {dateStr}
                       </p>
                       {offDay === 'holiday' && (
-                        <span style={{ fontSize:'0.65rem', background:'#fee2e2', color:'#b91c1c', fontWeight:700, padding:'1px 6px', borderRadius:20 }}>
+                        <span className="text-[0.65rem] bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-bold px-1.5 py-0.5 rounded-full">
                           🏖️ ছুটি
                         </span>
                       )}
                       {offDay === 'weekly' && (
-                        <span style={{ fontSize:'0.65rem', background:'#fee2e2', color:'#b91c1c', fontWeight:700, padding:'1px 6px', borderRadius:20 }}>
+                        <span className="text-[0.65rem] bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 font-bold px-1.5 py-0.5 rounded-full">
                           সাপ্তাহিক
                         </span>
                       )}
                     </div>
-
-                    {/* চেক-ইন → চেক-আউট */}
-                    <p style={{ fontSize:'0.72rem', color:'#6b7280', marginTop:2 }}>
+                    <p className="text-[0.72rem] text-gray-500 dark:text-gray-400 mt-0.5">
                       {row.check_in_time  ? new Date(row.check_in_time ).toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit'}) : '—'}
                       {' → '}
                       {row.check_out_time ? new Date(row.check_out_time).toLocaleTimeString('bn-BD',{hour:'2-digit',minute:'2-digit'}) : '—'}
                     </p>
-
-                    {/* কাজের মোট সময় */}
                     {duration && (
-                      <p style={{ fontSize:'0.72rem', color:'#059669', fontWeight:600, marginTop:2 }}>
-                        ⏱ {duration}
-                      </p>
+                      <p className="text-[0.72rem] text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">⏱ {duration}</p>
                     )}
                   </div>
 
-                  <div style={{ display:'flex', flexDirection:'column', alignItems:'flex-end', gap:4 }}>
+                  <div className="flex flex-col items-end gap-1">
                     <StatusBadge status={row.status} />
                     {row.late_minutes > 0 && (
-                      <span style={{ fontSize:'0.68rem', color:'#b45309' }}>
+                      <span className="text-[0.68rem] text-yellow-700 dark:text-yellow-400">
                         দেরি {row.late_minutes}মি · কর্তন ৳{parseFloat(row.salary_deduction||0).toFixed(0)}
                       </span>
                     )}
@@ -760,11 +703,11 @@ export default function WorkerAttendance() {
 
   // ── Hold Step ──
   if (step === 'hold') return (
-    <div style={{ padding:16, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'70vh' }}>
-      <p style={{ fontSize:'1.1rem', fontWeight:800, color:'#1f2937', marginBottom:6 }}>
+    <div className="p-4 flex flex-col items-center justify-center min-h-[70vh]">
+      <p className="text-lg font-extrabold text-gray-800 dark:text-gray-100 mb-1.5">
         {mode === 'checkin' ? 'চেক-ইন' : 'চেক-আউট'}
       </p>
-      <p style={{ color:'#6b7280', fontSize:'0.85rem', marginBottom:32 }}>নিচের বাটন ৩ সেকেন্ড চেপে ধরুন</p>
+      <p className="text-gray-500 dark:text-gray-400 text-[0.85rem] mb-8">নিচের বাটন ৩ সেকেন্ড চেপে ধরুন</p>
 
       <HoldButton
         label={mode === 'checkin' ? 'চেক-ইন' : 'চেক-আউট'}
@@ -774,7 +717,7 @@ export default function WorkerAttendance() {
 
       <button
         onClick={cancel}
-        style={{ marginTop:32, background:'none', border:'none', color:'#9ca3af', fontSize:'0.88rem', cursor:'pointer' }}
+        className="mt-8 bg-transparent border-none text-gray-400 dark:text-gray-500 text-[0.88rem] cursor-pointer"
       >
         বাতিল করুন
       </button>
@@ -783,71 +726,61 @@ export default function WorkerAttendance() {
 
   // ── Selfie Step ──
   if (step === 'selfie') return (
-    <div style={{ padding:16 }}>
-      <p style={{ fontSize:'1.1rem', fontWeight:800, color:'#1f2937', textAlign:'center', marginBottom:4 }}>সেলফি দিন</p>
-      <p style={{ color:'#6b7280', fontSize:'0.85rem', textAlign:'center', marginBottom:16 }}>আপনার মুখ ফ্রেমের মধ্যে রাখুন</p>
+    <div className="p-4">
+      <p className="text-lg font-extrabold text-gray-800 dark:text-gray-100 text-center mb-1">সেলফি দিন</p>
+      <p className="text-gray-500 dark:text-gray-400 text-[0.85rem] text-center mb-4">আপনার মুখ ফ্রেমের মধ্যে রাখুন</p>
       <Camera onCapture={onSelfie} onClose={() => setStep('hold')} />
     </div>
   )
 
   // ── Loading ──
   if (step === 'loading') return (
-    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', minHeight:'60vh', gap:16 }}>
-      <div style={{
-        width:56, height:56, borderRadius:'50%',
-        border:'5px solid #e5e7eb', borderTopColor:'#1e3a8a',
-        animation:'spin 0.8s linear infinite'
-      }}/>
-      <p style={{ color:'#374151', fontWeight:600 }}>সাবমিট হচ্ছে...</p>
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+      <div className="w-14 h-14 rounded-full border-[5px] border-gray-200 dark:border-gray-700 border-t-blue-900 animate-spin" />
+      <p className="text-gray-700 dark:text-gray-300 font-semibold">সাবমিট হচ্ছে...</p>
     </div>
   )
 
   // ── Done ──
   if (step === 'done') {
-    // চেক-ইন ও চেক-আউটের সময় todayAtt থেকে পাই (fetchHistory ইতিমধ্যে refresh হয়েছে)
     const checkInTime  = todayAtt?.check_in_time
     const checkOutTime = todayAtt?.check_out_time
     const workDuration = getWorkDuration(checkInTime, checkOutTime)
     const isCheckout   = mode === 'checkout'
 
     return (
-      <div style={{ padding:16, paddingBottom:32 }}>
-        {/* Success animation area */}
-        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', paddingTop:32, paddingBottom:24 }}>
-          <div style={{
-            width:80, height:80, borderRadius:'50%',
-            background: isCheckout ? '#dbeafe' : '#d1fae5',
-            display:'flex', alignItems:'center', justifyContent:'center',
-            marginBottom:12
-          }}>
-            <span style={{ fontSize:'3rem' }}>{isCheckout ? '👋' : '🎉'}</span>
+      <div className="p-4 pb-8">
+        {/* Success area */}
+        <div className="flex flex-col items-center pt-8 pb-6">
+          <div className={`w-20 h-20 rounded-full flex items-center justify-center mb-3
+            ${isCheckout ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-emerald-100 dark:bg-emerald-900/30'}`}>
+            <span className="text-5xl">{isCheckout ? '👋' : '🎉'}</span>
           </div>
-          <h2 style={{ fontSize:'1.3rem', fontWeight:800, color:'#1f2937', margin:0 }}>
+          <h2 className="text-xl font-extrabold text-gray-800 dark:text-gray-100 m-0">
             {isCheckout ? 'চেক-আউট সফল!' : 'চেক-ইন সফল!'}
           </h2>
-          <p style={{ color:'#6b7280', fontSize:'0.85rem', marginTop:4 }}>
+          <p className="text-gray-500 dark:text-gray-400 text-[0.85rem] mt-1">
             {new Date().toLocaleTimeString('bn-BD', { hour:'2-digit', minute:'2-digit' })}
           </p>
         </div>
 
         {/* Summary Card */}
-        <div style={{
-          background:'#fff', borderRadius:16,
-          boxShadow:'0 1px 4px rgba(0,0,0,0.08)', padding:16, marginBottom:16
-        }}>
-          <p style={{ fontWeight:700, color:'#374151', marginBottom:12, fontSize:'0.9rem' }}>আজকের সারসংক্ষেপ</p>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-            <div style={{ background:'#f0fdf4', borderRadius:12, padding:'10px 8px', textAlign:'center' }}>
-              <p style={{ fontSize:'0.72rem', color:'#64748b', margin:0 }}>চেক-ইন</p>
-              <p style={{ fontWeight:800, color:'#065f46', marginTop:4, fontSize:'0.95rem' }}>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 mb-4">
+          <p className="font-bold text-gray-700 dark:text-gray-300 mb-3 text-[0.9rem]">আজকের সারসংক্ষেপ</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-2.5 text-center">
+              <p className="text-[0.72rem] text-slate-500 dark:text-slate-400 m-0">চেক-ইন</p>
+              <p className="font-extrabold text-emerald-800 dark:text-emerald-400 mt-1 text-[0.95rem]">
                 {checkInTime
                   ? new Date(checkInTime).toLocaleTimeString('bn-BD', { hour:'2-digit', minute:'2-digit' })
                   : '—'}
               </p>
             </div>
-            <div style={{ background: isCheckout ? '#eff6ff' : '#f9fafb', borderRadius:12, padding:'10px 8px', textAlign:'center' }}>
-              <p style={{ fontSize:'0.72rem', color:'#64748b', margin:0 }}>চেক-আউট</p>
-              <p style={{ fontWeight:800, color: isCheckout ? '#1e3a8a' : '#d1d5db', marginTop:4, fontSize:'0.95rem' }}>
+            <div className={`rounded-xl p-2.5 text-center
+              ${isCheckout ? 'bg-blue-50 dark:bg-blue-900/20' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
+              <p className="text-[0.72rem] text-slate-500 dark:text-slate-400 m-0">চেক-আউট</p>
+              <p className={`font-extrabold mt-1 text-[0.95rem]
+                ${isCheckout ? 'text-blue-900 dark:text-blue-300' : 'text-gray-300 dark:text-gray-600'}`}>
                 {checkOutTime
                   ? new Date(checkOutTime).toLocaleTimeString('bn-BD', { hour:'2-digit', minute:'2-digit' })
                   : '—'}
@@ -855,60 +788,48 @@ export default function WorkerAttendance() {
             </div>
           </div>
 
-          {/* কাজের মোট সময় — শুধু checkout-এ দেখাবে */}
           {isCheckout && workDuration && (
-            <div style={{
-              marginTop:12, background:'#f0f9ff', borderRadius:12,
-              padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center'
-            }}>
-              <span style={{ fontSize:'0.82rem', color:'#0369a1', fontWeight:600 }}>⏱ মোট কাজের সময়</span>
-              <span style={{ fontSize:'1rem', fontWeight:800, color:'#0369a1' }}>{workDuration}</span>
+            <div className="mt-3 bg-sky-50 dark:bg-sky-900/20 rounded-xl px-3.5 py-2.5 flex justify-between items-center">
+              <span className="text-[0.82rem] text-sky-700 dark:text-sky-400 font-semibold">⏱ মোট কাজের সময়</span>
+              <span className="text-base font-extrabold text-sky-700 dark:text-sky-400">{workDuration}</span>
             </div>
           )}
 
-          {/* দেরির তথ্য */}
           {lateInfo && (
-            <div style={{ marginTop:12, background:'#fffbeb', borderRadius:12, padding:'10px 14px' }}>
-              <p style={{ color:'#b45309', fontWeight:700, fontSize:'0.85rem', margin:'0 0 4px 0' }}>⚠️ দেরি হয়েছে</p>
-              <p style={{ color:'#92400e', fontSize:'0.82rem', margin:0 }}>
+            <div className="mt-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl p-2.5">
+              <p className="text-yellow-700 dark:text-yellow-400 font-bold text-[0.85rem] m-0 mb-1">⚠️ দেরি হয়েছে</p>
+              <p className="text-yellow-800 dark:text-yellow-300 text-[0.82rem] m-0">
                 {lateInfo.lateMinutes} মিনিট দেরি — কর্তন: ৳{lateInfo.deduction}
               </p>
             </div>
           )}
 
-          {/* Checkout-এ bonus progress hint */}
           {isCheckout && (
-            <div style={{ marginTop:12, background:'#f8fafc', borderRadius:12, padding:'10px 14px',
-              display:'flex', alignItems:'center', gap:8 }}>
-              <span style={{ fontSize:'1rem' }}>🏆</span>
-              <p style={{ fontSize:'0.78rem', color:'#64748b', margin:0 }}>
+            <div className="mt-3 bg-slate-50 dark:bg-slate-700/40 rounded-xl p-2.5 flex items-center gap-2">
+              <span className="text-base">🏆</span>
+              <p className="text-[0.78rem] text-slate-500 dark:text-slate-400 m-0">
                 আজকের হাজিরা বোনাস progress-এ গণনা হয়েছে।
-                <span style={{ color:'#7c3aed', fontWeight:600 }}> কমিশন পেজে</span> বিস্তারিত দেখুন।
+                <span className="text-violet-600 dark:text-violet-400 font-semibold"> কমিশন পেজে</span> বিস্তারিত দেখুন।
               </p>
             </div>
           )}
         </div>
 
         {/* Action buttons */}
-        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+        <div className="flex flex-col gap-2.5">
           <button
             onClick={() => navigate('/worker/dashboard')}
-            style={{
-              width:'100%', padding:'14px', borderRadius:14, border:'none',
-              background: isCheckout ? '#1e3a8a' : '#065f46',
-              color:'#fff', fontWeight:800, fontSize:'1rem', cursor:'pointer'
-            }}
+            className={`w-full py-3.5 rounded-xl border-none text-white font-extrabold text-base cursor-pointer
+              ${isCheckout ? 'bg-blue-900 dark:bg-blue-800' : 'bg-emerald-800 dark:bg-emerald-700'}`}
           >
             ড্যাশবোর্ডে যান
           </button>
           {isCheckout && (
             <button
               onClick={() => navigate('/worker/commission')}
-              style={{
-                width:'100%', padding:'12px', borderRadius:14,
-                border:'2px solid #7c3aed', background:'#faf5ff',
-                color:'#7c3aed', fontWeight:700, fontSize:'0.92rem', cursor:'pointer'
-              }}
+              className="w-full py-3 rounded-xl border-2 border-violet-600
+                bg-violet-50 dark:bg-violet-900/20 text-violet-700 dark:text-violet-300
+                font-bold text-[0.92rem] cursor-pointer"
             >
               🏆 কমিশন ও বোনাস দেখুন
             </button>
