@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import api from '../../api/axios'
+import api from '../api/axios'
 import { FiDollarSign, FiTrendingUp, FiUsers, FiAward, FiChevronRight, FiChevronLeft } from 'react-icons/fi'
 
 const fmt = (n) => parseFloat(n || 0).toLocaleString('bn-BD')
