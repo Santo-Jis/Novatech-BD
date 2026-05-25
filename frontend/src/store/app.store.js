@@ -50,6 +50,10 @@ export const useAppStore = create((set, get) => ({
   },
   clearNotifications: () => set({ notifications: [], unreadCount: 0 }),
   markAllRead:        () => set({ unreadCount: 0 }),
+  markNotificationRead: (id) => set(s => ({
+    notifications: s.notifications.map(n => n.id === id ? { ...n, read: true } : n),
+    unreadCount:   Math.max(0, s.unreadCount - 1)
+  })),
 
   // AI Insights
   aiInsights:      [],
