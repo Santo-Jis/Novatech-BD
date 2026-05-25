@@ -517,12 +517,17 @@ export default function SalesForm() {
                     setReceiptPhoto(compressed)
                     setReceiptPreview(URL.createObjectURL(compressed))
                   } catch (err) {
-                    if (err.message === 'TOO_LARGE') {
-                      toast.error('ছবি ৮ MB এর বেশি। ছোট ছবি তুলুন।')
-                    } else {
-                      toast.error('ছবি প্রসেস করা যায়নি।')
-                    }
+                    // ❌ compress ব্যর্থ — state ও preview পরিষ্কার করো
+                    setReceiptPhoto(null)
+                    setReceiptPreview(null)
                     e.target.value = ''
+                    if (err.message === 'TOO_LARGE') {
+                      toast.error('ছবি ৮ MB এর বেশি। ছোট ছবি তুলুন।', { duration: 4000 })
+                    } else if (err.message === 'ছবি লোড ব্যর্থ') {
+                      toast.error('ছবি লোড করা যায়নি। অন্য ছবি বেছে নিন।', { duration: 4000 })
+                    } else {
+                      toast.error('ছবি প্রসেস করা যায়নি। আবার চেষ্টা করুন।', { duration: 4000 })
+                    }
                   }
                 }} />
             </label>
