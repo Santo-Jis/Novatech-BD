@@ -126,7 +126,10 @@ export default function WorkerLayout() {
   }, [location.pathname])
 
   // Route পরিবর্তনে চেক করো
+  // ✅ FIX #1: checkedIn===null মানে এখনও loading — popup trigger করা যাবে না
+  // শুধু explicitly false হলেই (API respond করার পর) popup দেখাবে
   useEffect(() => {
+    if (checkedIn === null) return  // loading — অপেক্ষা করো
     if (checkedIn === false) {
       const isProtected = PROTECTED_PATHS.some(p => location.pathname.startsWith(p))
       if (isProtected) {
