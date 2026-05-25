@@ -4,6 +4,8 @@ import api from '../../api/axios'
 import { useAuthStore } from '../../store/auth.store'
 import { useAppStore }  from '../../store/app.store'
 import { ProgressBar }  from '../../components/charts/Charts'
+import { usePullToRefresh } from '../../hooks/usePullToRefresh'
+import PullToRefreshIndicator from '../../components/PullToRefreshIndicator'
 import {
   FiMapPin, FiShoppingBag, FiDollarSign,
   FiRefreshCw, FiAlertTriangle, FiCheckCircle,
@@ -13,7 +15,10 @@ import {
 export default function WorkerDashboard() {
   const navigate            = useNavigate()
   const { user }            = useAuthStore()
-  const { setTodaySummary } = useAppStore()
+  const { setTodaySummary, notifications, markNotificationRead } = useAppStore()
+
+  // অনুমোদন/বাতিল নোটিফিকেশন যেগুলো এখনো পড়া হয়নি
+  const approvalNotifs = notifications.filter(n => n.type === 'approval' && !n.read)
   const [summary,   setSummary]   = useState(null)
   const [order,     setOrder]     = useState(null)
   const [allOrders, setAllOrders] = useState([])
@@ -44,6 +49,10 @@ export default function WorkerDashboard() {
 
   useEffect(() => { fetchData() }, [])
 
+  const handleRefresh = async () => { await fetchData() }
+  const { containerRef, isRefreshing, pullDistance, pullProgress } =
+    usePullToRefresh({ onRefresh: handleRefresh })
+
   const refresh = () => { setRefreshing(true); fetchData() }
 
   if (loading) {
@@ -63,7 +72,51 @@ export default function WorkerDashboard() {
   const checkedIn = summary?.checked_in ?? false  // ✅ FIX #2: API fail হলে false — true রাখলে চেক-ইন ছাড়াই সব করা যেত  // ✅ চেক-ইন স্ট্যাটাস
 
   return (
-    <div className="p-4 space-y-4 animate-fade-in">
+    <div ref={containerRef} className="p-4 space-y-4 animate-fade-in overflow-y-auto">
+      <PullToRefreshIndicator
+        progress={pullProgress}
+        pullDistance={pullDistance}
+        isRefreshing={isRefreshing}
+      />
+
+      {/* ✅ অর্ডার Approval/Reject Notification Banner */}
+      {approvalNotifs.length > 0 && (
+        <div className="space-y-2">
+          {approvalNotifs.map(n => (
+            <div
+              key={n.id}
+              className={`flex items-start gap-3 rounded-2xl p-4 border ${
+                n.data?.status === 'approved'
+                  ? 'bg-emerald-50 border-emerald-200'
+                  : 'bg-red-50 border-red-200'
+              }`}
+            >
+              <span className="text-2xl flex-shrink-0">
+                {n.data?.status === 'approved' ? '✅' : '❌'}
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className={`font-bold text-sm ${
+                  n.data?.status === 'approved' ? 'text-emerald-700' : 'text-red-700'
+                }`}>
+                  {n.title}
+                </p>
+                <p className={`text-xs mt-0.5 ${
+                  n.data?.status === 'approved' ? 'text-emerald-600' : 'text-red-600'
+                }`}>
+                  {n.message}
+                </p>
+              </div>
+              <button
+                onClick={() => markNotificationRead(n.id)}
+                className="text-gray-400 hover:text-gray-600 flex-shrink-0 text-lg leading-none"
+                aria-label="বন্ধ করুন"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Greeting */}
       <div className="bg-gradient-to-r from-primary to-primary-light rounded-2xl p-4 text-white">
