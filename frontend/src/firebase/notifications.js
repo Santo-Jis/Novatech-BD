@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ref, onValue, off, set, serverTimestamp } from 'firebase/database'
 import { db } from './config'
-import { useFCMToken } from './useFCMToken'           // ← NEW
+import { useFCMToken } from './useFCMToken'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore }  from '../store/app.store'
 import toast from 'react-hot-toast'
@@ -9,11 +9,6 @@ import toast from 'react-hot-toast'
 // ============================================================
 // Firebase Realtime Notification System
 // NovaTechBD Management System
-// ============================================================
-
-// ============================================================
-// useFirebaseNotifications Hook
-// App.jsx এ একবার mount করলে সব নোটিফিকেশন পাওয়া যাবে
 // ============================================================
 
 export function useFirebaseNotifications() {
@@ -25,8 +20,6 @@ export function useFirebaseNotifications() {
     if (!user?.id) return
 
     // সব পুরনো listener বন্ধ করো
-    // ✅ FIX: subscribe হয়েছে 'value' event-এ, তাই off() ও 'value' দিয়ে।
-    // আগে 'child_added' লেখা ছিল — wrong event, listener detach হত না।
     listenersRef.current.forEach(({ ref: r, handler }) => off(r, 'value', handler))
     listenersRef.current = []
 
@@ -34,178 +27,167 @@ export function useFirebaseNotifications() {
     if (['manager', 'supervisor', 'admin'].includes(user.role)) {
       const ordersRef = ref(db, `notifications/${user.id}/orders`)
       const orderHandler = (snapshot) => {
-        const data = snapshot.val()
-        if (!data) return
-
-        addNotification({
-          id:      snapshot.key,
-          type:    'order',
-          title:   'নতুন অর্ডার',
-          message: data.message || `নতুন অর্ডার এসেছে`,
-          time:    new Date().toISOString(),
-          read:    false,
-          data
-        })
-
-        toast(`📦 ${data.message}`, {
-          duration: 5000,
-          style: { background: '#1e3a8a', color: '#fff' }
-        })
-
-        // নোটিফিকেশন পড়া হয়েছে চিহ্নিত করো
-        set(snapshot.ref, { ...data, read: true })
-      }
-
-      onValue(ordersRef, (snapshot) => {
         snapshot.forEach(child => {
           const data = child.val()
-          if (!data?.read) orderHandler(child)
-        })
-      }, { onlyOnce: true })
+          if (!data || data.read) return
 
-      listenersRef.current.push({ ref: ordersRef, handler: orderHandler })
+          addNotification({
+            id:      child.key,
+            type:    'order',
+            title:   'নতুন অর্ডার',
+            message: data.message || `নতুন অর্ডার এসেছে`,
+            time:    new Date().toISOString(),
+            read:    false,
+            data
+          })
+
+          toast(`📦 ${data.message}`, {
+            duration: 5000,
+            style: { background: '#1e3a8a', color: '#fff' }
+          })
+
+          set(child.ref, { ...data, read: true })
+        })
+      }
+
+      // ✅ FIX: onlyOnce সরানো হয়েছে — persistent listener, নতুন order এলে real-time পাবে
+      const unsubOrders = onValue(ordersRef, orderHandler)
+      listenersRef.current.push({ ref: ordersRef, handler: orderHandler, unsub: unsubOrders })
     }
 
     // ── ২. Settlement নোটিফিকেশন (Manager এর জন্য) ──
     if (['manager', 'supervisor', 'admin'].includes(user.role)) {
       const settlementsRef = ref(db, `notifications/${user.id}/settlements`)
       const settlementHandler = (snapshot) => {
-        const data = snapshot.val()
-        if (!data || data.read) return
-
-        addNotification({
-          id:      snapshot.key,
-          type:    'settlement',
-          title:   'হিসাব জমা',
-          message: data.message,
-          time:    new Date().toISOString(),
-          read:    false,
-          data
-        })
-
-        const toastStyle = data.hasShortage
-          ? { background: '#991b1b', color: '#fff' }
-          : { background: '#065f46', color: '#fff' }
-
-        toast(data.hasShortage ? `⚠️ ${data.message}` : `✅ ${data.message}`, {
-          duration: 5000,
-          style: toastStyle
-        })
-
-        set(snapshot.ref, { ...data, read: true })
-      }
-      onValue(settlementsRef, (snapshot) => {
         snapshot.forEach(child => {
           const data = child.val()
-          if (!data?.read) settlementHandler(child)
+          if (!data || data.read) return
+
+          addNotification({
+            id:      child.key,
+            type:    'settlement',
+            title:   'হিসাব জমা',
+            message: data.message,
+            time:    new Date().toISOString(),
+            read:    false,
+            data
+          })
+
+          const toastStyle = data.hasShortage
+            ? { background: '#991b1b', color: '#fff' }
+            : { background: '#065f46', color: '#fff' }
+
+          toast(data.hasShortage ? `⚠️ ${data.message}` : `✅ ${data.message}`, {
+            duration: 5000,
+            style: toastStyle
+          })
+
+          set(child.ref, { ...data, read: true })
         })
-      }, { onlyOnce: true })
-      listenersRef.current.push({ ref: settlementsRef, handler: settlementHandler })
+      }
+      // ✅ FIX: persistent listener
+      const unsubSettlements = onValue(settlementsRef, settlementHandler)
+      listenersRef.current.push({ ref: settlementsRef, handler: settlementHandler, unsub: unsubSettlements })
     }
 
     // ── ৩. Approval নোটিফিকেশন (Worker এর জন্য) ──
+    // ✅ FIX: onlyOnce ছিল — approve/reject real-time আসত না।
+    // এখন persistent listener। নতুন approval এলেই store + toast + dashboard badge update হবে।
     if (user.role === 'worker') {
       const approvalsRef = ref(db, `notifications/${user.id}/approvals`)
       const approvalHandler = (snapshot) => {
-        const data = snapshot.val()
-        if (!data || data.read) return
-
-        addNotification({
-          id:      snapshot.key,
-          type:    'approval',
-          title:   data.status === 'approved' ? '✅ অনুমোদন' : '❌ বাতিল',
-          message: data.message,
-          time:    new Date().toISOString(),
-          read:    false,
-          data
-        })
-
-        toast(data.message, {
-          duration: 6000,
-          style: {
-            background: data.status === 'approved' ? '#065f46' : '#991b1b',
-            color: '#fff'
-          }
-        })
-
-        set(snapshot.ref, { ...data, read: true })
-      }
-      onValue(approvalsRef, (snapshot) => {
         snapshot.forEach(child => {
           const data = child.val()
-          if (!data?.read) approvalHandler(child)
+          if (!data || data.read) return
+
+          addNotification({
+            id:      child.key,
+            type:    'approval',
+            title:   data.status === 'approved' ? '✅ অনুমোদন' : '❌ বাতিল',
+            message: data.message,
+            time:    new Date().toISOString(),
+            read:    false,
+            data
+          })
+
+          toast(data.message, {
+            duration: 6000,
+            style: {
+              background: data.status === 'approved' ? '#065f46' : '#991b1b',
+              color: '#fff'
+            }
+          })
+
+          set(child.ref, { ...data, read: true })
         })
-      }, { onlyOnce: true })
-      listenersRef.current.push({ ref: approvalsRef, handler: approvalHandler })
+      }
+      const unsubApprovals = onValue(approvalsRef, approvalHandler)
+      listenersRef.current.push({ ref: approvalsRef, handler: approvalHandler, unsub: unsubApprovals })
     }
 
     // ── ৪. Settlement approval (Worker এর জন্য) ──
     if (user.role === 'worker') {
       const settlementRef = ref(db, `notifications/${user.id}/settlement`)
       const settlWorkerHandler = (snapshot) => {
-        const data = snapshot.val()
-        if (!data || data.read) return
-
-        addNotification({
-          id:      snapshot.key,
-          type:    'settlement_result',
-          title:   'হিসাব আপডেট',
-          message: data.message,
-          time:    new Date().toISOString(),
-          read:    false,
-          data
-        })
-
-        toast(data.message, {
-          duration: 6000,
-          style: {
-            background: data.status === 'approved' ? '#065f46' : '#d97706',
-            color: '#fff'
-          }
-        })
-
-        set(snapshot.ref, { ...data, read: true })
-      }
-      onValue(settlementRef, (snapshot) => {
         snapshot.forEach(child => {
           const data = child.val()
-          if (!data?.read) settlWorkerHandler(child)
+          if (!data || data.read) return
+
+          addNotification({
+            id:      child.key,
+            type:    'settlement_result',
+            title:   'হিসাব আপডেট',
+            message: data.message,
+            time:    new Date().toISOString(),
+            read:    false,
+            data
+          })
+
+          toast(data.message, {
+            duration: 6000,
+            style: {
+              background: data.status === 'approved' ? '#065f46' : '#d97706',
+              color: '#fff'
+            }
+          })
+
+          set(child.ref, { ...data, read: true })
         })
-      }, { onlyOnce: true })
-      listenersRef.current.push({ ref: settlementRef, handler: settlWorkerHandler })
+      }
+      // ✅ FIX: persistent listener
+      const unsubSettlWorker = onValue(settlementRef, settlWorkerHandler)
+      listenersRef.current.push({ ref: settlementRef, handler: settlWorkerHandler, unsub: unsubSettlWorker })
     }
 
     // ── ৫. Bonus নোটিফিকেশন (Worker এর জন্য) ──
     if (user.role === 'worker') {
       const bonusRef = ref(db, `notifications/${user.id}/bonus`)
       const bonusHandler = (snapshot) => {
-        const data = snapshot.val()
-        if (!data || data.read) return
-
-        addNotification({
-          id:      snapshot.key,
-          type:    'bonus',
-          title:   '🎉 বোনাস পেয়েছেন!',
-          message: data.message,
-          time:    new Date().toISOString(),
-          read:    false,
-          data
-        })
-
-        toast(`🎉 ${data.message}`, {
-          duration: 8000,
-          style: { background: '#d97706', color: '#fff' }
-        })
-
-        set(snapshot.ref, { ...data, read: true })
-      }
-      onValue(bonusRef, (snapshot) => {
         snapshot.forEach(child => {
           const data = child.val()
-          if (!data?.read) bonusHandler(child)
+          if (!data || data.read) return
+
+          addNotification({
+            id:      child.key,
+            type:    'bonus',
+            title:   '🎉 বোনাস পেয়েছেন!',
+            message: data.message,
+            time:    new Date().toISOString(),
+            read:    false,
+            data
+          })
+
+          toast(`🎉 ${data.message}`, {
+            duration: 8000,
+            style: { background: '#d97706', color: '#fff' }
+          })
+
+          set(child.ref, { ...data, read: true })
         })
-      }, { onlyOnce: true })
-      listenersRef.current.push({ ref: bonusRef, handler: bonusHandler })
+      }
+      // ✅ FIX: persistent listener
+      const unsubBonus = onValue(bonusRef, bonusHandler)
+      listenersRef.current.push({ ref: bonusRef, handler: bonusHandler, unsub: unsubBonus })
     }
 
     // ── ৬. লাইভ হাজিরা আপডেট (Manager এর জন্য) ──
@@ -227,18 +209,17 @@ export function useFirebaseNotifications() {
           })
         }
       }
-      onValue(liveAttRef, liveAttHandler)
-      listenersRef.current.push({ ref: liveAttRef, handler: liveAttHandler })
+      const unsubLiveAtt = onValue(liveAttRef, liveAttHandler)
+      listenersRef.current.push({ ref: liveAttRef, handler: liveAttHandler, unsub: unsubLiveAtt })
     }
 
-    // Cleanup
-    // ✅ FIX: onlyOnce listener গুলো (orders/settlements/approvals/bonus)
-    // একবার fire করেই auto-detach হয় — এদের off() করার দরকার নেই।
-    // listenersRef-এ শুধু persistent listener (liveAttHandler) থাকে।
-    // সেটার জন্য off(r, 'value', handler) সঠিক।
+    // ✅ FIX: সব listener এখন persistent — unsub() দিয়ে cleanup
     return () => {
-      listenersRef.current.forEach(({ ref: r, handler }) => {
-        try { off(r, 'value', handler) } catch {}
+      listenersRef.current.forEach(({ unsub, ref: r, handler }) => {
+        try {
+          if (typeof unsub === 'function') unsub()
+          else off(r, 'value', handler)
+        } catch {}
       })
       listenersRef.current = []
     }
@@ -247,7 +228,6 @@ export function useFirebaseNotifications() {
 
 // ============================================================
 // useOnlinePresence Hook
-// ইউজার অনলাইন/অফলাইন ট্র্যাকিং
 // ============================================================
 
 export function useOnlinePresence() {
@@ -283,10 +263,6 @@ export function useOnlinePresence() {
     })
 
     return () => {
-      // ✅ FIX: onValue() একটি unsubscribe function return করে।
-      // off(ref, event, fn) এ সেটাকে handler হিসেবে দেওয়া ভুল —
-      // listener detach হয় না, memory leak হয়।
-      // সঠিক পদ্ধতি: unsubscribe() সরাসরি call করো।
       unsubscribe()
       set(presenceRef, {
         online:   false,
@@ -300,7 +276,6 @@ export function useOnlinePresence() {
 
 // ============================================================
 // useTeamPresence Hook
-// Manager এর টিম অনলাইন কিনা দেখা
 // ============================================================
 
 export function useTeamPresence(workerIds = []) {
@@ -328,13 +303,11 @@ export function useTeamPresence(workerIds = []) {
 
 // ============================================================
 // Firebase নোটিফিকেশন Provider Component
-// App.jsx এ wrap করতে হবে
-// ── পরিবর্তন: useFCMToken() এখানে যোগ করা হয়েছে ──
 // ============================================================
 
 export function FirebaseProvider({ children }) {
   useFirebaseNotifications()
   useOnlinePresence()
-  useFCMToken()                    // ← NEW: FCM token register + foreground handler
+  useFCMToken()
   return React.createElement(React.Fragment, null, children)
 }
