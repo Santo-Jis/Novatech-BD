@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore }  from '../store/app.store'
 import {
   FiHome, FiMapPin, FiShoppingBag, FiDollarSign, FiUser,
   FiBell, FiMoon, FiSun, FiUsers, FiMenu, FiX, FiLogOut,
-  FiClipboard, FiAlertTriangle, FiRefreshCw, FiTrendingUp, FiPackage, FiCreditCard, FiFileText, FiInbox
+  FiClipboard, FiAlertTriangle, FiRefreshCw, FiTrendingUp, FiPackage, FiCreditCard, FiFileText, FiInbox, FiShoppingCart
 } from 'react-icons/fi'
 import OfflineStatusBar from '../components/OfflineStatusBar'
 import { useOffline } from '../store/useOffline'
@@ -15,13 +15,14 @@ import api from '../api/axios'
 import { useLiveTracking } from '../hooks/useLiveTracking'
 
 // ─── Bottom Navigation (সবসময় দেখা যাবে) ───────────────────
+// "বিক্রয় করুন" সবচেয়ে বেশি ব্যবহৃত — সরাসরি BottomNav-এ রাখা হয়েছে
+// স্টক → Hamburger menu-তে সরানো হয়েছে (কম ঘন ঘন দরকার হয়)
 const bottomNav = [
-  { path: '/worker/dashboard',    icon: <FiHome />,        label: 'হোম' },
-  { path: '/worker/customers',    icon: <FiUsers />,       label: 'কাস্টমার' },
-  { path: '/worker/stock-status', icon: <FiPackage />,     label: 'স্টক' },
-  { path: '/worker/settlement',   icon: <FiShoppingBag />, label: 'হিসাব' },
-  { path: '/worker/profile',      icon: <FiUser />,        label: 'প্রোফাইল' },
-  
+  { path: '/worker/dashboard',  icon: <FiHome />,         label: 'হোম' },
+  { path: '/worker/customers',  icon: <FiUsers />,        label: 'কাস্টমার' },
+  { path: '/worker/order',      icon: <FiShoppingCart />, label: 'বিক্রয়', highlight: true },
+  { path: '/worker/settlement', icon: <FiShoppingBag />,  label: 'হিসাব' },
+  { path: '/worker/profile',    icon: <FiUser />,         label: 'প্রোফাইল' },
 ]
 
 // ─── Hamburger Menu Items (গৌণ পৃষ্ঠা) ──────────────────────
@@ -30,6 +31,11 @@ const menuItems = [
     icon: <FiMapPin />,
     label: 'রুট সিলেক্ট করুন',
     path: '/worker/route',
+  },
+  {
+    icon: <FiPackage />,
+    label: 'স্টক স্ট্যাটাস',
+    path: '/worker/stock-status',
   },
   {
     icon: <FiClipboard />,
@@ -99,8 +105,8 @@ export default function WorkerLayout() {
   useLiveTracking()
 
   // ✅ চেক-ইন স্ট্যাটাস
-  const [checkedIn,       setCheckedIn]       = useState(null)  // null = loading
-  const [showCheckinPopup, setShowCheckinPopup] = useState(false)
+  const [checkedIn,        setCheckedIn]        = useState(null)  // null = loading
+  const [showCheckinPopup, setShowCheckinPopup]  = useState(false)
 
   // চেক-ইন-সুরক্ষিত route গুলো
   const PROTECTED_PATHS = [
@@ -109,32 +115,62 @@ export default function WorkerLayout() {
     '/worker/settlement',
   ]
 
-  // চেক-ইন স্ট্যাটাস টানো — mount-এ এবং route পরিবর্তনে
-  // ✅ FIX 1: [] → [location.pathname] — চেক-ইনের পর অন্য page-এ গেলে রিফ্রেশ হবে
-  // ✅ FIX 2: fetch শুরুতে null সেট — race condition এ popup না দেখানোর জন্য
-  useEffect(() => {
-    setCheckedIn(null)
-    const fetchCheckinStatus = async () => {
-      try {
-        const res = await api.get('/sales/today-summary')
-        setCheckedIn(res.data.data?.checked_in ?? false)
-      } catch {
-        setCheckedIn(false)
-      }
+  // ─── Check-in Smart Cache ───────────────────────────────────────
+  // সমস্যা: আগে প্রতিটা route change-এ API call হত (দিনে ৫০+ navigation = ৫০+ call)
+  //
+  // সমাধান: in-memory cache — একই দিনে একবারই API call, তারপর cache থেকে পড়া।
+  // Cache invalidation:
+  //   ১. নতুন দিন হলে (তারিখ বদলালে) — স্বয়ংক্রিয়ভাবে expire
+  //   ২. User চেক-ইন করলে — checkinCache.set(true) দিয়ে force update
+  //   ৩. Logout হলে — module reload হয় তাই auto-clear
+  //
+  // Module-level রাখা হয়েছে যাতে re-render-এ reset না হয়।
+  // ─────────────────────────────────────────────────────────────────
+  const checkinCacheRef = useRef(null)  // { value: bool, date: 'YYYY-MM-DD' }
+
+  const getTodayDate = () => new Date().toISOString().slice(0, 10)
+
+  // Cache থেকে পড়ো, না থাকলে API call করো
+  const fetchCheckinStatus = async (forceRefresh = false) => {
+    const today = getTodayDate()
+    const cache = checkinCacheRef.current
+
+    // Cache hit: একই দিনের data আছে এবং force refresh নয়
+    if (!forceRefresh && cache && cache.date === today) {
+      setCheckedIn(cache.value)
+      return
     }
+
+    // Cache miss: API call করো
+    setCheckedIn(null)  // loading state
+    try {
+      const res = await api.get('/sales/today-summary')
+      const value = res.data.data?.checked_in ?? false
+      checkinCacheRef.current = { value, date: today }
+      setCheckedIn(value)
+    } catch {
+      setCheckedIn(false)
+    }
+  }
+
+  // ✅ Expose করা হচ্ছে যাতে চেক-ইন page থেকে cache clear করতে পারে
+  // ব্যবহার: window.__refreshCheckin?.() — AttendancePage-এ চেক-ইন সফল হলে call করুন
+  useEffect(() => {
+    window.__refreshCheckin = () => fetchCheckinStatus(true)
+    return () => { delete window.__refreshCheckin }
+  }, [])
+
+  // Route change-এ শুধু cache check — API call শুধু দরকার হলে
+  useEffect(() => {
     fetchCheckinStatus()
   }, [location.pathname])
 
-  // Route পরিবর্তনে চেক করো
-  // ✅ FIX #1: checkedIn===null মানে এখনও loading — popup trigger করা যাবে না
-  // শুধু explicitly false হলেই (API respond করার পর) popup দেখাবে
+  // Route পরিবর্তনে popup দেখানো
   useEffect(() => {
     if (checkedIn === null) return  // loading — অপেক্ষা করো
     if (checkedIn === false) {
       const isProtected = PROTECTED_PATHS.some(p => location.pathname.startsWith(p))
-      if (isProtected) {
-        setShowCheckinPopup(true)
-      }
+      if (isProtected) setShowCheckinPopup(true)
     }
   }, [location.pathname, checkedIn])
 
@@ -377,21 +413,37 @@ export default function WorkerLayout() {
             to={item.path}
             className={({ isActive }) =>
               `flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-colors relative
-               ${isActive
-                 ? 'text-primary dark:text-blue-400'
-                 : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
+               ${item.highlight
+                 ? 'text-white'
+                 : isActive
+                   ? 'text-primary dark:text-blue-400'
+                   : 'text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300'
                }`
             }
           >
             {({ isActive }) => (
               <>
-                <span className={`text-xl transition-transform ${isActive ? 'scale-110' : ''}`}>
-                  {item.icon}
-                </span>
-                <span className={`text-xs font-medium ${isActive ? 'text-primary dark:text-blue-400' : ''}`}>
+                {/* বিক্রয় বোতাম — highlighted pill */}
+                {item.highlight ? (
+                  <span className={
+                    `flex flex-col items-center justify-center w-14 h-10 rounded-2xl transition-transform
+                     bg-primary shadow-md shadow-primary/40 ${isActive ? 'scale-110' : 'scale-100'}`
+                  }>
+                    <span className="text-xl text-white">{item.icon}</span>
+                  </span>
+                ) : (
+                  <span className={`text-xl transition-transform ${isActive ? 'scale-110' : ''}`}>
+                    {item.icon}
+                  </span>
+                )}
+                <span className={`text-xs font-medium ${
+                  item.highlight
+                    ? 'text-primary font-bold'
+                    : isActive ? 'text-primary dark:text-blue-400' : ''
+                }`}>
                   {item.label}
                 </span>
-                {isActive && (
+                {isActive && !item.highlight && (
                   <span className="absolute bottom-0 w-8 h-0.5 bg-primary dark:bg-blue-400 rounded-full" />
                 )}
               </>
