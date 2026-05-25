@@ -166,6 +166,8 @@ export default function Settlement() {
 
   const handleSubmit = async () => {
     if (!preview) return
+    // ✅ FIX #3: double-submit guard — submitting বা alreadySubmitted যেকোনো একটি true হলে block
+    if (submitting || alreadySubmitted) return
 
     // ৳৫০০+ পার্থক্যে ব্যাখ্যা না দিলে block
     if (preview.cashBlocked && !mismatchExplanation.trim()) {
@@ -185,9 +187,11 @@ export default function Settlement() {
         shortage_note:        shortageNote || undefined,
         mismatch_explanation: mismatchExplanation.trim() || undefined,
       })
-      toast.success('হিসাব জমা দেওয়া হয়েছে ✅ Manager এর অনুমোদনের অপেক্ষায়।')
-      setShowConfirm(false)
+      // ✅ FIX #3: alreadySubmitted আগে set করো — তারপর finally তে submitting false
+      // এতে brief window বন্ধ হয় যেখানে button আবার clickable হয়ে যেত
       setAlreadySubmitted(true)
+      setShowConfirm(false)
+      toast.success('হিসাব জমা দেওয়া হয়েছে ✅ Manager এর অনুমোদনের অপেক্ষায়।')
     } catch (err) {
       toast.error(err.response?.data?.message || 'সমস্যা হয়েছে')
     } finally {
