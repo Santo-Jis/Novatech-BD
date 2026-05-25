@@ -60,7 +60,7 @@ export default function WorkerDashboard() {
   const visits   = summary?.visits   || {}
   const dues     = parseFloat(summary?.outstanding_dues || 0)
   const todayAtt = summary?.today_order
-  const checkedIn = summary?.checked_in ?? true  // ✅ চেক-ইন স্ট্যাটাস
+  const checkedIn = summary?.checked_in ?? false  // ✅ FIX #2: API fail হলে false — true রাখলে চেক-ইন ছাড়াই সব করা যেত  // ✅ চেক-ইন স্ট্যাটাস
 
   return (
     <div className="p-4 space-y-4 animate-fade-in">
