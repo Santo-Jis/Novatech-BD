@@ -372,6 +372,19 @@ export default function CustomerList() {
 
   const visitedCount = customers.filter(c => c.visited_today).length
 
+  // ✅ FIX #4: selectedRoute না থাকলে loading-এর আগেই block — API call হবে না, সব customer দেখাবে না
+  if (!selectedRoute) return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] px-8 text-center gap-4">
+      <span className="text-5xl">🗺️</span>
+      <h2 className="font-bold text-gray-800 text-lg">রুট সিলেক্ট করুন</h2>
+      <p className="text-sm text-gray-500">কাস্টমার তালিকা দেখতে হলে আগে আজকের রুট বেছে নিতে হবে।</p>
+      <button onClick={() => navigate('/worker/route')}
+        className="px-6 py-3 bg-primary text-white rounded-2xl font-semibold text-sm shadow-md">
+        রুট বেছে নিন →
+      </button>
+    </div>
+  )
+
   if (loading) return (
     <div className="p-4 space-y-3">
       {[1,2,3].map(i => <div key={i} className="h-24 bg-white rounded-2xl animate-pulse" />)}
