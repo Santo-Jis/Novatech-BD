@@ -210,11 +210,49 @@ export function initAutoSync() {
 }
 
 // ── Manual retry (failed items) ─────────────────────────────
+// ✅ FIX #6: retry_count reset করা বন্ধ — সর্বোচ্চ MAX_MANUAL_RETRY বার manual retry
+// Exponential backoff: পরবর্তী retry কখন allowed তা next_retry_at দিয়ে track করা হয়
+const MAX_MANUAL_RETRY = 5  // মোট এত বার manual retry করা যাবে (auto + manual মিলিয়ে)
+
 export async function retryFailed() {
   const items = await getPendingQueue()
+  const now   = Date.now()
   const failed = items.filter(i => i.status === 'failed')
+
+  let skippedCount = 0
   for (const item of failed) {
-    await updateQueueItem(item.id, { status: 'pending', retry_count: 0 })
+    const totalRetries = item.retry_count || 0
+
+    // ✅ MAX cap — এর বেশি retry করলে server flood হতে পারে
+    if (totalRetries >= MAX_MANUAL_RETRY) {
+      skippedCount++
+      continue
+    }
+
+    // ✅ Exponential backoff: 2^retry * 30s (max 10 min)
+    // next_retry_at set না থাকলে এখনই retry করা যাবে
+    if (item.next_retry_at && item.next_retry_at > now) {
+      const waitSec = Math.round((item.next_retry_at - now) / 1000)
+      skippedCount++
+      continue
+    }
+
+    // Backoff delay হিসাব — পরবর্তী failure-এর জন্য
+    const backoffMs = Math.min(Math.pow(2, totalRetries) * 30_000, 600_000) // max 10 min
+
+    await updateQueueItem(item.id, {
+      status:        'pending',
+      next_retry_at: now + backoffMs,   // পরবর্তী retry-এর আগে এই সময় পর্যন্ত অপেক্ষা
+    })
   }
+
+  if (skippedCount > 0) {
+    const msg = skippedCount === failed.length
+      ? `⏳ সব item হয় সর্বোচ্চ retry শেষ করেছে বা backoff-এ আছে।`
+      : `⚠️ ${skippedCount}টি item এখনও retry করার সময় হয়নি বা সর্বোচ্চ সীমায় পৌঁছেছে।`
+    const { default: toast } = await import('react-hot-toast')
+    toast(msg, { icon: 'ℹ️', duration: 4000 })
+  }
+
   await syncAll()
 }
