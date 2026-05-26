@@ -1,15 +1,12 @@
 const jwt       = require('jsonwebtoken');
 const { query } = require('../config/db');
+const { blockUserTokens, unblockUser } = require('../config/redis');
 
 // ============================================================
 // Auth Service — JWT Token ব্যবস্থাপনা
 // ============================================================
 
 // Access Token তৈরি (১৫ মিনিট)
-// ✅ OPT: status, manager_id, employee_code, name_en, phone token-এ রাখা হলো।
-// auth middleware-এ আর প্রতি request-এ DB query লাগবে না।
-// Trade-off: role/status পরিবর্তন হলে সর্বোচ্চ ১৫ মিনিট পুরনো token চলবে।
-// suspend/archive এর ক্ষেত্রে এটা acceptable — admin logout করিয়ে দিতে পারবে।
 const generateAccessToken = (user) => {
     return jwt.sign(
         {
@@ -40,7 +37,7 @@ const generateRefreshToken = (user) => {
 const saveRefreshToken = async (userId, refreshToken) => {
     try {
         const expiresAt = new Date();
-        expiresAt.setDate(expiresAt.getDate() + 7); // ৭ দিন পরে
+        expiresAt.setDate(expiresAt.getDate() + 7);
 
         await query(
             `INSERT INTO user_sessions (user_id, refresh_token, expires_at)
@@ -49,14 +46,12 @@ const saveRefreshToken = async (userId, refreshToken) => {
             [userId, refreshToken, expiresAt]
         );
     } catch (error) {
-        // Session save fail হলেও login চলবে
         console.warn('⚠️ Session save failed (non-critical):', error.message);
     }
 };
 
 // Refresh Token যাচাই ও নতুন Access Token দেওয়া
 const verifyRefreshToken = async (refreshToken) => {
-    // ১. JWT যাচাই
     let decoded;
     try {
         decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
@@ -64,7 +59,6 @@ const verifyRefreshToken = async (refreshToken) => {
         throw new Error('অবৈধ বা মেয়াদোত্তীর্ণ Refresh Token।');
     }
 
-    // ২. DB তে আছে কিনা যাচাই
     const sessionResult = await query(
         `SELECT * FROM user_sessions 
          WHERE refresh_token = $1 AND expires_at > NOW()`,
@@ -75,7 +69,6 @@ const verifyRefreshToken = async (refreshToken) => {
         throw new Error('Session পাওয়া যায়নি। আবার লগইন করুন।');
     }
 
-    // ৩. User তথ্য নাও (নতুন token generate করতে সব field লাগবে)
     const userResult = await query(
         `SELECT id, role, name_bn, name_en, email, phone, 
                 status, manager_id, employee_code
@@ -104,12 +97,29 @@ const deleteRefreshToken = async (refreshToken) => {
     );
 };
 
+// ============================================================
 // একজন ইউজারের সব Session মুছে দেওয়া (সব ডিভাইস থেকে লগআউট)
-const deleteAllUserSessions = async (userId) => {
+//
+// ✅ FIX: suspend/archive করলে শুধু DB session মুছলে হয় না —
+//   বিদ্যমান access token এখনো valid থাকে (সর্বোচ্চ ১৫ মিনিট)।
+//   Redis blocklist-এ user-কে যোগ করলে instant block হয়।
+//
+// ব্যবহার:
+//   await deleteAllUserSessions(userId);                       // suspend/archive
+//   await deleteAllUserSessions(userId, { reactivating: true }); // পুনরায় active
+// ============================================================
+const deleteAllUserSessions = async (userId, { reactivating = false } = {}) => {
     await query(
         'DELETE FROM user_sessions WHERE user_id = $1',
         [userId]
     );
+
+    if (reactivating) {
+        await unblockUser(userId);
+    } else {
+        const ttlSeconds = parseTtlSeconds(process.env.JWT_ACCESS_EXPIRES || '15m');
+        await blockUserTokens(userId, ttlSeconds);
+    }
 };
 
 // মেয়াদোত্তীর্ণ Session পরিষ্কার (ব্যাকগ্রাউন্ড জব থেকে)
@@ -120,6 +130,17 @@ const cleanExpiredSessions = async () => {
     console.log(`🧹 ${result.rowCount} মেয়াদোত্তীর্ণ session মুছে দেওয়া হয়েছে`);
 };
 
+// ── Utility ──────────────────────────────────────────────────
+// JWT expiresIn string (e.g. '15m', '1h', '7d') → seconds
+const parseTtlSeconds = (expiresIn) => {
+    if (!expiresIn || typeof expiresIn !== 'string') return 900;
+    const match = expiresIn.match(/^(\d+)(s|m|h|d)$/);
+    if (!match) return 900;
+    const value = parseInt(match[1], 10);
+    const multipliers = { s: 1, m: 60, h: 3600, d: 86400 };
+    return value * (multipliers[match[2]] ?? 60);
+};
+
 module.exports = {
     generateAccessToken,
     generateRefreshToken,
@@ -127,5 +148,6 @@ module.exports = {
     verifyRefreshToken,
     deleteRefreshToken,
     deleteAllUserSessions,
-    cleanExpiredSessions
+    cleanExpiredSessions,
+    parseTtlSeconds,
 };
