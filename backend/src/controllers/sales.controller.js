@@ -846,7 +846,7 @@ const getTodaySummary = async (req, res) => {
 
         // বকেয়া
         const dues = await query(
-            'SELECT outstanding_dues FROM users WHERE id = $1',
+            'SELECT outstanding_dues, cash_dues FROM users WHERE id = $1',
             [workerId]
         );
 
@@ -873,6 +873,7 @@ const getTodaySummary = async (req, res) => {
                 },
                 today_order:      todayOrder.rows[0] || null,
                 outstanding_dues: dues.rows[0]?.outstanding_dues || 0,
+                cash_dues:        dues.rows[0]?.cash_dues        || 0,
                 checked_in:       checkedIn   // ✅ নতুন: চেক-ইন হয়েছে কিনা
             }
         });
