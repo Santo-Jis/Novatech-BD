@@ -6,14 +6,29 @@ import { FiArrowLeft, FiRefreshCw, FiFilter } from 'react-icons/fi'
 const taka = (n) => '৳' + parseInt(n || 0).toLocaleString('en-IN')
 
 const TXN = {
-  order_in:   { label: 'অর্ডার নেওয়া', color: '#2563eb', bg: '#eff6ff',  sign: '+' },
-  sale_out:   { label: 'বিক্রয়',        color: '#16a34a', bg: '#f0fdf4',  sign: '−' },
-  return_out: { label: 'ফেরত/ঘাটতি',   color: '#d97706', bg: '#fffbeb',  sign: '−' },
-  adjustment: { label: 'সংশোধন',        color: '#7c3aed', bg: '#f5f3ff',  sign: '±' },
+  order_in:     { label: 'অর্ডার নেওয়া', color: '#2563eb', bg: '#eff6ff', sign: '+' },
+  sale_out:     { label: 'বিক্রয়',        color: '#16a34a', bg: '#f0fdf4', sign: '−' },
+  return_out:   { label: 'পণ্য ফেরত',     color: '#d97706', bg: '#fffbeb', sign: '−' },
+  shortage_out: { label: 'ঘাটতি',         color: '#dc2626', bg: '#fef2f2', sign: '−' },
+  adjustment:   { label: 'সংশোধন',        color: '#7c3aed', bg: '#f5f3ff', sign: '±' },
+}
+
+// Backend-এ return_out দুই কারণে আসে: actual return এবং shortage।
+// note ফিল্ড দিয়ে আলাদা করা হয় — "ঘাটতি" note থাকলে shortage_out styling দেখানো হবে।
+function resolveTxn(row) {
+  if (row.txn_type === 'return_out' && row.note?.startsWith('ঘাটতি')) {
+    return TXN.shortage_out
+  }
+  return TXN[row.txn_type] ?? {
+    label: row.txn_type,
+    color: '#6b7280',
+    bg:    '#f3f4f6',
+    sign:  '?',
+  }
 }
 
 function TxnRow({ row }) {
-  const t   = TXN[row.txn_type] || { label: row.txn_type, color: '#6b7280', bg: '#f9fafb', sign: '' }
+  const t   = resolveTxn(row)
   const qty = parseInt(row.qty || 0)
   const dt  = new Date(row.created_at)
   const dateStr = dt.toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' })
