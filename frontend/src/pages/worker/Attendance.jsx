@@ -12,34 +12,56 @@ function HoldButton({ label, color = 'blue', onDone }) {
   const [active, setActive]   = useState(false)
   const [done, setDone]       = useState(false)
   const intervalRef           = useRef(null)
-  const startRef              = useRef(null)
-  const DURATION              = 3000
+  const accumulatedRef        = useRef(0)  // touchcancel-এর পর resume করতে elapsed ms ধরে রাখা
+  const pressStartRef         = useRef(null)
+  const DURATION              = 2200
 
   const accent = color === 'green'
     ? { bg: '#065f46', light: '#d1fae5', text: '#065f46', border: '#6ee7b7' }
     : { bg: '#1e3a8a', light: '#dbeafe', text: '#1e3a8a', border: '#93c5fd' }
 
-  function begin() {
-    if (done) return
-    setActive(true)
-    startRef.current = Date.now()
+  function startTicking() {
+    pressStartRef.current = Date.now()
     intervalRef.current = setInterval(() => {
-      const p = Math.min(100, ((Date.now() - startRef.current) / DURATION) * 100)
+      const elapsed = accumulatedRef.current + (Date.now() - pressStartRef.current)
+      const p = Math.min(100, (elapsed / DURATION) * 100)
       setPct(p)
       if (p >= 100) {
         clearInterval(intervalRef.current)
         setDone(true)
         setActive(false)
+        accumulatedRef.current = 0
         onDone?.()
       }
     }, 30)
   }
 
+  function begin() {
+    if (done) return
+    setActive(true)
+    startTicking()
+  }
+
+  // intentional release — progress reset
   function stop() {
     if (done) return
     clearInterval(intervalRef.current)
     setActive(false)
+    accumulatedRef.current = 0
     setPct(0)
+  }
+
+  // system interrupt (notification, call, multi-touch) — progress pause, not reset
+  function pause() {
+    if (done) return
+    clearInterval(intervalRef.current)
+    // যতটুকু হয়েছে সেটা save করো, পরে resume করা যাবে
+    if (pressStartRef.current) {
+      accumulatedRef.current += Date.now() - pressStartRef.current
+      pressStartRef.current = null
+    }
+    setActive(false)
+    // pct ধরে রাখো — reset করো না
   }
 
   useEffect(() => () => clearInterval(intervalRef.current), [])
@@ -82,7 +104,7 @@ function HoldButton({ label, color = 'blue', onDone }) {
           onMouseLeave={stop}
           onTouchStart={(e) => { e.preventDefault(); begin() }}
           onTouchEnd={(e)   => { e.preventDefault(); stop()  }}
-          onTouchCancel={(e)=> { e.preventDefault(); stop()  }}
+          onTouchCancel={(e)=> { e.preventDefault(); pause() }}
           onContextMenu={(e)=> e.preventDefault()}
           className="w-[120px] h-[120px] rounded-full flex flex-col items-center justify-center gap-1 cursor-pointer"
           style={{
