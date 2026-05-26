@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import ErrorBoundary from '../components/ErrorBoundary'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore }  from '../store/app.store'
@@ -408,7 +409,9 @@ export default function WorkerLayout() {
 
       {/* ── Main Content ───────────────────────────────────── */}
       <main className="flex-1 overflow-auto pb-20">
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </main>
 
       {/* ── Bottom Navigation ──────────────────────────────── */}
