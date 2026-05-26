@@ -1,5 +1,6 @@
-const express = require('express');
-const router  = express.Router();
+const express   = require('express');
+const router    = express.Router();
+const rateLimit = require('express-rate-limit');
 
 const {
     login,
@@ -18,13 +19,44 @@ const {
 const { auth } = require('../middlewares/auth');
 
 // ============================================================
+// RATE LIMITERS
+// ============================================================
+
+// OTP পাঠানো ও যাচাই — brute force এবং SMS/Email abuse রোধ
+// ১৫ মিনিটে সর্বোচ্চ ৫টি request
+const otpLimiter = rateLimit({
+    windowMs:         15 * 60 * 1000,
+    max:              5,
+    standardHeaders:  true,
+    legacyHeaders:    false,
+    message: {
+        success: false,
+        message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।'
+    }
+});
+
+// Login — credential stuffing রোধ
+// ১৫ মিনিটে সর্বোচ্চ ১০টি request
+const loginLimiter = rateLimit({
+    windowMs:         15 * 60 * 1000,
+    max:              10,
+    standardHeaders:  true,
+    legacyHeaders:    false,
+    message: {
+        success: false,
+        message: 'অনেকবার লগইন চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।'
+    }
+});
+
+// ============================================================
 // AUTH ROUTES
 // Base: /api/auth
 // ============================================================
 
 // POST /api/auth/login
 // ৩ ভাবে লগইন: ইমেইল / ফোন / কর্মী কোড + পাসওয়ার্ড
-router.post('/login', login);
+// ✅ loginLimiter: ১৫ মিনিটে ১০টি — credential stuffing রোধ
+router.post('/login', loginLimiter, login);
 
 // POST /api/auth/refresh
 // Refresh Token দিয়ে নতুন Access Token নেওয়া
@@ -48,15 +80,18 @@ router.put('/change-password', auth, changePassword);
 
 // POST /api/auth/forgot-password
 // OTP পাঠাও
-router.post('/forgot-password', forgotPassword);
+// ✅ otpLimiter: ১৫ মিনিটে ৫টি — email abuse এবং brute force রোধ
+router.post('/forgot-password', otpLimiter, forgotPassword);
 
 // POST /api/auth/verify-otp
 // OTP যাচাই
-router.post('/verify-otp', verifyOtp);
+// ✅ otpLimiter: ১৫ মিনিটে ৫টি — OTP guessing attack রোধ
+router.post('/verify-otp', otpLimiter, verifyOtp);
 
 // POST /api/auth/reset-password
 // নতুন পাসওয়ার্ড সেট
-router.post('/reset-password', resetPasswordWithOtp);
+// ✅ otpLimiter: reset token guessing রোধ
+router.post('/reset-password', otpLimiter, resetPasswordWithOtp);
 
 // POST /api/auth/fcm-token
 // FCM Push Token সেভ করা (login করা user)
