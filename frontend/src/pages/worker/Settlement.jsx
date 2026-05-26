@@ -102,14 +102,20 @@ export default function Settlement() {
           setTodayCash(cashReceived)
           setTodaySales(totalAmount)
           setTodayCredit(creditGiven)
-        } catch {}
+        } catch (err) {
+          console.error('Sales summary load failed:', err)
+          toast.error('বিক্রয় সারাংশ লোড হয়নি — পেজ রিফ্রেশ করুন অথবা পরে চেষ্টা করুন')
+        }
 
         // product-wise sold qty আনা
         let previewItems = []
         try {
           const previewRes = await api.get('/settlements/today-preview')
           previewItems = previewRes.data.data?.items || []
-        } catch {}
+        } catch (err) {
+          console.error('Settlement preview load failed:', err)
+          toast.error('পণ্য প্রিভিউ লোড হয়নি — ফেরত পণ্যের তথ্য সঠিক নাও হতে পারে')
+        }
 
         const order = orderRes.data.data
         if (order?.items) {
