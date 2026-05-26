@@ -21,6 +21,63 @@ function StatusBadge({ status }) {
   )
 }
 
+// ── context-aware empty state ───────────────────────────────
+function EmptyRouteState({ isOffline, hasPendingRequests, onRequestClick }) {
+  if (isOffline) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-yellow-50 flex items-center justify-center mb-4">
+          <FiWifiOff className="text-3xl text-yellow-400" />
+        </div>
+        <p className="font-semibold text-gray-700 text-sm">অফলাইনে কোনো রুট নেই</p>
+        <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+          আজকের কোনো cached ডেটা পাওয়া যায়নি।<br />ইন্টারনেট চালু করে আবার চেষ্টা করুন।
+        </p>
+      </div>
+    )
+  }
+
+  if (hasPendingRequests) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-yellow-50 flex items-center justify-center mb-4">
+          <FiClock className="text-3xl text-yellow-400" />
+        </div>
+        <p className="font-semibold text-gray-700 text-sm">রুট অনুমোদনের অপেক্ষায়</p>
+        <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+          আপনার রুট request Manager-এর কাছে পাঠানো হয়েছে।<br />
+          অনুমোদন পেলে এখানে দেখা যাবে।
+        </p>
+        <button
+          onClick={onRequestClick}
+          className="mt-4 text-xs text-primary font-semibold px-4 py-2 rounded-xl bg-primary/10"
+        >
+          আবেদনের status দেখুন
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center py-16 px-6 text-center">
+      <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-4">
+        <FiMapPin className="text-3xl text-primary/60" />
+      </div>
+      <p className="font-semibold text-gray-700 text-sm">কোনো রুট নেই</p>
+      <p className="text-xs text-gray-400 mt-1 leading-relaxed">
+        Manager এখনো কোনো রুট তৈরি করেননি।<br />
+        নতুন রুটের জন্য request পাঠান।
+      </p>
+      <button
+        onClick={onRequestClick}
+        className="mt-4 text-xs text-white font-semibold px-4 py-2 rounded-xl bg-primary flex items-center gap-1.5"
+      >
+        <FiPlus size={12} /> নতুন রুট request করুন
+      </button>
+    </div>
+  )
+}
+
 export default function RouteSelect() {
   const navigate = useNavigate()
   const { setSelectedRoute, selectedRoute } = useAppStore()
@@ -205,10 +262,15 @@ export default function RouteSelect() {
       {/* ── Route list ── */}
       <div className="space-y-3">
         {routes.length === 0 && (
-          <div className="text-center py-10 text-gray-400">
-            <FiMapPin className="text-4xl mx-auto mb-2" />
-            <p>কোনো রুট নেই</p>
-            <p className="text-xs mt-1">নতুন রুট request করুন</p>
+          <div className="bg-white rounded-2xl shadow-sm">
+            <EmptyRouteState
+              isOffline={isOffline}
+              hasPendingRequests={pendingCount > 0}
+              onRequestClick={() => {
+                if (isOffline) { toast.error('অফলাইনে নতুন রুট request করা যাবে না'); return }
+                pendingCount > 0 ? setShowMyReqs(true) : setShowModal(true)
+              }}
+            />
           </div>
         )}
         {routes.map(route => {
@@ -332,3 +394,4 @@ export default function RouteSelect() {
     </div>
   )
 }
+চ
