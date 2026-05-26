@@ -402,10 +402,16 @@ const approveOrder = async (req, res) => {
             };
         });
 
-        // NaN guard - DB তে NaN পাঠানো যাবে না
+        // NaN guard — ০ টাকায় approve হলে inventory loss হবে, তাই reject করো
+        // কারণ: itemPrice ও approvedQty উভয়ই valid হলে NaN হওয়া উচিত নয়।
+        // যদি হয়, এটা data corruption — fallback নয়, hard stop দরকার।
         if (isNaN(totalAmount) || !isFinite(totalAmount)) {
-            console.error('⚠️ totalAmount is NaN/Infinity, items:', JSON.stringify(safeItems));
-            totalAmount = 0;
+            console.error('❌ totalAmount is NaN/Infinity — order rejected. items:', JSON.stringify(safeItems));
+            return res.status(422).json({
+                success: false,
+                message: 'অর্ডারের মূল্য হিসাব করা যাচ্ছে না — পণ্যের price data ঠিক করুন।',
+                debug_items: process.env.NODE_ENV !== 'production' ? safeItems : undefined,
+            });
         }
         totalAmount = Math.round(totalAmount * 100) / 100; // 2 decimal
 
