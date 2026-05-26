@@ -15,11 +15,18 @@ const { generateOTP } = require('../config/encryption');
 // OTP HASH HELPER
 // Plain OTP ইমেইলে পাঠানো হয়, DB-তে শুধু hash রাখা হয়।
 // DB leak হলেও attacker সরাসরি OTP ব্যবহার করতে পারবে না।
-// SHA-256 ব্যবহার — bcrypt এর মতো slow হওয়ার দরকার নেই
-// কারণ OTP ১০ মিনিটেই expire হয় এবং ৬ সংখ্যার।
+//
+// ✅ FIX: SHA-256 → HMAC-SHA256 (keyed hash)
+// আগে: crypto.createHash('sha256') — salt নেই, rainbow table দিয়ে
+//       ১ মিলিয়ন সম্ভাব্য OTP এক সেকেন্ডে crack করা যেত।
+// এখন: HMAC-SHA256 + ENCRYPTION_KEY — secret না জানলে
+//       precomputed table কোনো কাজে আসবে না।
 // ──────────────────────────────────────────────────────────────
-const hashOTP = (otp) =>
-    crypto.createHash('sha256').update(otp).digest('hex');
+const hashOTP = (otp) => {
+    const secret = process.env.ENCRYPTION_KEY;
+    if (!secret) throw new Error('ENCRYPTION_KEY environment variable সেট নেই');
+    return crypto.createHmac('sha256', secret).update(String(otp)).digest('hex');
+};
 
 // ============================================================
 // LOGIN
