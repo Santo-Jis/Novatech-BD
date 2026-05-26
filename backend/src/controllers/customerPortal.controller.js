@@ -28,11 +28,16 @@ const invalidateAuthCache = (customerId) => {
 // HELPERS
 // ============================================================
 
-// 64-char hex token (cryptographically secure)
+// 64-char hex token (cryptographically secure) — কখনো response-এ যাবে না
 const generatePortalToken = () => crypto.randomBytes(32).toString('hex');
 
 // Short opaque redirect ID — URL-এ এটা যাবে, token নয়
 const generateRedirectId = () => crypto.randomBytes(16).toString('base64url');
+
+// One-time exchange token — resolveLink response-এ যাবে
+// portal_token-এর বদলে এটা দিয়ে deviceLogin/googleAuth call হবে
+// ব্যবহারের পরেই DB-তে NULL করা হয়, TTL ৫ মিনিট
+const generateLinkToken = () => crypto.randomBytes(24).toString('base64url');
 
 // Device fingerprint hash — client device_id + User-Agent
 // IP বাদ দেওয়া হয়েছে: বাংলাদেশে মোবাইল ডেটায় প্রতি session-এ IP বদলায়
@@ -188,12 +193,26 @@ const resolveLink = async (req, res) => {
 
         const row = result.rows[0];
 
+        // One-time link_token তৈরি — ৫ মিনিট TTL, single use
+        // portal_token (master secret) কখনো response-এ দেওয়া হয় না।
+        // Frontend এই link_token দিয়ে deviceLogin বা googleAuth call করবে।
+        // ব্যবহারের পরে সার্ভার link_token NULL করে দেয়।
+        const linkToken   = generateLinkToken();
+        const linkExpires = new Date(Date.now() + 5 * 60 * 1000); // ৫ মিনিট
+
+        await query(
+            `UPDATE customer_portal_tokens
+             SET link_token = $1, link_token_expires_at = $2
+             WHERE redirect_id = $3`,
+            [linkToken, linkExpires, redirect_id]
+        );
+
         return res.status(200).json({
             success: true,
             data: {
-                portal_token:  row.token,
+                link_token:    linkToken,          // ৫-মিনিটের one-time token
                 expires_at:    row.expires_at,
-                is_bound:      !!row.bound_email,   // Google account আগে bind হয়েছে কিনা
+                is_bound:      !!row.bound_email,  // Google account আগে bind হয়েছে কিনা
                 shop_name:     row.shop_name,
                 owner_name:    row.owner_name,
                 customer_code: row.customer_code,
@@ -281,27 +300,29 @@ const verifyPortalToken = async (req, res) => {
 // ============================================================
 const deviceLogin = async (req, res) => {
     try {
-        const { portal_token, device_id } = req.body;
+        const { link_token, device_id } = req.body;
 
-        if (!portal_token || !device_id) {
-            return res.status(400).json({ success: false, message: 'portal_token ও device_id দেওয়া হয়নি।' });
+        if (!link_token || !device_id) {
+            return res.status(400).json({ success: false, message: 'link_token ও device_id দেওয়া হয়নি।' });
         }
 
         const userAgent    = req.headers['user-agent'] || '';
         const compositeRaw = `${device_id}::${userAgent}`;
         const hashedDevice = hashDeviceId(compositeRaw);
 
-        // Token যাচাই + customer info
+        // link_token দিয়ে portal_token lookup — master token কখনো client-এ যায় না
+        // link_token_expires_at চেক করা হচ্ছে (৫ মিনিট TTL)
         const tokenResult = await query(
-            `SELECT cpt.customer_id, cpt.token_version, cpt.bound_email,
+            `SELECT cpt.customer_id, cpt.token, cpt.token_version, cpt.bound_email,
                     c.shop_name, c.owner_name, c.customer_code,
                     c.current_credit, c.credit_limit, c.credit_balance, c.email
              FROM customer_portal_tokens cpt
              JOIN customers c ON cpt.customer_id = c.id
-             WHERE cpt.token = $1
+             WHERE cpt.link_token = $1
+               AND cpt.link_token_expires_at > NOW()
                AND cpt.expires_at > NOW()
                AND c.is_active = true`,
-            [portal_token]
+            [link_token]
         );
 
         if (tokenResult.rows.length === 0) {
@@ -336,15 +357,18 @@ const deviceLogin = async (req, res) => {
             });
         }
 
-        // last_used_at আপডেট করো
+        // last_used_at আপডেট + link_token single-use enforce (NULL করো)
+        // record.token হলো DB-র master portal_token — client কখনো দেখেনি
         await Promise.all([
             query(
                 'UPDATE customer_portal_devices SET last_used_at = NOW() WHERE customer_id = $1 AND device_hash = $2',
                 [record.customer_id, hashedDevice]
             ),
             query(
-                'UPDATE customer_portal_tokens SET last_login = NOW() WHERE token = $1',
-                [portal_token]
+                `UPDATE customer_portal_tokens
+                 SET last_login = NOW(), link_token = NULL, link_token_expires_at = NULL
+                 WHERE token = $1`,
+                [record.token]
             ),
         ]);
 
@@ -827,7 +851,10 @@ const getCustomerInvoices = async (req, res) => {
         }
 
         if (['cash', 'credit', 'mixed'].includes(payment_method)) {
-            filters.push(`st.payment_method = '${payment_method}'`);
+            // whitelist validation যথেষ্ট হলেও parameterized রাখা best practice —
+            // whitelist bypass হলে (e.g. prototype pollution) শেষ রক্ষা থাকে।
+            params.push(payment_method);
+            filters.push(`st.payment_method = $${params.length}`);
         }
 
         if (date_from) {
@@ -841,8 +868,8 @@ const getCustomerInvoices = async (req, res) => {
 
         const whereClause = filters.join(' AND ');
         params.push(limit, offset);
-        const limitIdx  = params.length - 1;
-        const offsetIdx = params.length;
+        const limitIdx  = params.length - 1;  // $N   → limit
+        const offsetIdx = params.length;       // $N+1 → offset
 
         const result = await query(
             `SELECT st.invoice_number, st.items, st.total_amount,
@@ -1312,8 +1339,19 @@ module.exports = {
 const getCustomerStatement = async (req, res) => {
     try {
         const { customer_id } = req.portalUser;
-        const date_from = req.query.from || null;
-        const date_to   = req.query.to   || null;
+
+        // ইনপুট ভ্যালিডেশন: শুধু YYYY-MM-DD ফরম্যাট গ্রহণযোগ্য
+        const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+        const rawFrom = req.query.from || null;
+        const rawTo   = req.query.to   || null;
+        if (rawFrom && !DATE_RE.test(rawFrom)) {
+            return res.status(400).json({ success: false, message: 'অবৈধ তারিখ ফরম্যাট (from)।' });
+        }
+        if (rawTo && !DATE_RE.test(rawTo)) {
+            return res.status(400).json({ success: false, message: 'অবৈধ তারিখ ফরম্যাট (to)।' });
+        }
+        const date_from = rawFrom;
+        const date_to   = rawTo;
 
         // Customer তথ্য
         const custResult = await query(
@@ -1349,16 +1387,21 @@ const getCustomerStatement = async (req, res) => {
                  ORDER BY st.created_at ASC`,
                 params
             ),
-            query(
-                `SELECT cp.amount, cp.notes, cp.created_at, u.name_bn AS collected_by
-                 FROM credit_payments cp
-                 JOIN users u ON cp.worker_id = u.id
-                 WHERE cp.customer_id = $1
-                   ${date_from ? `AND cp.created_at >= '${date_from}'::date` : ''}
-                   ${date_to   ? `AND cp.created_at < ('${date_to}'::date + INTERVAL '1 day')` : ''}
-                 ORDER BY cp.created_at ASC`,
-                [customer_id]
-            ),
+            (() => {
+                const cpParams = [customer_id];
+                let   cpClause = '';
+                if (date_from) { cpParams.push(date_from); cpClause += ` AND cp.created_at >= $${cpParams.length}::date`; }
+                if (date_to)   { cpParams.push(date_to);   cpClause += ` AND cp.created_at < ($${cpParams.length}::date + INTERVAL '1 day')`; }
+                return query(
+                    `SELECT cp.amount, cp.notes, cp.created_at, u.name_bn AS collected_by
+                     FROM credit_payments cp
+                     JOIN users u ON cp.worker_id = u.id
+                     WHERE cp.customer_id = $1
+                       ${cpClause}
+                     ORDER BY cp.created_at ASC`,
+                    cpParams
+                );
+            })(),
         ]);
 
         const sales    = salesRes.rows;
@@ -1378,12 +1421,24 @@ const getCustomerStatement = async (req, res) => {
         doc.on('data', c => chunks.push(c));
         doc.on('end', () => {
             const buffer = Buffer.concat(chunks);
-            const label  = date_from && date_to
-                ? `${date_from}_to_${date_to}`
+
+            // filename sanitization:
+            // ১. date_from / date_to ইতিমধ্যে YYYY-MM-DD regex দিয়ে validated (উপরে)
+            // ২. customer_code DB থেকে আসে, তবুও alphanumeric-only রাখা নিরাপদ
+            // ৩. label ও customer_code উভয়কে [^a-zA-Z0-9_-] দিয়ে strip করা হচ্ছে
+            //    যাতে path traversal (../), newline, বা header injection সম্ভব না হয়
+            const safeCode  = String(cust.customer_code).replace(/[^a-zA-Z0-9_-]/g, '_');
+            const safeLabel = (date_from && date_to)
+                ? `${date_from}_to_${date_to}`   // regex-validated উপরে, নিরাপদ
                 : 'full';
+
+            // RFC 6266 — non-ASCII বা special char থাকলে filename* (UTF-8) ব্যবহার করা উচিত,
+            // কিন্তু এখানে সব ASCII-safe, তাই সাধারণ filename যথেষ্ট।
+            const filename  = `statement_${safeCode}_${safeLabel}.pdf`;
+
             res.set({
                 'Content-Type':        'application/pdf',
-                'Content-Disposition': `attachment; filename="statement_${cust.customer_code}_${label}.pdf"`,
+                'Content-Disposition': `attachment; filename="${filename}"`,
                 'Content-Length':      buffer.length,
             });
             res.send(buffer);
