@@ -287,12 +287,16 @@ const getMyAttendance = async (req, res) => {
             totalDeduction: result.rows.reduce((sum, r) => sum + parseFloat(r.salary_deduction || 0), 0)
         };
 
-        // এই মাসে বোনাসের অগ্রগতি — crash হলেও response দাও
-        let workingDays = 26; // ডিফল্ট
+        // এই মাসে বোনাসের অগ্রগতি
+        // working_days শুধু UI progress bar-এর জন্য — salary calculate হয় না এখানে।
+        // DB error হলে null পাঠাই; frontend "তথ্য অনুপলব্ধ" দেখাবে, ভুল % নয়।
+        let workingDays = null;
+        let workingDaysError = null;
         try {
             workingDays = await getWorkingDays(currentYear, currentMonth);
         } catch (wdErr) {
-            console.warn('⚠️ getWorkingDays error, using default 26:', wdErr.message);
+            console.error('❌ getWorkingDays error (getMyAttendance):', wdErr.message);
+            workingDaysError = 'working_days তথ্য আনা যায়নি।';
         }
         const presentDays = summary.present + summary.late;
 
@@ -301,13 +305,19 @@ const getMyAttendance = async (req, res) => {
             data: {
                 attendance: result.rows,
                 summary,
-                bonus_progress: {
+                bonus_progress: workingDays !== null ? {
                     working_days:  workingDays,
                     present_days:  presentDays,
                     is_perfect:    presentDays >= workingDays,
                     percentage:    workingDays > 0
                         ? Math.round((presentDays / workingDays) * 100)
                         : 0
+                } : {
+                    working_days:  null,
+                    present_days:  presentDays,
+                    is_perfect:    false,
+                    percentage:    null,
+                    error:         workingDaysError
                 }
             }
         });
@@ -502,7 +512,19 @@ const getMonthlyReport = async (req, res) => {
             params
         );
 
-        const workingDays = await getWorkingDays(currentYear, currentMonth);
+        // ⚠️ Salary context — working_days দিয়ে frontend প্রতিটি SR-এর বেতন হিসাব করে।
+        // ভুল মান = ভুল বেতন। DB error হলে 503 দাও, default fallback নয়।
+        let workingDays;
+        try {
+            workingDays = await getWorkingDays(currentYear, currentMonth);
+        } catch (wdErr) {
+            console.error('❌ getWorkingDays error (getMonthlyReport):', wdErr.message);
+            return res.status(503).json({
+                success: false,
+                message: 'কার্যদিবস গণনা করা যাচ্ছে না — বেতন হিসাব নিরাপদ নয়। কিছুক্ষণ পরে আবার চেষ্টা করুন অথবা admin-কে জানান।',
+                error_detail: process.env.NODE_ENV !== 'production' ? wdErr.message : undefined,
+            });
+        }
 
         return res.status(200).json({
             success: true,
