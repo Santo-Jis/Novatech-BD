@@ -3,6 +3,46 @@ const { Pool } = require('pg');
 // ============================================================
 // PostgreSQL Connection Pool
 // Supabase এর সাথে SSL সংযোগ
+//
+// SSL Fix:
+//   আগে: rejectUnauthorized: false — MITM attack সম্ভব ছিল।
+//   এখন: DB_SSL_CA env variable থেকে Supabase CA certificate
+//         verify করা হয়। cert না থাকলে server উঠবে না।
+//
+// CA Certificate সেটআপ (একবারই করতে হবে):
+//   ১. Supabase Dashboard → Settings → Database → SSL Certificate
+//      → "Download Certificate" → ca.pem ডাউনলোড
+//   ২. base64 encode করো:
+//        Linux/Mac:  base64 -w 0 ca.pem
+//        Windows:    certutil -encode ca.pem tmp.b64 && findstr /v CERTIFICATE tmp.b64
+//   ৩. Render Dashboard → Environment → DB_SSL_CA → encode করা string paste করো
+// ============================================================
+
+// ── SSL Certificate লোড ──────────────────────────────────────
+// DB_SSL_CA: Supabase ca.pem → base64 encode → env variable-এ রাখো
+// Render-এ file system ephemeral, তাই file-এর বদলে env variable ব্যবহার।
+
+const sslCaBase64 = process.env.DB_SSL_CA;
+
+if (!sslCaBase64 || sslCaBase64.trim() === '') {
+    console.error('');
+    console.error('❌ DB_SSL_CA environment variable সেট নেই।');
+    console.error('   Supabase CA certificate ছাড়া নিরাপদ DB সংযোগ সম্ভব নয়।');
+    console.error('');
+    console.error('   সমাধান:');
+    console.error('   ১. Supabase Dashboard → Settings → Database → SSL Certificate → Download');
+    console.error('   ২. Linux/Mac: base64 -w 0 ca.pem');
+    console.error('      Windows:   certutil -encode ca.pem tmp.b64 && findstr /v CERTIFICATE tmp.b64');
+    console.error('   ৩. Render Dashboard → Environment → DB_SSL_CA = [base64 string]');
+    console.error('');
+    process.exit(1);
+}
+
+// base64 → PEM string (Buffer decode করে utf8 string বের করা হচ্ছে)
+const caCert = Buffer.from(sslCaBase64.trim(), 'base64').toString('utf8');
+
+// ============================================================
+// Connection Pool
 // ============================================================
 
 const pool = new Pool({
@@ -12,15 +52,16 @@ const pool = new Pool({
     user:     process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     ssl: {
-        rejectUnauthorized: false  // Supabase এর জন্য
+        rejectUnauthorized: true,  // ✅ Certificate verify করা হবে — MITM সম্ভব নয়
+        ca: caCert,                // Supabase CA cert (env থেকে লোড করা)
     },
     // Connection pool settings — Render free tier + Supabase free tier অপ্টিমাইজড
     // Supabase free: max 60 connection। Render free: single instance।
     // 10 রাখলে একসাথে ৫০+ request এলেও queue হবে, crash করবে না।
-    max:             15,    // ১৫টি connection — ৫০+ concurrent request সামলাতে পারবে (আগে ১০ ছিল, queue জমত)
-    min:             2,     // সবসময় ২টি connection ready রাখো (cold start দ্রুত হবে)
-    idleTimeoutMillis: 60000,   // ৬০ সেকেন্ড idle থাকলে বন্ধ (আগে ৩০s, বেশি reconnect হত)
-    connectionTimeoutMillis: 10000, // ১০ সেকেন্ডের মধ্যে connect না হলে error (আগে ৩০s, বেশি অপেক্ষা হত)
+    max:                    15,    // ১৫টি connection — ৫০+ concurrent request সামলাতে পারবে
+    min:                    2,     // সবসময় ২টি connection ready রাখো (cold start দ্রুত হবে)
+    idleTimeoutMillis:      60000, // ৬০ সেকেন্ড idle থাকলে বন্ধ
+    connectionTimeoutMillis: 10000, // ১০ সেকেন্ডের মধ্যে connect না হলে error
 });
 
 // ============================================================
@@ -33,7 +74,7 @@ pool.connect((err, client, release) => {
         return;
     }
     release();
-    console.log('✅ Database সংযোগ সফল — Supabase PostgreSQL');
+    console.log('✅ Database সংযোগ সফল — Supabase PostgreSQL (SSL verified)');
 });
 
 // ============================================================
