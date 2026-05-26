@@ -3,6 +3,13 @@ const axios = require('axios');
 const { sendPushNotification } = require('../services/fcm.service');
 const { addLedgerEntry } = require('./ledger.controller');
 
+// ─── নগদ পার্থক্যের সীমা ─────────────────────────────────────────────────────
+// ⚠️  SYNC: এই মান frontend/src/pages/worker/Settlement.jsx-এর
+//           CASH_BLOCK_LIMIT ও CASH_WARN_LIMIT-এর সাথে সবসময় একই রাখতে হবে।
+//           একটা বদলালে অপরটাও বদলান।
+const CASH_BLOCK_LIMIT = 500;  // ৳৫০০ এর বেশি পার্থক্য হলে explanation বাধ্যতামূলক
+const CASH_WARN_LIMIT  = 1;    // ৳১ এর বেশি হলে manager notification-এ flag হয়
+
 // ─── Bangladesh Timezone Helper (UTC+6) ───────────────────────────────────────
 // new Date().toISOString() সবসময় UTC ধরে। বাংলাদেশ UTC+6 হওয়ায়
 // রাত ১২টার আগে (BD time) server-এ আগের দিনের date আসে।
@@ -159,7 +166,6 @@ const createSettlement = async (req, res) => {
 
         // ─── নগদ পার্থক্য সীমা যাচাই (backend guard) ────────
         // NOTE: এই চেক bulk query-গুলোর পরে করা হচ্ছে যাতে mock sequence সঠিক থাকে।
-        const CASH_BLOCK_LIMIT = 500;
         const absDiff = Math.abs(srCash - systemCash);
         if (absDiff > CASH_BLOCK_LIMIT) {
             if (!mismatch_explanation || !String(mismatch_explanation).trim()) {
