@@ -31,7 +31,13 @@ function CollectCreditModal({ customer, onClose, onSuccess }) {
 
     setLoading(true)
     try {
-      await api.post(`/customers/${customer.id}/collect-credit`, { amount: amt, notes })
+      // idempotency_key — double tap বা network retry-তে duplicate collection রোধ
+      // প্রতিটি submit-এ নতুন key, backend unique constraint দিয়ে enforce করে
+      await api.post(`/customers/${customer.id}/collect-credit`, {
+        amount: amt,
+        notes,
+        idempotency_key: crypto.randomUUID(),
+      })
       toast.success(`✅ ৳${amt.toLocaleString('bn-BD')} বাকি আদায় সফল।`)
       onSuccess()
       onClose()
