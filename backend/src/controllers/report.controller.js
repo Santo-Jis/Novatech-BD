@@ -99,13 +99,21 @@ const getDashboardKPI = async (req, res) => {
 // SALES REPORT
 // GET /api/reports/sales
 // ============================================================
+// FIX #1 + FIX #2:
+//   - Default (বিস্তারিত) mode-এ DB-level pagination যোগ করা হয়েছে।
+//   - Export mode-এ সব row DB থেকে আনা হয় (JS slice নেই)।
+//   - group_by mode দুটো (worker, day) unchanged — এগুলো aggregate,
+//     row count স্বাভাবিকভাবেই ছোট থাকে।
+// ============================================================
 
 const getSalesReport = async (req, res) => {
     try {
         const {
             from, to, worker_id, route_id,
-            group_by, // 'day', 'worker', 'product', 'route'
-            export: exportType // 'pdf', 'excel'
+            group_by,
+            export: exportType,
+            page  = 1,   // ← নতুন
+            limit = 100  // ← নতুন (default ১০০ row per page)
         } = req.query;
 
         const today        = new Date().toISOString().split('T')[0];
@@ -113,6 +121,14 @@ const getSalesReport = async (req, res) => {
             .toISOString().split('T')[0];
         const fromDate = from || firstOfMonth;
         const toDate   = to   || today;
+
+        // ── Date validation ──────────────────────────────────────
+        if (fromDate > toDate) {
+            return res.status(400).json({
+                success: false,
+                message: '"from" তারিখ "to" তারিখের পরে হতে পারে না।'
+            });
+        }
 
         let conditions = ['st.date BETWEEN $1 AND $2'];
         let params     = [fromDate, toDate];
@@ -123,13 +139,11 @@ const getSalesReport = async (req, res) => {
             conditions.push(`u.manager_id = $${paramCount}`);
             params.push(req.teamFilter);
         }
-
         if (worker_id) {
             paramCount++;
             conditions.push(`st.worker_id = $${paramCount}`);
             params.push(worker_id);
         }
-
         if (route_id) {
             paramCount++;
             conditions.push(`c.route_id = $${paramCount}`);
@@ -137,9 +151,9 @@ const getSalesReport = async (req, res) => {
         }
 
         const whereClause = conditions.join(' AND ');
-
         let data = [];
 
+        // ── group_by mode (aggregate — row count স্বাভাবিকভাবেই ছোট) ──
         if (group_by === 'worker') {
             const result = await query(
                 `SELECT u.name_bn AS worker_name, u.employee_code,
@@ -176,58 +190,112 @@ const getSalesReport = async (req, res) => {
             data = result.rows;
 
         } else {
-            // Default: বিস্তারিত তালিকা
-            const result = await query(
-                `SELECT st.date, st.invoice_number,
-                        u.name_bn AS worker_name,
-                        c.shop_name,
-                        r.name AS route_name,
-                        st.total_amount, st.net_amount,
-                        st.payment_method, st.otp_verified,
-                        st.cash_received, st.credit_used,
-                        st.replacement_value, st.created_at
+            // ── Default: বিস্তারিত তালিকা ──────────────────────────
+            // Export হলে সব row দরকার — pagination skip
+            if (exportType === 'excel' || exportType === 'pdf') {
+                const result = await query(
+                    `SELECT st.date, st.invoice_number,
+                            u.name_bn AS worker_name,
+                            c.shop_name,
+                            r.name AS route_name,
+                            st.total_amount, st.net_amount,
+                            st.payment_method, st.otp_verified,
+                            st.cash_received, st.credit_used,
+                            st.replacement_value, st.created_at
+                     FROM sales_transactions st
+                     JOIN users u     ON st.worker_id   = u.id
+                     JOIN customers c ON st.customer_id = c.id
+                     LEFT JOIN routes r ON c.route_id = r.id
+                     WHERE ${whereClause}
+                     ORDER BY st.date DESC, st.created_at DESC`,
+                    params
+                );
+                data = result.rows;
+
+                if (exportType === 'excel') return await exportSalesExcel(res, data, fromDate, toDate);
+                if (exportType === 'pdf')   return await exportSalesPDF(res, data, fromDate, toDate);
+            }
+
+            // JSON response — DB-level pagination
+            const pageInt   = Math.max(1, parseInt(page));
+            const limitInt  = Math.min(500, Math.max(1, parseInt(limit))); // সর্বোচ্চ ৫০০
+            const offset    = (pageInt - 1) * limitInt;
+
+            const [countResult, result] = await Promise.all([
+                query(
+                    `SELECT COUNT(*) AS total
+                     FROM sales_transactions st
+                     JOIN users u     ON st.worker_id   = u.id
+                     JOIN customers c ON st.customer_id = c.id
+                     WHERE ${whereClause}`,
+                    params
+                ),
+                query(
+                    `SELECT st.date, st.invoice_number,
+                            u.name_bn AS worker_name,
+                            c.shop_name,
+                            r.name AS route_name,
+                            st.total_amount, st.net_amount,
+                            st.payment_method, st.otp_verified,
+                            st.cash_received, st.credit_used,
+                            st.replacement_value, st.created_at
+                     FROM sales_transactions st
+                     JOIN users u     ON st.worker_id   = u.id
+                     JOIN customers c ON st.customer_id = c.id
+                     LEFT JOIN routes r ON c.route_id = r.id
+                     WHERE ${whereClause}
+                     ORDER BY st.date DESC, st.created_at DESC
+                     LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`,
+                    [...params, limitInt, offset]
+                )
+            ]);
+
+            const total = parseInt(countResult.rows[0].total);
+            data = result.rows;
+
+            // সারসংক্ষেপ
+            const summary = await query(
+                `SELECT
+                    COALESCE(SUM(st.total_amount), 0)      AS total_sales,
+                    COALESCE(SUM(st.cash_received), 0)     AS total_cash,
+                    COALESCE(SUM(st.credit_used), 0)       AS total_credit,
+                    COALESCE(SUM(st.replacement_value), 0) AS total_replacement,
+                    COUNT(st.id)                           AS total_invoices,
+                    COUNT(DISTINCT st.worker_id)           AS total_workers,
+                    COUNT(DISTINCT st.customer_id)         AS total_customers
                  FROM sales_transactions st
                  JOIN users u     ON st.worker_id   = u.id
                  JOIN customers c ON st.customer_id = c.id
-                 LEFT JOIN routes r ON c.route_id = r.id
-                 WHERE ${whereClause}
-                 ORDER BY st.date DESC, st.created_at DESC`,
+                 WHERE ${whereClause}`,
                 params
             );
-            data = result.rows;
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    period:     { from: fromDate, to: toDate },
+                    summary:    summary.rows[0],
+                    records:    data,
+                    // ← নতুন pagination metadata
+                    pagination: {
+                        total,
+                        page:       pageInt,
+                        limit:      limitInt,
+                        totalPages: Math.ceil(total / limitInt)
+                    }
+                }
+            });
         }
 
-        // Export
-        if (exportType === 'excel') {
-            return await exportSalesExcel(res, data, fromDate, toDate);
-        }
+        // group_by mode-এর export (aggregate data — row count ছোট)
+        if (exportType === 'excel') return await exportSalesExcel(res, data, fromDate, toDate);
+        if (exportType === 'pdf')   return await exportSalesPDF(res, data, fromDate, toDate);
 
-        if (exportType === 'pdf') {
-            return await exportSalesPDF(res, data, fromDate, toDate);
-        }
-
-        // সারসংক্ষেপ
-        const summary = await query(
-            `SELECT
-                COALESCE(SUM(st.total_amount), 0)      AS total_sales,
-                COALESCE(SUM(st.cash_received), 0)     AS total_cash,
-                COALESCE(SUM(st.credit_used), 0)       AS total_credit,
-                COALESCE(SUM(st.replacement_value), 0) AS total_replacement,
-                COUNT(st.id)                           AS total_invoices,
-                COUNT(DISTINCT st.worker_id)           AS total_workers,
-                COUNT(DISTINCT st.customer_id)         AS total_customers
-             FROM sales_transactions st
-             JOIN users u     ON st.worker_id   = u.id
-             JOIN customers c ON st.customer_id = c.id
-             WHERE ${whereClause}`,
-            params
-        );
-
+        // group_by mode-এর JSON response (সারসংক্ষেপ দরকার নেই)
         return res.status(200).json({
             success: true,
             data: {
                 period:  { from: fromDate, to: toDate },
-                summary: summary.rows[0],
                 records: data
             }
         });
@@ -352,7 +420,6 @@ const getCommissionReport = async (req, res) => {
             params
         );
 
-        // নেট বেতন হিসাব
         const enriched = result.rows.map(row => ({
             ...row,
             net_payable: Math.max(0,
@@ -595,7 +662,6 @@ const exportCreditExcel = async (res, data, totalOutstanding) => {
             row.sms_phone || row.whatsapp,
             row.credit_limit, row.current_credit, `${row.usage_pct}%`
         ]);
-        // বেশি বকেয়া হলে লাল রং
         if (parseFloat(row.usage_pct) >= 80) {
             excelRow.getCell(6).fill = {
                 type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFECACA' }
@@ -611,6 +677,12 @@ const exportCreditExcel = async (res, data, totalOutstanding) => {
     res.end();
 };
 
+// ============================================================
+// FIX #3 — exportSalesPDF
+// আগে: data.slice(0, 50) — প্রথম ৫০টার পর সব নীরবে বাদ যেত।
+// এখন: সব row render হয়, প্রয়োজনে নতুন page যোগ হয়।
+// ============================================================
+
 const exportSalesPDF = async (res, data, from, to) => {
     const doc    = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape' });
     const chunks = [];
@@ -623,44 +695,59 @@ const exportSalesPDF = async (res, data, from, to) => {
         res.send(buffer);
     });
 
+    // ── Header ──────────────────────────────────────────────
     doc.fontSize(16).font('Helvetica-Bold')
        .text('NovaTech BD (Ltd.) — বিক্রয় রিপোর্ট', { align: 'center' });
     doc.fontSize(10).font('Helvetica')
-       .text(`${from} থেকে ${to}`, { align: 'center' });
+       .text(`${from} থেকে ${to} | মোট: ${data.length} টি invoice`, { align: 'center' });
     doc.moveDown();
 
-    // Table header
-    const cols = [60, 120, 100, 120, 80, 80, 80, 70];
+    const cols    = [60, 120, 100, 120, 80, 80, 80, 70];
     const headers = ['তারিখ', 'Invoice', 'SR নাম', 'দোকান', 'মোট', 'নেট', 'পেমেন্ট', 'OTP'];
+    const tableW  = cols.reduce((a, b) => a + b, 0);
+    const ROW_H   = 18;
+    const MARGIN  = 40;
+    const PAGE_H  = doc.page.height - MARGIN * 2;
 
-    let x = 40;
-    headers.forEach((h, i) => {
-        doc.rect(x, doc.y, cols[i], 20).fill('#1E3A8A');
-        doc.fillColor('white').fontSize(9).font('Helvetica-Bold')
-           .text(h, x + 3, doc.y - 17, { width: cols[i] - 6 });
-        x += cols[i];
-    });
-    doc.fillColor('black').moveDown(1.2);
+    // ── Table header draw helper ─────────────────────────────
+    const drawTableHeader = (yPos) => {
+        let x = MARGIN;
+        headers.forEach((h, i) => {
+            doc.rect(x, yPos, cols[i], ROW_H).fill('#1E3A8A');
+            doc.fillColor('white').fontSize(9).font('Helvetica-Bold')
+               .text(h, x + 3, yPos + 4, { width: cols[i] - 6 });
+            x += cols[i];
+        });
+        return yPos + ROW_H;
+    };
 
-    data.slice(0, 50).forEach((row, idx) => {
-        x = 40;
-        const y    = doc.y;
-        const bg   = idx % 2 === 0 ? '#F8FAFC' : 'white';
-        const rowH = 18;
+    let currentY = drawTableHeader(doc.y);
 
-        doc.rect(40, y, cols.reduce((a, b) => a + b, 0), rowH).fill(bg);
+    // ── সব row render — নতুন page দরকার হলে যোগ হবে ──────────
+    data.forEach((row, idx) => {
+        // Page-এ জায়গা নেই — নতুন page + header
+        if (currentY + ROW_H > PAGE_H) {
+            doc.addPage();
+            currentY = drawTableHeader(MARGIN);
+        }
+
+        const bg  = idx % 2 === 0 ? '#F8FAFC' : 'white';
+        doc.rect(MARGIN, currentY, tableW, ROW_H).fill(bg);
 
         const vals = [
             row.date, row.invoice_number, row.worker_name,
             row.shop_name, `৳${row.total_amount}`, `৳${row.net_amount}`,
-            row.payment_method, row.otp_verified ? '✅' : '❌'
+            row.payment_method, row.otp_verified ? 'Yes' : 'No'
         ];
+
+        let x = MARGIN;
         vals.forEach((v, i) => {
             doc.fillColor('#1a202c').fontSize(8).font('Helvetica')
-               .text(String(v || ''), x + 3, y + 4, { width: cols[i] - 6, ellipsis: true });
+               .text(String(v || ''), x + 3, currentY + 4, { width: cols[i] - 6, ellipsis: true });
             x += cols[i];
         });
-        doc.y = y + rowH;
+
+        currentY += ROW_H;
     });
 
     doc.end();
@@ -670,6 +757,7 @@ const exportSalesPDF = async (res, data, from, to) => {
 // P&L STATEMENT
 // GET /api/reports/pl
 // ============================================================
+
 const getPLStatement = async (req, res) => {
     try {
         const today        = new Date().toISOString().split('T')[0];
@@ -685,8 +773,7 @@ const getPLStatement = async (req, res) => {
             teamParam = [req.teamFilter];
         }
 
-        const [salesData, expenseData, salaryData, commissionData] = await Promise.all([
-            // মোট বিক্রয়
+        const [salesData, expenseData, payrollData] = await Promise.all([
             query(
                 `SELECT
                     COALESCE(SUM(total_amount), 0)          AS gross_sales,
@@ -702,47 +789,36 @@ const getPLStatement = async (req, res) => {
                  WHERE st.date BETWEEN $1 AND $2 ${teamCond}`,
                 [from, to, ...teamParam]
             ),
-            // খরচ (Worker expenses)
             query(
                 `SELECT
-                    COALESCE(SUM(e.amount), 0)              AS total_expenses,
+                    COALESCE(SUM(e.amount), 0) AS total_expenses,
                     expense_type,
-                    COALESCE(SUM(e.amount), 0)              AS amount
+                    COALESCE(SUM(e.amount), 0) AS amount
                  FROM expenses e
                  JOIN users u ON e.user_id = u.id
                  WHERE e.date BETWEEN $1 AND $2 ${teamCond}
                  GROUP BY expense_type`,
                 [from, to, ...teamParam]
             ),
-            // মাসিক বেতন
+            // Salary ও Commission একটাই query-তে (আগে দুটো ছিল)
             query(
-                `SELECT COALESCE(SUM(net_payable), 0) AS total_salary
+                `SELECT
+                    COALESCE(SUM(net_payable), 0)       AS total_salary,
+                    COALESCE(SUM(commission_amount), 0) AS total_commission
                  FROM monthly_commissions mc
                  JOIN users u ON mc.worker_id = u.id
-                 WHERE mc.year = EXTRACT(YEAR FROM $1::date)
+                 WHERE mc.year  = EXTRACT(YEAR  FROM $1::date)
                    AND mc.month = EXTRACT(MONTH FROM $1::date)
-                   ${teamCond.replace('$3','$3')}`,
-                [from, ...teamParam]
-            ),
-            // মোট কমিশন
-            query(
-                `SELECT COALESCE(SUM(commission_amount), 0) AS total_commission
-                 FROM monthly_commissions mc
-                 JOIN users u ON mc.worker_id = u.id
-                 WHERE mc.year = EXTRACT(YEAR FROM $1::date)
-                   AND mc.month = EXTRACT(MONTH FROM $1::date)
-                   ${teamCond.replace('$3','$3')}`,
+                   ${teamCond}`,
                 [from, ...teamParam]
             )
         ]);
 
-        const sales    = salesData.rows[0];
-        const expRows  = expenseData.rows;
-        const salary   = salaryData.rows[0];
-        const comm     = commissionData.rows[0];
-
-        const totalExpenses = expRows.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
-        const grossProfit   = parseFloat(sales.net_sales) - totalExpenses - parseFloat(salary.total_salary || 0);
+        const sales          = salesData.rows[0];
+        const expRows        = expenseData.rows;
+        const payroll        = payrollData.rows[0];
+        const totalExpenses  = expRows.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+        const grossProfit    = parseFloat(sales.net_sales) - totalExpenses - parseFloat(payroll.total_salary || 0);
 
         return res.status(200).json({
             success: true,
@@ -763,12 +839,12 @@ const getPLStatement = async (req, res) => {
                     total_expenses: totalExpenses
                 },
                 payroll: {
-                    total_salary:     parseFloat(salary.total_salary || 0),
-                    total_commission: parseFloat(comm.total_commission || 0)
+                    total_salary:     parseFloat(payroll.total_salary || 0),
+                    total_commission: parseFloat(payroll.total_commission || 0)
                 },
                 summary: {
-                    gross_profit: grossProfit,
-                    net_profit:   grossProfit,
+                    gross_profit:  grossProfit,
+                    net_profit:    grossProfit,
                     profit_margin: parseFloat(sales.net_sales) > 0
                         ? ((grossProfit / parseFloat(sales.net_sales)) * 100).toFixed(2)
                         : 0
@@ -785,98 +861,125 @@ const getPLStatement = async (req, res) => {
 // LEDGER (সম্পূর্ণ লেনদেন ইতিহাস)
 // GET /api/reports/ledger
 // ============================================================
+// FIX #1:
+//   আগে: তিনটা query → JS array-তে push → JS-এ sort → JS-এ slice।
+//   এখন: UNION ALL দিয়ে একটাই query → DB-তেই ORDER BY + LIMIT + OFFSET।
+//   JS-এ কোনো sort বা slice নেই। Memory-তে শুধু ঐ page-এর row আসে।
+// ============================================================
+
 const getLedger = async (req, res) => {
     try {
         const { from, to, type, worker_id, page = 1, limit = 50 } = req.query;
-        const today = new Date().toISOString().split('T')[0];
+        const today    = new Date().toISOString().split('T')[0];
         const fromDate = from || new Date(new Date().setDate(1)).toISOString().split('T')[0];
         const toDate   = to   || today;
-        const offset   = (page - 1) * limit;
 
-        const entries = [];
-
-        // বিক্রয় লেনদেন
-        if (!type || type === 'sale') {
-            const sales = await query(
-                `SELECT
-                    st.id, 'বিক্রয়' AS type, st.date,
-                    st.total_amount AS amount,
-                    st.payment_method,
-                    c.shop_name AS party,
-                    u.name_bn AS worker_name,
-                    st.invoice_number AS ref
-                 FROM sales_transactions st
-                 JOIN customers c ON st.customer_id = c.id
-                 JOIN users u ON st.worker_id = u.id
-                 WHERE st.date BETWEEN $1 AND $2
-                   ${worker_id ? 'AND st.worker_id = $3' : ''}
-                 ORDER BY st.date DESC, st.created_at DESC`,
-                worker_id ? [fromDate, toDate, worker_id] : [fromDate, toDate]
-            );
-            entries.push(...sales.rows.map(r => ({ ...r, entry_type: 'income' })));
+        // ── Date validation ──────────────────────────────────
+        if (fromDate > toDate) {
+            return res.status(400).json({
+                success: false,
+                message: '"from" তারিখ "to" তারিখের পরে হতে পারে না।'
+            });
         }
 
-        // পেমেন্ট গ্রহণ
-        if (!type || type === 'payment') {
-            const payments = await query(
-                `SELECT
-                    cp.id, 'পেমেন্ট গ্রহণ' AS type, cp.payment_date AS date,
-                    cp.amount,
-                    'নগদ' AS payment_method,
-                    c.shop_name AS party,
-                    u.name_bn AS worker_name,
-                    CONCAT('PAY-', cp.id) AS ref
-                 FROM credit_payments cp
-                 JOIN customers c ON cp.customer_id = c.id
-                 JOIN users u ON cp.collected_by = u.id
-                 WHERE cp.payment_date BETWEEN $1 AND $2
-                   ${worker_id ? 'AND cp.collected_by = $3' : ''}`,
-                worker_id ? [fromDate, toDate, worker_id] : [fromDate, toDate]
-            );
-            entries.push(...payments.rows.map(r => ({ ...r, entry_type: 'income' })));
+        const pageInt  = Math.max(1, parseInt(page));
+        const limitInt = Math.min(200, Math.max(1, parseInt(limit)));
+        const offset   = (pageInt - 1) * limitInt;
+
+        // type filter
+        const includeSale    = !type || type === 'sale';
+        const includePayment = !type || type === 'payment';
+        const includeExpense = !type || type === 'expense';
+
+        // shared params: $1=fromDate, $2=toDate, $3=worker_id (optional)
+        const params     = [fromDate, toDate];
+        let   paramCount = 2;
+        let   workerCond = '';
+        if (worker_id) {
+            paramCount++;
+            params.push(worker_id);
+            workerCond = `AND u.id = $${paramCount}`;
         }
 
-        // খরচ
-        if (!type || type === 'expense') {
-            const expenses = await query(
-                `SELECT
-                    e.id, CONCAT('খরচ — ', e.expense_type) AS type,
-                    e.date, e.amount,
-                    '-' AS payment_method,
-                    e.note AS party,
-                    u.name_bn AS worker_name,
-                    CONCAT('EXP-', e.id) AS ref
-                 FROM expenses e
-                 JOIN users u ON e.user_id = u.id
-                 WHERE e.date BETWEEN $1 AND $2
-                   ${worker_id ? 'AND e.user_id = $3' : ''}`,
-                worker_id ? [fromDate, toDate, worker_id] : [fromDate, toDate]
-            );
-            entries.push(...expenses.rows.map(r => ({ ...r, entry_type: 'expense' })));
+        // ── UNION ALL — DB-তেই সব মেলানো ────────────────────
+        const unions = [];
+
+        if (includeSale) {
+            unions.push(`
+                SELECT st.id::text, 'বিক্রয়' AS type, st.date,
+                       st.total_amount AS amount, st.payment_method,
+                       c.shop_name AS party, u.name_bn AS worker_name,
+                       st.invoice_number AS ref, 'income' AS entry_type
+                FROM sales_transactions st
+                JOIN customers c ON st.customer_id = c.id
+                JOIN users u ON st.worker_id = u.id
+                WHERE st.date BETWEEN $1 AND $2 ${workerCond}`);
         }
 
-        // তারিখ অনুযায়ী সাজাও
-        entries.sort((a, b) => new Date(b.date) - new Date(a.date));
+        if (includePayment) {
+            unions.push(`
+                SELECT cp.id::text, 'পেমেন্ট গ্রহণ' AS type, cp.payment_date AS date,
+                       cp.amount, 'নগদ' AS payment_method,
+                       c.shop_name AS party, u.name_bn AS worker_name,
+                       CONCAT('PAY-', cp.id) AS ref, 'income' AS entry_type
+                FROM credit_payments cp
+                JOIN customers c ON cp.customer_id = c.id
+                JOIN users u ON cp.collected_by = u.id
+                WHERE cp.payment_date BETWEEN $1 AND $2 ${workerCond}`);
+        }
 
-        const total        = entries.length;
-        const paginated    = entries.slice(offset, offset + parseInt(limit));
-        const totalIncome  = entries.filter(e => e.entry_type === 'income').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
-        const totalExpense = entries.filter(e => e.entry_type === 'expense').reduce((s, e) => s + parseFloat(e.amount || 0), 0);
+        if (includeExpense) {
+            unions.push(`
+                SELECT e.id::text, CONCAT('খরচ — ', e.expense_type) AS type,
+                       e.date, e.amount, '-' AS payment_method,
+                       e.note AS party, u.name_bn AS worker_name,
+                       CONCAT('EXP-', e.id) AS ref, 'expense' AS entry_type
+                FROM expenses e
+                JOIN users u ON e.user_id = u.id
+                WHERE e.date BETWEEN $1 AND $2 ${workerCond}`);
+        }
+
+        if (unions.length === 0) {
+            return res.status(400).json({ success: false, message: 'অন্তত একটি type দিন।' });
+        }
+
+        const unionSQL = unions.join(' UNION ALL ');
+
+        // count + summary ও paginated data — দুটো query, কোনো JS sort নেই
+        const [countResult, rowResult] = await Promise.all([
+            query(
+                `SELECT COUNT(*) AS total,
+                        COALESCE(SUM(CASE WHEN entry_type = 'income'  THEN amount ELSE 0 END), 0) AS total_income,
+                        COALESCE(SUM(CASE WHEN entry_type = 'expense' THEN amount ELSE 0 END), 0) AS total_expense
+                 FROM (${unionSQL}) t`,
+                params
+            ),
+            query(
+                `SELECT * FROM (${unionSQL}) t
+                 ORDER BY date DESC
+                 LIMIT $${paramCount + 1} OFFSET $${paramCount + 2}`,
+                [...params, limitInt, offset]
+            )
+        ]);
+
+        const { total, total_income, total_expense } = countResult.rows[0];
 
         return res.status(200).json({
             success: true,
             data: {
-                entries: paginated,
+                entries: rowResult.rows,
                 summary: {
-                    total_income:  totalIncome,
-                    total_expense: totalExpense,
-                    net:           totalIncome - totalExpense
+                    total_income:  parseFloat(total_income),
+                    total_expense: parseFloat(total_expense),
+                    net:           parseFloat(total_income) - parseFloat(total_expense)
                 },
-                total,
-                page:       parseInt(page),
-                totalPages: Math.ceil(total / limit)
+                total:      parseInt(total),
+                page:       pageInt,
+                limit:      limitInt,
+                totalPages: Math.ceil(parseInt(total) / limitInt)
             }
         });
+
     } catch (error) {
         console.error('❌ Ledger Error:', error.message);
         return res.status(500).json({ success: false, message: 'লেজার আনতে সমস্যা হয়েছে।' });
@@ -887,6 +990,7 @@ const getLedger = async (req, res) => {
 // MONTHLY ARCHIVE
 // GET /api/reports/archive?year=2026&month=3
 // ============================================================
+
 const getMonthlyArchive = async (req, res) => {
     try {
         const { year, month } = req.query;
@@ -946,10 +1050,10 @@ const getMonthlyArchive = async (req, res) => {
         return res.status(200).json({
             success: true,
             data: {
-                period:     { year: parseInt(year), month: parseInt(month) },
-                sales:      salesSum.rows[0],
-                attendance: attendanceSum.rows[0],
-                payroll:    commissionSum.rows[0],
+                period:      { year: parseInt(year), month: parseInt(month) },
+                sales:       salesSum.rows[0],
+                attendance:  attendanceSum.rows[0],
+                payroll:     commissionSum.rows[0],
                 top_workers: topWorkers.rows
             }
         });
@@ -963,10 +1067,11 @@ const getMonthlyArchive = async (req, res) => {
 // TOP PRODUCTS
 // GET /api/reports/top-products
 // ============================================================
+
 const getTopProducts = async (req, res) => {
     try {
         const { from, to, limit = 10 } = req.query;
-        const today = new Date().toISOString().split('T')[0];
+        const today    = new Date().toISOString().split('T')[0];
         const fromDate = from || new Date(new Date().setDate(1)).toISOString().split('T')[0];
         const toDate   = to   || today;
 
@@ -999,10 +1104,11 @@ const getTopProducts = async (req, res) => {
 // TOP SHOPS
 // GET /api/reports/top-shops
 // ============================================================
+
 const getTopShops = async (req, res) => {
     try {
         const { from, to, limit = 10 } = req.query;
-        const today = new Date().toISOString().split('T')[0];
+        const today    = new Date().toISOString().split('T')[0];
         const fromDate = from || new Date(new Date().setDate(1)).toISOString().split('T')[0];
         const toDate   = to   || today;
 
@@ -1031,8 +1137,6 @@ const getTopShops = async (req, res) => {
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
-
-
 
 module.exports = {
     getDashboardKPI,
