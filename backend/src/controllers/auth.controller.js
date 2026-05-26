@@ -263,9 +263,30 @@ const me = async (req, res) => {
             });
         }
 
+        const row = result.rows[0];
+
+        // emergency_contact DB-তে TEXT column, কিন্তু পুরনো dirty data
+        // JSON string হিসেবে থাকতে পারে (যেমন: '{"number":"017..."}')।
+        // এখানেই normalize করলে frontend সবসময় plain string পাবে।
+        if (row.emergency_contact) {
+            try {
+                const parsed = JSON.parse(row.emergency_contact);
+                if (typeof parsed === 'object' && parsed !== null) {
+                    row.emergency_contact =
+                        parsed.number || parsed.phone || parsed.value || '';
+                }
+                // JSON.parse('01700000000') → number type হয়ে যায়
+                if (typeof parsed === 'number') {
+                    row.emergency_contact = String(parsed);
+                }
+            } catch {
+                // valid plain string — কিছু করতে হবে না
+            }
+        }
+
         return res.status(200).json({
             success: true,
-            data: result.rows[0]
+            data: row
         });
 
     } catch (error) {
