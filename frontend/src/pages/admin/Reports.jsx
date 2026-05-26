@@ -29,17 +29,18 @@ export default function AdminReports() {
   const [month,   setMonth]   = useState(String(new Date().getMonth() + 1))
   const [year,    setYear]    = useState(String(new Date().getFullYear()))
   const [groupBy, setGroupBy] = useState('day')
-  const [data,    setData]    = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [data,      setData]      = useState(null)
+  const [loading,   setLoading]   = useState(false)
+  const [salesPage, setSalesPage] = useState(1)
 
   const months = Array.from({ length: 12 }, (_, i) => ({ value: String(i + 1), label: new Date(2024, i, 1).toLocaleString('bn-BD', { month: 'long' }) }))
   const years  = [2024, 2025, 2026].map(y => ({ value: String(y), label: String(y) }))
 
-  const fetchReport = async () => {
+  const fetchReport = async (page = 1) => {
     setLoading(true)
     try {
       let res
-      if (tab === 'sales')      res = await api.get(`/reports/sales?from=${from}&to=${to}&group_by=${groupBy}`)
+      if (tab === 'sales')      res = await api.get(`/reports/sales?from=${from}&to=${to}&group_by=${groupBy}&page=${page}&limit=100`)
       else if (tab === 'attendance') res = await api.get(`/reports/attendance?year=${year}&month=${month}`)
       else if (tab === 'commission') res = await api.get(`/reports/commission?year=${year}&month=${month}`)
       else if (tab === 'credit')     res = await api.get('/reports/credit')
@@ -285,6 +286,56 @@ export default function AdminReports() {
             </Card>
           )}
           <Card title="বিস্তারিত"><Table columns={cols} data={data.records} compact /></Card>
+          {/* Pagination — শুধু default (বিস্তারিত) mode-এ, group_by থাকলে দরকার নেই */}
+          {data.pagination && groupBy === 'day' && (
+            <div className="flex items-center justify-between px-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                মোট {data.pagination.total.toLocaleString()} টি invoice —
+                পেজ {data.pagination.page} / {data.pagination.totalPages}
+              </p>
+              <div className="flex gap-1">
+                <button
+                  disabled={data.pagination.page <= 1}
+                  onClick={() => {
+                    const prev = data.pagination.page - 1
+                    setSalesPage(prev)
+                    fetchReport(prev)
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+                >
+                  ← আগে
+                </button>
+                {/* কাছের page নম্বর */}
+                {Array.from({ length: data.pagination.totalPages }, (_, i) => i + 1)
+                  .filter(p => Math.abs(p - data.pagination.page) <= 2)
+                  .map(p => (
+                    <button
+                      key={p}
+                      onClick={() => { setSalesPage(p); fetchReport(p) }}
+                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                        p === data.pagination.page
+                          ? 'bg-primary text-white border-primary'
+                          : 'border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  ))
+                }
+                <button
+                  disabled={data.pagination.page >= data.pagination.totalPages}
+                  onClick={() => {
+                    const next = data.pagination.page + 1
+                    setSalesPage(next)
+                    fetchReport(next)
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-slate-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
+                >
+                  পরে →
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )
     }
@@ -429,7 +480,7 @@ export default function AdminReports() {
       {/* Tabs */}
       <div className="flex gap-1 bg-gray-100 dark:bg-slate-800 p-1 rounded-xl overflow-x-auto">
         {REPORT_TABS.map(t => (
-          <button key={t.key} onClick={() => { setTab(t.key); setData(null) }}
+          <button key={t.key} onClick={() => { setTab(t.key); setData(null); setSalesPage(1) }}
             className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${tab === t.key ? 'bg-white dark:bg-slate-700 text-primary dark:text-blue-400 shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'}`}>
             {t.label}
           </button>
