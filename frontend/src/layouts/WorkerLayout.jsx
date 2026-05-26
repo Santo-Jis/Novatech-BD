@@ -9,7 +9,7 @@ import {
 } from 'react-icons/fi'
 import OfflineStatusBar from '../components/OfflineStatusBar'
 import { useOffline } from '../store/useOffline'
-import { retryFailed } from '../api/syncService'
+import { retryFailed, initAutoSync } from '../api/syncService'
 import { getPendingQueue } from '../api/offlineQueue'
 import api from '../api/axios'
 import { useLiveTracking } from '../hooks/useLiveTracking'
@@ -152,6 +152,12 @@ export default function WorkerLayout() {
       setCheckedIn(false)
     }
   }
+
+  // ✅ Sync engine চালু করো — একবারই, worker login করার পরে
+  // online হলে auto-sync, stuck 'syncing' items reset, app open-এ pending check
+  useEffect(() => {
+    initAutoSync()
+  }, [])
 
   // ✅ Expose করা হচ্ছে যাতে চেক-ইন page থেকে cache clear করতে পারে
   // ব্যবহার: window.__refreshCheckin?.() — AttendancePage-এ চেক-ইন সফল হলে call করুন
