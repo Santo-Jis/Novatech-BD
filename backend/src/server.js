@@ -1,5 +1,7 @@
 require('dotenv').config();
 
+const logger = require('./config/logger');
+
 // ✅ ENV VALIDATION — dotenv-এর পরে, বাকি সব require-এর আগে।
 // Missing বা insecure variable থাকলে এখানেই server বন্ধ হবে।
 const { validateEnv } = require('./config/validateEnv');
@@ -46,7 +48,10 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-app.use(morgan('dev'));
+app.use(morgan(
+    process.env.NODE_ENV === 'production' ? 'combined' : 'dev',
+    { stream: logger.stream }
+));
 
 // ── Cache disable — 304 problem fix ──
 app.use((req, res, next) => {
@@ -198,7 +203,12 @@ app.use('*', (req, res) => {
 // ============================================================
 
 app.use((err, req, res, next) => {
-    console.error('❌ Server Error:', err);
+    logger.error('Unhandled server error', {
+        err,
+        method:  req.method,
+        url:     req.originalUrl,
+        userId:  req.user?.id,
+    });
 
     // Multer file size error
     if (err.code === 'LIMIT_FILE_SIZE') {
@@ -263,9 +273,9 @@ const keepAlive = () => {
     setInterval(async () => {
         try {
             await axios.get(`${url}/api/health`, { timeout: 5000 });
-            console.log('✅ Keep-alive ping সফল');
+            logger.info('Keep-alive ping OK');
         } catch (err) {
-            console.log('⚠️ Keep-alive ping ব্যর্থ:', err.message);
+            logger.warn('Keep-alive ping failed', { err });
         }
     }, 10 * 60 * 1000); // ১০ মিনিট (আগে ১৪ মিনিট — Render ১৫ মিনিটে sleep করে, margin কম ছিল)
 };
