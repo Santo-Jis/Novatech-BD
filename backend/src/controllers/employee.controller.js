@@ -9,6 +9,7 @@ const {
     sendWelcomeSMS,
     generateEmployeePDF
 } = require('../services/employee.service');
+const { deleteAllUserSessions } = require('../services/auth.service');
 
 // ============================================================
 // GET ALL EMPLOYEES
@@ -388,6 +389,9 @@ const rejectEmployee = async (req, res) => {
             [id]
         );
 
+        // ✅ FIX: archived হলে সব session + Redis blocklist — instant token revoke
+        await deleteAllUserSessions(id);
+
         await query(
             `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
              VALUES ($1, 'REJECT_EMPLOYEE', 'users', $2, $3)`,
@@ -424,6 +428,9 @@ const suspendEmployee = async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'কর্মচারী পাওয়া যায়নি।' });
         }
+
+        // ✅ FIX: suspended হলে সব session + Redis blocklist — instant token revoke
+        await deleteAllUserSessions(id);
 
         await query(
             `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
@@ -882,6 +889,9 @@ const reactivateEmployee = async (req, res) => {
              WHERE id = $3`,
             [newCode, passwordHash, id]
         );
+
+        // ✅ FIX: reactivate হলে blocklist থেকে সরাও (আগে suspend ছিল)
+        await deleteAllUserSessions(id, { reactivating: true });
 
         await query(
             `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
