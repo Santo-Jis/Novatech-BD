@@ -577,8 +577,8 @@ const setCreditLimit = async (req, res) => {
 
 const collectCredit = async (req, res) => {
     try {
-        const { amount, notes } = req.body;
-        const customerId        = req.params.id;
+        const { amount, notes, idempotency_key } = req.body;
+        const customerId = req.params.id;
 
         if (!amount || amount <= 0) {
             return res.status(400).json({
@@ -587,33 +587,67 @@ const collectCredit = async (req, res) => {
             });
         }
 
-        // বর্তমান বাকি যাচাই
-        const customer = await query(
-            'SELECT shop_name, current_credit FROM customers WHERE id = $1',
-            [customerId]
-        );
-
-        if (customer.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
-        }
-
-        if (parseFloat(amount) > parseFloat(customer.rows[0].current_credit)) {
+        // idempotency_key — double submission বা network retry-তে duplicate collection রোধ
+        // Frontend প্রতিটি submit-এ crypto.randomUUID() পাঠাবে।
+        if (!idempotency_key) {
             return res.status(400).json({
                 success: false,
-                message: `বাকির পরিমাণ ৳${customer.rows[0].current_credit} এর বেশি দেওয়া যাবে না।`
+                message: 'idempotency_key প্রয়োজন।'
             });
         }
 
-        // credit_payments এ সেভ (trigger অটো current_credit কমাবে)
-        await query(
-            `INSERT INTO credit_payments
-             (customer_id, worker_id, amount, notes)
-             VALUES ($1, $2, $3, $4)`,
-            [customerId, req.user.id, amount, notes || null]
+        // idempotency_key আগে ব্যবহার হয়েছে কিনা যাচাই
+        const existing = await query(
+            'SELECT id FROM credit_payments WHERE idempotency_key = $1',
+            [idempotency_key]
         );
+        if (existing.rows.length > 0) {
+            // একই key-তে আগে payment হয়েছে — duplicate, 200 দাও (idempotent response)
+            return res.status(200).json({
+                success: true,
+                message: `৳${amount} বাকি আদায় সফল। (পূর্বে সম্পন্ন হয়েছিল)`
+            });
+        }
 
-        // ✅ কাস্টমারকে payment confirmation notification দাও
-        const remainingCredit = Math.max(0, parseFloat(customer.rows[0].current_credit) - parseFloat(amount));
+        let remainingCredit;
+
+        // ─── Transaction: READ + INSERT একসাথে, race condition সম্ভব নয় ────────────
+        // SELECT ... FOR UPDATE — row lock নেয়, concurrent request queue-এ পড়ে।
+        // trigger অটো current_credit কমাবে INSERT-এর পরে।
+        await withTransaction(async (client) => {
+
+            // FOR UPDATE: একই customer-এ concurrent request একসাথে ঢুকতে পারবে না
+            const customer = await client.query(
+                'SELECT shop_name, current_credit FROM customers WHERE id = $1 FOR UPDATE',
+                [customerId]
+            );
+
+            if (customer.rows.length === 0) {
+                const err = new Error('কাস্টমার পাওয়া যায়নি।');
+                err.statusCode = 404;
+                throw err;
+            }
+
+            const currentCredit = parseFloat(customer.rows[0].current_credit);
+
+            if (parseFloat(amount) > currentCredit) {
+                const err = new Error(`বাকির পরিমাণ ৳${currentCredit} এর বেশি দেওয়া যাবে না।`);
+                err.statusCode = 400;
+                throw err;
+            }
+
+            // INSERT — trigger অটো current_credit কমাবে
+            await client.query(
+                `INSERT INTO credit_payments
+                 (customer_id, worker_id, amount, notes, idempotency_key)
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [customerId, req.user.id, amount, notes || null, idempotency_key]
+            );
+
+            remainingCredit = Math.max(0, currentCredit - parseFloat(amount));
+        });
+
+        // ✅ কাস্টমারকে payment confirmation notification দাও (transaction-এর বাইরে)
         sendCustomerNotification(customerId, {
             title: '💳 পেমেন্ট নিশ্চিত হয়েছে',
             body:  `আপনার ৳${parseFloat(amount).toLocaleString('bn-BD')} পেমেন্ট গ্রহণ করা হয়েছে। বর্তমান বাকি: ৳${remainingCredit.toLocaleString('bn-BD')}`,
@@ -626,6 +660,17 @@ const collectCredit = async (req, res) => {
         });
 
     } catch (error) {
+        // transaction-এর ভেতর থেকে throw করা known error
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ success: false, message: error.message });
+        }
+        // idempotency_key-তে unique constraint violation — concurrent duplicate request
+        if (error.code === '23505' && error.constraint?.includes('idempotency')) {
+            return res.status(200).json({
+                success: true,
+                message: `৳${amount} বাকি আদায় সফল। (পূর্বে সম্পন্ন হয়েছিল)`
+            });
+        }
         console.error('❌ Collect Credit Error:', error.message);
         return res.status(500).json({ success: false, message: 'বাকি আদায়ে সমস্যা হয়েছে।' });
     }
