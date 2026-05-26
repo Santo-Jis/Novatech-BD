@@ -9,6 +9,9 @@ import {
 import toast from 'react-hot-toast'
 
 // নগদ মিলের সীমা — এর বেশি পার্থক্য হলে submit block + বাধ্যতামূলক ব্যাখ্যা
+// ⚠️  SYNC: এই মান backend/src/controllers/settlement.controller.js-এর
+//           CASH_BLOCK_LIMIT ও CASH_WARN_LIMIT-এর সাথে সবসময় একই রাখতে হবে।
+//           একটা বদলালে অপরটাও বদলান।
 const CASH_BLOCK_LIMIT   = 500   // ৳৫০০ এর বেশি হলে সম্পূর্ণ block
 const CASH_WARN_LIMIT    = 1     // ৳১ এর বেশি হলে সতর্কতা
 
