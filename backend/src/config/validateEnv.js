@@ -33,6 +33,12 @@ const REQUIRED = [
     { key: 'DB_NAME',     hint: 'সাধারণত "postgres"' },
     { key: 'DB_USER',     hint: 'সাধারণত "postgres"' },
     { key: 'DB_PASSWORD', hint: 'Supabase database password' },
+    {
+        key:  'DB_SSL_CA',
+        hint: 'Supabase ca.pem → base64 encode → Render env-এ paste করুন\n' +
+              '         Linux/Mac: base64 -w 0 ca.pem\n' +
+              '         Dashboard: Supabase → Settings → Database → SSL Certificate → Download',
+    },
 ];
 
 // secret হওয়া দরকার — placeholder বা খুব ছোট হলে বিপজ্জনক
