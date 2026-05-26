@@ -1,5 +1,6 @@
-const jwt     = require('jsonwebtoken');
-const { query } = require('../config/db');
+const jwt               = require('jsonwebtoken');
+const { query }         = require('../config/db');
+const { isUserBlocked } = require('../config/redis');
 
 // ============================================================
 // JWT Authentication Middleware
@@ -13,10 +14,10 @@ const { query } = require('../config/db');
 // basic_salary শুধু attendance controller-এ লাগে।
 // সেখানে lazy fetch করা হয়েছে (auth.enrichUser দেখুন)।
 //
-// Trade-off:
-//   role বা status পরিবর্তন হলে সর্বোচ্চ ১৫ মিনিট পুরনো token চলবে।
-//   suspend করলে admin চাইলে deleteAllUserSessions() দিয়ে
-//   refresh token বাতিল করতে পারবে — নতুন access token তৈরি হবে না।
+// ✅ FIX (Stale Token):
+//   suspend/archive করলে deleteAllUserSessions() + blockUserTokens()
+//   একসাথে ডাকা হয়। middleware Redis blocklist চেক করে — instant block।
+//   Redis TTL = JWT_ACCESS_EXPIRES (default ১৫ মিনিট)।
 
 const auth = async (req, res, next) => {
     try {
@@ -60,7 +61,18 @@ const auth = async (req, res, next) => {
             });
         }
 
-        // ৩. Token payload থেকে সরাসরি req.user তৈরি — DB query নেই
+        // ৩. Redis blocklist চেক — suspend/archive হলে instant block
+        //    Token payload-এ পুরনো status='active' থাকলেও এটা ধরে ফেলে।
+        const blocked = await isUserBlocked(decoded.userId);
+        if (blocked) {
+            return res.status(403).json({
+                success: false,
+                message: 'আপনার অ্যাকাউন্ট বন্ধ করা হয়েছে। Admin এর সাথে যোগাযোগ করুন।',
+                code: 'USER_BLOCKED'
+            });
+        }
+
+        // ৪. Token payload থেকে status যাচাই
         const status = decoded.status;
 
         if (status === 'suspended') {
@@ -110,11 +122,6 @@ const auth = async (req, res, next) => {
 // LAZY ENRICHMENT — শুধু basic_salary দরকার এমন route-এ ব্যবহার করুন
 // যেমন: attendance controller-এ check-in-এর সময়
 // ============================================================
-
-// ✅ OPT: basic_salary token-এ রাখা হয়নি (sensitive data)।
-// শুধু attendance check-in route-এ লাগে।
-// auth middleware-এর পরে, সেই route-এ এই middleware দিন:
-//   router.post('/check-in', auth, enrichUserSalary, requireCheckin, ...)
 const enrichUserSalary = async (req, res, next) => {
     try {
         const result = await query(
@@ -136,7 +143,6 @@ const enrichUserSalary = async (req, res, next) => {
 // OPTIONAL AUTH
 // লগইন না থাকলেও চলবে, থাকলে user set হবে
 // ============================================================
-
 const optionalAuth = (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
