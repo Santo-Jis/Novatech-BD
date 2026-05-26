@@ -68,6 +68,8 @@ export default function WorkerDashboard() {
   const sales    = summary?.sales    || {}
   const visits   = summary?.visits   || {}
   const dues     = parseFloat(summary?.outstanding_dues || 0)
+  const cashDues = parseFloat(summary?.cash_dues        || 0)
+  const prodDues = Math.max(0, dues - cashDues)
   const todayAtt = summary?.today_order
   const checkedIn = summary?.checked_in ?? false  // ✅ FIX #2: API fail হলে false — true রাখলে চেক-ইন ছাড়াই সব করা যেত  // ✅ চেক-ইন স্ট্যাটাস
 
@@ -145,14 +147,45 @@ export default function WorkerDashboard() {
         </div>
       )}
 
-      {/* Outstanding Dues Alert */}
+      {/* SR নিজের বকেয়া Alert — settlement ঘাটতি থেকে আসা, কাস্টমারের বাকির সাথে সম্পর্ক নেই */}
       {dues > 0 && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl p-3 flex items-center gap-3">
-          <FiAlertTriangle className="text-red-500 text-xl flex-shrink-0" />
-          <div>
-            <p className="text-red-700 font-semibold text-sm">বকেয়া আছে</p>
-            <p className="text-red-600 text-xs">৳{dues.toLocaleString()} পরিশোধ করুন</p>
+        <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <FiAlertTriangle className="text-red-500 text-xl flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-red-700 font-bold text-sm">আপনার নিজের বকেয়া আছে</p>
+              <p className="text-red-500 text-xs mt-0.5">
+                পণ্য/নগদ ঘাটতি থেকে জমা হয়েছে — বেতন বা কমিশন থেকে কাটা হবে
+              </p>
+
+              {/* Breakdown */}
+              <div className="flex gap-3 mt-2.5">
+                {cashDues > 0 && (
+                  <div className="bg-white border border-red-100 rounded-xl px-3 py-1.5 text-center">
+                    <p className="text-[10px] text-red-400">নগদ ঘাটতি</p>
+                    <p className="text-xs font-bold text-red-600">৳{cashDues.toLocaleString()}</p>
+                  </div>
+                )}
+                {prodDues > 0 && (
+                  <div className="bg-white border border-red-100 rounded-xl px-3 py-1.5 text-center">
+                    <p className="text-[10px] text-red-400">পণ্য ঘাটতি</p>
+                    <p className="text-xs font-bold text-red-600">৳{prodDues.toLocaleString()}</p>
+                  </div>
+                )}
+                <div className="bg-red-100 rounded-xl px-3 py-1.5 text-center ml-auto">
+                  <p className="text-[10px] text-red-500">মোট বকেয়া</p>
+                  <p className="text-sm font-bold text-red-700">৳{dues.toLocaleString()}</p>
+                </div>
+              </div>
+            </div>
           </div>
+
+          <button
+            onClick={() => navigate('/worker/settlement')}
+            className="mt-3 w-full py-2 bg-red-600 text-white rounded-xl text-xs font-bold"
+          >
+            হিসাব পেজে যান →
+          </button>
         </div>
       )}
 
