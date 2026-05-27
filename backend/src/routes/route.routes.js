@@ -13,7 +13,9 @@ const {
     updateRoute,
     deleteRoute,
     assignWorkerToRoute,
-    getRouteWorkers
+    getRouteWorkers,
+    getRouteCustomers,
+    getLiveRouteStatus,
 } = require('../controllers/route.controller');
 
 // ============================================================
@@ -88,11 +90,17 @@ router.get('/my-requests', auth, allowRoles('worker'), async (req, res) => {
 // রুট তালিকা
 router.get('/',     auth, checkTeamAccess, getRoutes);
 
+// আজকে কে কোন route-এ আছে (live status) — /:id আগে রেজিস্টার করতে হবে
+router.get('/live-status', auth, checkTeamAccess, getLiveRouteStatus);
+
 // নতুন রুট তৈরি (Admin/Manager)
 router.post('/',    auth, canCreateRoute, createRoute);
 
 // রুটের SR তালিকা
 router.get('/:id/workers', auth, checkTeamAccess, getRouteWorkers);
+
+// রুটের কাস্টমার তালিকা + visit_order
+router.get('/:id/customers', auth, checkTeamAccess, getRouteCustomers);
 
 // SR কে রুট অ্যাসাইন
 router.post('/:id/assign', auth, allowRoles('admin', 'manager', 'accountant'), assignWorkerToRoute);
