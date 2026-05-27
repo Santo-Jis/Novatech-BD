@@ -234,11 +234,123 @@ const getRouteWorkers = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET ROUTE CUSTOMERS (with visit_order)
+// GET /api/routes/:id/customers
+// Admin/Manager → route-র কাস্টমার তালিকা + তাদের visit_order
+// ============================================================
+
+const getRouteCustomers = async (req, res) => {
+    try {
+        const routeId = req.params.id;
+
+        // Manager হলে নিজের route কিনা চেক
+        if (req.teamFilter) {
+            const routeCheck = await query(
+                'SELECT id FROM routes WHERE id = $1 AND manager_id = $2 AND is_active = true',
+                [routeId, req.teamFilter]
+            );
+            if (routeCheck.rows.length === 0) {
+                return res.status(403).json({ success: false, message: 'এই রুটে অ্যাক্সেস নেই।' });
+            }
+        }
+
+        const result = await query(
+            `SELECT
+                c.id,
+                c.shop_name,
+                c.owner_name,
+                c.whatsapp,
+                c.latitude,
+                c.longitude,
+                ca.visit_order
+             FROM customers c
+             LEFT JOIN customer_assignments ca
+               ON ca.customer_id = c.id
+               AND ca.route_id   = $1
+               AND ca.is_active  = true
+               AND ca.worker_id IS NULL
+             WHERE c.route_id  = $1
+               AND c.is_active = true
+             ORDER BY ca.visit_order ASC NULLS LAST, c.shop_name ASC`,
+            [routeId]
+        );
+
+        return res.status(200).json({ success: true, data: result.rows });
+
+    } catch (error) {
+        console.error('❌ Get Route Customers Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET LIVE ROUTE STATUS — আজকে কে কোন route-এ আছে
+// GET /api/routes/live-status
+// Manager: নিজের team-এর SR; Admin: সবাই
+// ============================================================
+
+const getLiveRouteStatus = async (req, res) => {
+    try {
+        let conditions = ['r.is_active = true'];
+        let params     = [];
+        let paramCount = 0;
+
+        if (req.teamFilter) {
+            paramCount++;
+            conditions.push(`r.manager_id = $${paramCount}`);
+            params.push(req.teamFilter);
+        }
+
+        const result = await query(
+            `SELECT
+                r.id          AS route_id,
+                r.name        AS route_name,
+                u.id          AS worker_id,
+                u.name_bn     AS worker_name,
+                u.employee_code,
+                u.profile_photo,
+                -- আজকের visit সংখ্যা
+                COUNT(DISTINCT v.id) FILTER (
+                    WHERE v.created_at::date = CURRENT_DATE
+                ) AS visits_today,
+                -- রুটের মোট কাস্টমার
+                COUNT(DISTINCT c.id)  AS total_customers,
+                -- SR-এর সর্বশেষ GPS সময়
+                MAX(gl.created_at)    AS last_seen_at
+             FROM routes r
+             JOIN customer_assignments ca_route
+               ON ca_route.route_id   = r.id
+               AND ca_route.is_active  = true
+               AND ca_route.customer_id IS NULL
+             JOIN users u ON ca_route.worker_id = u.id AND u.status = 'active'
+             LEFT JOIN customers c
+               ON c.route_id = r.id AND c.is_active = true
+             LEFT JOIN visits v
+               ON v.worker_id = u.id AND v.route_id = r.id
+             LEFT JOIN gps_logs gl
+               ON gl.user_id = u.id
+             WHERE ${conditions.join(' AND ')}
+             GROUP BY r.id, r.name, u.id, u.name_bn, u.employee_code, u.profile_photo
+             ORDER BY r.name, u.name_bn`,
+            params
+        );
+
+        return res.status(200).json({ success: true, data: result.rows });
+
+    } catch (error) {
+        console.error('❌ Live Route Status Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getRoutes,
     createRoute,
     updateRoute,
     deleteRoute,
     assignWorkerToRoute,
-    getRouteWorkers
+    getRouteWorkers,
+    getRouteCustomers,
+    getLiveRouteStatus,
 };
