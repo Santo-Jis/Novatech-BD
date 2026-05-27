@@ -24,7 +24,7 @@ import { saveCache, getCache } from '../../api/offlineQueue'
 import {
   FiSearch, FiPlus, FiX, FiUser,
   FiCamera, FiNavigation, FiCheck, FiEdit2, FiMail, FiChevronRight,
-  FiMap, FiList
+  FiMap, FiList, FiTarget
 } from 'react-icons/fi'
 import toast from 'react-hot-toast'
 import CustomerEditModal from '../../components/CustomerEditModal'
@@ -36,6 +36,34 @@ L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
   iconUrl:       'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
   shadowUrl:     'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
+})
+
+// ── Next Stop Special Pin Icon (নীল তারা) ───────────────────
+const makeNextStopIcon = () => L.divIcon({
+  className: '',
+  html: `
+    <div style="
+      position: relative;
+      width: 36px; height: 36px;
+    ">
+      <div style="
+        background: #2563eb;
+        width: 36px; height: 36px;
+        border-radius: 50% 50% 50% 0;
+        transform: rotate(-45deg);
+        border: 3px solid white;
+        box-shadow: 0 3px 10px rgba(37,99,235,0.5);
+      "></div>
+      <div style="
+        position: absolute; top: 50%; left: 50%;
+        transform: translate(-50%, -60%);
+        font-size: 14px; line-height: 1;
+      ">⭐</div>
+    </div>
+  `,
+  iconSize:   [36, 36],
+  iconAnchor: [18, 36],
+  popupAnchor:[0, -38],
 })
 
 // ── Custom Pin Icon তৈরি করার function ───────────────────────
@@ -358,6 +386,25 @@ export default function CustomerList() {
     return map
   }, [userLocation, customers])
 
+  // ── Next Stop: GPS থেকে সবচেয়ে কাছের unvisited দোকান ──────
+  const nextStop = useMemo(() => {
+    if (!userLocation) return null
+    const unvisited = customers.filter(c =>
+      !c.visited_today && c.latitude && c.longitude
+    )
+    if (unvisited.length === 0) return null
+    let closest = null
+    let minDist = Infinity
+    unvisited.forEach(c => {
+      const d = calcDistance(
+        userLocation.lat, userLocation.lng,
+        parseFloat(c.latitude), parseFloat(c.longitude)
+      )
+      if (d !== null && d < minDist) { minDist = d; closest = c }
+    })
+    return closest ? { customer: closest, distance: minDist } : null
+  }, [userLocation, customers])
+
   const filtered = customers.filter(c =>
     c.shop_name?.includes(search) || c.owner_name?.includes(search)
   )
@@ -431,6 +478,10 @@ export default function CustomerList() {
             <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#3b82f6' }} />
             <span style={{ color: '#374151' }}>আপনি</span>
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <span style={{ fontSize: 10 }}>⭐</span>
+            <span style={{ color: '#374151' }}>Next Stop</span>
+          </div>
         </div>
 
         {mappableCustomers.length === 0 ? (
@@ -470,15 +521,28 @@ export default function CustomerList() {
             )}
 
             {/* প্রতিটি কাস্টমারের pin */}
-            {mappableCustomers.map(c => (
+            {mappableCustomers.map(c => {
+              const isNext = nextStop?.customer?.id === c.id
+              return (
               <Marker
                 key={c.id}
                 position={[parseFloat(c.latitude), parseFloat(c.longitude)]}
-                icon={makePinIcon(c.visited_today)}
+                icon={isNext ? makeNextStopIcon() : makePinIcon(c.visited_today)}
                 eventHandlers={{ click: () => handlePinClick(c.id) }}
               >
                 <Popup>
                   <div style={{ minWidth: 140 }}>
+                    {/* Next Stop badge */}
+                    {isNext && (
+                      <div style={{
+                        display: 'flex', alignItems: 'center', gap: 4,
+                        background: '#eff6ff', borderRadius: 8,
+                        padding: '3px 8px', marginBottom: 6,
+                        fontSize: 11, fontWeight: 700, color: '#2563eb'
+                      }}>
+                        ⭐ Next Stop
+                      </div>
+                    )}
                     {/* Visit order badge */}
                     {c.visit_order != null && (
                       <span style={{
@@ -513,7 +577,8 @@ export default function CustomerList() {
                   </div>
                 </Popup>
               </Marker>
-            ))}
+              )
+            })}
           </MapContainer>
         )}
       </div>
@@ -539,6 +604,43 @@ export default function CustomerList() {
           </button>
         </div>
 
+        {/* ── Next Stop Banner ─────────────────────────────── */}
+        {nextStop && (
+          <div
+            className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-4 shadow-md flex items-center gap-3 cursor-pointer active:scale-[0.98] transition-transform"
+            onClick={() => {
+              navigate(`/worker/visit/${nextStop.customer._id || nextStop.customer.id}`)
+            }}
+          >
+            {/* Icon */}
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
+              <FiTarget size={20} className="text-white" />
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] text-blue-100 font-medium uppercase tracking-wide mb-0.5">
+                📍 Next Stop — সবচেয়ে কাছে
+              </p>
+              <p className="text-white font-bold text-sm truncate">{nextStop.customer.shop_name}</p>
+              <p className="text-blue-100 text-xs truncate">{nextStop.customer.owner_name}</p>
+            </div>
+
+            {/* Distance + Navigate */}
+            <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+              <span className="text-white font-bold text-sm">
+                {formatDistance(nextStop.distance)}
+              </span>
+              <button
+                onClick={e => openGoogleMaps(e, nextStop.customer)}
+                className="flex items-center gap-1 bg-white/20 hover:bg-white/30 text-white text-[11px] font-semibold px-2.5 py-1 rounded-lg transition-colors"
+              >
+                <FiNavigation size={11} /> Navigate
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Search */}
         <div className="relative">
           <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -558,14 +660,26 @@ export default function CustomerList() {
               <p>কোনো কাস্টমার নেই</p>
             </div>
           )}
-          {filtered.map(c => (
+          {filtered.map(c => {
+            const isNextStop = nextStop?.customer?.id === c.id
+            return (
             <div
               key={c._id || c.id}
               ref={el => { cardRefs.current[c.id] = el }}
               className={`bg-white rounded-2xl p-4 shadow-sm border-l-4 transition-all
-                ${c.visited_today ? 'border-green-400' : 'border-gray-200'}
+                ${c.visited_today ? 'border-green-400'
+                  : isNextStop ? 'border-blue-500'
+                  : 'border-gray-200'}
                 ${activePin === c.id ? 'ring-2 ring-blue-400 ring-offset-1' : ''}`}
             >
+              {/* Next Stop label */}
+              {isNextStop && (
+                <div className="flex items-center gap-1.5 mb-2">
+                  <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-600 text-[11px] font-bold px-2.5 py-0.5 rounded-full border border-blue-200">
+                    ⭐ Next Stop — সবচেয়ে কাছে ({formatDistance(nextStop.distance)})
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between items-start">
                 <div className="flex-1 min-w-0" onClick={() => navigate(`/worker/visit/${c._id || c.id}`)}>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -693,7 +807,8 @@ export default function CustomerList() {
                 </div>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 
