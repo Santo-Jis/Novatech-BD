@@ -178,10 +178,12 @@ export default function CustomerList() {
     return `${meters} মি`
   }
 
+  const [defaultCreditLimit, setDefaultCreditLimit] = useState('0')
+
   const emptyForm = {
     shop_name: '', owner_name: '', business_type: '',
     whatsapp: '', sms_phone: '',
-    email: '', credit_limit: '5000', route_id: '',
+    email: '', credit_limit: '0', route_id: '',
     lat: null, lng: null, photo: null
   }
   const [newCustomer, setNewCustomer] = useState(emptyForm)
@@ -246,6 +248,15 @@ export default function CustomerList() {
     loadCustomers()
 
     if (navigator.onLine) {
+      // ── ডিফল্ট ক্রেডিট লিমিট লোড করো ──
+      api.get('/settings/public')
+        .then(res => {
+          const limit = res.data.data?.default_credit_limit || '0'
+          setDefaultCreditLimit(limit)
+          setNewCustomer(prev => ({ ...prev, credit_limit: limit }))
+        })
+        .catch(() => {})
+
       api.get('/routes')
         .then(res => {
           const data = res.data.data || []
@@ -342,7 +353,10 @@ export default function CustomerList() {
       formData.append('owner_name',   newCustomer.owner_name.trim())
       formData.append('whatsapp',     newCustomer.whatsapp.trim())
       formData.append('sms_phone',    newCustomer.sms_phone.trim() || newCustomer.whatsapp.trim())
-      formData.append('credit_limit', newCustomer.credit_limit || 5000)
+      formData.append('credit_limit', Math.min(
+        parseFloat(newCustomer.credit_limit) || 0,
+        parseFloat(defaultCreditLimit) || 0
+      ))
       formData.append('latitude',     newCustomer.lat)
       formData.append('longitude',    newCustomer.lng)
       if (newCustomer.business_type) formData.append('business_type', newCustomer.business_type)
@@ -907,7 +921,6 @@ export default function CustomerList() {
                     { label: 'মালিকের নাম',        required: true,  key: 'owner_name',   placeholder: 'মালিকের নাম',           type: 'text'   },
                     { label: 'WhatsApp নম্বর',     required: true,  key: 'whatsapp',     placeholder: '01XXXXXXXXX',            type: 'tel'    },
                     { label: 'SMS নম্বর',          required: false, key: 'sms_phone',    placeholder: 'আলাদা হলে দিন',          type: 'tel'    },
-                    { label: 'ক্রেডিট লিমিট (৳)', required: false, key: 'credit_limit', placeholder: '5000',                   type: 'number' },
                   ].map(f => (
                     <div key={f.key}>
                       <label className="text-sm font-medium text-gray-700 mb-1 block">
@@ -919,6 +932,36 @@ export default function CustomerList() {
                         className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/60" />
                     </div>
                   ))}
+
+                  {/* ── ক্রেডিট লিমিট — max = Admin-এর default ── */}
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block">
+                      ক্রেডিট লিমিট (৳)
+                      <span className="ml-2 text-xs text-gray-400 font-normal">
+                        সর্বোচ্চ ৳{parseFloat(defaultCreditLimit || 0).toLocaleString()}
+                      </span>
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={parseFloat(defaultCreditLimit) || 0}
+                      value={newCustomer.credit_limit}
+                      onChange={e => {
+                        const val = parseFloat(e.target.value) || 0
+                        const max = parseFloat(defaultCreditLimit) || 0
+                        setNewCustomer(p => ({ ...p, credit_limit: String(Math.min(val, max)) }))
+                      }}
+                      placeholder={defaultCreditLimit || '0'}
+                      className={`w-full border rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary/60 ${
+                        parseFloat(newCustomer.credit_limit) > parseFloat(defaultCreditLimit || 0)
+                          ? 'border-red-300 bg-red-50'
+                          : 'border-gray-200'
+                      }`}
+                    />
+                    {parseFloat(defaultCreditLimit || 0) === 0 && (
+                      <p className="text-xs text-amber-500 mt-1">⚠️ Admin কোনো ডিফল্ট লিমিট সেট করেননি। Manager পরে সেট করবেন।</p>
+                    )}
+                  </div>
 
                   <div>
                     <label className="text-sm font-medium text-gray-700 mb-1 flex items-center gap-1.5">
