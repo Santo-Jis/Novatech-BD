@@ -39,6 +39,13 @@ const REQUIRED = [
               '         Linux/Mac: base64 -w 0 ca.pem\n' +
               '         Dashboard: Supabase → Settings → Database → SSL Certificate → Download',
     },
+    // ✅ FIX: OPTIONAL থেকে REQUIRED-এ নিয়ে আসা হয়েছে।
+    // aud check ছাড়া যেকোনো app-এর valid Google token দিয়ে customer portal login সম্ভব —
+    // এটা infrastructure variable নয়, authentication security boundary।
+    {
+        key:  'GOOGLE_CLIENT_ID',
+        hint: 'Google Cloud Console → APIs & Services → Credentials → OAuth 2.0 Client ID',
+    },
 ];
 
 // secret হওয়া দরকার — placeholder বা খুব ছোট হলে বিপজ্জনক
@@ -80,7 +87,7 @@ const OPTIONAL = [
     { key: 'SMS_API_KEY',              feature: 'SMS Notification' },
     { key: 'CLOUDINARY_CLOUD_NAME',    feature: 'Image Upload (Cloudinary)' },
     { key: 'CLOUDINARY_UPLOAD_PRESET', feature: 'Image Upload (Cloudinary)' },
-    { key: 'GOOGLE_CLIENT_ID',         feature: 'Google OAuth aud check (customer portal)' },
+    // GOOGLE_CLIENT_ID → REQUIRED array-এ নিয়ে যাওয়া হয়েছে (security boundary)
     { key: 'GOOGLE_MAPS_KEY',          feature: 'Google Maps' },
     { key: 'RENDER_EXTERNAL_URL',      feature: 'Keep-Alive Ping (Render)' },
     { key: 'FRONTEND_URL',             feature: 'CORS (default: localhost:3000)' },
