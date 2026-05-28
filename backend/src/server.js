@@ -145,6 +145,7 @@ const customerRequestsRoutes    = require('./routes/customerRequests.routes');  
 const expenseRoutes             = require('./routes/expense.routes');
 const returnRoutes              = require('./routes/return.routes');
 const settingsRoutes            = require('./routes/settings.routes');   // ✅ public settings
+const creditApprovalRoutes      = require('./routes/creditApproval.routes'); // ✅ credit approval
 
 app.use('/api/auth',        loginLimiter, authRoutes);
 app.use('/api/portal',     loginLimiter, portalRoutes); // ✅ customer portal login-এও limiter
@@ -173,6 +174,7 @@ app.use('/api/customer-requests',       customerRequestsRoutes);            // �
 app.use('/api/expense',                 expenseRoutes);
 app.use('/api/settings',                settingsRoutes);       // ✅ public settings (expense limits etc.)
 app.use('/api/return',                  returnRoutes);
+app.use('/api/credit-approvals',        creditApprovalRoutes); // ✅ credit approval workflow
 
 // ============================================================
 // HEALTH CHECK
