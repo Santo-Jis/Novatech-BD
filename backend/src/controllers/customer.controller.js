@@ -263,6 +263,23 @@ const createCustomer = async (req, res) => {
             && parsedLat >= -90  && parsedLat <= 90
             && parsedLng >= -180 && parsedLng <= 180;
 
+        // ── ডিফল্ট ক্রেডিট লিমিট — Admin সেটিংস থেকে পড়ো ──
+        let defaultCreditLimit = 0;
+        try {
+            const settingRes = await query(
+                `SELECT value FROM system_settings WHERE key = 'default_credit_limit' LIMIT 1`
+            );
+            if (settingRes.rows.length > 0) {
+                defaultCreditLimit = parseFloat(settingRes.rows[0].value) || 0;
+            }
+        } catch { /* সমস্যা হলে 0 দিয়ে চলবে */ }
+
+        // SR/Worker role হলে default-এর বেশি credit limit সেট করতে পারবে না
+        let finalCreditLimit = credit_limit ? parseFloat(credit_limit) : defaultCreditLimit;
+        if (req.user.role === 'worker' || req.user.role === 'supervisor') {
+            finalCreditLimit = Math.min(finalCreditLimit, defaultCreditLimit);
+        }
+
         let result;
         if (hasValidCoords) {
             result = await query(
@@ -278,8 +295,7 @@ const createCustomer = async (req, res) => {
                     business_type || null, whatsapp || null,
                     sms_phone || null, email || null,
                     route_id || null,
-                    credit_limit ? parseFloat(credit_limit) : 5000,
-                    parsedLng, parsedLat,  // ST_MakePoint(lng, lat)
+                    finalCreditLimit,
                     req.user.id
                 ]
             );
@@ -296,7 +312,7 @@ const createCustomer = async (req, res) => {
                     business_type || null, whatsapp || null,
                     sms_phone || null, email || null,
                     route_id || null,
-                    credit_limit ? parseFloat(credit_limit) : 5000,
+                    finalCreditLimit,
                     req.user.id
                 ]
             );
@@ -1098,5 +1114,64 @@ module.exports = {
     sendEmailVerifyOTP,
     confirmEmailVerifyOTP,
     updateVisitOrder,
-    getMyPendingReturnRequests
+    getMyPendingReturnRequests,
+    getCustomerCreditAlert
+};
+
+// ============================================================
+// CREDIT ALERT — Sales Form-এ বাকির সতর্কতা
+// GET /api/customers/:id/credit-alert
+// ============================================================
+const getCustomerCreditAlert = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(id)) {
+            return res.status(400).json({ success: false, message: 'অবৈধ ID।' });
+        }
+
+        const custResult = await query(
+            `SELECT id, shop_name, owner_name, current_credit, credit_limit, credit_balance
+             FROM customers WHERE id = $1`,
+            [id]
+        );
+        if (custResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
+        }
+
+        const customer = custResult.rows[0];
+        const currentCredit = parseFloat(customer.current_credit || 0);
+
+        if (currentCredit <= 0) {
+            return res.status(200).json({
+                success: true, has_due: false,
+                customer: { shop_name: customer.shop_name, owner_name: customer.owner_name,
+                    current_credit: 0, credit_limit: parseFloat(customer.credit_limit || 0),
+                    credit_balance: parseFloat(customer.credit_balance || 0) },
+                due_sales: []
+            });
+        }
+
+        const salesResult = await query(
+            `SELECT st.id AS sale_id, st.invoice_number, st.created_at,
+                    st.net_amount, st.credit_used, st.payment_method,
+                    u.name_bn AS sr_name, u.id AS sr_id
+             FROM sales_transactions st
+             JOIN users u ON st.worker_id = u.id
+             WHERE st.customer_id = $1 AND st.payment_method = 'credit' AND st.credit_used > 0
+             ORDER BY st.created_at DESC LIMIT 20`,
+            [id]
+        );
+
+        return res.status(200).json({
+            success: true, has_due: true,
+            customer: { shop_name: customer.shop_name, owner_name: customer.owner_name,
+                current_credit: currentCredit, credit_limit: parseFloat(customer.credit_limit || 0),
+                credit_balance: parseFloat(customer.credit_balance || 0) },
+            due_sales: salesResult.rows
+        });
+    } catch (error) {
+        console.error('❌ Credit Alert Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
 };
