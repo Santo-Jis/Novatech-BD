@@ -256,6 +256,7 @@ const PUBLIC_SETTINGS_KEYS = [
     'attendance_late_threshold',
     'commission_slab',
     'max_credit_limit',
+    'default_credit_limit',
 ];
 
 const getPublicSettings = async (req, res) => {
