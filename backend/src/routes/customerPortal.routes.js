@@ -194,11 +194,11 @@ router.post('/resolve-link', resolveLink);
 router.get('/verify-token', verifyPortalToken);
 
 // Google OAuth → email lock + device whitelist-এ add
-// POST /api/portal/google-auth  { google_token, portal_token, device_id }
+// POST /api/portal/google-auth  { google_token, link_token, device_id }
 router.post('/google-auth', googleAuth);
 
 // Whitelisted device-এ Google ছাড়া login
-// POST /api/portal/device-login  { portal_token, device_id }
+// POST /api/portal/device-login  { link_token, device_id }
 router.post('/device-login', deviceLogin);
 
 // ============================================================
