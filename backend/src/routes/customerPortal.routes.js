@@ -6,6 +6,7 @@
 const express    = require('express');
 const router     = express.Router();
 const jwt        = require('jsonwebtoken');
+const { getRedisClient } = require('../config/redis');
 
 const {
     sendPortalLink,
@@ -53,31 +54,40 @@ const { customerAiChat, getCustomerChatHistory } = require('../controllers/custo
 const { query }         = require('../config/db');
 
 // ============================================================
-// PORTAL AUTH CACHE
-// Redis নেই — in-process Map দিয়ে TTL cache।
+// PORTAL AUTH CACHE — Redis-backed, in-memory fallback
 //
-// key   → customer_id
-// value → { token_version, cachedAt }
-// TTL   → 60 সেকেন্ড
+// key   → portal_auth:{customer_id}
+// value → JSON { token_version, cachedAt }
+// TTL   → 60 সেকেন্ড (Redis EX)
 //
-// Memory: ~150 bytes/entry × ১০,০০০ customer = ~1.5 MB — safe।
+// Multi-instance safe: Redis থাকলে সব instance একই cache দেখে।
+// Redis না থাকলে (REDIS_URL নেই) in-memory fallback — single
+// instance-এ কাজ করে, redis.js-এর existing pattern অনুযায়ী।
 // ============================================================
-const PORTAL_AUTH_CACHE_TTL_MS = 60 * 1000;
-const portalAuthCache = new Map();
+const PORTAL_CACHE_TTL_SEC = 60;
+const PORTAL_CACHE_PREFIX  = 'portal_auth:';
 
-const getCached = (customerId) => {
-    const entry = portalAuthCache.get(customerId);
-    if (!entry) return null;
-    if (Date.now() - entry.cachedAt > PORTAL_AUTH_CACHE_TTL_MS) {
-        portalAuthCache.delete(customerId);
-        return null;
+const getCached = async (customerId) => {
+    try {
+        const client = await getRedisClient();
+        const raw = await client.get(`${PORTAL_CACHE_PREFIX}${customerId}`);
+        if (!raw) return null;
+        return JSON.parse(raw);
+    } catch (err) {
+        console.error('portalAuth cache GET error:', err.message);
+        return null; // cache miss — DB fallback চলবে
     }
-    return entry;
 };
 
 // নতুন লিংক পাঠালে বা admin deactivate করলে বাতিল করুন
-const invalidatePortalAuthCache = (customerId) => {
-    portalAuthCache.delete(customerId);
+const invalidatePortalAuthCache = async (customerId) => {
+    try {
+        const client = await getRedisClient();
+        await client.del(`${PORTAL_CACHE_PREFIX}${customerId}`);
+    } catch (err) {
+        console.error('portalAuth cache DEL error:', err.message);
+        // DEL fail হলেও fatal নয় — পরের request DB থেকে নেবে
+    }
 };
 
 // ── Portal JWT Middleware ────────────────────────────────────
@@ -108,8 +118,9 @@ const portalAuth = async (req, res, next) => {
         const customerId = decoded.customer_id;
         const jwtVersion = decoded.token_version || 1;
 
-        // Cache-first — hit হলে DB query নেই
-        let cached = getCached(customerId);
+        // Cache-first — hit হলে DB query নেই।
+        // Redis থাকলে সব instance একই entry দেখে → multi-instance safe।
+        let cached = await getCached(customerId);
 
         if (!cached) {
             try {
@@ -130,7 +141,19 @@ const portalAuth = async (req, res, next) => {
 
                 const currentVersion = authCheck.rows[0].current_version || 1;
                 cached = { token_version: currentVersion, cachedAt: Date.now() };
-                portalAuthCache.set(customerId, cached);
+
+                // Redis-এ write — TTL দিয়ে auto-expire, সব instance দেখবে
+                try {
+                    const client = await getRedisClient();
+                    await client.set(
+                        `${PORTAL_CACHE_PREFIX}${customerId}`,
+                        JSON.stringify(cached),
+                        { EX: PORTAL_CACHE_TTL_SEC }
+                    );
+                } catch (cacheErr) {
+                    console.error('portalAuth cache SET error:', cacheErr.message);
+                    // write fail হলেও চলবে — next request আবার DB থেকে নেবে
+                }
 
             } catch (dbErr) {
                 console.error('❌ portalAuth DB check error:', dbErr.message);
@@ -139,7 +162,7 @@ const portalAuth = async (req, res, next) => {
         }
 
         if (jwtVersion !== cached.token_version) {
-            invalidatePortalAuthCache(customerId);
+            await invalidatePortalAuthCache(customerId);
             return res.status(401).json({
                 success:    false,
                 message:    'নতুন লিংক ইস্যু হয়েছে। পুনরায় লগইন করুন।',
