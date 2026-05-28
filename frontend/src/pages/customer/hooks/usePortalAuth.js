@@ -1,5 +1,14 @@
 // hooks/usePortalAuth.js
 // Authentication, dashboard loading, notifications, push permission — সব এখানে
+//
+// ✅ FIX: URL parameter mismatch সংশোধন
+//   আগে: searchParams.get('token')  → সবসময় null
+//   এখন: searchParams.get('r')      → redirect_id সঠিকভাবে পড়া হচ্ছে
+//
+// ✅ FIX: Missing resolve-link step যোগ করা হয়েছে
+//   আগে: redirect_id দিয়ে সরাসরি verify-token call → কাজ করত না
+//   এখন: redirect_id → POST /portal/resolve-link → link_token পাওয়া
+//         → তারপর link_token দিয়ে verify-token / device-login / google-auth
 
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -12,7 +21,9 @@ import {
 
 export function usePortalAuth(defaultTab = 'summary') {
   const [searchParams] = useSearchParams()
-  const portalToken    = searchParams.get('token')
+
+  // ✅ FIX: 'token' → 'r'  (backend sendPortalLink পাঠায় ?r=<redirectId>)
+  const redirectId = searchParams.get('r')
 
   const [phase,       setPhase]       = useState('loading')
   const portalJWTRef = useRef(null)  // BUG FIX: stale closure এড়াতে latest JWT ref
@@ -22,6 +33,11 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [activeTab,   setActiveTab]   = useState(defaultTab)
   const [error,       setError]       = useState('')
   const [loggingIn,   setLoggingIn]   = useState(false)
+
+  // ── Resolve করা link_token (5-মিনিট one-time token) ──────────
+  // redirect_id → resolve-link → link_token
+  // এই link_token দিয়ে verify-token / device-login / google-auth call হবে
+  const linkTokenRef = useRef(null)
 
   // ── Notification state ──────────────────────────────────────
   const [notifications,  setNotifications]  = useState([])
@@ -246,12 +262,12 @@ export function usePortalAuth(defaultTab = 'summary') {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.message || 'Download failed')
       }
-      const blob = await res.blob()
-      const url  = URL.createObjectURL(blob)
-      const a    = document.createElement('a')
-      a.href     = url
+      const blob  = await res.blob()
+      const url   = URL.createObjectURL(blob)
+      const a     = document.createElement('a')
+      a.href      = url
       const label = stmtFrom && stmtTo ? `${stmtFrom}_to_${stmtTo}` : 'full'
-      a.download = `statement_${label}.pdf`
+      a.download  = `statement_${label}.pdf`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -287,7 +303,6 @@ export function usePortalAuth(defaultTab = 'summary') {
   const handleTabChange = (tabId) => {
     setActiveTab(tabId)
     if (tabId === 'invoices' && invoices.length === 0 && !invoiceLoading) {
-      // BUG FIX: portalJWTRef.current ব্যবহার — stale closure এড়াতে
       loadInvoices(portalJWTRef.current || portalJWT, 1, {})
     }
   }
@@ -320,11 +335,17 @@ export function usePortalAuth(defaultTab = 'summary') {
       }
 
       const deviceId = await getDeviceFingerprint()
+
+      // ✅ FIX: portal_token-এর বদলে link_token ব্যবহার
+      // linkTokenRef.current — resolve-link step-এ পাওয়া one-time token
+      const linkToken = linkTokenRef.current
+      if (!linkToken) throw new Error('লিংক token পাওয়া যায়নি। পুনরায় লিংকে ক্লিক করুন।')
+
       const data = await portalFetch('/portal/google-auth', {
         method: 'POST',
         body: JSON.stringify({
           google_token: access_token,
-          portal_token: portalToken,
+          link_token:   linkToken,   // ✅ FIX: portal_token → link_token
           device_id:    deviceId,
         })
       })
@@ -346,23 +367,46 @@ export function usePortalAuth(defaultTab = 'summary') {
     const init = async () => {
       const deviceId = await getDeviceFingerprint()
 
-      if (portalToken) {
+      if (redirectId) {
+        // ✅ FIX: Step 1 — redirect_id → resolve-link → link_token
+        // Backend architecture: URL-এ শুধু redirect_id, actual token কখনো URL-এ নেই
+        // এই POST call না করলে link_token পাওয়া যাবে না এবং পরের কোনো step কাজ করবে না
+        let linkToken
+        let resolvedInfo
+        try {
+          const resolveData = await portalFetch('/portal/resolve-link', {
+            method: 'POST',
+            body: JSON.stringify({ redirect_id: redirectId })
+          })
+          linkToken    = resolveData.data.link_token
+          resolvedInfo = resolveData.data
+          linkTokenRef.current = linkToken
+        } catch (err) {
+          setError(err.message || 'লিংকটি পাওয়া যায়নি বা মেয়াদ শেষ হয়েছে।')
+          setPhase('invalid')
+          return
+        }
+
+        // ✅ FIX: Step 2 — link_token দিয়ে verify-token call
+        // আগে ভুলভাবে portal_token দিয়ে call হত, যেটা URL-এ ছিলই না
         try {
           const data = await portalFetch(
-            `/portal/verify-token?token=${portalToken}&device_id=${encodeURIComponent(deviceId)}`
+            `/portal/verify-token?token=${linkToken}&device_id=${encodeURIComponent(deviceId)}`
           )
           const info = data.data
           setTokenInfo(info)
 
           if (info.can_skip_google) {
+            // ✅ FIX: device-login-এও link_token ব্যবহার
             try {
               const loginData = await portalFetch('/portal/device-login', {
                 method: 'POST',
-                body: JSON.stringify({ portal_token: portalToken, device_id: deviceId })
+                body: JSON.stringify({ link_token: linkToken, device_id: deviceId })
               })
               const jwt        = loginData.data.portal_jwt
               const customerId = loginData.data.customer?.id
               if (customerId) storageSet(getStorageKey(customerId), jwt)
+              portalJWTRef.current = jwt
               setPortalJWT(jwt)
               await loadDashboard(jwt)
             } catch {
@@ -371,8 +415,10 @@ export function usePortalAuth(defaultTab = 'summary') {
             return
           }
 
+          // Google account আগে bind হয়েছে কিনা সেটা resolvedInfo থেকেও পাওয়া যায়
           const savedJWT = storageGet(getStorageKey(info.customer_id))
           if (savedJWT) {
+            portalJWTRef.current = savedJWT
             setPortalJWT(savedJWT)
             await loadDashboard(savedJWT)
           } else {
@@ -389,7 +435,7 @@ export function usePortalAuth(defaultTab = 'summary') {
         return
       }
 
-      // URL-এ token নেই → sessionStorage চেক
+      // URL-এ 'r' নেই → sessionStorage চেক
       const allKeys = storageKeys()
       if (allKeys.length > 0) {
         const savedJWT = storageGet(allKeys[0])
@@ -405,7 +451,7 @@ export function usePortalAuth(defaultTab = 'summary') {
       setPhase('invalid')
     }
     init()
-  }, [portalToken])
+  }, [redirectId])
 
   return {
     // phase & auth
