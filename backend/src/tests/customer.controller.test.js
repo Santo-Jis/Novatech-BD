@@ -98,7 +98,7 @@ const workerUser  = { id: 'worker-uuid-1',  role: 'worker',  name_bn: 'এসআ
 
 // Sample customer row (DB থেকে আসার মতো)
 const sampleCustomer = {
-    id:              'cust-uuid-1',
+    id:              'a1b2c3d4-e5f6-4789-abcd-ef1234567890',
     customer_code:   'C-2024-001',
     shop_name:       'আলীর স্টোর',
     owner_name:      'আলী হোসেন',
@@ -106,7 +106,7 @@ const sampleCustomer = {
     whatsapp:        '01700000001',
     sms_phone:       '01700000001',
     email:           'ali@example.com',
-    route_id:        'route-uuid-1',
+    route_id:        'b2c3d4e5-f6a7-4890-bcde-f12345678901',
     credit_limit:    5000,
     current_credit:  1500,
     credit_balance:  3500,
@@ -244,7 +244,7 @@ describe('getCustomer — একটি কাস্টমারের তথ্�
     test('কাস্টমার পাওয়া গেলে 200', async () => {
         query.mockResolvedValueOnce({ rows: [sampleCustomer] });
 
-        const req = { params: { id: 'cust-uuid-1' }, user: adminUser };
+        const req = { params: { id: 'a1b2c3d4-e5f6-4789-abcd-ef1234567890' }, user: adminUser };
         const res = mockRes();
         await getCustomer(req, res);
 
@@ -257,7 +257,7 @@ describe('getCustomer — একটি কাস্টমারের তথ্�
     test('কাস্টমার না পাওয়া গেলে 404', async () => {
         query.mockResolvedValueOnce({ rows: [] });
 
-        const req = { params: { id: 'non-existent' }, user: adminUser };
+        const req = { params: { id: 'a1b2c3d4-e5f6-4789-abcd-ef1234567891' }, user: adminUser };
         const res = mockRes();
         await getCustomer(req, res);
 
@@ -266,10 +266,10 @@ describe('getCustomer — একটি কাস্টমারের তথ্�
 
     test('Manager — নিজের রুটের কাস্টমার দেখতে পাবে', async () => {
         query
-            .mockResolvedValueOnce({ rows: [{ ...sampleCustomer, route_id: 'route-uuid-1' }] })
-            .mockResolvedValueOnce({ rows: [{ id: 'route-uuid-1' }] }); // route check success
+            .mockResolvedValueOnce({ rows: [{ ...sampleCustomer, route_id: 'b2c3d4e5-f6a7-4890-bcde-f12345678901' }] })
+            .mockResolvedValueOnce({ rows: [{ id: 'b2c3d4e5-f6a7-4890-bcde-f12345678901' }] }); // route check success
 
-        const req = { params: { id: 'cust-uuid-1' }, user: managerUser };
+        const req = { params: { id: 'a1b2c3d4-e5f6-4789-abcd-ef1234567890' }, user: managerUser };
         const res = mockRes();
         await getCustomer(req, res);
 
@@ -278,10 +278,10 @@ describe('getCustomer — একটি কাস্টমারের তথ্�
 
     test('Manager — অন্য রুটের কাস্টমার → 403', async () => {
         query
-            .mockResolvedValueOnce({ rows: [{ ...sampleCustomer, route_id: 'route-other' }] })
+            .mockResolvedValueOnce({ rows: [{ ...sampleCustomer, route_id: 'c3d4e5f6-a7b8-4901-cdef-012345678902' }] })
             .mockResolvedValueOnce({ rows: [] }); // route check fails
 
-        const req = { params: { id: 'cust-uuid-1' }, user: managerUser };
+        const req = { params: { id: 'a1b2c3d4-e5f6-4789-abcd-ef1234567890' }, user: managerUser };
         const res = mockRes();
         await getCustomer(req, res);
 
@@ -294,7 +294,7 @@ describe('getCustomer — একটি কাস্টমারের তথ্�
     test('DB error → 500', async () => {
         query.mockRejectedValueOnce(new Error('timeout'));
 
-        const req = { params: { id: 'cust-uuid-1' }, user: adminUser };
+        const req = { params: { id: 'a1b2c3d4-e5f6-4789-abcd-ef1234567890' }, user: adminUser };
         const res = mockRes();
         await getCustomer(req, res);
 
@@ -703,9 +703,18 @@ describe('collectCredit — বাকি আদায়', () => {
     });
 
     test('কাস্টমার না পেলে 404', async () => {
+        const { withTransaction } = require('../config/db');
+        // idempotency check — not duplicate
         query.mockResolvedValueOnce({ rows: [] });
+        // withTransaction: client.query → customer not found
+        withTransaction.mockImplementationOnce(async (cb) => {
+            const mockClient = {
+                query: jest.fn().mockResolvedValueOnce({ rows: [] }), // customer not found
+            };
+            await cb(mockClient);
+        });
 
-        const req = { params: { id: 'ghost' }, body: { amount: 500 }, user: workerUser };
+        const req = { params: { id: 'a1b2c3d4-e5f6-4789-abcd-ef1234567890' }, body: { amount: 500, idempotency_key: 'idem-test-404' }, user: workerUser };
         const res = mockRes();
         await collectCredit(req, res);
 
@@ -713,13 +722,22 @@ describe('collectCredit — বাকি আদায়', () => {
     });
 
     test('current_credit এর বেশি amount দিলে 400', async () => {
-        query.mockResolvedValueOnce({
-            rows: [{ shop_name: 'আলীর স্টোর', current_credit: '1000' }],
+        const { withTransaction } = require('../config/db');
+        // idempotency check — not duplicate
+        query.mockResolvedValueOnce({ rows: [] });
+        // withTransaction: amount > current_credit → throw
+        withTransaction.mockImplementationOnce(async (cb) => {
+            const mockClient = {
+                query: jest.fn().mockResolvedValueOnce({
+                    rows: [{ shop_name: 'আলীর স্টোর', current_credit: '1000' }],
+                }),
+            };
+            await cb(mockClient);
         });
 
         const req = {
-            params: { id: 'cust-uuid-1' },
-            body:   { amount: 2000 }, // বাকির বেশি
+            params: { id: 'a1b2c3d4-e5f6-4789-abcd-ef1234567890' },
+            body:   { amount: 2000, idempotency_key: 'idem-test-over' }, // বাকির বেশি
             user:   workerUser,
         };
         const res = mockRes();
@@ -732,32 +750,48 @@ describe('collectCredit — বাকি আদায়', () => {
     });
 
     test('ঠিক current_credit পরিমাণ → 200', async () => {
-        query
+        const { withTransaction } = require('../config/db');
+        // idempotency check — not duplicate
+        query.mockResolvedValueOnce({ rows: [] });
+        // withTransaction: success
+        const mockClientQuery = jest.fn()
             .mockResolvedValueOnce({ rows: [{ shop_name: 'আলীর স্টোর', current_credit: '1000' }] })
-            .mockResolvedValueOnce({ rows: [] }); // INSERT credit_payments
+            .mockResolvedValueOnce({ rows: [] }); // INSERT
+        withTransaction.mockImplementationOnce(async (cb) => {
+            const mockClient = { query: mockClientQuery };
+            await cb(mockClient);
+        });
 
         const req = {
-            params: { id: 'cust-uuid-1' },
-            body:   { amount: 1000, notes: 'সম্পূর্ণ পরিশোধ' },
+            params: { id: 'a1b2c3d4-e5f6-4789-abcd-ef1234567890' },
+            body:   { amount: 1000, notes: 'সম্পূর্ণ পরিশোধ', idempotency_key: 'idem-test-full' },
             user:   workerUser,
         };
         const res = mockRes();
         await collectCredit(req, res);
 
         expect(res.status).toHaveBeenCalledWith(200);
-        expect(query).toHaveBeenCalledTimes(2);
-        const insertSql = query.mock.calls[1][0];
-        expect(insertSql).toContain('credit_payments');
+        // INSERT query client.query-তে হয়েছে
+        expect(mockClientQuery.mock.calls[1][0]).toContain('credit_payments');
     });
 
     test('আংশিক payment (কম amount) → 200', async () => {
-        query
-            .mockResolvedValueOnce({ rows: [{ shop_name: 'দোকান', current_credit: '5000' }] })
-            .mockResolvedValueOnce({ rows: [] });
+        const { withTransaction } = require('../config/db');
+        // idempotency check — not duplicate
+        query.mockResolvedValueOnce({ rows: [] });
+        // withTransaction: success
+        withTransaction.mockImplementationOnce(async (cb) => {
+            const mockClient = {
+                query: jest.fn()
+                    .mockResolvedValueOnce({ rows: [{ shop_name: 'দোকান', current_credit: '5000' }] })
+                    .mockResolvedValueOnce({ rows: [] }), // INSERT
+            };
+            await cb(mockClient);
+        });
 
         const req = {
-            params: { id: 'cust-uuid-1' },
-            body:   { amount: 500 },
+            params: { id: 'a1b2c3d4-e5f6-4789-abcd-ef1234567890' },
+            body:   { amount: 500, idempotency_key: 'idem-test-partial' },
             user:   workerUser,
         };
         const res = mockRes();
