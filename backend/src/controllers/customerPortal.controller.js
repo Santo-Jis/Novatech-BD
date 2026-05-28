@@ -240,12 +240,15 @@ const verifyPortalToken = async (req, res) => {
             return res.status(400).json({ success: false, message: 'token দেওয়া হয়নি।' });
         }
 
+        // ✅ FIX: link_token দিয়ে lookup (master token কখনো client-এ যায় না)
+        // link_token_expires_at চেক — ৫ মিনিট TTL enforce
         const result = await query(
             `SELECT cpt.customer_id, cpt.expires_at, cpt.bound_email,
                     c.shop_name, c.owner_name, c.customer_code
              FROM customer_portal_tokens cpt
              JOIN customers c ON cpt.customer_id = c.id
-             WHERE cpt.token = $1
+             WHERE cpt.link_token = $1
+               AND cpt.link_token_expires_at > NOW()
                AND cpt.expires_at > NOW()
                AND c.is_active = true`,
             [token]
@@ -417,30 +420,36 @@ const deviceLogin = async (req, res) => {
 // ============================================================
 // 4. GOOGLE OAUTH CALLBACK
 // POST /api/portal/google-auth
-// body: { google_token, portal_token, device_id }
+// body: { google_token, link_token, device_id }
 // প্রথমবার: email lock + device whitelist-এ add
 // পরের device: same email verify + device whitelist-এ add
+// ✅ FIX: portal_token → link_token (one-time, 5-min TTL)
+//         DB-তে link_token দিয়ে lookup, ব্যবহারের পর NULL করা হয়
 // ============================================================
 const googleAuth = async (req, res) => {
     try {
-        const { google_token, portal_token, device_id } = req.body;
+        const { google_token, link_token, device_id } = req.body;
 
-        if (!google_token || !portal_token) {
-            return res.status(400).json({ success: false, message: 'Google token এবং portal token দেওয়া হয়নি।' });
+        if (!google_token || !link_token) {
+            return res.status(400).json({ success: false, message: 'Google token এবং link token দেওয়া হয়নি।' });
         }
 
         if (!device_id) {
             return res.status(400).json({ success: false, message: 'Device ID পাওয়া যায়নি।' });
         }
 
-        // Portal token যাচাই + existing info
+        // ✅ FIX: link_token দিয়ে lookup (master portal_token কখনো client-এ যায় না)
+        // link_token_expires_at চেক — ৫ মিনিট TTL enforce
         const tokenResult = await query(
             `SELECT cpt.*, c.id AS cid, c.shop_name, c.owner_name, c.customer_code,
                     c.email, c.whatsapp, c.current_credit, c.credit_limit, c.credit_balance
              FROM customer_portal_tokens cpt
              JOIN customers c ON cpt.customer_id = c.id
-             WHERE cpt.token = $1 AND cpt.expires_at > NOW()`,
-            [portal_token]
+             WHERE cpt.link_token = $1
+               AND cpt.link_token_expires_at > NOW()
+               AND cpt.expires_at > NOW()
+               AND c.is_active = true`,
+            [link_token]
         );
 
         if (tokenResult.rows.length === 0) {
@@ -528,14 +537,18 @@ const googleAuth = async (req, res) => {
         // ── প্রথমবার login → email lock + google_email সেট ───
         const isFirstLogin = !customerData.bound_email;
 
+        // ✅ FIX: customerData.token = master portal_token (DB থেকে আনা, client কখনো দেখেনি)
+        //         link_token single-use enforce — ব্যবহারের পরেই NULL করা হচ্ছে
         if (isFirstLogin) {
             await query(
                 `UPDATE customer_portal_tokens SET
-                    bound_email   = $1,
-                    last_login    = NOW(),
-                    google_email  = $2
+                    bound_email            = $1,
+                    last_login             = NOW(),
+                    google_email           = $2,
+                    link_token             = NULL,
+                    link_token_expires_at  = NULL
                  WHERE token = $3`,
-                [email.toLowerCase(), email.toLowerCase(), portal_token]
+                [email.toLowerCase(), email.toLowerCase(), customerData.token]
             );
 
             // কাস্টমারের email DB-তে সেভ (প্রথমবার — email ফিল্ড খালি থাকলে)
@@ -546,10 +559,12 @@ const googleAuth = async (req, res) => {
                 );
             }
         } else {
-            // পুনরায় login — শুধু last_login আপডেট
+            // পুনরায় login — last_login আপডেট + link_token single-use enforce
             await query(
-                'UPDATE customer_portal_tokens SET last_login = NOW() WHERE token = $1',
-                [portal_token]
+                `UPDATE customer_portal_tokens
+                 SET last_login = NOW(), link_token = NULL, link_token_expires_at = NULL
+                 WHERE token = $1`,
+                [customerData.token]
             );
         }
 
@@ -1321,27 +1336,6 @@ const getMyComplaints = async (req, res) => {
     }
 };
 
-module.exports = {
-    sendPortalLink,
-    resolveLink,
-    verifyPortalToken,
-    deviceLogin,
-    googleAuth,
-    listCustomerDevices,
-    revokeDevice,
-    revokeAllDevices,
-    getCustomerDashboard,
-    getCustomerInvoices,
-    getPaymentHistory,
-    getMonthlySummary,
-    getCreditOverview,
-    getCustomerStatement,
-    submitCreditLimitRequest,
-    getMyLimitRequests,
-    submitComplaint,
-    getMyComplaints,
-};
-
 // ============================================================
 // STATEMENT PDF DOWNLOAD
 // GET /api/portal/statement?from=2025-01-01&to=2025-12-31
@@ -1588,4 +1582,25 @@ const getCustomerStatement = async (req, res) => {
         console.error('❌ Statement PDF Error:', error.message);
         return res.status(500).json({ success: false, message: 'Statement তৈরি করতে সমস্যা হয়েছে।' });
     }
+};
+
+module.exports = {
+    sendPortalLink,
+    resolveLink,
+    verifyPortalToken,
+    deviceLogin,
+    googleAuth,
+    listCustomerDevices,
+    revokeDevice,
+    revokeAllDevices,
+    getCustomerDashboard,
+    getCustomerInvoices,
+    getPaymentHistory,
+    getMonthlySummary,
+    getCreditOverview,
+    getCustomerStatement,
+    submitCreditLimitRequest,
+    getMyLimitRequests,
+    submitComplaint,
+    getMyComplaints,
 };
