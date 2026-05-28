@@ -174,6 +174,18 @@ export default function SalesForm() {
   const [submitting,   setSubmitting]   = useState(false)
   const [step,         setStep]         = useState('products')
 
+  // ── বাকি সতর্কতা (Credit Alert) ───────────────────────────
+  const [creditAlert,       setCreditAlert]       = useState(null)   // API response
+  const [showCreditModal,   setShowCreditModal]   = useState(false)  // modal দেখাবে কিনা
+  const [creditAlertDismissed, setCreditAlertDismissed] = useState(false)
+
+  // ── Credit Approval (Manager approval workflow) ────────────
+  const [creditSettings,    setCreditSettings]    = useState(null)   // { alert_threshold_pct, require_approval }
+  const [approvalStatus,    setApprovalStatus]    = useState('none') // 'none'|'pending'|'approved'|'rejected'
+  const [approvalRequestId, setApprovalRequestId] = useState(null)
+  const [requestingApproval, setRequestingApproval] = useState(false)
+  const [approvalNote,      setApprovalNote]      = useState('')
+
   // ── অনুমোদিত অর্ডার state ─────────────────────────────────
   const [approvedOrder,    setApprovedOrder]    = useState(null)   // approved order object
   const [orderCheckDone,   setOrderCheckDone]   = useState(false)  // check শেষ হয়েছে কিনা
@@ -200,6 +212,26 @@ export default function SalesForm() {
           saveCache(`customer_${customerId}`, custRes.data.data)
           saveCache('products_active', prodRes.data.data)
         } catch { /* cache দিয়েই চলবে */ }
+
+        // ── বাকি সতর্কতা লোড করো ─────────────────────────────
+        try {
+          const alertRes = await api.get(`/customers/${customerId}/credit-alert`)
+          if (alertRes.data.has_due) {
+            setCreditAlert(alertRes.data)
+            setShowCreditModal(true)
+          }
+        } catch { /* সাইলেন্টলি ignore করো */ }
+
+        // ── Credit settings + approval status লোড করো ────────
+        try {
+          const [settingsRes, approvalRes] = await Promise.all([
+            api.get('/credit-approvals/settings'),
+            api.get(`/credit-approvals/check/${customerId}`)
+          ])
+          setCreditSettings(settingsRes.data.data)
+          setApprovalStatus(approvalRes.data.status)
+          if (approvalRes.data.data?.id) setApprovalRequestId(approvalRes.data.data.id)
+        } catch { /* ignore — approval workflow optional */ }
 
         // ── আজকের অনুমোদিত অর্ডার চেক করো ──────────────────
         try {
@@ -258,9 +290,51 @@ export default function SalesForm() {
   const canCredit = paymentMethod === 'credit' &&
     parseFloat(customer?.current_credit || 0) + netAmount <= parseFloat(customer?.credit_limit || 0)
 
+  // approval দরকার কিনা: settings-এ require_approval=true AND credit limit-এ পৌঁছাবে
+  const needsApproval = creditSettings?.require_approval === true &&
+    paymentMethod === 'credit' && !canCredit
+
+  const sendApprovalRequest = async () => {
+    if (requestingApproval) return
+    setRequestingApproval(true)
+    try {
+      const res = await api.post('/credit-approvals/request', {
+        customer_id:      customerId,
+        requested_amount: netAmount,
+        note:             approvalNote || undefined
+      })
+      setApprovalStatus('pending')
+      setApprovalRequestId(res.data.request_id)
+      toast.success('✅ ম্যানেজারের কাছে approval request পাঠানো হয়েছে।', { duration: 4000 })
+    } catch (err) {
+      if (err.response?.status === 409) {
+        // ইতোমধ্যে pending
+        setApprovalStatus('pending')
+        toast('ইতোমধ্যে একটি pending request আছে। ম্যানেজারের অনুমোদনের অপেক্ষায় থাকুন।', { icon: 'ℹ️' })
+      } else {
+        toast.error(err.response?.data?.message || 'Request পাঠাতে সমস্যা হয়েছে।')
+      }
+    } finally {
+      setRequestingApproval(false)
+    }
+  }
+
   const submit = async () => {
     if (Object.keys(selected).length === 0) { toast.error('পণ্য সিলেক্ট করুন।'); return }
-    if (paymentMethod === 'credit' && !canCredit) {
+
+    // approval বাধ্যতামূলক এবং এখনো approved হয়নি
+    if (needsApproval && approvalStatus !== 'approved') {
+      if (approvalStatus === 'pending') {
+        toast('ম্যানেজারের অনুমোদনের অপেক্ষায়। অনুমোদন পেলে বিক্রয় করুন।', { icon: '⏳', duration: 3000 })
+      } else if (approvalStatus === 'rejected') {
+        toast.error('Manager approval reject করেছেন। নগদে বিক্রি করুন অথবা পরিমাণ কমান।')
+      } else {
+        toast.error('Credit limit অতিক্রম করবে। Manager approval নিন।')
+      }
+      return
+    }
+
+    if (paymentMethod === 'credit' && !canCredit && !needsApproval) {
       toast.error('ক্রেডিট লিমিট পার হবে। পেমেন্ট পদ্ধতি পরিবর্তন করুন।')
       return
     }
@@ -407,6 +481,101 @@ export default function SalesForm() {
 
   return (
     <div className="p-4 space-y-4 animate-fade-in pb-36">
+
+      {/* ── বাকি সতর্কতা Modal ─────────────────────────────── */}
+      {showCreditModal && creditAlert && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg bg-white rounded-t-3xl p-5 space-y-4 shadow-2xl animate-slide-up">
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-red-100 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0">⚠️</div>
+              <div>
+                <p className="font-bold text-gray-800 text-base">বাকির সতর্কতা!</p>
+                <p className="text-xs text-gray-500">{creditAlert.customer.shop_name} — {creditAlert.customer.owner_name}</p>
+              </div>
+            </div>
+
+            {/* বর্তমান বাকি summary */}
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-4">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-red-700 font-medium">মোট বকেয়া</span>
+                <span className="text-xl font-bold text-red-600">
+                  ৳{parseInt(creditAlert.customer.current_credit).toLocaleString()}
+                </span>
+              </div>
+              <div className="flex justify-between items-center mt-1">
+                <span className="text-xs text-gray-500">ক্রেডিট লিমিট</span>
+                <span className="text-xs text-gray-600 font-semibold">
+                  ৳{parseInt(creditAlert.customer.credit_limit).toLocaleString()}
+                </span>
+              </div>
+              {/* Progress bar */}
+              {creditAlert.customer.credit_limit > 0 && (
+                <div className="mt-2">
+                  <div className="w-full h-2 bg-red-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-red-500 rounded-full"
+                      style={{
+                        width: `${Math.min(100, Math.round((creditAlert.customer.current_credit / creditAlert.customer.credit_limit) * 100))}%`
+                      }}
+                    />
+                  </div>
+                  <p className="text-[10px] text-red-400 text-right mt-0.5">
+                    {Math.min(100, Math.round((creditAlert.customer.current_credit / creditAlert.customer.credit_limit) * 100))}% ব্যবহৃত
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* বাকির বিস্তারিত ইতিহাস */}
+            {creditAlert.due_sales && creditAlert.due_sales.length > 0 && (
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">বাকির ইতিহাস</p>
+                {creditAlert.due_sales.map((sale, idx) => (
+                  <div key={sale.sale_id || idx} className="bg-gray-50 rounded-xl px-3 py-2.5 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-gray-700">
+                        🧾 {sale.invoice_number || `#${String(sale.sale_id).slice(0, 8)}`}
+                      </p>
+                      <p className="text-[10px] text-gray-400 mt-0.5">
+                        📅 {new Date(sale.created_at).toLocaleDateString('bn-BD', {
+                          day: 'numeric', month: 'short', year: 'numeric'
+                        })}
+                      </p>
+                      <p className="text-[10px] text-blue-500 mt-0.5">
+                        👤 SR: {sale.sr_name}
+                      </p>
+                    </div>
+                    <div className="text-right flex-shrink-0">
+                      <p className="text-sm font-bold text-red-500">
+                        ৳{parseInt(sale.credit_used).toLocaleString()}
+                      </p>
+                      <span className="text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">বাকি</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => { setShowCreditModal(false); setCreditAlertDismissed(true) }}
+                className="flex-1 py-3 border-2 border-gray-200 rounded-2xl text-gray-600 font-semibold text-sm"
+              >
+                বুঝেছি, এগিয়ে যাই
+              </button>
+              <button
+                onClick={() => navigate(-1)}
+                className="flex-1 py-3 bg-red-500 text-white rounded-2xl font-semibold text-sm"
+              >
+                ফিরে যাই
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Customer header */}
       <div className="bg-white rounded-2xl p-3 border border-gray-100 shadow-sm flex items-center gap-3">
         <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-xl flex-shrink-0">🏪</div>
@@ -415,6 +584,25 @@ export default function SalesForm() {
           <p className="text-xs text-gray-500">{customer?.owner_name}</p>
         </div>
       </div>
+
+      {/* ── বাকি সতর্কতা Banner (modal dismiss-এর পরেও দেখাবে) ── */}
+      {creditAlertDismissed && creditAlert?.has_due && (
+        <button
+          onClick={() => setShowCreditModal(true)}
+          className="w-full flex items-center gap-3 bg-red-50 border border-red-200 rounded-2xl px-4 py-3 text-left active:scale-[0.98] transition-transform"
+        >
+          <span className="text-xl flex-shrink-0">🚨</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-red-700">বকেয়া আছে — ৳{parseInt(creditAlert.customer.current_credit).toLocaleString()}</p>
+            <p className="text-[10px] text-red-400 mt-0.5">
+              {creditAlert.due_sales?.length > 0
+                ? `সর্বশেষ বাকি: ${new Date(creditAlert.due_sales[0].created_at).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' })} — ${creditAlert.due_sales[0].sr_name}`
+                : 'বিস্তারিত দেখতে ট্যাপ করুন'}
+            </p>
+          </div>
+          <span className="text-red-400 text-xs">বিস্তারিত ›</span>
+        </button>
+      )}
 
       {/* অনুমোদিত অর্ডার ব্যাজ */}
       {approvedOrder && (
@@ -635,6 +823,83 @@ export default function SalesForm() {
               </div>
             )
           })()}
+
+          {/* ── Manager Approval Block ─────────────────────── */}
+          {needsApproval && (
+            <div className={`rounded-2xl border-2 p-4 space-y-3 transition-colors ${
+              approvalStatus === 'approved' ? 'bg-emerald-50 border-emerald-300' :
+              approvalStatus === 'rejected' ? 'bg-red-50 border-red-200' :
+              approvalStatus === 'pending'  ? 'bg-blue-50 border-blue-200' :
+              'bg-amber-50 border-amber-200'
+            }`}>
+              <div className="flex items-center gap-2">
+                <span className="text-lg">
+                  {approvalStatus === 'approved' ? '✅' :
+                   approvalStatus === 'rejected' ? '🚫' :
+                   approvalStatus === 'pending'  ? '⏳' : '🔒'}
+                </span>
+                <div>
+                  <p className={`text-sm font-bold ${
+                    approvalStatus === 'approved' ? 'text-emerald-700' :
+                    approvalStatus === 'rejected' ? 'text-red-700' :
+                    approvalStatus === 'pending'  ? 'text-blue-700' :
+                    'text-amber-700'
+                  }`}>
+                    {approvalStatus === 'approved' ? 'Manager অনুমোদন দিয়েছেন' :
+                     approvalStatus === 'rejected' ? 'Manager reject করেছেন' :
+                     approvalStatus === 'pending'  ? 'Approval-এর অপেক্ষায়...' :
+                     'Manager Approval প্রয়োজন'}
+                  </p>
+                  <p className="text-[11px] text-gray-500 mt-0.5">
+                    {approvalStatus === 'approved' ? 'এখন বাকিতে বিক্রয় করা যাবে।' :
+                     approvalStatus === 'rejected' ? 'নগদে বিক্রি করুন অথবা পরিমাণ কমান।' :
+                     approvalStatus === 'pending'  ? 'Manager অনুমোদন দিলে বিক্রয় করুন।' :
+                     'Credit limit অতিক্রম করবে। ম্যানেজারের অনুমোদন নিতে হবে।'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Approval request form */}
+              {approvalStatus === 'none' && (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="কারণ লিখুন (ঐচ্ছিক) — ম্যানেজার দেখবেন"
+                    value={approvalNote}
+                    onChange={e => setApprovalNote(e.target.value)}
+                    className="w-full px-3 py-2.5 text-xs border border-amber-200 rounded-xl focus:outline-none focus:border-amber-400 bg-white"
+                  />
+                  <button
+                    onClick={sendApprovalRequest}
+                    disabled={requestingApproval}
+                    className="w-full py-3 bg-amber-500 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-60 active:scale-[0.98]"
+                  >
+                    {requestingApproval
+                      ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      : '📨'
+                    }
+                    {requestingApproval ? 'পাঠানো হচ্ছে...' : 'ম্যানেজারের কাছে Approval চান'}
+                  </button>
+                </div>
+              )}
+
+              {approvalStatus === 'pending' && (
+                <div className="bg-blue-100 rounded-xl px-3 py-2.5 flex items-center gap-2">
+                  <span className="w-4 h-4 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin flex-shrink-0" />
+                  <p className="text-[11px] text-blue-700">ম্যানেজার অনুমোদন দিলে পেজ রিফ্রেশ করুন।</p>
+                </div>
+              )}
+
+              {approvalStatus === 'rejected' && (
+                <button
+                  onClick={() => { setApprovalStatus('none'); setApprovalNote('') }}
+                  className="w-full py-2.5 border border-red-200 rounded-xl text-xs text-red-600 font-medium"
+                >
+                  🔄 আবার request করুন
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Payment method */}
           <div className="space-y-2">
