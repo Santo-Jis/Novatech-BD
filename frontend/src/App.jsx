@@ -75,6 +75,7 @@ import ExpenseApprovals      from './pages/manager/ExpenseApprovals'
 import ReturnApprovals       from './pages/manager/ReturnApprovals'
 import ManagerPortalDevices  from './pages/manager/PortalDevices'
 import CommissionTeam        from './pages/manager/CommissionTeam'
+import ManagerCreditApprovals from './pages/manager/ManagerCreditApprovals'
 
 // Worker Pages
 import WorkerDashboard  from './pages/worker/Dashboard'
@@ -296,6 +297,7 @@ function AppWithPermissions() {
         <Route path="ai-chat"                    element={<AIChat />} />
         <Route path="notices"                    element={<NoticesView />} />
         <Route path="customer-requests"          element={<CustomerRequestsPage />} />
+        <Route path="credit-approvals"           element={<ManagerCreditApprovals />} />
       </Route>
 
       {/* ── WORKER ROUTES ── */}
