@@ -9,6 +9,17 @@
 const jwt = require('jsonwebtoken');
 
 // DB mock — middleware এ DB call নেই, তবু safe রাখতে
+jest.mock('../config/redis', () => ({
+    getRedisClient:  jest.fn().mockResolvedValue({
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn().mockResolvedValue('OK'),
+        del: jest.fn().mockResolvedValue(1),
+    }),
+    blockUserTokens: jest.fn().mockResolvedValue(undefined),
+    isUserBlocked:   jest.fn().mockResolvedValue(false),
+    unblockUser:     jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock('../config/db', () => ({
     query: jest.fn()
 }));
