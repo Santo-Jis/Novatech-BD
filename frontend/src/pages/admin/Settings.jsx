@@ -5,6 +5,7 @@ import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import toast from 'react-hot-toast'
 import { FiSave, FiPlus, FiTrash2, FiMessageSquare, FiCheckCircle, FiLoader, FiAlertCircle } from 'react-icons/fi'
+import AdminCreditSettings from './AdminCreditSettings'
 
 export default function AdminSettings() {
   const [settings,    setSettings]    = useState({})
@@ -399,6 +400,23 @@ export default function AdminSettings() {
               onChange={e => set('sms_late_template', e.target.value)}
             />
           </div>
+        </div>
+      </Card>
+
+      {/* Credit Alert Settings */}
+      <AdminCreditSettings />
+
+      {/* Default Credit Limit */}
+      <Card title="নতুন কাস্টমারের ডিফল্ট ক্রেডিট লিমিট">
+        <div className="space-y-3">
+          <p className="text-xs text-gray-400">নতুন কাস্টমার তৈরির সময় এই পরিমাণ credit limit স্বয়ংক্রিয়ভাবে সেট হবে। ০ রাখলে Manager আলাদাভাবে সেট না করা পর্যন্ত বাকি দেওয়া যাবে না।</p>
+          <Input
+            label="ডিফল্ট ক্রেডিট লিমিট (৳)"
+            type="number"
+            value={settings.default_credit_limit || '0'}
+            onChange={e => set('default_credit_limit', e.target.value)}
+            hint="০ = কোনো বাকি নেই, Manager সেট করবে"
+          />
         </div>
       </Card>
 
