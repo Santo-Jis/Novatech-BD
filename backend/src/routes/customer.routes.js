@@ -24,7 +24,8 @@ const {
     sendEmailVerifyOTP,
     confirmEmailVerifyOTP,
     updateVisitOrder,
-    getMyPendingReturnRequests
+    getMyPendingReturnRequests,
+    getCustomerCreditAlert
 } = require('../controllers/customer.controller');
 
 // ============================================================
@@ -71,6 +72,9 @@ router.post('/verify-email/confirm', auth, confirmEmailVerifyOTP);
 
 // নতুন কাস্টমার তৈরি
 router.post('/',    auth, canCreateCustomer, upload.single('shop_photo'), createCustomer);
+
+// কাস্টমারের বাকি সতর্কতা (Sales Form এ ব্যবহারের জন্য)
+router.get('/:id/credit-alert', auth, getCustomerCreditAlert);
 
 // একজনের বিস্তারিত
 router.get('/:id',  auth, getCustomer);
