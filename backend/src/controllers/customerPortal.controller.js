@@ -17,10 +17,12 @@ const crypto     = require('crypto');
 const axios      = require('axios');
 
 // ── portalAuth cache invalidation (circular require এড়াতে lazy load) ──
-const invalidateAuthCache = (customerId) => {
+// invalidatePortalAuthCache এখন async (Redis DEL) — await করা হচ্ছে।
+// fire-and-forget: caller await না করলেও চলে, error নিজেই log করে।
+const invalidateAuthCache = async (customerId) => {
     try {
         const { invalidatePortalAuthCache } = require('../routes/customerPortal.routes');
-        invalidatePortalAuthCache(customerId);
+        await invalidatePortalAuthCache(customerId);
     } catch { /* routes লোড না হলে silent fail */ }
 };
 
@@ -277,6 +279,7 @@ const verifyPortalToken = async (req, res) => {
         return res.status(200).json({
             success: true,
             data: {
+                customer_id:    record.customer_id,      // ✅ FIX: frontend storageKey তৈরিতে দরকার
                 shop_name:      record.shop_name,
                 owner_name:     record.owner_name,
                 customer_code:  record.customer_code,
@@ -467,19 +470,27 @@ const googleAuth = async (req, res) => {
 
             googleUser = userinfoRes.data;
 
-            // audience verify — এই app-এর Google Client ID-এর জন্য issued হতে হবে
+            // ✅ FIX: audience verify — hard fail, silent bypass নেই
+            // GOOGLE_CLIENT_ID ছাড়া যেকোনো app-এর valid Google token accept হয়ে যেত।
+            // validateEnv.js-এ এটি এখন REQUIRED — server startup-এই ধরা পড়বে।
+            // কিন্তু runtime-এও guard রাখা হয়েছে defence-in-depth হিসেবে।
             const expectedClientId = process.env.GOOGLE_CLIENT_ID;
-            if (expectedClientId) {
-                const aud = tokeninfoRes.data.aud || tokeninfoRes.data.azp || '';
-                if (aud !== expectedClientId) {
-                    console.warn(`❌ Google token aud mismatch: got "${aud}", expected "${expectedClientId}"`);
-                    return res.status(401).json({
-                        success: false,
-                        message: 'Google token অবৈধ — ভিন্ন app-এর token গ্রহণযোগ্য নয়।'
-                    });
-                }
-            } else {
-                console.warn('⚠️ GOOGLE_CLIENT_ID .env-এ নেই — aud check skip হচ্ছে।');
+            if (!expectedClientId) {
+                // validateEnv.js পাস করেও যদি কোনোভাবে এখানে আসে —
+                // silent bypass-এর চেয়ে server error অনেক ভালো
+                console.error('CRITICAL: GOOGLE_CLIENT_ID নেই — aud check করা সম্ভব নয়।');
+                return res.status(500).json({
+                    success: false,
+                    message: 'Server configuration error। Admin-কে জানান।'
+                });
+            }
+            const aud = tokeninfoRes.data.aud || tokeninfoRes.data.azp || '';
+            if (aud !== expectedClientId) {
+                console.warn(`❌ Google token aud mismatch: got "${aud}", expected "${expectedClientId}"`);
+                return res.status(401).json({
+                    success: false,
+                    message: 'Google token অবৈধ — ভিন্ন app-এর token গ্রহণযোগ্য নয়।'
+                });
             }
         } catch {
             return res.status(401).json({ success: false, message: 'Google যাচাই ব্যর্থ হয়েছে।' });
