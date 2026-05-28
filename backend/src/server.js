@@ -45,7 +45,7 @@ app.use(cors({
     },
     credentials: true,
     methods:        ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    allowedHeaders: ['Content-Type', 'Authorization']
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-api-secret']
 }));
 
 app.use(morgan(
@@ -146,6 +146,7 @@ const expenseRoutes             = require('./routes/expense.routes');
 const returnRoutes              = require('./routes/return.routes');
 const settingsRoutes            = require('./routes/settings.routes');   // ✅ public settings
 const creditApprovalRoutes      = require('./routes/creditApproval.routes'); // ✅ credit approval
+const jisAiRoutes               = require('./routes/jisai.routes');           // ✅ JIS-AI WhatsApp integration
 
 app.use('/api/auth',        loginLimiter, authRoutes);
 app.use('/api/portal',     loginLimiter, portalRoutes); // ✅ customer portal login-এও limiter
@@ -175,6 +176,7 @@ app.use('/api/expense',                 expenseRoutes);
 app.use('/api/settings',                settingsRoutes);       // ✅ public settings (expense limits etc.)
 app.use('/api/return',                  returnRoutes);
 app.use('/api/credit-approvals',        creditApprovalRoutes); // ✅ credit approval workflow
+jisAiRoutes(app);                                              // ✅ JIS-AI WhatsApp integration
 
 // ============================================================
 // HEALTH CHECK
