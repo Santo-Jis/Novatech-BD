@@ -92,6 +92,7 @@ const OPTIONAL = [
     { key: 'RENDER_EXTERNAL_URL',      feature: 'Keep-Alive Ping (Render)' },
     { key: 'FRONTEND_URL',             feature: 'CORS (default: localhost:3000)' },
     { key: 'CLAUDE_API_KEY',           feature: 'AI Insights (Claude)' },
+    { key: 'API_SECRET',               feature: 'JIS-AI WhatsApp Integration (x-api-secret)' },
 ];
 
 // placeholder যেগুলো .env.example-এ আছে — এগুলো দিয়ে production চালানো নিষিদ্ধ
