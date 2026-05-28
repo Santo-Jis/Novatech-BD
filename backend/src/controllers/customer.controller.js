@@ -1098,26 +1098,6 @@ const getMyPendingReturnRequests = async (req, res) => {
     }
 };
 
-module.exports = {
-    getCustomers,
-    getCustomer,
-    createCustomer,
-    updateCustomer,
-    getCustomerHistory,
-    setCreditLimit,
-    collectCredit,
-    getMyCustomerCount,
-    requestCustomerEdit,
-    getPendingCustomerEdits,
-    approveCustomerEdit,
-    rejectCustomerEdit,
-    sendEmailVerifyOTP,
-    confirmEmailVerifyOTP,
-    updateVisitOrder,
-    getMyPendingReturnRequests,
-    getCustomerCreditAlert
-};
-
 // ============================================================
 // CREDIT ALERT — Sales Form-এ বাকির সতর্কতা
 // GET /api/customers/:id/credit-alert
@@ -1174,4 +1154,24 @@ const getCustomerCreditAlert = async (req, res) => {
         console.error('❌ Credit Alert Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
+};
+
+module.exports = {
+    getCustomers,
+    getCustomer,
+    createCustomer,
+    updateCustomer,
+    getCustomerHistory,
+    setCreditLimit,
+    collectCredit,
+    getMyCustomerCount,
+    requestCustomerEdit,
+    getPendingCustomerEdits,
+    approveCustomerEdit,
+    rejectCustomerEdit,
+    sendEmailVerifyOTP,
+    confirmEmailVerifyOTP,
+    updateVisitOrder,
+    getMyPendingReturnRequests,
+    getCustomerCreditAlert
 };
