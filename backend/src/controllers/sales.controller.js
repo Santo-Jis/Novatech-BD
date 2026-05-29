@@ -1,6 +1,7 @@
 const { query, withTransaction } = require('../config/db');
 const { calcFromProduct }        = require('../services/price.utils');
 const { generateOTP }            = require('../config/encryption');
+const crypto                     = require('crypto');
 const { addLedgerEntry }         = require('./ledger.controller');
 const {
     generateInvoiceNumber,
@@ -13,6 +14,9 @@ const { uploadToCloudinary } = require('../services/employee.service');
 
 // Firebase নোটিফিকেশন
 const { firebaseNotify } = require('../services/firebase.notify');
+
+// WhatsApp Invoice Image
+const { sendInvoiceWhatsApp } = require('../services/invoiceWhatsapp.service');
 
 // ============================================================
 // CREATE VISIT
@@ -408,6 +412,8 @@ const createSale = async (req, res) => {
                 lockedOrderId = lockResult.rows[0].id;
             }
 
+            const verifyToken = crypto.randomBytes(32).toString('hex'); // 64-char unique token
+
             const result = await client.query(
                 `INSERT INTO sales_transactions
                  (worker_id, customer_id, visit_id, order_id,
@@ -416,8 +422,9 @@ const createSale = async (req, res) => {
                   replacement_items, replacement_value,
                   credit_balance_used, credit_balance_added,
                   invoice_number, otp_code, otp_expires_at,
+                  verify_token,
                   idempotency_key)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
                  RETURNING *`,
                 [
                     req.user.id, customer_id, visit_id || null, lockedOrderId,
@@ -427,6 +434,7 @@ const createSale = async (req, res) => {
                     JSON.stringify(processedReplacement), replacementValue,
                     creditBalanceUsed, creditBalanceAdded,
                     invoiceNumber, otp, otpExpiresAt,
+                    verifyToken,
                     idempotency_key || null
                 ]
             );
@@ -515,6 +523,17 @@ const createSale = async (req, res) => {
             .then(r => console.log('📄 Invoice SMS Fallback:', JSON.stringify(r.results)))
             .catch(e => console.error('⚠️ Invoice নোটিফিকেশন Error:', e.message));
 
+        // ✅ WhatsApp-এ Invoice ছবি পাঠাও (Puppeteer rendered PNG)
+        sendInvoiceWhatsApp(cust, saleResult, req.user, processedItems)
+            .then(r => {
+                if (r.success) {
+                    console.log(`📲 [InvoiceWA] ছবি পাঠানো সফল → ${cust.whatsapp || cust.sms_phone}`);
+                } else {
+                    console.warn(`⚠️ [InvoiceWA] পাঠানো যায়নি (${r.reason}) — ${saleResult.invoice_number}`);
+                }
+            })
+            .catch(e => console.error('❌ [InvoiceWA] Unexpected error:', e.message));
+
         // WhatsApp লিংক তৈরি
         const waLink = getInvoiceWhatsAppMessage(
             saleResult, cust, req.user, processedItems
@@ -560,6 +579,7 @@ const createSale = async (req, res) => {
                 discount_amount:      discountAmount,
                 credit_balance_used:  creditBalanceUsed,
                 credit_balance_added: creditBalanceAdded,
+                verify_link:       `${process.env.FRONTEND_URL || 'https://novatech.com'}/verify/${saleResult.verify_token}`,
                 whatsapp_link:     `https://wa.me/${(() => { const r = cust.whatsapp?.replace(/\D/g, '') || ''; return r.startsWith('880') ? r : '880' + r.replace(/^0/, ''); })()}?text=${encodeURIComponent(waLink)}`
             }
         });
@@ -636,6 +656,117 @@ const sendInvoice = async (req, res) => {
         console.error('❌ Send Invoice Error:', error.message);
         return res.status(500).json({ success: false, message: 'Invoice পাঠাতে সমস্যা হয়েছে।' });
     }
+};
+
+
+// ============================================================
+// VERIFY ORDER BY LINK
+// GET /api/sales/verify/:token
+// কাস্টমার WhatsApp লিংকে ট্যাপ করলে — auth লাগবে না
+// ============================================================
+
+const verifyOrderByLink = async (req, res) => {
+    try {
+        const { token } = req.params;
+        if (!token || token.length !== 64) {
+            return res.status(400).send(buildVerifyPage('error', 'লিংকটি সঠিক নয়।'));
+        }
+
+        const result = await query(
+            `SELECT st.id, st.invoice_number, st.net_amount, st.payment_method,
+                    st.otp_verified, st.verify_token_used, st.otp_expires_at,
+                    st.created_at, c.shop_name, c.owner_name
+             FROM sales_transactions st
+             JOIN customers c ON c.id = st.customer_id
+             WHERE st.verify_token = $1`,
+            [token]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).send(buildVerifyPage('error', 'লিংকটি বৈধ নয় বা মেয়াদ শেষ।'));
+        }
+
+        const sale = result.rows[0];
+
+        if (sale.otp_verified) {
+            return res.send(buildVerifyPage('already', sale));
+        }
+
+        if (sale.otp_expires_at && new Date() > new Date(sale.otp_expires_at)) {
+            return res.status(410).send(buildVerifyPage('expired', sale));
+        }
+
+        // ✅ Verify
+        await query(
+            `UPDATE sales_transactions SET otp_verified = true, verify_token_used = true WHERE id = $1`,
+            [sale.id]
+        );
+
+        console.log(`✅ [VerifyLink] → ${sale.invoice_number} (${sale.shop_name})`);
+        return res.send(buildVerifyPage('success', sale));
+
+    } catch (error) {
+        console.error('❌ Verify Link Error:', error.message);
+        return res.status(500).send(buildVerifyPage('error', 'সমস্যা হয়েছে। আবার চেষ্টা করুন।'));
+    }
+};
+
+// ─── Verification Result Page ────────────────────────────────
+const buildVerifyPage = (status, data) => {
+    const configs = {
+        success: { icon: '✅', color: '#059669', bg: '#ecfdf5', title: 'অর্ডার নিশ্চিত হয়েছে!', sub: 'আপনার ক্রয় সফলভাবে যাচাই হয়েছে।' },
+        already: { icon: '✅', color: '#2563eb', bg: '#eff6ff', title: 'আগেই যাচাই হয়েছে',      sub: 'এই অর্ডারটি আগেই নিশ্চিত করা হয়েছে।' },
+        expired: { icon: '⏰', color: '#d97706', bg: '#fffbeb', title: 'মেয়াদ শেষ',              sub: 'যাচাইয়ের সময় পেরিয়ে গেছে। SR-কে জানান।' },
+        error:   { icon: '❌', color: '#dc2626', bg: '#fef2f2', title: 'সমস্যা হয়েছে',           sub: typeof data === 'string' ? data : 'আবার চেষ্টা করুন।' },
+    };
+    const c = configs[status] || configs.error;
+    const paymentLabel = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
+    const hasData = data && typeof data === 'object' && data.invoice_number;
+
+    return `<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>NovaTech BD — অর্ডার যাচাই</title>
+<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Hind Siliguri','Segoe UI',sans-serif;background:linear-gradient(135deg,#0f172a,#1e3a8a);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:#fff;border-radius:24px;width:100%;max-width:380px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
+.hdr{background:linear-gradient(135deg,#0f172a,#1e3a8a);padding:22px 20px 18px;text-align:center}
+.hdr h3{color:#fff;font-size:17px;font-weight:800}.hdr p{color:rgba(255,255,255,0.45);font-size:11px;margin-top:3px}
+.body{padding:28px 22px;text-align:center}
+.ico{width:80px;height:80px;border-radius:50%;background:${c.bg};border:3px solid ${c.color}20;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:36px}
+.ttl{font-size:21px;font-weight:800;color:${c.color};margin-bottom:6px}
+.sub{font-size:13.5px;color:#6b7280;line-height:1.6}
+.det{margin-top:20px;background:#f8fafc;border-radius:14px;padding:14px;text-align:left}
+.row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
+.row:last-child{border-bottom:none}
+.lbl{color:#9ca3af}.val{font-weight:700;color:#1f2937}
+.amt{font-size:30px;font-weight:800;color:#1e3a8a;margin-top:16px}
+.ftr{background:#f8fafc;padding:14px 20px;text-align:center;font-size:11px;color:#9ca3af;border-top:1px solid #f1f5f9}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h3>NovaTech BD</h3><p>জানকি সিংহ রোড, বরিশাল</p></div>
+  <div class="body">
+    <div class="ico">${c.icon}</div>
+    <p class="ttl">${c.title}</p>
+    <p class="sub">${c.sub}</p>
+    ${hasData ? `
+    <div class="det">
+      <div class="row"><span class="lbl">Invoice</span><span class="val" style="font-family:monospace">${data.invoice_number}</span></div>
+      <div class="row"><span class="lbl">দোকান</span><span class="val">${data.shop_name}</span></div>
+      <div class="row"><span class="lbl">পেমেন্ট</span><span class="val">${paymentLabel[data.payment_method] || data.payment_method}</span></div>
+      <div class="row"><span class="lbl">তারিখ</span><span class="val">${new Date(data.created_at).toLocaleDateString('bn-BD',{day:'numeric',month:'long',year:'numeric'})}</span></div>
+    </div>
+    <p class="amt">৳${parseFloat(data.net_amount).toLocaleString()}</p>` : ''}
+  </div>
+  <div class="ftr">NovaTech BD (Ltd.) — এই পেজটি স্বয়ংক্রিয়ভাবে তৈরি হয়েছে</div>
+</div>
+</body></html>`;
 };
 
 // ============================================================
@@ -1389,6 +1520,7 @@ module.exports = {
     createSale,
     sendInvoice,
     verifyOTP,
+    verifyOrderByLink,
     skipOTPWithPhoto,
     getMySales,
     getTeamSales,
