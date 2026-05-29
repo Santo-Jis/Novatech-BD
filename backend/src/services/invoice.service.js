@@ -1,7 +1,59 @@
 const PDFDocument = require('pdfkit');
+const axios       = require('axios');
 const { generateOTP } = require('../config/encryption');
 const { sendOTP, sendInvoice: sendInvoiceSMS, getWhatsAppInvoiceLink } = require('./sms.service');
 const { sendOTPEmail, sendOTPWithInvoiceEmail, sendInvoiceEmail } = require('./email.service');
+
+// ─── WhatsApp Verify Link via Baileys ──────────────────────
+const BAILEYS_URL = process.env.BAILEYS_URL   || 'http://localhost:3001';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://novatech.com';
+const API_SECRET  = process.env.API_SECRET    || 'change-this-secret';
+
+const formatPhoneForWA = (phone) => {
+    if (!phone) return null;
+    let d = String(phone).replace(/\D/g, '');
+    if (d.startsWith('01') && d.length === 11) d = '880' + d;
+    if (d.startsWith('00')) d = d.slice(2);
+    return d;
+};
+
+// OTP-এর বদলে Verify Link পাঠাও WhatsApp-এ
+const sendVerifyLinkWhatsApp = async (phone, verifyToken, shopName, invoiceNumber, netAmount, expiryMinutes = 10) => {
+    const formattedPhone = formatPhoneForWA(phone);
+    if (!formattedPhone) return { success: false, reason: 'invalid_phone' };
+
+    const link = `${FRONTEND_URL}/verify/${verifyToken}`;
+
+    const message =
+        `🛒 *NovaTech BD — অর্ডার যাচাই করুন*\n` +
+        `━━━━━━━━━━━━━━━━\n` +
+        `🏪 দোকান: *${shopName}*\n` +
+        `🧾 Invoice: *${invoiceNumber}*\n` +
+        `💰 মোট: *৳${parseFloat(netAmount || 0).toLocaleString()}*\n` +
+        `\n` +
+        `নিচের লিংকে ট্যাপ করে অর্ডারটি নিশ্চিত করুন:\n` +
+        `${link}\n` +
+        `\n` +
+        `⏱️ মেয়াদ: ${expiryMinutes} মিনিট\n` +
+        `━━━━━━━━━━━━━━━━\n` +
+        `_NovaTech BD (Ltd.)_`;
+
+    try {
+        const res = await axios.post(
+            `${BAILEYS_URL}/send`,
+            { phone: formattedPhone, message },
+            { headers: { 'x-api-secret': API_SECRET }, timeout: 10_000 }
+        );
+        if (res.data?.success) {
+            console.log(`📲 [VerifyLink-WA] সফল → ${formattedPhone}`);
+            return { success: true };
+        }
+        return { success: false, reason: 'baileys_error', detail: res.data };
+    } catch (err) {
+        console.warn(`⚠️ [VerifyLink-WA] ব্যর্থ → ${formattedPhone}:`, err.message);
+        return { success: false, reason: err.code || 'request_error' };
+    }
+};
 
 // ============================================================
 // Invoice Number জেনারেশন
@@ -34,38 +86,53 @@ const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10, sale = 
     const phone = customer.whatsapp || customer.sms_phone;
     const email = customer.email;
 
-    const results = { email: null, sms: null };
+    const results = { email: null, sms: null, whatsapp: null };
     let anySent   = false;
 
-    // ── Email চেষ্টা — OTP + Invoice একসাথে ──
+    // ── ১. WhatsApp — Verify Link (সবার আগে) ──────────────────
+    if (phone && sale?.verify_token) {
+        results.whatsapp = await sendVerifyLinkWhatsApp(
+            phone,
+            sale.verify_token,
+            customer.shop_name,
+            sale.invoice_number,
+            sale.net_amount,
+            expiryMinutes
+        );
+        if (results.whatsapp?.success) {
+            anySent = true;
+            console.log(`📲 [VerifyLink] WhatsApp সফল → ${phone}`);
+        }
+    }
+
+    // ── ২. Email — Verify Link + Invoice একসাথে ─────────────────
     if (email) {
         try {
-            // sale তথ্য থাকলে combined email, না থাকলে শুধু OTP email
             if (sale && worker && items) {
                 results.email = await sendOTPWithInvoiceEmail(email, otp, expiryMinutes, sale, customer, worker, items);
             } else {
-                results.email = await sendOTPEmail(email, otp, customer.shop_name, expiryMinutes);
+                results.email = await sendOTPEmail(email, otp, customer.shop_name, expiryMinutes, sale?.verify_token || null);
             }
             if (results.email?.success && !results.email?.dev && !results.email?.disabled) {
                 anySent = true;
-                console.log(`📧 OTP+Invoice Email সফল → ${email}`);
+                console.log(`📧 [OTP] Email সফল → ${email}`);
             }
         } catch (err) {
-            console.error(`❌ OTP+Invoice Email ব্যর্থ → ${email}:`, err.message);
+            console.error(`❌ [OTP] Email ব্যর্থ → ${email}:`, err.message);
             results.email = { success: false, error: err.message };
         }
     }
 
-    // ── SMS চেষ্টা (Email না থাকলে বা fail হলে) ──
-    if (phone && (!anySent)) {
+    // ── ৩. SMS Fallback — WhatsApp ও Email দুটোই fail হলে ──────
+    if (phone && !anySent) {
         try {
             results.sms = await sendOTP(phone, otp, customer.shop_name);
             if (results.sms?.success) {
                 anySent = true;
-                console.log(`📱 OTP SMS সফল → ${phone}`);
+                console.log(`📱 [OTP] SMS সফল → ${phone}`);
             }
         } catch (err) {
-            console.error(`❌ OTP SMS ব্যর্থ → ${phone}:`, err.message);
+            console.error(`❌ [OTP] SMS ব্যর্থ → ${phone}:`, err.message);
             results.sms = { success: false, error: err.message };
         }
     }
