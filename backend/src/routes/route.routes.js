@@ -1,114 +1,106 @@
-const express  = require('express');
-const router   = express.Router();
-const { auth } = require('../middlewares/auth');
-const {
-    allowRoles,
-    canCreateRoute,
-    checkTeamAccess
-} = require('../middlewares/roleCheck');
+const express         = require('express');
+const router          = express.Router();
+const { auth }        = require('../middlewares/auth');
+const { allowRoles, checkTeamAccess } = require('../middlewares/roleCheck');
+const requireCheckin  = require('../middlewares/requireCheckin'); // ✅ নতুন
+const multer          = require('multer');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const {
-    getRoutes,
-    createRoute,
-    updateRoute,
-    deleteRoute,
-    assignWorkerToRoute,
-    getRouteWorkers,
-    getRouteCustomers,
-    getLiveRouteStatus,
-} = require('../controllers/route.controller');
+    createVisit,
+    createSale,
+    sendInvoice,
+    verifyOTP,
+    verifyOrderByLink,
+    skipOTPWithPhoto,
+    getMySales,
+    getTeamSales,
+    getTeamVisits,
+    getTodaySummary,
+    getSaleDetail,
+    getMyMonthlySales,
+    getMyVisitStats,
+    getVisitStatus,
+    uploadReceipt
+} = require('../controllers/sales.controller');
 
 // ============================================================
-// ROUTE ROUTES
-// Base: /api/routes
+// SALES ROUTES
+// Base: /api/sales
 // ============================================================
 
-// Pending routes list (specific routes before /:id)
-router.get('/pending/list', auth, allowRoles('admin', 'manager', 'accountant'), async (req, res) => {
-    try {
-        const { query } = require('../config/db');
-        const result = await query(
-            `SELECT r.*, u.name_bn AS requested_by_name
-             FROM routes r
-             LEFT JOIN users u ON r.requested_by = u.id
-             WHERE r.status = 'pending'
-             ORDER BY r.created_at DESC`
-        );
-        res.json({ success: true, data: result.rows });
-    } catch (err) {
-        res.status(500).json({ success: false, message: 'সমস্যা হয়েছে' });
-    }
-});
+// দোকান ভিজিট রেকর্ড (বন্ধ দোকানের ছবি optional)
+// ✅ requireCheckin: চেক-ইন না করলে ভিজিট করা যাবে না
+router.post('/visit',
+    auth,
+    allowRoles('worker'),
+    requireCheckin,
+    upload.single('closed_shop_photo'),
+    createVisit
+);
 
-// Worker রুট request করবে
-router.post('/request', auth, allowRoles('worker'), async (req, res) => {
-    try {
-        const { route_name, description } = req.body;
-        if (!route_name) return res.status(400).json({ success: false, message: 'রুটের নাম দিন' });
-        const { query } = require('../config/db');
+// বিক্রয় তৈরি — ✅ চেক-ইন বাধ্যতামূলক
+router.post('/',        auth, allowRoles('worker'), requireCheckin, createSale);
 
-        // একই নামে আগে কোনো pending request আছে কিনা চেক করুন
-        const existing = await query(
-            `SELECT id FROM routes WHERE name = $1 AND requested_by = $2 AND status = 'pending'`,
-            [route_name, req.user.id]
-        );
-        if (existing.rows.length > 0) {
-            return res.status(409).json({ success: false, message: 'এই নামে একটি pending request ইতোমধ্যে আছে।' });
-        }
+// Invoice পাঠানো (WhatsApp/SMS)
+router.post('/invoice/send',  auth, allowRoles('worker'), sendInvoice);
 
-        const result = await query(
-            `INSERT INTO routes (name, description, status, requested_by, requested_at, is_active)
-             VALUES ($1, $2, 'pending', $3, NOW(), false) RETURNING *`,
-            [route_name, description || '', req.user.id]
-        );
-        res.json({ success: true, message: 'রুট request পাঠানো হয়েছে ✅', data: result.rows[0] });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, message: 'সমস্যা হয়েছে' });
-    }
-});
+// রসিদের ছবি আপলোড — বিক্রয় তৈরির আগে আলাদাভাবে call করা হয়
+// Frontend থেকে receipt_photo field হিসেবে multipart/form-data আসে
+router.post('/upload-receipt',
+    auth,
+    allowRoles('worker'),
+    upload.single('receipt_photo'),
+    uploadReceipt
+);
 
-// SR নিজের route requests এর status দেখবে
-router.get('/my-requests', auth, allowRoles('worker'), async (req, res) => {
-    try {
-        const { query } = require('../config/db');
-        const result = await query(
-            `SELECT id, name, description, status, requested_at, updated_at
-             FROM routes
-             WHERE requested_by = $1
-             ORDER BY requested_at DESC
-             LIMIT 20`,
-            [req.user.id]
-        );
-        res.json({ success: true, data: result.rows });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে' });
-    }
-});
+// OTP যাচাই
+router.post('/verify-otp',    auth, allowRoles('worker'), verifyOTP);
 
-// রুট তালিকা
-router.get('/',     auth, checkTeamAccess, getRoutes);
+// ✅ লিংক দিয়ে অর্ডার যাচাই — কাস্টমার ট্যাপ করে verify করবে (auth লাগবে না)
+router.get('/verify/:token',  verifyOrderByLink);
 
-// আজকে কে কোন route-এ আছে (live status) — /:id আগে রেজিস্টার করতে হবে
-router.get('/live-status', auth, checkTeamAccess, getLiveRouteStatus);
+// OTP skip — মেমো ছবি আপলোড বাধ্যতামূলক
+router.post('/skip-otp',
+    auth,
+    allowRoles('worker'),
+    upload.single('memo_photo'),
+    skipOTPWithPhoto
+);
 
-// নতুন রুট তৈরি (Admin/Manager)
-router.post('/',    auth, canCreateRoute, createRoute);
+// SR এর নিজের বিক্রয়
+router.get('/my',       auth, allowRoles('worker'), getMySales);
 
-// রুটের SR তালিকা
-router.get('/:id/workers', auth, checkTeamAccess, getRouteWorkers);
+// আজকের সারসংক্ষেপ (SR ড্যাশবোর্ড)
+router.get('/today-summary',  auth, getTodaySummary);
 
-// রুটের কাস্টমার তালিকা + visit_order
-router.get('/:id/customers', auth, checkTeamAccess, getRouteCustomers);
+// টিমের বিক্রয় (Manager/Admin)
+router.get('/team',
+    auth,
+    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
+    checkTeamAccess,
+    getTeamSales
+);
 
-// SR কে রুট অ্যাসাইন
-router.post('/:id/assign', auth, allowRoles('admin', 'manager', 'accountant'), assignWorkerToRoute);
+// টিমের ভিজিট লগ — no-sell reason, ছবি সহ (Manager/Admin)
+router.get('/team-visits',
+    auth,
+    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm'),
+    checkTeamAccess,
+    getTeamVisits
+);
 
-// রুট এডিট
-router.put('/:id',  auth, canCreateRoute, updateRoute);
+// SR-এর মাসিক দৈনিক বিক্রয় সারসংক্ষেপ
+router.get('/my-monthly',     auth, allowRoles('worker'), getMyMonthlySales);
 
-// রুট মুছে দেওয়া
-router.delete('/:id', auth, allowRoles('admin', 'manager', 'accountant'), deleteRoute);
+// SR-এর মাসিক ভিজিট স্ট্যাটস
+router.get('/my-visit-stats', auth, allowRoles('worker'), getMyVisitStats);
+
+// আজকে এই কাস্টমারে ভিজিট হয়েছে কিনা চেক
+router.get('/visit-status/:customerId', auth, allowRoles('worker'), getVisitStatus);
+
+// একটি বিক্রয়ের বিস্তারিত
+router.get('/:id',      auth, getSaleDetail);
 
 module.exports = router;
