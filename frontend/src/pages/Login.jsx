@@ -160,19 +160,90 @@ const LOGIN_TYPES = [
 ]
 
 /* ─────────────────────────────────────────
-   NT Logo SVG Component
+   NT Logo SVG Component — Claude-style orbital
 ───────────────────────────────────────── */
 function NTLogo({ size = 56 }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <ellipse cx="50" cy="50" rx="46" ry="22" stroke="#4ade80" strokeWidth="2.5" fill="none"
-        strokeDasharray="4 3" opacity="0.7"
-        style={{ transformOrigin: '50px 50px', animation: 'spin 8s linear infinite' }} />
-      <ellipse cx="50" cy="50" rx="46" ry="22" stroke="#22c55e" strokeWidth="1" fill="none"
-        style={{ transformOrigin: '50px 50px', animation: 'spin 8s linear infinite', transform: 'rotate(-15deg)' }} />
-      <text x="50" y="62" textAnchor="middle" fontFamily="'Georgia', serif" fontSize="38"
-        fontWeight="bold" fill="white" letterSpacing="-1">NT</text>
-    </svg>
+    <div style={{ position: 'relative', width: size * 2.8, height: size * 2.8, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+
+      {/* Glow pulse পেছনে */}
+      <div style={{
+        position: 'absolute', top: '50%', left: '50%',
+        transform: 'translate(-50%,-50%)',
+        width: size * 1.4, height: size * 1.4,
+        borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(74,222,128,0.18) 0%, transparent 70%)',
+        animation: 'glowPulse 2.5s ease-in-out infinite',
+      }} />
+
+      {/* বাইরের orbital ring — ঘড়ির কাঁটার দিকে */}
+      <svg
+        style={{
+          position: 'absolute', top: 0, left: 0,
+          width: '100%', height: '100%',
+          animation: 'spin 5s linear infinite',
+          transformOrigin: 'center center',
+        }}
+        viewBox="0 0 160 160" fill="none"
+      >
+        <ellipse cx="80" cy="80" rx="74" ry="28"
+          stroke="#4ade80" strokeWidth="1.8"
+          strokeDasharray="7 4"
+          opacity="0.75"
+        />
+        {/* Ring-এর উপর উজ্জ্বল dot */}
+        <circle cx="154" cy="80" r="4.5" fill="#4ade80" opacity="0.95" />
+        <circle cx="154" cy="80" r="7" fill="#4ade80" opacity="0.15" />
+      </svg>
+
+      {/* মাঝের orbital ring — উল্টো দিকে */}
+      <svg
+        style={{
+          position: 'absolute', top: 0, left: 0,
+          width: '100%', height: '100%',
+          animation: 'spinReverse 8s linear infinite',
+          transformOrigin: 'center center',
+          opacity: 0.45,
+        }}
+        viewBox="0 0 160 160" fill="none"
+      >
+        <ellipse cx="80" cy="80" rx="64" ry="20"
+          stroke="#22c55e" strokeWidth="1.2"
+          strokeDasharray="3 7"
+          transform="rotate(25 80 80)"
+        />
+        <circle cx="6" cy="80" r="3" fill="#22c55e" opacity="0.9"
+          transform="rotate(25 80 80)"
+        />
+      </svg>
+
+      {/* NT Logo — center */}
+      <svg
+        width={size} height={size}
+        viewBox="0 0 100 100" fill="none"
+        style={{ position: 'relative', zIndex: 2, filter: 'drop-shadow(0 0 10px rgba(74,222,128,0.5))' }}
+      >
+        {/* বাইরের arc */}
+        <path d="M 18 82 A 46 46 0 1 1 82 18"
+          stroke="white" strokeWidth="2.5"
+          strokeLinecap="round" fill="none"
+          opacity="0.55"
+        />
+        {/* N letter */}
+        <path d="M 18 70 L 18 30 L 44 70 L 44 30"
+          stroke="white" strokeWidth="9"
+          strokeLinecap="square" strokeLinejoin="miter"
+          fill="none"
+        />
+        {/* T letter */}
+        <path d="M 52 30 L 82 30 M 67 30 L 67 70"
+          stroke="white" strokeWidth="9"
+          strokeLinecap="square"
+          fill="none"
+        />
+      </svg>
+
+    </div>
   )
 }
 
@@ -485,6 +556,8 @@ export default function Login() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Rajdhani:wght@600;700&family=Noto+Sans+Bengali:wght@400;500;600&display=swap');
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes spinReverse { from { transform: rotate(0deg); } to { transform: rotate(-360deg); } }
+        @keyframes glowPulse { 0%, 100% { transform: translate(-50%,-50%) scale(1); opacity: 0.5; } 50% { transform: translate(-50%,-50%) scale(1.5); opacity: 1; } }
         @keyframes float { from { transform: translateY(0px) scale(1); opacity: 0.2; } to { transform: translateY(-20px) scale(1.3); opacity: 0.5; } }
         @keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -543,7 +616,7 @@ export default function Login() {
                     if (typeof window.__showEruda === 'function') window.__showEruda()
                   }
                 }}>
-                <NTLogo size={64} />
+                <NTLogo size={52} />
               </div>
               <div className="fade-up-3">
                 <h1 style={{ color: 'white', fontSize: '22px', fontWeight: '700', fontFamily: "'Rajdhani', sans-serif", letterSpacing: '3px', margin: '0 0 2px' }}>NOVATECH BD</h1>
