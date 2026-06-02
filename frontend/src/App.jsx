@@ -105,9 +105,10 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
   if (!authReady) {
     return (
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh' }}>
-        <div style={{ width:36, height:36, border:'4px solid #e0e7ff',
-          borderTop:'4px solid #4f46e5', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh', background:'linear-gradient(135deg, #030712 0%, #0a0f1a 40%, #051a0e 100%)', flexDirection:'column', gap:16 }}>
+        <div style={{ width:36, height:36, border:'4px solid rgba(74,222,128,0.2)',
+          borderTop:'4px solid #4ade80', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
+        <p style={{ color:'rgba(74,222,128,0.6)', fontSize:13, fontFamily:'sans-serif', margin:0 }}>লোড হচ্ছে...</p>
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
     )
@@ -190,9 +191,10 @@ function AppWithPermissions() {
 
   if (!authReady) {
     return (
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh' }}>
-        <div style={{ width:36, height:36, border:'4px solid #e0e7ff',
-          borderTop:'4px solid #4f46e5', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:'100vh', background:'linear-gradient(135deg, #030712 0%, #0a0f1a 40%, #051a0e 100%)', flexDirection:'column', gap:16 }}>
+        <div style={{ width:36, height:36, border:'4px solid rgba(74,222,128,0.2)',
+          borderTop:'4px solid #4ade80', borderRadius:'50%', animation:'spin 0.8s linear infinite' }} />
+        <p style={{ color:'rgba(74,222,128,0.6)', fontSize:13, fontFamily:'sans-serif', margin:0 }}>লোড হচ্ছে...</p>
         <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
       </div>
     )
