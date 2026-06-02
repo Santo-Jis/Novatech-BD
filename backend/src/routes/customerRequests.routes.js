@@ -6,7 +6,7 @@
 const express  = require('express');
 const router   = express.Router();
 const { auth } = require('../middlewares/auth');
-const { roleCheck } = require('../middlewares/roleCheck');
+const { allowRoles } = require('../middlewares/roleCheck');
 
 const {
     getCreditLimitRequests,
@@ -15,7 +15,7 @@ const {
     resolveComplaint,
 } = require('../controllers/customerRequests.controller');
 
-const canManage = roleCheck(['admin', 'manager', 'supervisor', 'asm', 'rsm']);
+const canManage = allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm');
 
 // ── Credit Limit Requests ──────────────────────────────────
 // GET  /api/customer-requests/credit-limit?status=pending
