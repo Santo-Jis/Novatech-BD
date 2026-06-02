@@ -11,9 +11,6 @@ import ManagerLayout  from './layouts/ManagerLayout'
 import WorkerLayout   from './layouts/WorkerLayout'
 import CustomerLayout from './layouts/CustomerLayout'
 
-// Customer Pages
-import CustomerDashboard from './pages/customer/CustomerDashboard'
-
 // Auth
 import Login from './pages/Login'
 import LandingPage from './pages/LandingPage'
@@ -42,7 +39,7 @@ import NoticesView   from './pages/shared/NoticesView'
 import SRApplicationForm from './pages/SRApplicationForm'
 import CustomerPortal    from './pages/customer/CustomerPortal'
 import CustomerAIChat   from './pages/customer/CustomerAIChat'
-import CustomerLogin    from './pages/customer/CustomerLogin'
+import CustomerLogin    from './pages/customer/CustomerPortal'
 
 // ── Google OAuth Popup Callback ──────────────────────────────
 const PortalOAuthCallback = () => {
