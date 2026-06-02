@@ -1,10 +1,29 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
-import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth'
-import { Capacitor } from '@capacitor/core'
 import { FiEye, FiEyeOff, FiLock, FiMail, FiPhone, FiHash, FiArrowLeft, FiCheck } from 'react-icons/fi'
 import axios from '../api/axios'
+
+// Capacitor — শুধু Native Android-এ আছে, Web-এ নেই
+// Static import করলে Web build crash করে
+let _GoogleAuth = null
+let _Capacitor = null
+const getCapacitor = async () => {
+  if (_Capacitor !== null) return _Capacitor
+  try {
+    const m = await import('@capacitor/core')
+    _Capacitor = m.Capacitor
+  } catch { _Capacitor = { isNativePlatform: () => false } }
+  return _Capacitor
+}
+const getGoogleAuth = async () => {
+  if (_GoogleAuth !== null) return _GoogleAuth
+  try {
+    const m = await import('@codetrix-studio/capacitor-google-auth')
+    _GoogleAuth = m.GoogleAuth
+  } catch { _GoogleAuth = null }
+  return _GoogleAuth
+}
 
 /* ─────────────────────────────────────────
    Typing Effect Hook
@@ -352,9 +371,11 @@ export default function Login() {
     try {
       let email, name
 
-      if (Capacitor.isNativePlatform()) {
+      const cap = await getCapacitor()
+      if (cap.isNativePlatform()) {
         // Android APK → Capacitor Google Auth
-        const googleUser = await GoogleAuth.signIn()
+        const GAuth = await getGoogleAuth()
+        const googleUser = await GAuth.signIn()
 
         // Capacitor GoogleAuth response: googleUser.email, googleUser.givenName
         // authentication.accessToken দিয়ে userinfo নেওয়া যায়
