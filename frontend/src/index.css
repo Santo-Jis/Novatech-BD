@@ -9,11 +9,6 @@
   --secondary: #065f46;
   --accent:    #d97706;
   --danger:    #991b1b;
-  --bg:        #f8fafc;
-}
-
-.dark {
-  --bg: #0f172a;
 }
 
 * {
@@ -24,10 +19,9 @@
 
 body {
   font-family: 'Hind Siliguri', 'Arial', sans-serif;
-  background:  var(--bg);
   color:       #1a202c;
   min-height:  100vh;
-  transition:  background 0.2s, color 0.2s;
+  transition:  color 0.2s;
 }
 
 .dark body {
