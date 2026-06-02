@@ -19,7 +19,7 @@ const syncReservedStock = async () => {
                               ELSE '[]'::jsonb
                          END
                      ) AS item
-                WHERE (item->>'product_id')::int = p.id
+                WHERE (item->>'product_id')::uuid = p.id
                   AND o.status IN ('pending', 'approved', 'processing')
             ), 0),
             updated_at = NOW()
