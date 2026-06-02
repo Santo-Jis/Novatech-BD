@@ -112,7 +112,15 @@ export default function LandingPage() {
   const [contactRef, contactVisible] = useReveal()
 
   return (
-    <div style={{ fontFamily: "'Hind Siliguri', 'Noto Sans Bengali', sans-serif", color: '#1e293b', overflowX: 'hidden' }}>
+    <div style={{ 
+      fontFamily: "'Hind Siliguri', 'Noto Sans Bengali', sans-serif", 
+      color: '#1e293b', 
+      overflowX: 'hidden',
+      background: '#ffffff',
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column'
+    }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Syne:wght@700;800&display=swap');
 
