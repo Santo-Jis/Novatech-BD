@@ -601,6 +601,7 @@ export default function Login() {
 
       <div style={{
         minHeight: '100vh',
+        width: '100%',
         background: 'linear-gradient(135deg, #030712 0%, #0a0f1a 40%, #051a0e 100%)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '16px', fontFamily: "'Noto Sans Bengali', sans-serif",
