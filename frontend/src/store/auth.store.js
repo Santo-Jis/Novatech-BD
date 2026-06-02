@@ -72,14 +72,17 @@ export const useAuthStore = create((set, get) => ({
   // নতুন accessToken নেওয়া হয় — user আবার logged in হয়ে যায়।
   silentRefresh: async () => {
     try {
-      const response = await api.post('/auth/refresh', {})
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
+      const response = await api.post('/auth/refresh', {}, { signal: controller.signal })
+      clearTimeout(timeoutId)
 
       const { accessToken } = response.data.data
       tokenStore.set(accessToken)
       set({ token: accessToken, authReady: true })
       return true
     } catch {
-      // refreshToken নেই বা expire — logout state
+      // refreshToken নেই বা expire বা timeout — logout state
       tokenStore.clear()
       localStorage.removeItem('user')
       set({ user: null, token: null, authReady: true })
