@@ -1,4 +1,4 @@
-const logger = require("../config/logger");
+const logger = require('../config/logger');
 const cron      = require('node-cron');
 const { query } = require('../config/db');
 const {
@@ -147,7 +147,6 @@ const checkAndPayEightMonthBonus = async (userId) => {
             // Firebase নোটিফিকেশন
             try {
                 const axios       = require('axios');
-const logger = require('../config/logger');
                 const firebaseUrl = process.env.FIREBASE_DATABASE_URL;
                 if (firebaseUrl) {
                     await axios.post(
