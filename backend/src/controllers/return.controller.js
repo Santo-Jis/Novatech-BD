@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 const { calcFromProduct } = require('../services/price.utils');
 
@@ -131,7 +132,7 @@ const submitReturn = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ submitReturn Error:', error.message);
+        logger.error('❌ submitReturn Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -184,7 +185,7 @@ const getMyReturns = async (req, res) => {
         return res.json({ success: true, data: result.rows, summary, meta: { year: y, month: m } });
 
     } catch (error) {
-        console.error('❌ getMyReturns Error:', error.message);
+        logger.error('❌ getMyReturns Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -234,7 +235,7 @@ const getTeamReturns = async (req, res) => {
         return res.json({ success: true, data: result.rows, count: result.rows.length });
 
     } catch (error) {
-        console.error('❌ getTeamReturns Error:', error.message);
+        logger.error('❌ getTeamReturns Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -296,7 +297,7 @@ const reviewReturn = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ reviewReturn Error:', error.message);
+        logger.error('❌ reviewReturn Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -335,7 +336,7 @@ const completeReturn = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ completeReturn Error:', error.message);
+        logger.error('❌ completeReturn Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -385,7 +386,7 @@ const getReturnReport = async (req, res) => {
         return res.json({ success: true, data: result.rows, summary, meta: { year: y, month: m } });
 
     } catch (error) {
-        console.error('❌ getReturnReport Error:', error.message);
+        logger.error('❌ getReturnReport Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };

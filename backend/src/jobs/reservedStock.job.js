@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 
 // ============================================================
@@ -25,9 +26,9 @@ const syncReservedStock = async () => {
             updated_at = NOW()
             WHERE is_active = true
         `);
-        console.log('✅ reserved_stock sync সম্পন্ন');
+        logger.info('✅ reserved_stock sync সম্পন্ন');
     } catch (error) {
-        console.error('❌ reserved_stock sync ব্যর্থ:', error.message);
+        logger.error('❌ reserved_stock sync ব্যর্থ:', error.message);
     }
 };
 
@@ -35,7 +36,7 @@ const startReservedStockJob = () => {
     // প্রথমবার সাথে সাথে চালাও, তারপর প্রতি ৫ মিনিটে
     syncReservedStock();
     setInterval(syncReservedStock, 5 * 60 * 1000);
-    console.log('✅ Reserved Stock Sync Job চালু (প্রতি ৫ মিনিট)');
+    logger.info('✅ Reserved Stock Sync Job চালু (প্রতি ৫ মিনিট)');
 };
 
 module.exports = { startReservedStockJob, syncReservedStock };

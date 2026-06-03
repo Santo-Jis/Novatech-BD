@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 
 // ============================================================
@@ -26,7 +27,7 @@ const createNotice = async (req, res) => {
 
         return res.status(201).json({ success: true, message: 'নোটিশ তৈরি হয়েছে।', data: result.rows[0] });
     } catch (error) {
-        console.error('❌ Create Notice Error:', error.message);
+        logger.error('❌ Create Notice Error:', error.message);
         return res.status(500).json({ success: false, message: 'নোটিশ তৈরিতে সমস্যা হয়েছে।' });
     }
 };
@@ -58,7 +59,7 @@ const getNotices = async (req, res) => {
 
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
-        console.error('❌ Get Notices Error:', error.message);
+        logger.error('❌ Get Notices Error:', error.message);
         return res.status(500).json({ success: false, message: 'নোটিশ আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -78,7 +79,7 @@ const getAllNotices = async (req, res) => {
         );
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
-        console.error('❌ Get All Notices Error:', error.message);
+        logger.error('❌ Get All Notices Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -95,7 +96,7 @@ const deleteNotice = async (req, res) => {
         );
         return res.status(200).json({ success: true, message: 'নোটিশ মুছা হয়েছে।' });
     } catch (error) {
-        console.error('❌ Delete Notice Error:', error.message);
+        logger.error('❌ Delete Notice Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };

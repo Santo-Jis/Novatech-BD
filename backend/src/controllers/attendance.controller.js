@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query }              = require('../config/db');
 const { uploadToCloudinary } = require('../services/employee.service');
 const {
@@ -152,7 +153,7 @@ const checkIn = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ CheckIn Error:', error.message);
+        logger.error('❌ CheckIn Error:', error.message);
         return res.status(500).json({ success: false, message: 'চেক-ইনে সমস্যা হয়েছে।' });
     }
 };
@@ -250,7 +251,7 @@ const checkOut = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ CheckOut Error:', error.message);
+        logger.error('❌ CheckOut Error:', error.message);
         return res.status(500).json({ success: false, message: 'চেক-আউটে সমস্যা হয়েছে।' });
     }
 };
@@ -295,7 +296,7 @@ const getMyAttendance = async (req, res) => {
         try {
             workingDays = await getWorkingDays(currentYear, currentMonth);
         } catch (wdErr) {
-            console.error('❌ getWorkingDays error (getMyAttendance):', wdErr.message);
+            logger.error('❌ getWorkingDays error (getMyAttendance):', wdErr.message);
             workingDaysError = 'working_days তথ্য আনা যায়নি।';
         }
         const presentDays = summary.present + summary.late;
@@ -323,7 +324,7 @@ const getMyAttendance = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ My Attendance Error:', error.message);
+        logger.error('❌ My Attendance Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -371,7 +372,7 @@ const getTodayLive = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Today Live Error:', error.message);
+        logger.error('❌ Today Live Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -417,7 +418,7 @@ const getTeamAttendance = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Team Attendance Error:', error.message);
+        logger.error('❌ Team Attendance Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -463,7 +464,7 @@ const getAllAttendance = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ All Attendance Error:', error.message);
+        logger.error('❌ All Attendance Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -518,7 +519,7 @@ const getMonthlyReport = async (req, res) => {
         try {
             workingDays = await getWorkingDays(currentYear, currentMonth);
         } catch (wdErr) {
-            console.error('❌ getWorkingDays error (getMonthlyReport):', wdErr.message);
+            logger.error('❌ getWorkingDays error (getMonthlyReport):', wdErr.message);
             return res.status(503).json({
                 success: false,
                 message: 'কার্যদিবস গণনা করা যাচ্ছে না — বেতন হিসাব নিরাপদ নয়। কিছুক্ষণ পরে আবার চেষ্টা করুন অথবা admin-কে জানান।',
@@ -537,7 +538,7 @@ const getMonthlyReport = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Monthly Report Error:', error.message);
+        logger.error('❌ Monthly Report Error:', error.message);
         return res.status(500).json({ success: false, message: 'রিপোর্ট আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -630,7 +631,7 @@ const applyLeave = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Apply Leave Error:', error.message);
+        logger.error('❌ Apply Leave Error:', error.message);
         return res.status(500).json({ success: false, message: 'আবেদন জমা দিতে সমস্যা হয়েছে।' });
     }
 };
@@ -677,7 +678,7 @@ const getMyLeaveRequests = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Get My Leave Requests Error:', error.message);
+        logger.error('❌ Get My Leave Requests Error:', error.message);
         return res.status(500).json({ success: false, message: 'আবেদন তালিকা আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -724,7 +725,7 @@ const getAllLeaveRequests = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Get All Leave Requests Error:', error.message);
+        logger.error('❌ Get All Leave Requests Error:', error.message);
         return res.status(500).json({ success: false, message: 'তালিকা আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -785,7 +786,7 @@ const reviewLeaveRequest = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Review Leave Error:', error.message);
+        logger.error('❌ Review Leave Error:', error.message);
         return res.status(500).json({ success: false, message: 'পর্যালোচনা করতে সমস্যা হয়েছে।' });
     }
 };
@@ -889,7 +890,7 @@ const correctAttendance = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Correct Attendance Error:', error.message);
+        logger.error('❌ Correct Attendance Error:', error.message);
         return res.status(500).json({ success: false, message: 'সংশোধনে সমস্যা হয়েছে।' });
     }
 };

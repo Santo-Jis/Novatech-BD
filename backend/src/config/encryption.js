@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const logger = require('../config/logger');
 
 // ============================================================
 // AES-256-GCM Encryption Helper
@@ -55,7 +56,7 @@ const encrypt = (plainText) => {
         return iv.toString('hex') + authTag.toString('hex') + encrypted;
 
     } catch (error) {
-        console.error('❌ Encryption Error:', error.message);
+        logger.error('❌ Encryption Error:', error.message);
         throw new Error('এনক্রিপশন ব্যর্থ হয়েছে।');
     }
 };
@@ -87,7 +88,7 @@ const decrypt = (encryptedText) => {
         return decrypted;
 
     } catch (error) {
-        console.error('❌ Decryption Error:', error.message);
+        logger.error('❌ Decryption Error:', error.message);
         throw new Error('ডিক্রিপশন ব্যর্থ হয়েছে। Key পরিবর্তন হয়েছে কিনা দেখুন।');
     }
 };
@@ -149,10 +150,10 @@ const testEncryption = () => {
         if (decrypted !== testText) {
             throw new Error('Encryption/Decryption মিলছে না!');
         }
-        console.log('✅ Encryption সিস্টেম সঠিকভাবে কাজ করছে');
+        logger.info('✅ Encryption সিস্টেম সঠিকভাবে কাজ করছে');
         return true;
     } catch (error) {
-        console.error('❌ Encryption Test ব্যর্থ:', error.message);
+        logger.error('❌ Encryption Test ব্যর্থ:', error.message);
         return false;
     }
 };

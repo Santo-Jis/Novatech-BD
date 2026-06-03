@@ -7,6 +7,7 @@
 // ============================================================
 
 const admin = require('firebase-admin')
+const logger = require('../config/logger');
 const { query } = require('../config/db')
 const { initializeFirebase } = require('../config/firebase')
 
@@ -123,12 +124,12 @@ const sendPushToTokens = async (tokens, { title, body, type, data = {} }) => {
         `UPDATE users SET fcm_token = NULL WHERE fcm_token = ANY($1::text[])`,
         [staleTokens]
       )
-      console.log(`[FCM] ${staleTokens.length} stale token(s) removed`)
+      logger.info(`[FCM] ${staleTokens.length} stale token(s) removed`)
     }
 
-    console.log(`[FCM] Sent: ${response.successCount}/${tokens.length}`)
+    logger.info(`[FCM] Sent: ${response.successCount}/${tokens.length}`)
   } catch (e) {
-    console.error('[FCM] sendPushToTokens error:', e.message)
+    logger.error('[FCM] sendPushToTokens error:', e.message)
   }
 }
 
@@ -156,9 +157,9 @@ const clearStaleCustomerToken = async (fcmToken) => {
        WHERE fcm_token = $1`,
       [fcmToken]
     )
-    console.log('[FCM] Stale customer token cleared')
+    logger.info('[FCM] Stale customer token cleared')
   } catch (e) {
-    console.error('[FCM] clearStaleCustomerToken error:', e.message)
+    logger.error('[FCM] clearStaleCustomerToken error:', e.message)
   }
 }
 
@@ -195,7 +196,7 @@ const sendCustomerPush = async (fcmToken, { title, body, type = 'general' }) => 
     if (STALE_TOKEN_CODES.has(e.code)) {
       await clearStaleCustomerToken(fcmToken)
     } else {
-      console.error('[FCM] sendCustomerPush error:', e.message)
+      logger.error('[FCM] sendCustomerPush error:', e.message)
     }
   }
 }

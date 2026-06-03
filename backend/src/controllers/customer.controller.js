@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
 const { uploadToCloudinary, generateCustomerCode } = require('../services/employee.service');
 const { sendWelcomeEmail, sendOTPEmail } = require('../services/email.service');
@@ -165,7 +166,7 @@ const getCustomers = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Get Customers Error:', error.message);
+        logger.error('❌ Get Customers Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -217,7 +218,7 @@ const getCustomer = async (req, res) => {
         return res.status(200).json({ success: true, data: customer });
 
     } catch (error) {
-        console.error('❌ Get Customer Error:', error.message);
+        logger.error('❌ Get Customer Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -342,10 +343,10 @@ const createCustomer = async (req, res) => {
                 }
 
                 await sendWelcomeEmail(email, result.rows[0], workerInfo);
-                console.log(`📧 স্বাগতম Email পাঠানো হয়েছে → ${email}`);
+                logger.info(`📧 স্বাগতম Email পাঠানো হয়েছে → ${email}`);
             } catch (emailErr) {
                 // Email ব্যর্থ হলেও customer creation সফল রাখো
-                console.error('⚠️ Welcome Email পাঠানো যায়নি:', emailErr.message);
+                logger.error('⚠️ Welcome Email পাঠানো যায়নি:', emailErr.message);
             }
         }
 
@@ -356,7 +357,7 @@ const createCustomer = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Create Customer Error:', error.message);
+        logger.error('❌ Create Customer Error:', error.message);
         return res.status(500).json({ success: false, message: 'কাস্টমার তৈরিতে সমস্যা হয়েছে।' });
     }
 };
@@ -448,7 +449,7 @@ const updateCustomer = async (req, res) => {
         return res.status(200).json({ success: true, message: 'কাস্টমার আপডেট সফল।' });
 
     } catch (error) {
-        console.error('❌ Update Customer Error:', error.message);
+        logger.error('❌ Update Customer Error:', error.message);
         return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
     }
 };
@@ -535,7 +536,7 @@ const getCustomerHistory = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Customer History Error:', error.message);
+        logger.error('❌ Customer History Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -581,7 +582,7 @@ const setCreditLimit = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Set Credit Limit Error:', error.message);
+        logger.error('❌ Set Credit Limit Error:', error.message);
         return res.status(500).json({ success: false, message: 'লিমিট সেটে সমস্যা হয়েছে।' });
     }
 };
@@ -668,7 +669,7 @@ const collectCredit = async (req, res) => {
             title: '💳 পেমেন্ট নিশ্চিত হয়েছে',
             body:  `আপনার ৳${parseFloat(amount).toLocaleString('bn-BD')} পেমেন্ট গ্রহণ করা হয়েছে। বর্তমান বাকি: ৳${remainingCredit.toLocaleString('bn-BD')}`,
             type:  'payment_received',
-        }).catch(e => console.error('[CollectCredit] Notification error:', e.message));
+        }).catch(e => logger.error('[CollectCredit] Notification error:', e.message));
 
         return res.status(200).json({
             success: true,
@@ -687,7 +688,7 @@ const collectCredit = async (req, res) => {
                 message: `৳${amount} বাকি আদায় সফল। (পূর্বে সম্পন্ন হয়েছিল)`
             });
         }
-        console.error('❌ Collect Credit Error:', error.message);
+        logger.error('❌ Collect Credit Error:', error.message);
         return res.status(500).json({ success: false, message: 'বাকি আদায়ে সমস্যা হয়েছে।' });
     }
 };
@@ -715,7 +716,7 @@ const getMyCustomerCount = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ My Customer Count Error:', error.message);
+        logger.error('❌ My Customer Count Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -793,7 +794,7 @@ const requestCustomerEdit = async (req, res) => {
         }
         return res.status(200).json({ success: true, message: 'এডিট রিকোয়েস্ট পাঠানো হয়েছে। ম্যানেজার অনুমোদন দিলে চূড়ান্ত হবে।', data: { request_id: request.rows[0].id } });
     } catch (error) {
-        console.error('❌ Request Customer Edit Error:', error.message);
+        logger.error('❌ Request Customer Edit Error:', error.message);
         return res.status(500).json({ success: false, message: 'এডিট রিকোয়েস্টে সমস্যা হয়েছে।' });
     }
 };
@@ -824,7 +825,7 @@ const getPendingCustomerEdits = async (req, res) => {
         );
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
-        console.error('❌ Get Pending Customer Edits Error:', error.message);
+        logger.error('❌ Get Pending Customer Edits Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -847,7 +848,7 @@ const approveCustomerEdit = async (req, res) => {
         await query(`INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value) VALUES ($1, 'APPROVE_CUSTOMER_EDIT', 'customers', $2, $3)`, [req.user.id, editReq.customer_id, JSON.stringify(editReq.new_data)]);
         return res.status(200).json({ success: true, message: 'কাস্টমার এডিট অনুমোদন সফল।' });
     } catch (error) {
-        console.error('❌ Approve Customer Edit Error:', error.message);
+        logger.error('❌ Approve Customer Edit Error:', error.message);
         return res.status(500).json({ success: false, message: 'অনুমোদনে সমস্যা হয়েছে।' });
     }
 };
@@ -889,7 +890,7 @@ const rejectCustomerEdit = async (req, res) => {
         await query(`UPDATE customers SET has_pending_edit = false WHERE id = $1`, [editReq.customer_id]);
         return res.status(200).json({ success: true, message: 'এডিট বাতিল। আগের তথ্য পুনরুদ্ধার হয়েছে।', rollback: previousData });
     } catch (error) {
-        console.error('❌ Reject Customer Edit Error:', error.message);
+        logger.error('❌ Reject Customer Edit Error:', error.message);
         return res.status(500).json({ success: false, message: 'বাতিলে সমস্যা হয়েছে।' });
     }
 };
@@ -932,7 +933,7 @@ const sendEmailVerifyOTP = async (req, res) => {
         return res.status(200).json({ success: true, message: `OTP পাঠানো হয়েছে ${email}-এ।` });
 
     } catch (error) {
-        console.error('❌ sendEmailVerifyOTP:', error.message);
+        logger.error('❌ sendEmailVerifyOTP:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -973,7 +974,7 @@ const confirmEmailVerifyOTP = async (req, res) => {
         return res.status(200).json({ success: true, message: 'Email যাচাই সফল ✅' });
 
     } catch (error) {
-        console.error('❌ confirmEmailVerifyOTP:', error.message);
+        logger.error('❌ confirmEmailVerifyOTP:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -1034,7 +1035,7 @@ const updateVisitOrder = async (req, res) => {
         return res.status(200).json({ success: true, message: 'Visit ক্রম সেভ হয়েছে ✅' });
 
     } catch (error) {
-        console.error('❌ updateVisitOrder Error:', error.message);
+        logger.error('❌ updateVisitOrder Error:', error.message);
         return res.status(500).json({ success: false, message: 'ক্রম সেভ করতে সমস্যা হয়েছে।' });
     }
 };
@@ -1093,7 +1094,7 @@ const getMyPendingReturnRequests = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getMyPendingReturnRequests Error:', error.message);
+        logger.error('❌ getMyPendingReturnRequests Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1151,7 +1152,7 @@ const getCustomerCreditAlert = async (req, res) => {
             due_sales: salesResult.rows
         });
     } catch (error) {
-        console.error('❌ Credit Alert Error:', error.message);
+        logger.error('❌ Credit Alert Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };

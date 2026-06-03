@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // CUSTOMER PORTAL — Return Request Admin/Manager Review
 // backend/src/controllers/customerPortalReturn.controller.js
@@ -101,7 +102,7 @@ const getPortalReturnRequests = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getPortalReturnRequests Error:', error.message);
+        logger.error('❌ getPortalReturnRequests Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -152,7 +153,7 @@ const getPortalReturnRequestDetail = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getPortalReturnRequestDetail Error:', error.message);
+        logger.error('❌ getPortalReturnRequestDetail Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -225,7 +226,7 @@ const reviewPortalReturnRequest = async (req, res) => {
             });
         } catch (pushErr) {
             // push ব্যর্থ হলেও মূল কাজ বাতিল হবে না
-            console.error('[PortalReturn] Push error:', pushErr.message);
+            logger.error('[PortalReturn] Push error:', pushErr.message);
         }
 
         const statusBn = status === 'approved' ? 'অনুমোদিত' : 'বাতিল';
@@ -236,7 +237,7 @@ const reviewPortalReturnRequest = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ reviewPortalReturnRequest Error:', error.message);
+        logger.error('❌ reviewPortalReturnRequest Error:', error.message);
         return res.status(500).json({ success: false, message: 'রিভিউ করতে সমস্যা হয়েছে।' });
     }
 };
@@ -283,7 +284,7 @@ const completePortalReturnRequest = async (req, res) => {
                 data:  { return_request_id: id, status: 'completed' }
             });
         } catch (pushErr) {
-            console.error('[PortalReturn] Complete push error:', pushErr.message);
+            logger.error('[PortalReturn] Complete push error:', pushErr.message);
         }
 
         return res.json({
@@ -293,7 +294,7 @@ const completePortalReturnRequest = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ completePortalReturnRequest Error:', error.message);
+        logger.error('❌ completePortalReturnRequest Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };

@@ -2,6 +2,7 @@ const { query, withTransaction } = require('../config/db');
 const { calcFromProduct }        = require('../services/price.utils');
 const { generateOTP }            = require('../config/encryption');
 const crypto                     = require('crypto');
+const logger = require('../config/logger');
 const { addLedgerEntry }         = require('./ledger.controller');
 const {
     generateInvoiceNumber,
@@ -123,7 +124,7 @@ const createVisit = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Create Visit Error:', error.message);
+        logger.error('❌ Create Visit Error:', error.message);
         return res.status(500).json({ success: false, message: 'ভিজিট রেকর্ডে সমস্যা হয়েছে।' });
     }
 };
@@ -515,24 +516,24 @@ const createSale = async (req, res) => {
         // OTP + Invoice একসাথে একটাই Email/SMS
         if (otp) {
             const otpResult = await sendInvoiceOTP(cust, saleResult.id, otp, expiryMinutes, saleResult, req.user, processedItems);
-            console.log('📤 OTP+Invoice পাঠানো:', JSON.stringify(otpResult.results));
+            logger.info('📤 OTP+Invoice পাঠানো:', JSON.stringify(otpResult.results));
         }
 
         // Invoice SMS Fallback (email না থাকলে)
         sendInvoiceNotification(cust, saleResult, req.user, processedItems)
-            .then(r => console.log('📄 Invoice SMS Fallback:', JSON.stringify(r.results)))
-            .catch(e => console.error('⚠️ Invoice নোটিফিকেশন Error:', e.message));
+            .then(r => logger.info('📄 Invoice SMS Fallback:', JSON.stringify(r.results)))
+            .catch(e => logger.error('⚠️ Invoice নোটিফিকেশন Error:', e.message));
 
         // ✅ WhatsApp-এ Invoice ছবি পাঠাও (Puppeteer rendered PNG)
         sendInvoiceWhatsApp(cust, saleResult, req.user, processedItems)
             .then(r => {
                 if (r.success) {
-                    console.log(`📲 [InvoiceWA] ছবি পাঠানো সফল → ${cust.whatsapp || cust.sms_phone}`);
+                    logger.info(`📲 [InvoiceWA] ছবি পাঠানো সফল → ${cust.whatsapp || cust.sms_phone}`);
                 } else {
-                    console.warn(`⚠️ [InvoiceWA] পাঠানো যায়নি (${r.reason}) — ${saleResult.invoice_number}`);
+                    logger.warn(`⚠️ [InvoiceWA] পাঠানো যায়নি (${r.reason}) — ${saleResult.invoice_number}`);
                 }
             })
-            .catch(e => console.error('❌ [InvoiceWA] Unexpected error:', e.message));
+            .catch(e => logger.error('❌ [InvoiceWA] Unexpected error:', e.message));
 
         // WhatsApp লিংক তৈরি
         const waLink = getInvoiceWhatsAppMessage(
@@ -547,7 +548,7 @@ const createSale = async (req, res) => {
                 payment_method === 'credit' ? 'বাকি' : 'মিশ্র'
             })`,
             type:  'new_invoice',
-        }).catch(e => console.error('[Sale] Invoice notification error:', e.message));
+        }).catch(e => logger.error('[Sale] Invoice notification error:', e.message));
 
         // Firebase → Manager রিয়েলটাইম আপডেট
         if (req.user.manager_id) {
@@ -585,7 +586,7 @@ const createSale = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Create Sale Error:', error.message);
+        logger.error('❌ Create Sale Error:', error.message);
 
         // Known business errors — transaction-এর ভেতর থেকে throw হওয়া
         const knownErrors = ['ORDER_UNAVAILABLE', 'CREDIT_LIMIT_EXCEEDED', 'CUSTOMER_NOT_FOUND'];
@@ -653,7 +654,7 @@ const sendInvoice = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Send Invoice Error:', error.message);
+        logger.error('❌ Send Invoice Error:', error.message);
         return res.status(500).json({ success: false, message: 'Invoice পাঠাতে সমস্যা হয়েছে।' });
     }
 };
@@ -702,11 +703,11 @@ const verifyOrderByLink = async (req, res) => {
             [sale.id]
         );
 
-        console.log(`✅ [VerifyLink] → ${sale.invoice_number} (${sale.shop_name})`);
+        logger.info(`✅ [VerifyLink] → ${sale.invoice_number} (${sale.shop_name})`);
         return res.send(buildVerifyPage('success', sale));
 
     } catch (error) {
-        console.error('❌ Verify Link Error:', error.message);
+        logger.error('❌ Verify Link Error:', error.message);
         return res.status(500).send(buildVerifyPage('error', 'সমস্যা হয়েছে। আবার চেষ্টা করুন।'));
     }
 };
@@ -809,7 +810,7 @@ const verifyOTP = async (req, res) => {
         return res.status(200).json({ success: true, message: 'OTP যাচাই সফল। বিক্রয় নিশ্চিত।' });
 
     } catch (error) {
-        console.error('❌ Verify OTP Error:', error.message);
+        logger.error('❌ Verify OTP Error:', error.message);
         return res.status(500).json({ success: false, message: 'OTP যাচাইয়ে সমস্যা হয়েছে।' });
     }
 };
@@ -919,7 +920,7 @@ const getMySales = async (req, res) => {
         }
 
     } catch (error) {
-        console.error('❌ My Sales Error:', error.message);
+        logger.error('❌ My Sales Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1010,7 +1011,7 @@ const getTodaySummary = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Today Summary Error:', error.message);
+        logger.error('❌ Today Summary Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1061,7 +1062,7 @@ const getTeamSales = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Team Sales Error:', error.message);
+        logger.error('❌ Team Sales Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1091,7 +1092,7 @@ const getSaleDetail = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows[0] });
 
     } catch (error) {
-        console.error('❌ Sale Detail Error:', error.message);
+        logger.error('❌ Sale Detail Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1153,7 +1154,7 @@ const skipOTPWithPhoto = async (req, res) => {
             [memoPhotoUrl, sale_id]
         );
 
-        console.log(`⚠️ OTP Skip — Sale ${sale_id} by Worker ${req.user.id}, Photo: ${memoPhotoUrl}`);
+        logger.info(`⚠️ OTP Skip — Sale ${sale_id} by Worker ${req.user.id}, Photo: ${memoPhotoUrl}`);
 
         return res.status(200).json({
             success: true,
@@ -1162,7 +1163,7 @@ const skipOTPWithPhoto = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Skip OTP Error:', error.message);
+        logger.error('❌ Skip OTP Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -1294,7 +1295,7 @@ const getMyMonthlySales = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Monthly Sales Error:', error.message);
+        logger.error('❌ Monthly Sales Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1366,7 +1367,7 @@ const getMyVisitStats = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Visit Stats Error:', error.message);
+        logger.error('❌ Visit Stats Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1405,7 +1406,7 @@ const getVisitStatus = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Visit Status Error:', error.message);
+        logger.error('❌ Visit Status Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1465,7 +1466,7 @@ const getTeamVisits = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Team Visits Error:', error.message);
+        logger.error('❌ Team Visits Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1510,7 +1511,7 @@ const uploadReceipt = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Upload Receipt Error:', error.message);
+        logger.error('❌ Upload Receipt Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };

@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
 
 // ============================================================
@@ -29,7 +30,7 @@ const getSettings = async (req, res) => {
 
         return res.status(200).json({ success: true, data: result.rows[0] });
     } catch (error) {
-        console.error('❌ Get Credit Settings Error:', error.message);
+        logger.error('❌ Get Credit Settings Error:', error.message);
         return res.status(500).json({ success: false, message: 'সেটিংস আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -75,7 +76,7 @@ const updateSettings = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('❌ Update Credit Settings Error:', error.message);
+        logger.error('❌ Update Credit Settings Error:', error.message);
         return res.status(500).json({ success: false, message: 'সেটিংস সংরক্ষণে সমস্যা হয়েছে।' });
     }
 };
@@ -170,7 +171,7 @@ const requestApproval = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Request Approval Error:', error.message);
+        logger.error('❌ Request Approval Error:', error.message);
         return res.status(500).json({ success: false, message: 'Request পাঠাতে সমস্যা হয়েছে।' });
     }
 };
@@ -221,7 +222,7 @@ const getPendingApprovals = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Get Pending Approvals Error:', error.message);
+        logger.error('❌ Get Pending Approvals Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -258,7 +259,7 @@ const approveRequest = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Approve Request Error:', error.message);
+        logger.error('❌ Approve Request Error:', error.message);
         return res.status(500).json({ success: false, message: 'Approval-এ সমস্যা হয়েছে।' });
     }
 };
@@ -295,7 +296,7 @@ const rejectRequest = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Reject Request Error:', error.message);
+        logger.error('❌ Reject Request Error:', error.message);
         return res.status(500).json({ success: false, message: 'Reject-এ সমস্যা হয়েছে।' });
     }
 };
@@ -328,7 +329,7 @@ const checkApprovalStatus = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Check Approval Error:', error.message);
+        logger.error('❌ Check Approval Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -402,7 +403,7 @@ const getDueLeaderboard = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Due Leaderboard Error:', error.message);
+        logger.error('❌ Due Leaderboard Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -444,7 +445,7 @@ const getApprovalHistory = async (req, res) => {
 
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
-        console.error('❌ Approval History Error:', error.message);
+        logger.error('❌ Approval History Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };

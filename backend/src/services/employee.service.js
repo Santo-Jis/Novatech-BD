@@ -1,6 +1,7 @@
 const axios         = require('axios');
 const PDFDocument   = require('pdfkit');
 const bcrypt        = require('bcryptjs');
+const logger = require('../config/logger');
 const { query }     = require('../config/db');
 const { sendLoginCredentials } = require('./sms.service');
 
@@ -39,7 +40,7 @@ const uploadToCloudinary = async (fileBuffer, folder, filename, mimetype = 'imag
         const uploadPreset = process.env.CLOUDINARY_UPLOAD_PRESET;
 
         if (!cloudName) {
-            console.warn('⚠️ Cloudinary config নেই। ছবি আপলোড হবে না।');
+            logger.warn('⚠️ Cloudinary config নেই। ছবি আপলোড হবে না।');
             return null;
         }
 
@@ -62,14 +63,14 @@ const uploadToCloudinary = async (fileBuffer, folder, filename, mimetype = 'imag
         );
 
         if (response.data?.secure_url) {
-            console.log(`✅ Cloudinary আপলোড সফল: ${response.data.secure_url}`);
+            logger.info(`✅ Cloudinary আপলোড সফল: ${response.data.secure_url}`);
             return response.data.secure_url;
         }
 
         throw new Error('Cloudinary URL পাওয়া যায়নি।');
 
     } catch (error) {
-        console.error('❌ Cloudinary Error:', error.message);
+        logger.error('❌ Cloudinary Error:', error.message);
         return null;
     }
 };
@@ -83,7 +84,7 @@ const uploadToDrive = async (fileBuffer, fileName, mimeType) => {
         const driveUrl = process.env.GOOGLE_DRIVE_SCRIPT_URL;
 
         if (!driveUrl) {
-            console.warn('⚠️ Drive Script URL নেই।');
+            logger.warn('⚠️ Drive Script URL নেই।');
             return null;
         }
 
@@ -96,7 +97,7 @@ const uploadToDrive = async (fileBuffer, fileName, mimeType) => {
         );
 
         if (response.data?.success) {
-            console.log(`✅ Drive আপলোড সফল: ${response.data.url}`);
+            logger.info(`✅ Drive আপলোড সফল: ${response.data.url}`);
             return {
                 url:    response.data.url,
                 fileId: response.data.fileId || null
@@ -106,7 +107,7 @@ const uploadToDrive = async (fileBuffer, fileName, mimeType) => {
         throw new Error('Drive URL পাওয়া যায়নি।');
 
     } catch (error) {
-        console.error('❌ Drive Upload Error:', error.message);
+        logger.error('❌ Drive Upload Error:', error.message);
         return null;
     }
 };

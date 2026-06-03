@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // backend/src/controllers/creditReminder.controller.js
 // ============================================================
 // SR ম্যানুয়ালি একজন কাস্টমারকে বাকি reminder পাঠাবে
@@ -61,7 +62,7 @@ const sendCreditReminder = async (req, res) => {
 
         const FRONTEND_URL = process.env.FRONTEND_URL;
         if (!FRONTEND_URL) {
-            console.error('❌ FRONTEND_URL env variable সেট নেই।');
+            logger.error('❌ FRONTEND_URL env variable সেট নেই।');
             return res.status(500).json({ success: false, message: 'Server configuration error: FRONTEND_URL missing.' });
         }
         // ✅ Fix 1: URL-এ redirect_id যাবে, token নয়
@@ -180,7 +181,7 @@ const sendCreditReminder = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Credit Reminder Error:', error.message);
+        logger.error('❌ Credit Reminder Error:', error.message);
         return res.status(500).json({ success: false, message: 'Reminder পাঠাতে সমস্যা হয়েছে।' });
     }
 };

@@ -1,4 +1,5 @@
 const jwt       = require('jsonwebtoken');
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 const { blockUserTokens, unblockUser } = require('../config/redis');
 
@@ -46,7 +47,7 @@ const saveRefreshToken = async (userId, refreshToken) => {
             [userId, refreshToken, expiresAt]
         );
     } catch (error) {
-        console.warn('⚠️ Session save failed (non-critical):', error.message);
+        logger.warn('⚠️ Session save failed (non-critical):', error.message);
     }
 };
 
@@ -127,7 +128,7 @@ const cleanExpiredSessions = async () => {
     const result = await query(
         'DELETE FROM user_sessions WHERE expires_at < NOW()'
     );
-    console.log(`🧹 ${result.rowCount} মেয়াদোত্তীর্ণ session মুছে দেওয়া হয়েছে`);
+    logger.info(`🧹 ${result.rowCount} মেয়াদোত্তীর্ণ session মুছে দেওয়া হয়েছে`);
 };
 
 // ── Utility ──────────────────────────────────────────────────

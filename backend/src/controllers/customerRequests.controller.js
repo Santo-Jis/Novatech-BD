@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // customerRequests.controller.js
 // Admin & Manager — Credit Limit Requests ও Complaints
@@ -49,7 +50,7 @@ const getCreditLimitRequests = async (req, res) => {
             total: parseInt(countResult.rows[0].count),
         });
     } catch (error) {
-        console.error('❌ Get Credit Requests Error:', error.message);
+        logger.error('❌ Get Credit Requests Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -115,7 +116,7 @@ const resolveCreditLimitRequest = async (req, res) => {
             message: status === 'approved' ? 'অনুমোদন সফল। ক্রেডিট লিমিট আপডেট হয়েছে।' : 'আবেদন নামঞ্জুর করা হয়েছে।'
         });
     } catch (error) {
-        console.error('❌ Resolve Credit Request Error:', error.message);
+        logger.error('❌ Resolve Credit Request Error:', error.message);
         return res.status(500).json({ success: false, message: 'প্রক্রিয়া করতে সমস্যা হয়েছে।' });
     }
 };
@@ -174,7 +175,7 @@ const getComplaints = async (req, res) => {
             stats: countResult.rows[0],
         });
     } catch (error) {
-        console.error('❌ Get Complaints Error:', error.message);
+        logger.error('❌ Get Complaints Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -229,7 +230,7 @@ const resolveComplaint = async (req, res) => {
             message: 'অভিযোগ আপডেট করা হয়েছে।'
         });
     } catch (error) {
-        console.error('❌ Resolve Complaint Error:', error.message);
+        logger.error('❌ Resolve Complaint Error:', error.message);
         return res.status(500).json({ success: false, message: 'আপডেট করতে সমস্যা হয়েছে।' });
     }
 };

@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { Pool } = require('pg');
 
 // ============================================================
@@ -25,16 +26,16 @@ const { Pool } = require('pg');
 const sslCaBase64 = process.env.DB_SSL_CA;
 
 if (!sslCaBase64 || sslCaBase64.trim() === '') {
-    console.error('');
-    console.error('❌ DB_SSL_CA environment variable সেট নেই।');
-    console.error('   Supabase CA certificate ছাড়া নিরাপদ DB সংযোগ সম্ভব নয়।');
-    console.error('');
-    console.error('   সমাধান:');
-    console.error('   ১. Supabase Dashboard → Settings → Database → SSL Certificate → Download');
-    console.error('   ২. Linux/Mac: base64 -w 0 ca.pem');
-    console.error('      Windows:   certutil -encode ca.pem tmp.b64 && findstr /v CERTIFICATE tmp.b64');
-    console.error('   ৩. Render Dashboard → Environment → DB_SSL_CA = [base64 string]');
-    console.error('');
+    logger.error('');
+    logger.error('❌ DB_SSL_CA environment variable সেট নেই।');
+    logger.error('   Supabase CA certificate ছাড়া নিরাপদ DB সংযোগ সম্ভব নয়।');
+    logger.error('');
+    logger.error('   সমাধান:');
+    logger.error('   ১. Supabase Dashboard → Settings → Database → SSL Certificate → Download');
+    logger.error('   ২. Linux/Mac: base64 -w 0 ca.pem');
+    logger.error('      Windows:   certutil -encode ca.pem tmp.b64 && findstr /v CERTIFICATE tmp.b64');
+    logger.error('   ৩. Render Dashboard → Environment → DB_SSL_CA = [base64 string]');
+    logger.error('');
     process.exit(1);
 }
 
@@ -70,11 +71,11 @@ const pool = new Pool({
 
 pool.connect((err, client, release) => {
     if (err) {
-        console.error('❌ Database সংযোগ ব্যর্থ:', err.message);
+        logger.error('❌ Database সংযোগ ব্যর্থ:', err.message);
         return;
     }
     release();
-    console.log('✅ Database সংযোগ সফল — Supabase PostgreSQL (SSL verified)');
+    logger.info('✅ Database সংযোগ সফল — Supabase PostgreSQL (SSL verified)');
 });
 
 // ============================================================
@@ -93,14 +94,14 @@ const query = async (text, params) => {
         // Production:  1000ms threshold (performance debug-এর জন্য)
         const slowThreshold = process.env.NODE_ENV === 'production' ? 1000 : 500;
         if (duration > slowThreshold) {
-            console.warn(`⚠️ Slow Query [${process.env.NODE_ENV}] (${duration}ms):`, text);
+            logger.warn(`⚠️ Slow Query [${process.env.NODE_ENV}] (${duration}ms):`, text);
         }
 
         return result;
     } catch (error) {
-        console.error('❌ Query Error:', error.message);
-        console.error('Query:', text);
-        console.error('Params:', params);
+        logger.error('❌ Query Error:', error.message);
+        logger.error('Query:', text);
+        logger.error('Params:', params);
         throw error;
     }
 };
@@ -131,7 +132,7 @@ const withTransaction = async (callback) => {
 // ============================================================
 
 pool.on('error', (err) => {
-    console.error('❌ Database Pool Error:', err.message);
+    logger.error('❌ Database Pool Error:', err.message);
 });
 
 module.exports = { query, withTransaction, pool };

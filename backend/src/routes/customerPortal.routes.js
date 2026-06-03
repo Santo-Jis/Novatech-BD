@@ -6,6 +6,7 @@
 const express    = require('express');
 const router     = express.Router();
 const jwt        = require('jsonwebtoken');
+const logger = require('../config/logger');
 const { getRedisClient } = require('../config/redis');
 
 const {
@@ -74,7 +75,7 @@ const getCached = async (customerId) => {
         if (!raw) return null;
         return JSON.parse(raw);
     } catch (err) {
-        console.error('portalAuth cache GET error:', err.message);
+        logger.error('portalAuth cache GET error:', err.message);
         return null; // cache miss — DB fallback চলবে
     }
 };
@@ -85,7 +86,7 @@ const invalidatePortalAuthCache = async (customerId) => {
         const client = await getRedisClient();
         await client.del(`${PORTAL_CACHE_PREFIX}${customerId}`);
     } catch (err) {
-        console.error('portalAuth cache DEL error:', err.message);
+        logger.error('portalAuth cache DEL error:', err.message);
         // DEL fail হলেও fatal নয় — পরের request DB থেকে নেবে
     }
 };
@@ -151,12 +152,12 @@ const portalAuth = async (req, res, next) => {
                         { EX: PORTAL_CACHE_TTL_SEC }
                     );
                 } catch (cacheErr) {
-                    console.error('portalAuth cache SET error:', cacheErr.message);
+                    logger.error('portalAuth cache SET error:', cacheErr.message);
                     // write fail হলেও চলবে — next request আবার DB থেকে নেবে
                 }
 
             } catch (dbErr) {
-                console.error('❌ portalAuth DB check error:', dbErr.message);
+                logger.error('❌ portalAuth DB check error:', dbErr.message);
                 return res.status(500).json({ success: false, message: 'যাচাই করতে সমস্যা হয়েছে।' });
             }
         }

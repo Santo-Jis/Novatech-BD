@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // Customer AI Chat Controller  (updated)
 // File: backend/src/controllers/customerAiChat.controller.js
@@ -79,7 +80,7 @@ const customerAiChat = async (req, res) => {
             const intentResponse = await callAI(intentPrompt, 'daily', null, []);
             toolName = parseToolCall(intentResponse);
         } catch (err) {
-            console.warn('⚠️ Intent detection failed:', err.message);
+            logger.warn('⚠️ Intent detection failed:', err.message);
         }
 
         // ── Tool Execution ────────────────────────────────────
@@ -87,7 +88,7 @@ const customerAiChat = async (req, res) => {
             try {
                 toolData = await executeTool(toolName, customerId);
             } catch (err) {
-                console.error(`❌ Tool "${toolName}" error:`, err.message);
+                logger.error(`❌ Tool "${toolName}" error:`, err.message);
                 toolData = { error: 'তথ্য আনতে সমস্যা।' };
             }
         }
@@ -140,7 +141,7 @@ const customerAiChat = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Customer AI Chat Error:', error.message);
+        logger.error('❌ Customer AI Chat Error:', error.message);
         const status = error.response?.status;
         const msg = status === 429 ? 'একটু পরে আবার চেষ্টা করুন।' : 'AI চ্যাটে সমস্যা হয়েছে।';
         return res.status(500).json({ success: false, message: msg });
@@ -182,7 +183,7 @@ const getCustomerChatHistory = async (req, res) => {
         return res.status(200).json({ success: true, data: history });
 
     } catch (error) {
-        console.error('❌ Chat History Error:', error.message);
+        logger.error('❌ Chat History Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };

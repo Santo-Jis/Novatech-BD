@@ -1,4 +1,5 @@
 const admin = require('firebase-admin');
+const logger = require('../config/logger');
 
 // ============================================================
 // Firebase Admin SDK
@@ -18,9 +19,9 @@ const initializeFirebase = () => {
             databaseURL: process.env.FIREBASE_DATABASE_URL
         });
 
-        console.log('✅ Firebase Admin SDK সংযোগ সফল');
+        logger.info('✅ Firebase Admin SDK সংযোগ সফল');
     } catch (error) {
-        console.error('❌ Firebase Admin SDK সংযোগ ব্যর্থ:', error.message);
+        logger.error('❌ Firebase Admin SDK সংযোগ ব্যর্থ:', error.message);
     }
 
     return firebaseApp;

@@ -1,6 +1,7 @@
 const { query } = require('../config/db');
 const { encrypt } = require('../config/encryption');
 const smsService = require('../services/sms.service');
+const logger = require('../config/logger');
 
 // ============================================================
 // GET SETTINGS
@@ -25,7 +26,7 @@ const getSettings = async (req, res) => {
         return res.status(200).json({ success: true, data: settings });
 
     } catch (error) {
-        console.error('❌ Get Settings Error:', error.message);
+        logger.error('❌ Get Settings Error:', error.message);
         return res.status(500).json({ success: false, message: 'সেটিংস আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -89,7 +90,7 @@ const updateSettings = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Update Settings Error:', error.message);
+        logger.error('❌ Update Settings Error:', error.message);
         return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
     }
 };
@@ -119,7 +120,7 @@ const testSmsGateway = async (req, res) => {
         return res.status(502).json({ success: false, message: result.error || 'SMS গেটওয়ে সাড়া দেয়নি।' });
 
     } catch (error) {
-        console.error('❌ SMS Test Error:', error.message);
+        logger.error('❌ SMS Test Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভার সমস্যা।' });
     }
 };
@@ -177,7 +178,7 @@ const getAuditLogs = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Audit Logs Error:', error.message);
+        logger.error('❌ Audit Logs Error:', error.message);
         return res.status(500).json({ success: false, message: 'লগ আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -233,7 +234,7 @@ const getSystemStats = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ System Stats Error:', error.message);
+        logger.error('❌ System Stats Error:', error.message);
         return res.status(500).json({ success: false, message: 'পরিসংখ্যান আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -277,7 +278,7 @@ const getPublicSettings = async (req, res) => {
         return res.status(200).json({ success: true, data });
 
     } catch (error) {
-        console.error('❌ Get Public Settings Error:', error.message);
+        logger.error('❌ Get Public Settings Error:', error.message);
         return res.status(500).json({ success: false, message: 'সেটিংস আনতে সমস্যা হয়েছে।' });
     }
 };

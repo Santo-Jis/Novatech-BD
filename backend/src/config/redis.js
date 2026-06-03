@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { createClient } = require('redis');
 
 // ============================================================
@@ -43,21 +44,21 @@ const getRedisClient = async () => {
     if (redisClient) return redisClient;
 
     if (!process.env.REDIS_URL) {
-        console.warn('⚠️  REDIS_URL নেই — in-memory blocklist fallback চলছে।');
-        console.warn('   Multi-instance production deploy-এ Redis আবশ্যক।');
+        logger.warn('⚠️  REDIS_URL নেই — in-memory blocklist fallback চলছে।');
+        logger.warn('   Multi-instance production deploy-এ Redis আবশ্যক।');
         redisClient = memoryFallback;
         return redisClient;
     }
 
     try {
         const client = createClient({ url: process.env.REDIS_URL });
-        client.on('error', (err) => console.error('❌ Redis Error:', err.message));
-        client.on('connect', () => console.log('✅ Redis সংযুক্ত।'));
+        client.on('error', (err) => logger.error('❌ Redis Error:', err.message));
+        client.on('connect', () => logger.info('✅ Redis সংযুক্ত।'));
         await client.connect();
         redisClient = client;
         return redisClient;
     } catch (err) {
-        console.error('❌ Redis সংযোগ ব্যর্থ — in-memory fallback:', err.message);
+        logger.error('❌ Redis সংযোগ ব্যর্থ — in-memory fallback:', err.message);
         redisClient = memoryFallback;
         return redisClient;
     }
@@ -73,9 +74,9 @@ const blockUserTokens = async (userId, ttlSeconds = 900) => {
     try {
         const client = await getRedisClient();
         await client.set(`blocklist:user:${userId}`, '1', { EX: ttlSeconds });
-        console.log(`🔒 User ${userId} blocklist-এ যোগ হয়েছে (TTL: ${ttlSeconds}s)`);
+        logger.info(`🔒 User ${userId} blocklist-এ যোগ হয়েছে (TTL: ${ttlSeconds}s)`);
     } catch (err) {
-        console.error(`❌ blockUserTokens ব্যর্থ (userId: ${userId}):`, err.message);
+        logger.error(`❌ blockUserTokens ব্যর্থ (userId: ${userId}):`, err.message);
     }
 };
 
@@ -90,7 +91,7 @@ const isUserBlocked = async (userId) => {
         const result = await client.get(`blocklist:user:${userId}`);
         return result !== null;
     } catch (err) {
-        console.error(`❌ isUserBlocked চেক ব্যর্থ (userId: ${userId}):`, err.message);
+        logger.error(`❌ isUserBlocked চেক ব্যর্থ (userId: ${userId}):`, err.message);
         return false; // Redis down হলে safe default: block করা হয় না
     }
 };
@@ -104,9 +105,9 @@ const unblockUser = async (userId) => {
     try {
         const client = await getRedisClient();
         await client.del(`blocklist:user:${userId}`);
-        console.log(`🔓 User ${userId} blocklist থেকে সরানো হয়েছে।`);
+        logger.info(`🔓 User ${userId} blocklist থেকে সরানো হয়েছে।`);
     } catch (err) {
-        console.error(`❌ unblockUser ব্যর্থ (userId: ${userId}):`, err.message);
+        logger.error(`❌ unblockUser ব্যর্থ (userId: ${userId}):`, err.message);
     }
 };
 

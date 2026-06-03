@@ -1,4 +1,5 @@
 const cron    = require('node-cron');
+const logger = require('../config/logger');
 const { getDB } = require('../config/firebase');
 
 // ============================================================
@@ -10,7 +11,7 @@ const { getDB } = require('../config/firebase');
 const KEEP_DAYS = 365  // ১ বছর
 
 const cleanOldGpsTrails = async () => {
-    console.log('\n🗺️  GPS Trail Cleanup শুরু...')
+    logger.info('\n🗺️  GPS Trail Cleanup শুরু...')
 
     try {
         const db        = getDB()
@@ -22,7 +23,7 @@ const cleanOldGpsTrails = async () => {
         const allTrails = snapshot.val()
 
         if (!allTrails) {
-            console.log('✅ GPS Trail ফাঁকা — মোছার কিছু নেই।')
+            logger.info('✅ GPS Trail ফাঁকা — মোছার কিছু নেই।')
             return
         }
 
@@ -46,14 +47,14 @@ const cleanOldGpsTrails = async () => {
 
             await db.ref().update(updates)
             totalDeleted += oldKeys.length
-            console.log(`   🗑️  ${userId}: ${oldKeys.length}টি পুরনো entry মুছা হয়েছে`)
+            logger.info(`   🗑️  ${userId}: ${oldKeys.length}টি পুরনো entry মুছা হয়েছে`)
         })
 
         await Promise.all(deletePromises)
-        console.log(`✅ GPS Trail Cleanup সম্পন্ন — মোট ${totalDeleted}টি entry মুছা হয়েছে।\n`)
+        logger.info(`✅ GPS Trail Cleanup সম্পন্ন — মোট ${totalDeleted}টি entry মুছা হয়েছে।\n`)
 
     } catch (error) {
-        console.error('❌ GPS Trail Cleanup ব্যর্থ:', error.message)
+        logger.error('❌ GPS Trail Cleanup ব্যর্থ:', error.message)
     }
 }
 
@@ -63,7 +64,7 @@ const startGpsTrailCleanupJob = () => {
         timezone: 'Asia/Dhaka'
     })
 
-    console.log('✅ GPS Trail Cleanup Job চালু — প্রতিদিন রাত ২টায় চলবে (৩৬৫ দিনের পুরনো data মুছবে)')
+    logger.info('✅ GPS Trail Cleanup Job চালু — প্রতিদিন রাত ২টায় চলবে (৩৬৫ দিনের পুরনো data মুছবে)')
 }
 
 module.exports = { startGpsTrailCleanupJob, cleanOldGpsTrails }

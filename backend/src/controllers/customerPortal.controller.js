@@ -155,7 +155,7 @@ const sendPortalLink = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Send Portal Link Error:', error.message);
+        logger.error('❌ Send Portal Link Error:', error.message);
         return res.status(500).json({ success: false, message: 'লিংক তৈরিতে সমস্যা হয়েছে।' });
     }
 };
@@ -222,7 +222,7 @@ const resolveLink = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Resolve Link Error:', error.message);
+        logger.error('❌ Resolve Link Error:', error.message);
         return res.status(500).json({ success: false, message: 'লিংক যাচাইয়ে সমস্যা হয়েছে।' });
     }
 };
@@ -293,7 +293,7 @@ const verifyPortalToken = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Verify Token Error:', error.message);
+        logger.error('❌ Verify Token Error:', error.message);
         return res.status(500).json({ success: false, message: 'যাচাইয়ে সমস্যা হয়েছে।' });
     }
 };
@@ -412,7 +412,7 @@ const deviceLogin = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Device Login Error:', error.message);
+        logger.error('❌ Device Login Error:', error.message);
         return res.status(500).json({ success: false, message: 'লগইনে সমস্যা হয়েছে।' });
     }
 };
@@ -487,7 +487,7 @@ const googleAuth = async (req, res) => {
             if (!expectedClientId) {
                 // validateEnv.js পাস করেও যদি কোনোভাবে এখানে আসে —
                 // silent bypass-এর চেয়ে server error অনেক ভালো
-                console.error('CRITICAL: GOOGLE_CLIENT_ID নেই — aud check করা সম্ভব নয়।');
+                logger.error('CRITICAL: GOOGLE_CLIENT_ID নেই — aud check করা সম্ভব নয়।');
                 return res.status(500).json({
                     success: false,
                     message: 'Server configuration error। Admin-কে জানান।'
@@ -495,7 +495,7 @@ const googleAuth = async (req, res) => {
             }
             const aud = tokeninfoRes.data.aud || tokeninfoRes.data.azp || '';
             if (aud !== expectedClientId) {
-                console.warn(`❌ Google token aud mismatch: got "${aud}", expected "${expectedClientId}"`);
+                logger.warn(`❌ Google token aud mismatch: got "${aud}", expected "${expectedClientId}"`);
                 return res.status(401).json({
                     success: false,
                     message: 'Google token অবৈধ — ভিন্ন app-এর token গ্রহণযোগ্য নয়।'
@@ -569,7 +569,7 @@ const googleAuth = async (req, res) => {
         }
 
         if (!process.env.JWT_PORTAL_SECRET) {
-            console.error('❌ JWT_PORTAL_SECRET is not set in environment variables.');
+            logger.error('❌ JWT_PORTAL_SECRET is not set in environment variables.');
             return res.status(500).json({ success: false, message: 'সার্ভার কনফিগারেশন সমস্যা।' });
         }
 
@@ -617,7 +617,7 @@ const googleAuth = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Google Auth Error:', error.message);
+        logger.error('❌ Google Auth Error:', error.message);
         return res.status(500).json({ success: false, message: 'লগইনে সমস্যা হয়েছে।' });
     }
 };
@@ -646,7 +646,7 @@ const listCustomerDevices = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ List Devices Error:', error.message);
+        logger.error('❌ List Devices Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -680,7 +680,7 @@ const revokeDevice = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Revoke Device Error:', error.message);
+        logger.error('❌ Revoke Device Error:', error.message);
         return res.status(500).json({ success: false, message: 'Revoke করতে সমস্যা হয়েছে।' });
     }
 };
@@ -711,7 +711,7 @@ const revokeAllDevices = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Revoke All Devices Error:', error.message);
+        logger.error('❌ Revoke All Devices Error:', error.message);
         return res.status(500).json({ success: false, message: 'Revoke করতে সমস্যা হয়েছে।' });
     }
 };
@@ -845,7 +845,7 @@ const getCustomerDashboard = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Customer Dashboard Error:', error.message);
+        logger.error('❌ Customer Dashboard Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -925,7 +925,7 @@ const getCustomerInvoices = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Invoice List Error:', error.message);
+        logger.error('❌ Invoice List Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1031,7 +1031,7 @@ const getPaymentHistory = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Payment History Error:', error.message);
+        logger.error('❌ Payment History Error:', error.message);
         return res.status(500).json({ success: false, message: 'পেমেন্ট ইতিহাস আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1111,7 +1111,7 @@ const getMonthlySummary = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Monthly Summary Error:', error.message);
+        logger.error('❌ Monthly Summary Error:', error.message);
         return res.status(500).json({ success: false, message: 'মাসিক সারসংক্ষেপ আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1174,7 +1174,7 @@ const getCreditOverview = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Credit Overview Error:', error.message);
+        logger.error('❌ Credit Overview Error:', error.message);
         return res.status(500).json({ success: false, message: 'ক্রেডিট তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1246,7 +1246,7 @@ const submitCreditLimitRequest = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Credit Limit Request Error:', error.message);
+        logger.error('❌ Credit Limit Request Error:', error.message);
         return res.status(500).json({ success: false, message: 'আবেদন জমা দিতে সমস্যা হয়েছে।' });
     }
 };
@@ -1265,7 +1265,7 @@ const getMyLimitRequests = async (req, res) => {
         );
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
-        console.error('❌ Get Limit Requests Error:', error.message);
+        logger.error('❌ Get Limit Requests Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1312,7 +1312,7 @@ const submitComplaint = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Submit Complaint Error:', error.message);
+        logger.error('❌ Submit Complaint Error:', error.message);
         return res.status(500).json({ success: false, message: 'অভিযোগ জমা দিতে সমস্যা হয়েছে।' });
     }
 };
@@ -1331,7 +1331,7 @@ const getMyComplaints = async (req, res) => {
         );
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
-        console.error('❌ Get Complaints Error:', error.message);
+        logger.error('❌ Get Complaints Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1420,6 +1420,7 @@ const getCustomerStatement = async (req, res) => {
 
         // PDFKit দিয়ে তৈরি
         const PDFDocument = require('pdfkit');
+const logger = require('../config/logger');
         const doc    = new PDFDocument({ margin: 40, size: 'A4' });
         const chunks = [];
 
@@ -1579,7 +1580,7 @@ const getCustomerStatement = async (req, res) => {
         doc.end();
 
     } catch (error) {
-        console.error('❌ Statement PDF Error:', error.message);
+        logger.error('❌ Statement PDF Error:', error.message);
         return res.status(500).json({ success: false, message: 'Statement তৈরি করতে সমস্যা হয়েছে।' });
     }
 };

@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 
 // ============================================================
@@ -47,7 +48,7 @@ const getRoutes = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Get Routes Error:', error.message);
+        logger.error('❌ Get Routes Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -86,7 +87,7 @@ const createRoute = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Create Route Error:', error.message);
+        logger.error('❌ Create Route Error:', error.message);
         return res.status(500).json({ success: false, message: 'রুট তৈরিতে সমস্যা হয়েছে।' });
     }
 };
@@ -123,7 +124,7 @@ const updateRoute = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Update Route Error:', error.message);
+        logger.error('❌ Update Route Error:', error.message);
         return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
     }
 };
@@ -143,7 +144,7 @@ const deleteRoute = async (req, res) => {
         return res.status(200).json({ success: true, message: 'রুট মুছে দেওয়া হয়েছে।' });
 
     } catch (error) {
-        console.error('❌ Delete Route Error:', error.message);
+        logger.error('❌ Delete Route Error:', error.message);
         return res.status(500).json({ success: false, message: 'মুছতে সমস্যা হয়েছে।' });
     }
 };
@@ -203,7 +204,7 @@ const assignWorkerToRoute = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Assign Worker Error:', error.message);
+        logger.error('❌ Assign Worker Error:', error.message);
         return res.status(500).json({ success: false, message: 'অ্যাসাইনে সমস্যা হয়েছে।' });
     }
 };
@@ -229,7 +230,7 @@ const getRouteWorkers = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Get Route Workers Error:', error.message);
+        logger.error('❌ Get Route Workers Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -279,7 +280,7 @@ const getRouteCustomers = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Get Route Customers Error:', error.message);
+        logger.error('❌ Get Route Customers Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -339,7 +340,7 @@ const getLiveRouteStatus = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Live Route Status Error:', error.message);
+        logger.error('❌ Live Route Status Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };

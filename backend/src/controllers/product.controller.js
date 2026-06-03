@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 
 // ============================================================
@@ -45,7 +46,7 @@ const getProducts = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Get Products Error:', error.message);
+        logger.error('❌ Get Products Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -81,7 +82,7 @@ const getProduct = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows[0] });
 
     } catch (error) {
-        console.error('❌ Get Product Error:', error.message);
+        logger.error('❌ Get Product Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -143,7 +144,7 @@ const createProduct = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Create Product Error:', error.message);
+        logger.error('❌ Create Product Error:', error.message);
         if (error.code === '23505') {
             return res.status(400).json({ success: false, message: 'এই SKU আগে থেকেই আছে।' });
         }
@@ -208,7 +209,7 @@ const updateProduct = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Update Product Error:', error.message);
+        logger.error('❌ Update Product Error:', error.message);
         return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
     }
 };
@@ -261,7 +262,7 @@ const adjustStock = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Adjust Stock Error:', error.message);
+        logger.error('❌ Adjust Stock Error:', error.message);
         return res.status(500).json({ success: false, message: 'স্টক আপডেটে সমস্যা হয়েছে।' });
     }
 };
@@ -286,7 +287,7 @@ const getStockMovements = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Stock Movements Error:', error.message);
+        logger.error('❌ Stock Movements Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };

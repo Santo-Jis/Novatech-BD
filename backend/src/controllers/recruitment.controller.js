@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { getDB } = require('../config/firebase');
 const { uploadToCloudinary } = require('../services/employee.service');
 const { generateOTP } = require('../config/encryption');
@@ -47,7 +48,7 @@ exports.sendSROTP = async (req, res) => {
         });
 
     } catch (err) {
-        console.error('❌ sendSROTP:', err.message);
+        logger.error('❌ sendSROTP:', err.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -94,7 +95,7 @@ exports.confirmSROTP = async (req, res) => {
         return res.status(200).json({ success: true, message: 'ইমেইল যাচাই সফল ✅' });
 
     } catch (err) {
-        console.error('❌ confirmSROTP:', err.message);
+        logger.error('❌ confirmSROTP:', err.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -151,7 +152,7 @@ exports.submitApplication = async (req, res) => {
             const filename = `sr_${Date.now()}`;
             photo_url = await uploadToCloudinary(req.file.buffer, 'recruitment', filename, req.file.mimetype);
             if (!photo_url) {
-                console.warn('⚠️ ছবি আপলোড হয়নি। CLOUDINARY env সেট আছে কিনা দেখুন।');
+                logger.warn('⚠️ ছবি আপলোড হয়নি। CLOUDINARY env সেট আছে কিনা দেখুন।');
             }
         }
 
@@ -243,7 +244,7 @@ exports.submitApplication = async (req, res) => {
             // আবেদনকারীকে Confirmation Email
             if (d.email) {
                 sendSRApplicationConfirmEmail(d.email, emailData).catch(err =>
-                    console.warn('⚠️ আবেদনকারী confirmation email ব্যর্থ:', err.message)
+                    logger.warn('⚠️ আবেদনকারী confirmation email ব্যর্থ:', err.message)
                 );
             }
 
@@ -256,12 +257,12 @@ exports.submitApplication = async (req, res) => {
             const adminEmails = adminResult.rows.map(r => r.email);
             if (adminEmails.length > 0) {
                 sendSRApplicationAdminNotifyEmail(adminEmails, emailData).catch(err =>
-                    console.warn('⚠️ Admin notification email ব্যর্থ:', err.message)
+                    logger.warn('⚠️ Admin notification email ব্যর্থ:', err.message)
                 );
             }
         } catch (emailErr) {
             // Email ব্যর্থ হলেও আবেদন জমা সফল ধরা হবে
-            console.warn('⚠️ SR application email error:', emailErr.message);
+            logger.warn('⚠️ SR application email error:', emailErr.message);
         }
 
         res.status(201).json({
@@ -270,7 +271,7 @@ exports.submitApplication = async (req, res) => {
             data: { application_id },
         });
     } catch (err) {
-        console.error('Recruitment apply error:', err);
+        logger.error('Recruitment apply error:', err);
         res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -293,7 +294,7 @@ exports.getApplications = async (req, res) => {
                 apps.push({ _id: child.key, ...val });
             }
         });
-        console.log(`[Recruitment] Firebase থেকে ${apps.length}টি আবেদন পাওয়া গেছে`);
+        logger.info(`[Recruitment] Firebase থেকে ${apps.length}টি আবেদন পাওয়া গেছে`);
 
         // created_at দিয়ে sort — নতুন আগে
         apps.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
@@ -333,7 +334,7 @@ exports.getApplications = async (req, res) => {
             data: { applications: paginated, total, stats },
         });
     } catch (err) {
-        console.error('Get applications error:', err);
+        logger.error('Get applications error:', err);
         res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -389,7 +390,7 @@ exports.updateStatus = async (req, res) => {
             data: { _id: updated.key, ...updated.val() },
         });
     } catch (err) {
-        console.error('updateStatus error:', err);
+        logger.error('updateStatus error:', err);
         res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };

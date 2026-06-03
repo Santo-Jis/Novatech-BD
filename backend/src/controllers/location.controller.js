@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { setLiveLocation, setPresence, addGpsTrail, getDB } = require('../config/firebase');
 const { query } = require('../config/db');
 
@@ -34,7 +35,7 @@ const updateLocation = async (req, res) => {
 
         res.json({ success: true, message: 'লোকেশন আপডেট হয়েছে।' });
     } catch (error) {
-        console.error('Location update error:', error);
+        logger.error('Location update error:', error);
         res.status(500).json({ success: false, message: 'লোকেশন আপডেটে সমস্যা হয়েছে।' });
     }
 };
@@ -110,7 +111,7 @@ const getTeamLocations = async (req, res) => {
 
         res.json({ success: true, data: locations });
     } catch (error) {
-        console.error('getTeamLocations error:', error);
+        logger.error('getTeamLocations error:', error);
         res.status(500).json({ success: false, message: 'লোকেশন আনতে সমস্যা।' });
     }
 };
@@ -212,7 +213,7 @@ const getGpsTrail = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('getGpsTrail error:', error);
+        logger.error('getGpsTrail error:', error);
         res.status(500).json({ success: false, message: 'Trail আনতে সমস্যা।' });
     }
 };

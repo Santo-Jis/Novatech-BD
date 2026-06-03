@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 // nodemailer বাদ — Render SMTP block করে, তাই Brevo HTTP API ব্যবহার করা হচ্ছে
 
@@ -68,12 +69,12 @@ const sendEmail = async (to, subject, html, text = '') => {
         const config = await getEmailConfig();
 
         if (!config.enabled) {
-            console.log(`📵 Email বন্ধ → ${to}`);
+            logger.info(`📵 Email বন্ধ → ${to}`);
             return { success: true, disabled: true };
         }
 
         if (!config.user || !config.pass) {
-            console.log(`📧 Dev Mode Email → ${to}: ${subject}`);
+            logger.info(`📧 Dev Mode Email → ${to}: ${subject}`);
             return { success: true, dev: true };
         }
 
@@ -99,11 +100,11 @@ const sendEmail = async (to, subject, html, text = '') => {
             throw new Error(result.message || `Brevo API Error: ${response.status}`);
         }
 
-        console.log(`✅ Email সফল → ${to} [${result.messageId}]`);
+        logger.info(`✅ Email সফল → ${to} [${result.messageId}]`);
         return { success: true, messageId: result.messageId };
 
     } catch (error) {
-        console.error(`❌ Email Error → ${to}:`, error.message);
+        logger.error(`❌ Email Error → ${to}:`, error.message);
         return { success: false, error: error.message };
     }
 };

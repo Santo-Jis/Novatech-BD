@@ -1,5 +1,6 @@
 const { query, withTransaction } = require('../config/db');
 const axios = require('axios');
+const logger = require('../config/logger');
 const { sendPushNotification } = require('../services/fcm.service');
 const { addLedgerEntry } = require('./ledger.controller');
 
@@ -337,7 +338,7 @@ const createSettlement = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Create Settlement Error:', error.message);
+        logger.error('❌ Create Settlement Error:', error.message);
         return res.status(500).json({ success: false, message: 'হিসাব জমায় সমস্যা হয়েছে।' });
     }
 };
@@ -369,7 +370,7 @@ const getMySettlements = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ My Settlements Error:', error.message);
+        logger.error('❌ My Settlements Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -405,7 +406,7 @@ const getPendingSettlements = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Pending Settlements Error:', error.message);
+        logger.error('❌ Pending Settlements Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -511,7 +512,7 @@ const approveSettlement = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Approve Settlement Error:', error.message);
+        logger.error('❌ Approve Settlement Error:', error.message);
         return res.status(500).json({ success: false, message: 'অনুমোদনে সমস্যা হয়েছে।' });
     }
 };
@@ -617,7 +618,7 @@ const disputeSettlement = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Dispute Settlement Error:', error.message);
+        logger.error('❌ Dispute Settlement Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -735,7 +736,7 @@ const payShortage = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Pay Shortage Error:', error.message);
+        logger.error('❌ Pay Shortage Error:', error.message);
         return res.status(500).json({ success: false, message: 'পরিশোধ রেকর্ডে সমস্যা হয়েছে।' });
     }
 };
@@ -783,7 +784,7 @@ const getAllSettlements = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ All Settlements Error:', error.message);
+        logger.error('❌ All Settlements Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -845,7 +846,7 @@ const getSettlementDetail = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Settlement Detail Error:', error.message);
+        logger.error('❌ Settlement Detail Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -926,7 +927,7 @@ const getTodayPreview = async (req, res) => {
         return res.status(200).json({ success: true, data: { items: itemsData } });
 
     } catch (error) {
-        console.error('❌ Today Preview Error:', error.message);
+        logger.error('❌ Today Preview Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };

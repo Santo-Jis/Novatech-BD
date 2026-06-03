@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // SALES & ATTENDANCE REPORT CONTROLLERS
 // GET /api/reports/sales
@@ -208,7 +209,7 @@ const getSalesReport = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Sales Report Error:', error.message);
+        logger.error('❌ Sales Report Error:', error.message);
         return res.status(500).json({ success: false, message: 'রিপোর্ট আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -269,7 +270,7 @@ const getAttendanceReport = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Attendance Report Error:', error.message);
+        logger.error('❌ Attendance Report Error:', error.message);
         return res.status(500).json({ success: false, message: 'রিপোর্ট আনতে সমস্যা হয়েছে।' });
     }
 };

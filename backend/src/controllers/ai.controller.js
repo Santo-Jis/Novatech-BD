@@ -3,6 +3,7 @@ const { encrypt, decrypt, maskApiKey } = require('../config/encryption');
 const { runAIInsightsJob } = require('../jobs/ai.job');
 const { callAI, detectProvider, PROVIDERS } = require('../services/ai.service');
 const axios = require('axios');
+const logger = require('../config/logger');
 
 // ============================================================
 // POPULAR MODELS LIST — Provider অনুযায়ী
@@ -106,7 +107,7 @@ const getInsights = async (req, res) => {
             data: { insights: result.rows, unread_count: parseInt(unreadCount.rows[0].count) }
         });
     } catch (error) {
-        console.error('❌ Get Insights Error:', error.message);
+        logger.error('❌ Get Insights Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -160,7 +161,7 @@ const getAIConfig = async (req, res) => {
 
         return res.status(200).json({ success: true, data: config });
     } catch (error) {
-        console.error('❌ Get AI Config Error:', error.message);
+        logger.error('❌ Get AI Config Error:', error.message);
         return res.status(500).json({ success: false, message: 'Config আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -220,7 +221,7 @@ const updateAIConfig = async (req, res) => {
 
         return res.status(200).json({ success: true, message: 'AI Config আপডেট সফল।' });
     } catch (error) {
-        console.error('❌ Update AI Config Error:', error.message);
+        logger.error('❌ Update AI Config Error:', error.message);
         return res.status(500).json({ success: false, message: 'Config আপডেটে সমস্যা হয়েছে।' });
     }
 };
@@ -239,7 +240,7 @@ const testAIConnection = async (req, res) => {
             data: { reply: reply.trim() }
         });
     } catch (error) {
-        console.error('❌ AI Test Error:', error.response?.data || error.message);
+        logger.error('❌ AI Test Error:', error.response?.data || error.message);
         const msg = error.response?.status === 401
             ? 'API Key সঠিক নয়।'
             : error.response?.status === 429
@@ -377,7 +378,7 @@ const aiChat = async (req, res) => {
                     const errStatus = err.response?.status;
                     // শুধু 429 বা 404 হলে fallback করো, অন্যথায় throw করো
                     if (errStatus === 429 || errStatus === 404) {
-                        console.warn(`⚠️ Model ${model} failed (${errStatus}), trying next...`);
+                        logger.warn(`⚠️ Model ${model} failed (${errStatus}), trying next...`);
                         lastError = err;
                         continue;
                     }
@@ -399,7 +400,7 @@ const aiChat = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ AI Chat Error:', error.response?.data || error.message);
+        logger.error('❌ AI Chat Error:', error.response?.data || error.message);
         const status = error.response?.status;
         const msg = status === 401 ? 'API Key সঠিক নয়।'
                   : status === 429 ? 'API limit পার হয়েছে। কিছুক্ষণ পরে চেষ্টা করুন।'

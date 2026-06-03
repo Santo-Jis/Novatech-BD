@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // CUSTOMER ORDER REQUEST CONTROLLER
 // backend/src/controllers/customerOrderRequest.controller.js
@@ -122,7 +123,7 @@ const createOrderRequest = async (req, res) => {
             }
         } catch (pushErr) {
             // Push ব্যর্থ হলেও অর্ডার সেভ হয়েছে — silent fail
-            console.error('[OrderRequest] Push notification error:', pushErr.message);
+            logger.error('[OrderRequest] Push notification error:', pushErr.message);
         }
 
         return res.status(201).json({
@@ -139,7 +140,7 @@ const createOrderRequest = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ createOrderRequest Error:', error.message);
+        logger.error('❌ createOrderRequest Error:', error.message);
         return res.status(500).json({ success: false, message: 'অর্ডার পাঠাতে সমস্যা হয়েছে।' });
     }
 };
@@ -215,7 +216,7 @@ const getMyOrderRequests = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getMyOrderRequests Error:', error.message);
+        logger.error('❌ getMyOrderRequests Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -279,7 +280,7 @@ const cancelMyOrderRequest = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ cancelMyOrderRequest Error:', error.message);
+        logger.error('❌ cancelMyOrderRequest Error:', error.message);
         return res.status(500).json({ success: false, message: 'বাতিল করতে সমস্যা হয়েছে।' });
     }
 };
@@ -393,7 +394,7 @@ const getAllOrderRequests = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('\u274c getAllOrderRequests Error:', error.message);
+        logger.error('\u274c getAllOrderRequests Error:', error.message);
         return res.status(500).json({ success: false, message: '\u09a4\u09a5\u09cd\u09af \u0986\u09a8\u09a4\u09c7 \u09b8\u09ae\u09b8\u09cd\u09af\u09be \u09b9\u09af\u09bc\u09c7\u099b\u09c7\u0964' });
     }
 };
@@ -483,7 +484,7 @@ const updateOrderRequest = async (req, res) => {
                     `INSERT INTO customer_notifications (customer_id, title, body, type)
                      VALUES ($1, $2, $3, 'order_request')`,
                     [request.customer_id, notif.title, notif.body]
-                ).catch(e => console.error('[OrderRequest] Customer notif DB error:', e.message));
+                ).catch(e => logger.error('[OrderRequest] Customer notif DB error:', e.message));
 
                 // Web Push — sendCustomerPush handles stale token cleanup automatically
                 const { rows: fcmRows } = await query(
@@ -507,7 +508,7 @@ const updateOrderRequest = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ updateOrderRequest Error:', error.message);
+        logger.error('❌ updateOrderRequest Error:', error.message);
         return res.status(500).json({ success: false, message: 'আপডেট করতে সমস্যা হয়েছে।' });
     }
 };
@@ -600,7 +601,7 @@ const getPortalProducts = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getPortalProducts Error:', error.message);
+        logger.error('❌ getPortalProducts Error:', error.message);
         return res.status(500).json({ success: false, message: 'পণ্য তালিকা আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -663,7 +664,7 @@ const notifyAdminStockWarning = async (req, res) => {
         return res.status(200).json({ success: true, message: 'Admin কে সতর্কতা পাঠানো হয়েছে।' });
 
     } catch (error) {
-        console.error('❌ notifyAdminStockWarning Error:', error.message);
+        logger.error('❌ notifyAdminStockWarning Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -774,7 +775,7 @@ const getOrderTracking = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getOrderTracking Error:', error.message);
+        logger.error('❌ getOrderTracking Error:', error.message);
         return res.status(500).json({ success: false, message: 'ট্র্যাকিং তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -927,7 +928,7 @@ const createReturnRequest = async (req, res) => {
                 });
             }
         } catch (pushErr) {
-            console.error('[ReturnRequest] Push error:', pushErr.message);
+            logger.error('[ReturnRequest] Push error:', pushErr.message);
         }
 
         const typeBn = type === 'replacement' ? 'রিপ্লেসমেন্ট' : 'ফেরত';
@@ -945,7 +946,7 @@ const createReturnRequest = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ createReturnRequest Error:', error.message);
+        logger.error('❌ createReturnRequest Error:', error.message);
         return res.status(500).json({ success: false, message: 'অনুরোধ পাঠাতে সমস্যা হয়েছে।' });
     }
 };
@@ -1014,7 +1015,7 @@ const getMyReturnRequests = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getMyReturnRequests Error:', error.message);
+        logger.error('❌ getMyReturnRequests Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -1076,7 +1077,7 @@ const getPortalProductDetail = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getPortalProductDetail Error:', error.message);
+        logger.error('❌ getPortalProductDetail Error:', error.message);
         return res.status(500).json({ success: false, message: 'পণ্যের তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };

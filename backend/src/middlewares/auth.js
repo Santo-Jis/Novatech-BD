@@ -1,4 +1,5 @@
 const jwt               = require('jsonwebtoken');
+const logger = require('../config/logger');
 const { query }         = require('../config/db');
 const { isUserBlocked } = require('../config/redis');
 
@@ -110,7 +111,7 @@ const auth = async (req, res, next) => {
         next();
 
     } catch (error) {
-        console.error('❌ Auth Middleware Error:', error.message);
+        logger.error('❌ Auth Middleware Error:', error.message);
         return res.status(500).json({
             success: false,
             message: 'সার্ভারে সমস্যা হয়েছে।'
@@ -134,7 +135,7 @@ const enrichUserSalary = async (req, res, next) => {
         }
         next();
     } catch (error) {
-        console.error('❌ enrichUserSalary Error:', error.message);
+        logger.error('❌ enrichUserSalary Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };

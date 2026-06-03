@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // FINANCIAL REPORT CONTROLLERS
 // GET /api/reports/pl
@@ -103,7 +104,7 @@ const getPLStatement = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('❌ P&L Error:', error.message);
+        logger.error('❌ P&L Error:', error.message);
         return res.status(500).json({ success: false, message: 'P&L আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -224,7 +225,7 @@ const getLedger = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Ledger Error:', error.message);
+        logger.error('❌ Ledger Error:', error.message);
         return res.status(500).json({ success: false, message: 'লেজার আনতে সমস্যা হয়েছে।' });
     }
 };

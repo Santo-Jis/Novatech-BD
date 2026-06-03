@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // DEVICE MANAGEMENT CONTROLLER (Admin + Manager)
 //
@@ -128,7 +129,7 @@ const getPortalOverview = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Portal Overview Error:', error.message);
+        logger.error('❌ Portal Overview Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -203,7 +204,7 @@ const getCustomerDevices = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Get Customer Devices Error:', error.message);
+        logger.error('❌ Get Customer Devices Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -253,7 +254,7 @@ const revokeDevice = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Revoke Device Error:', error.message);
+        logger.error('❌ Revoke Device Error:', error.message);
         return res.status(500).json({ success: false, message: 'Revoke করতে সমস্যা হয়েছে।' });
     }
 };
@@ -326,7 +327,7 @@ const revokeAllDevices = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Revoke All Devices Error:', error.message);
+        logger.error('❌ Revoke All Devices Error:', error.message);
         return res.status(500).json({ success: false, message: 'Revoke করতে সমস্যা হয়েছে।' });
     }
 };
@@ -376,7 +377,7 @@ const restoreDevice = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Restore Device Error:', error.message);
+        logger.error('❌ Restore Device Error:', error.message);
         return res.status(500).json({ success: false, message: 'পুনরায় সক্রিয় করতে সমস্যা হয়েছে।' });
     }
 };
@@ -464,7 +465,7 @@ const getPortalStats = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Portal Stats Error:', error.message);
+        logger.error('❌ Portal Stats Error:', error.message);
         return res.status(500).json({ success: false, message: 'পরিসংখ্যান আনতে সমস্যা হয়েছে।' });
     }
 };

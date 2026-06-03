@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // requireCheckin Middleware
 // ভিজিট / বিক্রয় / অর্ডার করার আগে
@@ -45,7 +46,7 @@ const requireCheckin = async (req, res, next) => {
     } catch (error) {
         // ✅ FIX #2: আগে next() ছিল — যেকোনো DB error-এ middleware bypass হতো।
         // এখন 500 দিয়ে block করা হচ্ছে, security নিশ্চিত।
-        console.error('❌ requireCheckin Middleware Error:', error.message);
+        logger.error('❌ requireCheckin Middleware Error:', error.message);
         return res.status(500).json({
             success: false,
             code:    'SERVER_ERROR',

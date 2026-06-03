@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // Firebase Notify — Shared Utility
 // আগে sales, order, settlement controller-এ হুবহু একই
@@ -26,7 +27,7 @@ const firebaseNotify = async (path, data) => {
         });
     } catch (err) {
         // Notification failure কখনো main flow আটকাবে না
-        console.error('⚠️ Firebase Notify Error:', err.message);
+        logger.error('⚠️ Firebase Notify Error:', err.message);
     }
 };
 

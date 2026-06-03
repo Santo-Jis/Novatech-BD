@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 
 // ============================================================
@@ -79,7 +80,7 @@ const getMyCommission = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ My Commission Error:', error.message);
+        logger.error('❌ My Commission Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -120,7 +121,7 @@ const getBonusStatus = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Bonus Status Error:', error.message);
+        logger.error('❌ Bonus Status Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -169,7 +170,7 @@ const getTeamCommission = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Team Commission Error:', error.message);
+        logger.error('❌ Team Commission Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -210,7 +211,7 @@ const getAllCommission = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ All Commission Error:', error.message);
+        logger.error('❌ All Commission Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -231,7 +232,7 @@ const getSettings = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Get Settings Error:', error.message);
+        logger.error('❌ Get Settings Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -278,7 +279,7 @@ const updateSettings = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Update Settings Error:', error.message);
+        logger.error('❌ Update Settings Error:', error.message);
         return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
     }
 };
@@ -310,7 +311,7 @@ const getCommissionSummary = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows[0] });
 
     } catch (error) {
-        console.error('❌ Commission Summary Error:', error.message);
+        logger.error('❌ Commission Summary Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -401,7 +402,7 @@ const payCommission = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Pay Commission Error:', error.message);
+        logger.error('❌ Pay Commission Error:', error.message);
         return res.status(500).json({ success: false, message: 'পরিশোধে সমস্যা হয়েছে।' });
     }
 };
@@ -448,7 +449,7 @@ const getPayableCommissions = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Payable Commissions Error:', error.message);
+        logger.error('❌ Payable Commissions Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };

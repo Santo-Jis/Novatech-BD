@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // COMMISSION & CREDIT REPORT CONTROLLERS
 // GET /api/reports/commission
@@ -75,7 +76,7 @@ const getCommissionReport = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Commission Report Error:', error.message);
+        logger.error('❌ Commission Report Error:', error.message);
         return res.status(500).json({ success: false, message: 'রিপোর্ট আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -137,7 +138,7 @@ const getCreditReport = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Credit Report Error:', error.message);
+        logger.error('❌ Credit Report Error:', error.message);
         return res.status(500).json({ success: false, message: 'রিপোর্ট আনতে সমস্যা হয়েছে।' });
     }
 };

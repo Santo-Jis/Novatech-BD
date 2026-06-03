@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
 
 // ============================================================
@@ -110,7 +111,7 @@ const getMyStock = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Get My Stock Error:', error.message);
+        logger.error('❌ Get My Stock Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -186,7 +187,7 @@ const getLedgerHistory = async (req, res) => {
         return res.status(200).json({ success: true, summary, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Ledger History Error:', error.message);
+        logger.error('❌ Ledger History Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -218,7 +219,7 @@ const adjustStock = async (req, res) => {
         return res.status(200).json({ success: true, message: 'স্টক সংশোধন হয়েছে।' });
 
     } catch (error) {
-        console.error('❌ Adjust Stock Error:', error.message);
+        logger.error('❌ Adjust Stock Error:', error.message);
         return res.status(500).json({ success: false, message: 'সংশোধনে সমস্যা হয়েছে।' });
     }
 };

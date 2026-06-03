@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // Novatech-BD — JIS-AI WhatsApp Integration Patch (v2)
 // File: backend/src/routes/jisai.routes.js
@@ -61,7 +62,7 @@ module.exports = (app) => {
             return res.json({ success: true, data: result.rows });
 
         } catch (err) {
-            console.error('❌ JIS-AI Products Error:', err.message);
+            logger.error('❌ JIS-AI Products Error:', err.message);
             return res.status(500).json({ success: false });
         }
     });
@@ -116,7 +117,7 @@ module.exports = (app) => {
             return res.json({ success: true, data: rows[0] });
 
         } catch (err) {
-            console.error('❌ Customer Phone Lookup Error:', err.message);
+            logger.error('❌ Customer Phone Lookup Error:', err.message);
             return res.status(500).json({ success: false });
         }
     });
@@ -192,7 +193,7 @@ module.exports = (app) => {
                     });
                 }
             } catch (pushErr) {
-                console.error('[WhatsApp Order] Push error:', pushErr.message);
+                logger.error('[WhatsApp Order] Push error:', pushErr.message);
             }
 
             return res.status(201).json({
@@ -206,7 +207,7 @@ module.exports = (app) => {
             });
 
         } catch (err) {
-            console.error('❌ WhatsApp Order Error:', err.message);
+            logger.error('❌ WhatsApp Order Error:', err.message);
             return res.status(500).json({ success: false, message: 'অর্ডার নিতে সমস্যা হয়েছে।' });
         }
     });
@@ -257,7 +258,7 @@ module.exports = (app) => {
             return res.json({ success: true, message: 'অর্ডার বাতিল হয়েছে।' });
 
         } catch (err) {
-            console.error('❌ WhatsApp Cancel Error:', err.message);
+            logger.error('❌ WhatsApp Cancel Error:', err.message);
             return res.status(500).json({ success: false });
         }
     });

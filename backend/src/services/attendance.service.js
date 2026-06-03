@@ -28,7 +28,7 @@ const getSettings = async () => {
         });
         return settings;
     } catch (error) {
-        console.warn('⚠️ system_settings পড়া যায়নি, ডিফল্ট ব্যবহার হচ্ছে:', error.message);
+        logger.warn('⚠️ system_settings পড়া যায়নি, ডিফল্ট ব্যবহার হচ্ছে:', error.message);
         return { ...DEFAULT_SETTINGS };
     }
 };
@@ -158,7 +158,7 @@ const isWeeklyOff = async (date, userId = null) => {
                 offDay = parseInt(teamResult.rows[0].weekly_off_day);
             }
         } catch (err) {
-            console.warn('⚠️ টিমের weekly_off_day পড়া যায়নি, global ব্যবহার হচ্ছে:', err.message);
+            logger.warn('⚠️ টিমের weekly_off_day পড়া যায়নি, global ব্যবহার হচ্ছে:', err.message);
         }
     }
 
@@ -264,9 +264,9 @@ const updateFirebaseAttendance = async (userId, date, data) => {
             updatedAt: new Date().toISOString()
         });
 
-        console.log(`✅ Firebase attendance আপডেট: ${userId}`);
+        logger.info(`✅ Firebase attendance আপডেট: ${userId}`);
     } catch (error) {
-        console.error('⚠️ Firebase Update Error:', error.message);
+        logger.error('⚠️ Firebase Update Error:', error.message);
         // Firebase error হলে main flow বন্ধ হবে না
     }
 };
@@ -281,6 +281,7 @@ const notifyManagerOnCheckIn = async (managerId, workerName, isLate, lateMinutes
         if (!firebaseUrl || !managerId) return;
 
         const axios = require('axios');
+const logger = require('../config/logger');
         const path  = `${firebaseUrl}/notifications/${managerId}/checkins.json`;
 
         await axios.post(path, {
@@ -293,7 +294,7 @@ const notifyManagerOnCheckIn = async (managerId, workerName, isLate, lateMinutes
                 : `✅ ${workerName} চেক-ইন করেছে।`
         });
     } catch (error) {
-        console.error('⚠️ Firebase Notify Error:', error.message);
+        logger.error('⚠️ Firebase Notify Error:', error.message);
     }
 };
 

@@ -99,7 +99,7 @@ const getEmployees = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Get Employees Error:', error.message);
+        logger.error('❌ Get Employees Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -128,7 +128,7 @@ const getEmployee = async (req, res) => {
         return res.status(200).json({ success: true, data: employee });
 
     } catch (error) {
-        console.error('❌ Get Employee Error:', error.message);
+        logger.error('❌ Get Employee Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -257,7 +257,7 @@ const createEmployee = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Create Employee Error:', error.message);
+        logger.error('❌ Create Employee Error:', error.message);
         if (error.code === '23505') {
             return res.status(400).json({ success: false, message: 'এই তথ্য আগে থেকেই আছে।' });
         }
@@ -283,7 +283,7 @@ const getPendingEmployees = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Get Pending Error:', error.message);
+        logger.error('❌ Get Pending Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -369,7 +369,7 @@ const approveEmployee = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Approve Employee Error:', error.message);
+        logger.error('❌ Approve Employee Error:', error.message);
         return res.status(500).json({ success: false, message: 'অনুমোদনে সমস্যা হয়েছে।' });
     }
 };
@@ -401,7 +401,7 @@ const rejectEmployee = async (req, res) => {
         return res.status(200).json({ success: true, message: 'কর্মচারীর আবেদন বাতিল করা হয়েছে।' });
 
     } catch (error) {
-        console.error('❌ Reject Employee Error:', error.message);
+        logger.error('❌ Reject Employee Error:', error.message);
         return res.status(500).json({ success: false, message: 'বাতিলে সমস্যা হয়েছে।' });
     }
 };
@@ -444,7 +444,7 @@ const suspendEmployee = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Suspend Error:', error.message);
+        logger.error('❌ Suspend Error:', error.message);
         return res.status(500).json({ success: false, message: 'বরখাস্তে সমস্যা হয়েছে।' });
     }
 };
@@ -566,7 +566,7 @@ const editEmployee = async (req, res) => {
         }
 
     } catch (error) {
-        console.error('❌ Edit Employee Error:', error.message);
+        logger.error('❌ Edit Employee Error:', error.message);
         return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
     }
 };
@@ -592,7 +592,7 @@ const getPendingEdits = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ Get Pending Edits Error:', error.message);
+        logger.error('❌ Get Pending Edits Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -614,7 +614,7 @@ const approveEdit = async (req, res) => {
         return res.status(200).json({ success: true, message: 'এডিট অনুমোদন সফল।' });
 
     } catch (error) {
-        console.error('❌ Approve Edit Error:', error.message);
+        logger.error('❌ Approve Edit Error:', error.message);
         return res.status(500).json({ success: false, message: 'অনুমোদনে সমস্যা হয়েছে।' });
     }
 };
@@ -669,7 +669,7 @@ const rejectEdit = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Reject Edit Error:', error.message);
+        logger.error('❌ Reject Edit Error:', error.message);
         return res.status(500).json({ success: false, message: 'বাতিলে সমস্যা হয়েছে।' });
     }
 };
@@ -698,7 +698,7 @@ const getEmployeePDF = async (req, res) => {
         res.send(pdfBuffer);
 
     } catch (error) {
-        console.error('❌ PDF Error:', error.message);
+        logger.error('❌ PDF Error:', error.message);
         return res.status(500).json({ success: false, message: 'PDF তৈরিতে সমস্যা হয়েছে।' });
     }
 };
@@ -747,7 +747,7 @@ const updateOwnProfile = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Update Profile Error:', error.message);
+        logger.error('❌ Update Profile Error:', error.message);
         return res.status(500).json({ success: false, message: 'প্রোফাইল আপডেটে সমস্যা হয়েছে।' });
     }
 };
@@ -786,7 +786,7 @@ const uploadProfilePhoto = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Profile Photo Error:', error.message);
+        logger.error('❌ Profile Photo Error:', error.message);
         return res.status(500).json({ success: false, message: 'ছবি আপলোডে সমস্যা হয়েছে।' });
     }
 };
@@ -826,7 +826,7 @@ const broadcastEmail = async (req, res) => {
     }
     res.status(200).json({ success: true, message: `${sent} জনকে email পাঠানো হয়েছে।` });
   } catch (err) {
-    console.error('Broadcast Email Error:', err.message);
+    logger.error('Broadcast Email Error:', err.message);
     res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
   }
 };
@@ -837,6 +837,7 @@ const resetPassword = async (req, res) => {
     const { id } = req.params;
     const { send_email } = req.body;
     const bcrypt = require('bcryptjs');
+const logger = require('../config/logger');
     const newPass = generateTempPassword();
     const hashed = await bcrypt.hash(newPass, 10);
     const emp = await query(`UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2 RETURNING name_bn, email`, [hashed, id]);
@@ -848,7 +849,7 @@ const resetPassword = async (req, res) => {
     }
     res.status(200).json({ success: true, message: 'পাসওয়ার্ড রিসেট সফল।', data: { new_password: newPass, name_bn: emp.rows[0].name_bn } });
   } catch (err) {
-    console.error('Reset Password Error:', err.message);
+    logger.error('Reset Password Error:', err.message);
     res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
   }
 };
@@ -931,7 +932,7 @@ const reactivateEmployee = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Reactivate Error:', error.message);
+        logger.error('❌ Reactivate Error:', error.message);
         return res.status(500).json({ success: false, message: 'পুনরায় যুক্ত করতে সমস্যা হয়েছে।' });
     }
 };

@@ -1,5 +1,6 @@
 const PDFDocument = require('pdfkit');
 const axios       = require('axios');
+const logger = require('../config/logger');
 const { generateOTP } = require('../config/encryption');
 const { sendOTP, sendInvoice: sendInvoiceSMS, getWhatsAppInvoiceLink } = require('./sms.service');
 const { sendOTPEmail, sendOTPWithInvoiceEmail, sendInvoiceEmail } = require('./email.service');
@@ -45,12 +46,12 @@ const sendVerifyLinkWhatsApp = async (phone, verifyToken, shopName, invoiceNumbe
             { headers: { 'x-api-secret': API_SECRET }, timeout: 10_000 }
         );
         if (res.data?.success) {
-            console.log(`📲 [VerifyLink-WA] সফল → ${formattedPhone}`);
+            logger.info(`📲 [VerifyLink-WA] সফল → ${formattedPhone}`);
             return { success: true };
         }
         return { success: false, reason: 'baileys_error', detail: res.data };
     } catch (err) {
-        console.warn(`⚠️ [VerifyLink-WA] ব্যর্থ → ${formattedPhone}:`, err.message);
+        logger.warn(`⚠️ [VerifyLink-WA] ব্যর্থ → ${formattedPhone}:`, err.message);
         return { success: false, reason: err.code || 'request_error' };
     }
 };
@@ -101,7 +102,7 @@ const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10, sale = 
         );
         if (results.whatsapp?.success) {
             anySent = true;
-            console.log(`📲 [VerifyLink] WhatsApp সফল → ${phone}`);
+            logger.info(`📲 [VerifyLink] WhatsApp সফল → ${phone}`);
         }
     }
 
@@ -115,10 +116,10 @@ const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10, sale = 
             }
             if (results.email?.success && !results.email?.dev && !results.email?.disabled) {
                 anySent = true;
-                console.log(`📧 [OTP] Email সফল → ${email}`);
+                logger.info(`📧 [OTP] Email সফল → ${email}`);
             }
         } catch (err) {
-            console.error(`❌ [OTP] Email ব্যর্থ → ${email}:`, err.message);
+            logger.error(`❌ [OTP] Email ব্যর্থ → ${email}:`, err.message);
             results.email = { success: false, error: err.message };
         }
     }
@@ -129,16 +130,16 @@ const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10, sale = 
             results.sms = await sendOTP(phone, otp, customer.shop_name);
             if (results.sms?.success) {
                 anySent = true;
-                console.log(`📱 [OTP] SMS সফল → ${phone}`);
+                logger.info(`📱 [OTP] SMS সফল → ${phone}`);
             }
         } catch (err) {
-            console.error(`❌ [OTP] SMS ব্যর্থ → ${phone}:`, err.message);
+            logger.error(`❌ [OTP] SMS ব্যর্থ → ${phone}:`, err.message);
             results.sms = { success: false, error: err.message };
         }
     }
 
     if (!anySent) {
-        console.warn(`⚠️ OTP পাঠানো যায়নি। Sale ID: ${saleId} | Email: ${email || 'নেই'} | Phone: ${phone || 'নেই'}`);
+        logger.warn(`⚠️ OTP পাঠানো যায়নি। Sale ID: ${saleId} | Email: ${email || 'নেই'} | Phone: ${phone || 'নেই'}`);
     }
 
     return { otp, results };
@@ -168,10 +169,10 @@ const sendInvoiceNotification = async (customer, sale, worker, items) => {
             );
             if (results.sms?.success) {
                 anySent = true;
-                console.log(`📱 Invoice SMS সফল → ${phone}`);
+                logger.info(`📱 Invoice SMS সফল → ${phone}`);
             }
         } catch (err) {
-            console.error(`❌ Invoice SMS ব্যর্থ → ${phone}:`, err.message);
+            logger.error(`❌ Invoice SMS ব্যর্থ → ${phone}:`, err.message);
             results.sms = { success: false, error: err.message };
         }
     }

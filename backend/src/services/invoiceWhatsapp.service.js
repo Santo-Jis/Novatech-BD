@@ -8,10 +8,11 @@
 // ব্যবহার (sales.controller.js-এ):
 //   const { sendInvoiceWhatsApp } = require('../services/invoiceWhatsapp.service');
 //   ...createSale এর পরে...
-//   sendInvoiceWhatsApp(cust, saleResult, req.user, processedItems).catch(console.error);
+//   sendInvoiceWhatsApp(cust, saleResult, req.user, processedItems).catch(logger.error);
 // ============================================================
 
 const axios = require('axios');
+const logger = require('../config/logger');
 
 const BAILEYS_URL = process.env.BAILEYS_URL  || 'http://localhost:3001';
 const API_SECRET  = process.env.API_SECRET   || 'change-this-secret';
@@ -41,13 +42,13 @@ const sendInvoiceWhatsApp = async (customer, sale, worker, items) => {
     // ── Phone চেক ──
     const phone = customer.whatsapp || customer.sms_phone;
     if (!phone) {
-        console.warn(`⚠️ [InvoiceWA] WhatsApp নম্বর নেই — Customer: ${customer.shop_name}`);
+        logger.warn(`⚠️ [InvoiceWA] WhatsApp নম্বর নেই — Customer: ${customer.shop_name}`);
         return { success: false, reason: 'no_phone' };
     }
 
     const formattedPhone = formatPhone(phone);
     if (!formattedPhone) {
-        console.warn(`⚠️ [InvoiceWA] Phone format করা যায়নি: ${phone}`);
+        logger.warn(`⚠️ [InvoiceWA] Phone format করা যায়নি: ${phone}`);
         return { success: false, reason: 'invalid_phone' };
     }
 
@@ -105,10 +106,10 @@ const sendInvoiceWhatsApp = async (customer, sale, worker, items) => {
         );
 
         if (response.data?.success) {
-            console.log(`✅ [InvoiceWA] Invoice ছবি পাঠানো → ${formattedPhone} (${sale.invoice_number})`);
+            logger.info(`✅ [InvoiceWA] Invoice ছবি পাঠানো → ${formattedPhone} (${sale.invoice_number})`);
             return { success: true };
         } else {
-            console.warn(`⚠️ [InvoiceWA] Baileys সাড়া দিল কিন্তু success=false:`, response.data);
+            logger.warn(`⚠️ [InvoiceWA] Baileys সাড়া দিল কিন্তু success=false:`, response.data);
             return { success: false, reason: 'baileys_error', detail: response.data };
         }
 
@@ -118,11 +119,11 @@ const sendInvoiceWhatsApp = async (customer, sale, worker, items) => {
         const detail = err.response?.data || err.message;
 
         if (status === 503) {
-            console.warn(`⚠️ [InvoiceWA] WhatsApp connect নেই — ${sale.invoice_number}`);
+            logger.warn(`⚠️ [InvoiceWA] WhatsApp connect নেই — ${sale.invoice_number}`);
         } else if (err.code === 'ECONNABORTED') {
-            console.warn(`⚠️ [InvoiceWA] Timeout — ${sale.invoice_number}`);
+            logger.warn(`⚠️ [InvoiceWA] Timeout — ${sale.invoice_number}`);
         } else {
-            console.error(`❌ [InvoiceWA] Error — ${sale.invoice_number}:`, detail);
+            logger.error(`❌ [InvoiceWA] Error — ${sale.invoice_number}:`, detail);
         }
 
         return { success: false, reason: err.code || 'request_error', detail };

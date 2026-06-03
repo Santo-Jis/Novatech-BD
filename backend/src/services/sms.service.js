@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 const { decrypt } = require('../config/encryption');
 
@@ -43,7 +44,7 @@ const getSmsConfig = async () => {
                 apiKey = decrypt(apiKey);
             }
         } catch (e) {
-            console.warn('⚠️ SMS API Key decrypt হয়নি — plain text হিসেবে ব্যবহার হবে।');
+            logger.warn('⚠️ SMS API Key decrypt হয়নি — plain text হিসেবে ব্যবহার হবে।');
             // encrypted key decrypt না হলে SMS_API_KEY .env থেকে নাও
             apiKey = process.env.SMS_API_KEY || '';
         }
@@ -197,12 +198,12 @@ const sendSMS = async (phone, message) => {
         const config = await getSmsConfig();
 
         if (!config.enabled) {
-            console.log(`📵 SMS বন্ধ (${formattedPhone})`);
+            logger.info(`📵 SMS বন্ধ (${formattedPhone})`);
             return { success: true, disabled: true };
         }
 
         if (!config.apiKey) {
-            console.log(`📱 Dev Mode [${config.provider}] → ${formattedPhone}: ${message}`);
+            logger.info(`📱 Dev Mode [${config.provider}] → ${formattedPhone}: ${message}`);
             return { success: true, dev: true };
         }
 
@@ -216,11 +217,11 @@ const sendSMS = async (phone, message) => {
             default:             result = await sendViaSSLWireless(formattedPhone, message, config); break;
         }
 
-        console.log(`✅ SMS সফল [${config.provider}] → ${formattedPhone}`);
+        logger.info(`✅ SMS সফল [${config.provider}] → ${formattedPhone}`);
         return result;
 
     } catch (error) {
-        console.error(`❌ SMS Error → ${phone}:`, error.message);
+        logger.error(`❌ SMS Error → ${phone}:`, error.message);
         return { success: false, error: error.message };
     }
 };

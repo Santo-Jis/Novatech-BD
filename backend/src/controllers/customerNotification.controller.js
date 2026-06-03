@@ -7,6 +7,7 @@
 const { query } = require('../config/db');
 const { sendCustomerPush } = require('../services/fcm.service');
 const nodemailer = require('nodemailer');
+const logger = require('../config/logger');
 
 // ── Email Transporter (Brevo SMTP) ──────────────────────────
 // FCM push fail হলে বা FCM token না থাকলে email fallback
@@ -71,9 +72,9 @@ const sendFallbackEmail = async (customerId, { title, body, type }) => {
                 </div>
             `,
         });
-        console.log(`📧 Email fallback sent → ${rows[0].email} (type: ${type})`);
+        logger.info(`📧 Email fallback sent → ${rows[0].email} (type: ${type})`);
     } catch (e) {
-        console.error('[EmailFallback] Error:', e.message);
+        logger.error('[EmailFallback] Error:', e.message);
     }
 };
 
@@ -156,7 +157,7 @@ const getNotifications = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getNotifications Error:', error.message);
+        logger.error('❌ getNotifications Error:', error.message);
         return res.status(500).json({ success: false, message: 'Notification আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -178,7 +179,7 @@ const markAllRead = async (req, res) => {
         return res.json({ success: true, message: 'সব notification পঠিত হিসেবে চিহ্নিত হয়েছে।' });
 
     } catch (error) {
-        console.error('❌ markAllRead Error:', error.message);
+        logger.error('❌ markAllRead Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -201,7 +202,7 @@ const markOneRead = async (req, res) => {
         return res.json({ success: true });
 
     } catch (error) {
-        console.error('❌ markOneRead Error:', error.message);
+        logger.error('❌ markOneRead Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -224,7 +225,7 @@ const saveCustomerFCMToken = async (req, res) => {
         return res.json({ success: true, message: 'FCM token সেভ হয়েছে।' });
 
     } catch (error) {
-        console.error('❌ saveCustomerFCMToken Error:', error.message);
+        logger.error('❌ saveCustomerFCMToken Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -256,7 +257,7 @@ const sendCustomerNotificationFull = async (customerId, { title, body, type = 'g
                 await sendCustomerPush(customer.fcm_token, { title, body, type });
                 pushSuccess = true;
             } catch (pushErr) {
-                console.warn(`[CustomerNotification] FCM failed (type: ${type}):`, pushErr.message);
+                logger.warn(`[CustomerNotification] FCM failed (type: ${type}):`, pushErr.message);
             }
         }
 
@@ -266,7 +267,7 @@ const sendCustomerNotificationFull = async (customerId, { title, body, type = 'g
         }
 
     } catch (e) {
-        console.error('[CustomerNotification] Error:', e.message);
+        logger.error('[CustomerNotification] Error:', e.message);
     }
 };
 

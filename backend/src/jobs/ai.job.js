@@ -1,4 +1,5 @@
 const cron      = require('node-cron');
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 const {
     generateManagerInsight,
@@ -12,7 +13,7 @@ const {
 // ============================================================
 
 const runAIInsightsJob = async () => {
-    console.log('\n🤖 AI Insights Job শুরু...');
+    logger.info('\n🤖 AI Insights Job শুরু...');
 
     try {
         const config = await query(
@@ -20,7 +21,7 @@ const runAIInsightsJob = async () => {
         );
 
         if (!config.rows[0]?.config_value) {
-            console.log('⚠️ Claude API Key নেই। AI Job বাদ দেওয়া হলো।');
+            logger.info('⚠️ Claude API Key নেই। AI Job বাদ দেওয়া হলো।');
             return;
         }
 
@@ -29,11 +30,11 @@ const runAIInsightsJob = async () => {
             "SELECT id, name_bn FROM users WHERE role = 'manager' AND status = 'active'"
         );
 
-        console.log(`📊 Manager সংখ্যা: ${managers.rows.length}`);
+        logger.info(`📊 Manager সংখ্যা: ${managers.rows.length}`);
 
         for (const manager of managers.rows) {
             try {
-                console.log(`🔍 ${manager.name_bn} এর Insight তৈরি হচ্ছে...`);
+                logger.info(`🔍 ${manager.name_bn} এর Insight তৈরি হচ্ছে...`);
 
                 const insight = await generateManagerInsight(manager.id, manager.name_bn);
                 if (!insight) continue;
@@ -64,18 +65,18 @@ const runAIInsightsJob = async () => {
                     }
                 }
 
-                console.log(`✅ ${manager.name_bn}: ${insight.alerts?.length || 0} টি alert`);
+                logger.info(`✅ ${manager.name_bn}: ${insight.alerts?.length || 0} টি alert`);
 
                 // Rate limit এড়াতে একটু অপেক্ষা
                 await new Promise(resolve => setTimeout(resolve, 2000));
 
             } catch (managerError) {
-                console.error(`❌ ${manager.name_bn} Insight Error:`, managerError.message);
+                logger.error(`❌ ${manager.name_bn} Insight Error:`, managerError.message);
             }
         }
 
         // ২. Admin এর জন্য Insight
-        console.log('🔍 Admin এর Insight তৈরি হচ্ছে...');
+        logger.info('🔍 Admin এর Insight তৈরি হচ্ছে...');
 
         const adminInsight = await generateAdminInsight();
         if (adminInsight) {
@@ -109,7 +110,7 @@ const runAIInsightsJob = async () => {
                 }
             }
 
-            console.log(`✅ Admin Insight: ${adminInsight.alerts?.length || 0} টি alert`);
+            logger.info(`✅ Admin Insight: ${adminInsight.alerts?.length || 0} টি alert`);
         }
 
         // ৩. পুরনো Insight মুছে দাও (৩০ দিনের বেশি পুরনো)
@@ -117,12 +118,12 @@ const runAIInsightsJob = async () => {
             `DELETE FROM ai_insights
              WHERE created_at < NOW() - INTERVAL '30 days'`
         );
-        console.log(`🧹 ${deleted.rowCount} টি পুরনো insight মুছে দেওয়া হয়েছে।`);
+        logger.info(`🧹 ${deleted.rowCount} টি পুরনো insight মুছে দেওয়া হয়েছে।`);
 
-        console.log('\n✅ AI Insights Job সম্পন্ন।');
+        logger.info('\n✅ AI Insights Job সম্পন্ন।');
 
     } catch (error) {
-        console.error('❌ AI Job Error:', error.message);
+        logger.error('❌ AI Job Error:', error.message);
     }
 };
 
@@ -131,10 +132,10 @@ const runAIInsightsJob = async () => {
 // ============================================================
 
 const startAIJob = () => {
-    console.log('⏰ AI Job নিবন্ধিত: প্রতিদিন রাত ১:০০');
+    logger.info('⏰ AI Job নিবন্ধিত: প্রতিদিন রাত ১:০০');
 
     cron.schedule('0 1 * * *', async () => {
-        console.log('🔔 AI Insights Job ট্রিগার হয়েছে');
+        logger.info('🔔 AI Insights Job ট্রিগার হয়েছে');
         await runAIInsightsJob();
     }, {
         timezone: 'Asia/Dhaka'

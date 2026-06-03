@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
 
 // ============================================================
@@ -31,7 +32,7 @@ const getTeams = async (req, res) => {
 
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
-        console.error('❌ getTeams Error:', error.message);
+        logger.error('❌ getTeams Error:', error.message);
         return res.status(500).json({ success: false, message: 'টিম তালিকা আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -80,7 +81,7 @@ const getTeam = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('❌ getTeam Error:', error.message);
+        logger.error('❌ getTeam Error:', error.message);
         return res.status(500).json({ success: false, message: 'টিম তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -130,7 +131,7 @@ const createTeam = async (req, res) => {
             data: result.rows[0]
         });
     } catch (error) {
-        console.error('❌ createTeam Error:', error.message);
+        logger.error('❌ createTeam Error:', error.message);
         if (error.code === '23505') {
             return res.status(400).json({ success: false, message: 'এই টিমের নাম বা ম্যানেজার ইতিমধ্যে বিদ্যমান।' });
         }
@@ -198,7 +199,7 @@ const updateTeam = async (req, res) => {
             data: result.rows[0]
         });
     } catch (error) {
-        console.error('❌ updateTeam Error:', error.message);
+        logger.error('❌ updateTeam Error:', error.message);
         return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
     }
 };
@@ -238,7 +239,7 @@ const setTeamTarget = async (req, res) => {
             data: result.rows[0]
         });
     } catch (error) {
-        console.error('❌ setTeamTarget Error:', error.message);
+        logger.error('❌ setTeamTarget Error:', error.message);
         return res.status(500).json({ success: false, message: 'টার্গেট সেটে সমস্যা হয়েছে।' });
     }
 };
@@ -277,7 +278,7 @@ const assignSRToTeam = async (req, res) => {
             message: `${sr_ids.length} জন SR টিমে যোগ করা হয়েছে।`
         });
     } catch (error) {
-        console.error('❌ assignSRToTeam Error:', error.message);
+        logger.error('❌ assignSRToTeam Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -322,7 +323,7 @@ const getMyTeam = async (req, res) => {
             data: { team, members: srResult.rows }
         });
     } catch (error) {
-        console.error('❌ getMyTeam Error:', error.message);
+        logger.error('❌ getMyTeam Error:', error.message);
         return res.status(500).json({ success: false, message: 'টিম তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -374,7 +375,7 @@ const setSRTarget = async (req, res) => {
             data: result.rows[0]
         });
     } catch (error) {
-        console.error('❌ setSRTarget Error:', error.message);
+        logger.error('❌ setSRTarget Error:', error.message);
         return res.status(500).json({ success: false, message: 'টার্গেট সেটে সমস্যা হয়েছে।' });
     }
 };
@@ -397,7 +398,7 @@ const getAvailableManagers = async (req, res) => {
 
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
-        console.error('❌ getAvailableManagers Error:', error.message);
+        logger.error('❌ getAvailableManagers Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -419,7 +420,7 @@ const getUnassignedSRs = async (req, res) => {
 
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
-        console.error('❌ getUnassignedSRs Error:', error.message);
+        logger.error('❌ getUnassignedSRs Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -462,7 +463,7 @@ const removeSRFromTeam = async (req, res) => {
             message: `${srCheck.rows[0].name_bn}-কে টিম থেকে সরানো হয়েছে।`
         });
     } catch (error) {
-        console.error('❌ removeSRFromTeam Error:', error.message);
+        logger.error('❌ removeSRFromTeam Error:', error.message);
         return res.status(500).json({ success: false, message: 'SR সরাতে সমস্যা হয়েছে।' });
     }
 };
@@ -518,7 +519,7 @@ const moveSRToTeam = async (req, res) => {
             message: `${srCheck.rows[0].name_bn}-কে নতুন টিমে সরানো হয়েছে।`
         });
     } catch (error) {
-        console.error('❌ moveSRToTeam Error:', error.message);
+        logger.error('❌ moveSRToTeam Error:', error.message);
         return res.status(500).json({ success: false, message: 'SR সরাতে সমস্যা হয়েছে।' });
     }
 };

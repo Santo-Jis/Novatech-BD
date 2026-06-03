@@ -2,6 +2,7 @@
 const express = require('express')
 const https   = require('https')
 const http    = require('http')
+const logger = require('../config/logger');
 const router  = express.Router()
 
 // ─── Current APK version ──────────────────────────────────────
@@ -53,7 +54,7 @@ router.get('/download', (req, res) => {
 
       apkRes.pipe(res)
     }).on('error', (err) => {
-      console.error('APK download error:', err)
+      logger.error('APK download error:', err)
       if (!res.headersSent) {
         res.status(500).json({ error: 'Download failed' })
       }

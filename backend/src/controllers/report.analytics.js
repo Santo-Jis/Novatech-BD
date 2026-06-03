@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // ANALYTICS & MISC REPORT CONTROLLERS
 // GET /api/reports/kpi
@@ -94,7 +95,7 @@ const getDashboardKPI = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ KPI Error:', error.message);
+        logger.error('❌ KPI Error:', error.message);
         return res.status(500).json({ success: false, message: 'KPI আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -130,7 +131,7 @@ const getTopProducts = async (req, res) => {
 
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
-        console.error('❌ Top Products Error:', error.message);
+        logger.error('❌ Top Products Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -167,7 +168,7 @@ const getTopShops = async (req, res) => {
 
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
-        console.error('❌ Top Shops Error:', error.message);
+        logger.error('❌ Top Shops Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -243,7 +244,7 @@ const getMonthlyArchive = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error('❌ Archive Error:', error.message);
+        logger.error('❌ Archive Error:', error.message);
         return res.status(500).json({ success: false, message: 'Archive আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -266,7 +267,7 @@ const getEmployeePDFReport = async (req, res) => {
         res.send(pdfBuffer);
 
     } catch (error) {
-        console.error('❌ Employee PDF Error:', error.message);
+        logger.error('❌ Employee PDF Error:', error.message);
         return res.status(500).json({ success: false, message: 'PDF তৈরিতে সমস্যা হয়েছে।' });
     }
 };

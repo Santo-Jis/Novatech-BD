@@ -294,14 +294,14 @@ const PORT = process.env.PORT || 5000;
 // এতে background jobs চলে না, port conflict হয় না, worker leak হয় না
 if (process.env.NODE_ENV !== 'test') {
     app.listen(PORT, "0.0.0.0", () => {
-        console.log('');
-        console.log('╔════════════════════════════════════════╗');
-        console.log('║     NovaTechBD Management System       ║');
-        console.log('║     Backend API Server                 ║');
-        console.log(`║     Port: ${PORT}                          ║`);
-        console.log(`║     Mode: ${process.env.NODE_ENV}               ║`);
-        console.log('╚════════════════════════════════════════╝');
-        console.log('');
+        logger.info('');
+        logger.info('╔════════════════════════════════════════╗');
+        logger.info('║     NovaTechBD Management System       ║');
+        logger.info('║     Backend API Server                 ║');
+        logger.info(`║     Port: ${PORT}                          ║`);
+        logger.info(`║     Mode: ${process.env.NODE_ENV}               ║`);
+        logger.info('╚════════════════════════════════════════╝');
+        logger.info('');
 
         // Background jobs শুরু করো
         startCommissionJob();
@@ -312,11 +312,11 @@ if (process.env.NODE_ENV !== 'test') {
         startReservedStockJob();
         startSessionCleanupJob();
 
-        console.log('✅ Background jobs চালু হয়েছে');
+        logger.info('✅ Background jobs চালু হয়েছে');
 
         if (process.env.NODE_ENV === 'production') {
             keepAlive();
-            console.log('✅ Keep-alive চালু হয়েছে (প্রতি ১০ মিনিট)');
+            logger.info('✅ Keep-alive চালু হয়েছে (প্রতি ১০ মিনিট)');
         }
     });
 }

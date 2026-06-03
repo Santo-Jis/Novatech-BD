@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
 
 // ============================================================
@@ -142,7 +143,7 @@ const submitExpense = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ submitExpense Error:', error.message);
+        logger.error('❌ submitExpense Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -181,7 +182,7 @@ const getTodayExpense = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getTodayExpense Error:', error.message);
+        logger.error('❌ getTodayExpense Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -238,7 +239,7 @@ const getMyExpenses = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getMyExpenses Error:', error.message);
+        logger.error('❌ getMyExpenses Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -304,7 +305,7 @@ const getTeamExpenses = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getTeamExpenses Error:', error.message);
+        logger.error('❌ getTeamExpenses Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -378,7 +379,7 @@ const reviewExpense = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ reviewExpense Error:', error.message);
+        logger.error('❌ reviewExpense Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -414,7 +415,7 @@ const updateExpense = async (req, res) => {
         return submitExpense(req, res);
 
     } catch (error) {
-        console.error('❌ updateExpense Error:', error.message);
+        logger.error('❌ updateExpense Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -502,7 +503,7 @@ const getExpenseReport = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ getExpenseReport Error:', error.message);
+        logger.error('❌ getExpenseReport Error:', error.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };

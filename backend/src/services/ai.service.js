@@ -1,4 +1,5 @@
 const axios     = require('axios');
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 const { decrypt } = require('../config/encryption');
 
@@ -159,7 +160,7 @@ const callAI = async (prompt, taskType = 'daily', systemPrompt = null, chatHisto
     const maxTokens = parseInt(config.max_tokens || '1000');
     const messages  = [...chatHistory, { role: 'user', content: prompt }];
 
-    console.log(`🤖 AI → Provider: ${providerConfig.name} | Model: ${model}`);
+    logger.info(`🤖 AI → Provider: ${providerConfig.name} | Model: ${model}`);
 
     switch (providerConfig.format) {
         case 'openai':    return await callOpenAIFormat(providerConfig, config.api_key_decrypted, model, messages, systemPrompt, maxTokens);
@@ -220,7 +221,7 @@ const generateManagerInsight = async (managerId, managerName) => {
         const response = await callAI(prompt, 'daily');
         return JSON.parse(response.replace(/```json|```/g, '').trim());
     } catch (error) {
-        console.error(`❌ Manager Insight Error (${managerId}):`, error.message);
+        logger.error(`❌ Manager Insight Error (${managerId}):`, error.message);
         return null;
     }
 };
@@ -233,7 +234,7 @@ const generateAdminInsight = async () => {
         const response = await callAI(prompt, 'daily');
         return JSON.parse(response.replace(/```json|```/g, '').trim());
     } catch (error) {
-        console.error('❌ Admin Insight Error:', error.message);
+        logger.error('❌ Admin Insight Error:', error.message);
         return null;
     }
 };

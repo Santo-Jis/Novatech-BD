@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 // ============================================================
 // Role-Based Access Control Middleware
 // NovaTechBD Management System
@@ -147,7 +148,7 @@ const selfOrAdmin = async (req, res, next) => {
                 message: 'এই কর্মচারী আপনার টিমের সদস্য নন।'
             });
         } catch (err) {
-            console.error('❌ selfOrAdmin DB Error:', err.message);
+            logger.error('❌ selfOrAdmin DB Error:', err.message);
             return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
         }
     }

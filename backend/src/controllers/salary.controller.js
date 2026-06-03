@@ -1,3 +1,4 @@
+const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
 
 // ============================================================
@@ -125,7 +126,7 @@ const getSalarySheet = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Salary Sheet Error:', error.message);
+        logger.error('❌ Salary Sheet Error:', error.message);
         return res.status(500).json({ success: false, message: 'বেতন শীট আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -243,7 +244,7 @@ const getWorkerSalaryDetail = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Worker Salary Detail Error:', error.message);
+        logger.error('❌ Worker Salary Detail Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -395,7 +396,7 @@ const paySalary = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Pay Salary Error:', error.message);
+        logger.error('❌ Pay Salary Error:', error.message);
         return res.status(500).json({ success: false, message: 'বেতন পরিশোধে সমস্যা হয়েছে।' });
     }
 };
@@ -421,7 +422,7 @@ const getMySalaryHistory = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        console.error('❌ My Salary History Error:', error.message);
+        logger.error('❌ My Salary History Error:', error.message);
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -492,7 +493,7 @@ const cancelSalaryPayment = async (req, res) => {
         return res.status(200).json({ success: true, message: 'বেতন পরিশোধ বাতিল করা হয়েছে।' });
 
     } catch (error) {
-        console.error('❌ Cancel Salary Error:', error.message);
+        logger.error('❌ Cancel Salary Error:', error.message);
         return res.status(500).json({ success: false, message: 'বাতিল করতে সমস্যা হয়েছে।' });
     }
 };

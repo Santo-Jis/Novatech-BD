@@ -110,7 +110,7 @@ const login = async (req, res) => {
         try {
             await saveRefreshToken(user.id, refreshToken);
         } catch (tokenErr) {
-            console.warn('⚠️ RefreshToken save failed:', tokenErr.message);
+            logger.warn('⚠️ RefreshToken save failed:', tokenErr.message);
         }
 
         // password_hash বাদ দিয়ে response পাঠাও
@@ -138,7 +138,7 @@ const login = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Login Error:', error.message);
+        logger.error('❌ Login Error:', error.message);
         return res.status(500).json({
             success: false,
             message: 'লগইনে সমস্যা হয়েছে।'
@@ -223,7 +223,7 @@ const logout = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Logout Error:', error.message);
+        logger.error('❌ Logout Error:', error.message);
         return res.status(500).json({
             success: false,
             message: 'লগআউটে সমস্যা হয়েছে।'
@@ -290,7 +290,7 @@ const me = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Me Error:', error.message);
+        logger.error('❌ Me Error:', error.message);
         return res.status(500).json({
             success: false,
             message: 'তথ্য আনতে সমস্যা হয়েছে।'
@@ -353,7 +353,7 @@ const changePassword = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ Change Password Error:', error.message);
+        logger.error('❌ Change Password Error:', error.message);
         return res.status(500).json({
             success: false,
             message: 'পাসওয়ার্ড পরিবর্তনে সমস্যা হয়েছে।'
@@ -430,7 +430,7 @@ const forgotPassword = async (req, res) => {
         return res.status(200).json({ success: true, message: 'OTP আপনার ইমেইলে পাঠানো হয়েছে।' });
 
     } catch (error) {
-        console.error('❌ Forgot Password Error:', error.message);
+        logger.error('❌ Forgot Password Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -482,7 +482,7 @@ const verifyOtp = async (req, res) => {
         return res.status(200).json({ success: true, message: 'OTP সঠিক।', data: { reset_token: resetToken } });
 
     } catch (error) {
-        console.error('❌ Verify OTP Error:', error.message);
+        logger.error('❌ Verify OTP Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -531,7 +531,7 @@ const resetPasswordWithOtp = async (req, res) => {
         return res.status(200).json({ success: true, message: 'পাসওয়ার্ড সফলভাবে পরিবর্তন হয়েছে! এখন লগইন করুন।' });
 
     } catch (error) {
-        console.error('❌ Reset Password OTP Error:', error.message);
+        logger.error('❌ Reset Password OTP Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
     }
 };
@@ -560,7 +560,7 @@ const saveFCMToken = async (req, res) => {
             message: 'FCM Token সেভ হয়েছে'
         });
     } catch (error) {
-        console.error('❌ FCM Token Save Error:', error.message);
+        logger.error('❌ FCM Token Save Error:', error.message);
         return res.status(500).json({
             success: false,
             message: 'FCM Token সেভ ব্যর্থ'
@@ -629,11 +629,12 @@ const checkEmailType = async (req, res) => {
             const customer = customerResult.rows[0];
 
             const jwt = require('jsonwebtoken');
+const logger = require('../config/logger');
             // ✅ FIX: Employee JWT_ACCESS_SECRET থেকে আলাদা secret ব্যবহার করো।
             // একই secret হলে customer token দিয়ে employee route access সম্ভব।
             const portalSecret = process.env.JWT_PORTAL_SECRET;
             if (!portalSecret) {
-                console.error('❌ JWT_PORTAL_SECRET environment variable সেট নেই!');
+                logger.error('❌ JWT_PORTAL_SECRET environment variable সেট নেই!');
                 return res.status(500).json({ success: false, message: 'Server configuration error.' });
             }
             const portalJWT = jwt.sign(
@@ -664,7 +665,7 @@ const checkEmailType = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ checkEmailType Error:', error.message);
+        logger.error('❌ checkEmailType Error:', error.message);
         return res.status(500).json({
             success: false,
             message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।'
@@ -701,7 +702,7 @@ const mySensitiveInfo = async (req, res) => {
         });
 
     } catch (error) {
-        console.error('❌ mySensitiveInfo Error:', error.message);
+        logger.error('❌ mySensitiveInfo Error:', error.message);
         return res.status(500).json({
             success: false,
             message: 'তথ্য আনতে সমস্যা হয়েছে।'

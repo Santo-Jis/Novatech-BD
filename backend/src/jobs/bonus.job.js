@@ -19,7 +19,7 @@ const runMonthlyBonusJob = async (targetYear = null, targetMonth = null) => {
     const year         = targetYear  || (targetMonth === 1 ? now.getFullYear() - 1 : now.getFullYear());
     const month        = targetMonth || (now.getMonth() === 0 ? 12 : now.getMonth());
 
-    console.log(`\n🎁 Bonus Job শুরু: ${year}-${String(month).padStart(2, '0')}`);
+    logger.info(`\n🎁 Bonus Job শুরু: ${year}-${String(month).padStart(2, '0')}`);
 
     try {
         // সব active worker নাও
@@ -29,11 +29,11 @@ const runMonthlyBonusJob = async (targetYear = null, targetMonth = null) => {
              WHERE role = 'worker' AND status = 'active'`
         );
 
-        console.log(`📊 মোট SR: ${workers.rows.length}`);
+        logger.info(`📊 মোট SR: ${workers.rows.length}`);
 
         // সেই মাসের কর্মদিবস
         const workingDays = await getWorkingDays(year, month);
-        console.log(`📅 কর্মদিবস: ${workingDays}`);
+        logger.info(`📅 কর্মদিবস: ${workingDays}`);
 
         let bonusCount = 0;
 
@@ -76,7 +76,7 @@ const runMonthlyBonusJob = async (targetYear = null, targetMonth = null) => {
                 );
 
                 if (isPerfect) {
-                    console.log(`✅ ${worker.name_bn}: ১০০% উপস্থিতি → বোনাস ৳${bonusAmount}`);
+                    logger.info(`✅ ${worker.name_bn}: ১০০% উপস্থিতি → বোনাস ৳${bonusAmount}`);
                     bonusCount++;
 
                     // ৮ মাস চেক করো
@@ -84,15 +84,15 @@ const runMonthlyBonusJob = async (targetYear = null, targetMonth = null) => {
                 }
 
             } catch (workerError) {
-                console.error(`❌ ${worker.name_bn} বোনাস হিসাবে সমস্যা:`, workerError.message);
+                logger.error(`❌ ${worker.name_bn} বোনাস হিসাবে সমস্যা:`, workerError.message);
             }
         }
 
-        console.log(`\n🎁 Bonus Job সম্পন্ন:`);
-        console.log(`   ✅ বোনাস প্রাপ্য: ${bonusCount}`);
+        logger.info(`\n🎁 Bonus Job সম্পন্ন:`);
+        logger.info(`   ✅ বোনাস প্রাপ্য: ${bonusCount}`);
 
     } catch (error) {
-        console.error('❌ Bonus Job Error:', error.message);
+        logger.error('❌ Bonus Job Error:', error.message);
     }
 };
 
@@ -123,7 +123,7 @@ const checkAndPayEightMonthBonus = async (userId) => {
 
         // ৮ মাস পূর্ণ হলে বোনাস দেওয়া হবে
         if (perfectCount >= 8 && totalBonus > 0) {
-            console.log(`🎉 ${userId}: ৮ মাস পূর্ণ! বোনাস: ৳${totalBonus}`);
+            logger.info(`🎉 ${userId}: ৮ মাস পূর্ণ! বোনাস: ৳${totalBonus}`);
 
             // commission টেবিলে যোগ করো
             await query(
@@ -146,6 +146,7 @@ const checkAndPayEightMonthBonus = async (userId) => {
             // Firebase নোটিফিকেশন
             try {
                 const axios       = require('axios');
+const logger = require('../config/logger');
                 const firebaseUrl = process.env.FIREBASE_DATABASE_URL;
                 if (firebaseUrl) {
                     await axios.post(
@@ -166,12 +167,12 @@ const checkAndPayEightMonthBonus = async (userId) => {
                     data:  { amount: String(totalBonus) }
                 }).catch(() => {});
             } catch (fbErr) {
-                console.error('⚠️ Firebase Bonus Notify Error:', fbErr.message);
+                logger.error('⚠️ Firebase Bonus Notify Error:', fbErr.message);
             }
         }
 
     } catch (error) {
-        console.error('❌ Eight Month Bonus Check Error:', error.message);
+        logger.error('❌ Eight Month Bonus Check Error:', error.message);
     }
 };
 
@@ -181,10 +182,10 @@ const checkAndPayEightMonthBonus = async (userId) => {
 // ============================================================
 
 const startBonusJob = () => {
-    console.log('⏰ Bonus Job নিবন্ধিত: প্রতি মাসের ১ তারিখ রাত ১২:০০');
+    logger.info('⏰ Bonus Job নিবন্ধিত: প্রতি মাসের ১ তারিখ রাত ১২:০০');
 
     cron.schedule('0 0 1 * *', async () => {
-        console.log('🔔 Monthly Bonus Job ট্রিগার হয়েছে');
+        logger.info('🔔 Monthly Bonus Job ট্রিগার হয়েছে');
         await runMonthlyBonusJob();
     }, {
         timezone: 'Asia/Dhaka'

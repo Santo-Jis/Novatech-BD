@@ -1,4 +1,5 @@
 const cron          = require('node-cron');
+const logger = require('../config/logger');
 const { query }     = require('../config/db');
 const { calculateCommission } = require('../services/commission.service');
 
@@ -10,7 +11,7 @@ const { calculateCommission } = require('../services/commission.service');
 
 const runDailyCommissionJob = async (targetDate = null) => {
     const date = targetDate || new Date().toISOString().split('T')[0];
-    console.log(`\n💰 Commission Job শুরু: ${date}`);
+    logger.info(`\n💰 Commission Job শুরু: ${date}`);
 
     try {
         // সব active worker নাও
@@ -20,7 +21,7 @@ const runDailyCommissionJob = async (targetDate = null) => {
              WHERE role = 'worker' AND status = 'active'`
         );
 
-        console.log(`📊 মোট SR: ${workers.rows.length}`);
+        logger.info(`📊 মোট SR: ${workers.rows.length}`);
 
         let processed = 0;
         let skipped   = 0;
@@ -73,20 +74,20 @@ const runDailyCommissionJob = async (targetDate = null) => {
                     );
                 }
 
-                console.log(`✅ ${worker.name_bn}: বিক্রয় ৳${totalSales} → কমিশন ৳${amount} (${rate}%)`);
+                logger.info(`✅ ${worker.name_bn}: বিক্রয় ৳${totalSales} → কমিশন ৳${amount} (${rate}%)`);
                 processed++;
 
             } catch (workerError) {
-                console.error(`❌ ${worker.name_bn} এর কমিশন হিসাবে সমস্যা:`, workerError.message);
+                logger.error(`❌ ${worker.name_bn} এর কমিশন হিসাবে সমস্যা:`, workerError.message);
             }
         }
 
-        console.log(`\n📈 Commission Job সম্পন্ন:`);
-        console.log(`   ✅ হিসাব হয়েছে: ${processed}`);
-        console.log(`   ⏭️ বিক্রয় নেই: ${skipped}`);
+        logger.info(`\n📈 Commission Job সম্পন্ন:`);
+        logger.info(`   ✅ হিসাব হয়েছে: ${processed}`);
+        logger.info(`   ⏭️ বিক্রয় নেই: ${skipped}`);
 
     } catch (error) {
-        console.error('❌ Commission Job Error:', error.message);
+        logger.error('❌ Commission Job Error:', error.message);
     }
 };
 
@@ -96,11 +97,11 @@ const runDailyCommissionJob = async (targetDate = null) => {
 // ============================================================
 
 const startCommissionJob = () => {
-    console.log('⏰ Commission Job নিবন্ধিত: প্রতিদিন রাত ১২:০০');
+    logger.info('⏰ Commission Job নিবন্ধিত: প্রতিদিন রাত ১২:০০');
 
     // প্রতিদিন রাত ১২:০০ (Bangladesh Time)
     cron.schedule('0 0 * * *', async () => {
-        console.log('🔔 Commission Job ট্রিগার হয়েছে');
+        logger.info('🔔 Commission Job ট্রিগার হয়েছে');
         await runDailyCommissionJob();
     }, {
         timezone: 'Asia/Dhaka'

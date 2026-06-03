@@ -7,6 +7,7 @@
 // ============================================================
 
 const cron      = require('node-cron');
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 const { sendEmail }          = require('../services/email.service');
 const { sendPushToMany }     = require('../services/fcm.service');
@@ -136,7 +137,7 @@ const buildReminderEmail = (customer, portalLink) => {
 // MAIN JOB — বাকি আছে এমন কাস্টমারদের reminder পাঠাও
 // ============================================================
 const runCreditReminderJob = async () => {
-    console.log('\n💳 Credit Reminder Job শুরু...');
+    logger.info('\n💳 Credit Reminder Job শুরু...');
 
     try {
         // বাকি আছে এমন সব active কাস্টমার
@@ -159,7 +160,7 @@ const runCreditReminderJob = async () => {
             ORDER BY c.current_credit DESC
         `);
 
-        console.log(`📋 ${customers.length} জন কাস্টমারের বাকি আছে`);
+        logger.info(`📋 ${customers.length} জন কাস্টমারের বাকি আছে`);
 
         const FRONTEND_URL = process.env.FRONTEND_URL || 'https://novatech-bd-kqrn.vercel.app';
         let emailSent = 0, pushSent = 0;
@@ -178,7 +179,7 @@ const runCreditReminderJob = async () => {
                 const result = await sendEmail(customer.email, subject, html, text);
                 if (result.success) emailSent++;
             } catch (e) {
-                console.error(`❌ Email fail (${customer.shop_name}):`, e.message);
+                logger.error(`❌ Email fail (${customer.shop_name}):`, e.message);
             }
 
             // ── Push Notification to SR & Manager ───────────
@@ -199,7 +200,7 @@ const runCreditReminderJob = async () => {
                     pushSent++;
                 }
             } catch (e) {
-                console.error(`❌ Push fail (${customer.shop_name}):`, e.message);
+                logger.error(`❌ Push fail (${customer.shop_name}):`, e.message);
             }
 
             // ── In-App Notification to Customer ─────────────────
@@ -210,14 +211,14 @@ const runCreditReminderJob = async () => {
                     type:  'credit_reminder',
                 });
             } catch (e) {
-                console.error(`❌ In-app notification fail (${customer.shop_name}):`, e.message);
+                logger.error(`❌ In-app notification fail (${customer.shop_name}):`, e.message);
             }
         }
 
-        console.log(`✅ Credit Reminder সম্পন্ন — Email: ${emailSent}, Push: ${pushSent}`);
+        logger.info(`✅ Credit Reminder সম্পন্ন — Email: ${emailSent}, Push: ${pushSent}`);
 
     } catch (error) {
-        console.error('❌ Credit Reminder Job Error:', error.message);
+        logger.error('❌ Credit Reminder Job Error:', error.message);
     }
 };
 
@@ -229,7 +230,7 @@ const scheduleCreditReminderJob = () => {
     cron.schedule('0 16 * * *', runCreditReminderJob, {
         timezone: 'Asia/Dhaka'
     });
-    console.log('⏰ Credit Reminder Job: প্রতিদিন রাত ১০:০০ তে চলবে');
+    logger.info('⏰ Credit Reminder Job: প্রতিদিন রাত ১০:০০ তে চলবে');
 };
 
 module.exports = { scheduleCreditReminderJob, runCreditReminderJob };
