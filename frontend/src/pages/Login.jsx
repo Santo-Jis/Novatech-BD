@@ -442,7 +442,7 @@ export default function Login() {
 
       if (type === 'customer') {
         const cid = data.customer_id
-        localStorage.setItem(`portal_jwt_${cid}`, data.portal_jwt)
+        sessionStorage.setItem(`portal_jwt_${cid}`, data.portal_jwt)
         setGoogleStep('customer_redirect')
         setTimeout(() => navigate('/customer/dashboard', { replace: true }), 1500)
       } else if (type === 'worker') {
