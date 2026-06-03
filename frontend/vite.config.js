@@ -40,10 +40,13 @@ export default defineConfig({
 
   build: {
     rollupOptions: {
-      // @capacitor/push-notifications শুধু Native Android-এ থাকে।
-      // Web/PWA build-এ এই package নেই — Vite কে বলো এটা external।
-      // Runtime-এ dynamic import() ব্যর্থ হলে useFCMToken-এ try/catch ধরবে।
-      external: ['@capacitor/push-notifications'],
+      // এই দুটো package শুধু Native Android-এ থাকে।
+      // Web/PWA build-এ নেই — Vite কে বলো এগুলো external।
+      // Runtime-এ dynamic import() ব্যর্থ হলে try/catch ধরবে।
+      external: [
+        '@capacitor/push-notifications',
+        '@codetrix-studio/capacitor-google-auth',
+      ],
     },
   },
 })
