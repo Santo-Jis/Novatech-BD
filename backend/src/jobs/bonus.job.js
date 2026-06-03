@@ -1,3 +1,4 @@
+const logger = require("../config/logger");
 const cron      = require('node-cron');
 const { query } = require('../config/db');
 const {
