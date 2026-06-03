@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@capacitor/app": "^5.0.0",
+    "@capacitor/core": "^5.0.0",
+    "@capacitor/push-notifications": "^5.0.0",
     "@codetrix-studio/capacitor-google-auth": "3.3.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -25,9 +27,7 @@
     "react-hook-form": "^7.49.2",
     "clsx": "^2.0.0",
     "leaflet": "^1.9.4",
-    "react-leaflet": "^4.2.1",
-    "@capacitor/push-notifications": "^5.0.0",
-    "@capacitor/core": "^5.0.0"
+    "react-leaflet": "^4.2.1"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
