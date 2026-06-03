@@ -92,17 +92,18 @@ export const useAuthStore = create((set, get) => ({
 
   // ── LOGOUT ──
   logout: async () => {
-    // portal_jwt_* keys গুলো আগে save করি — customer portal এর জন্য দরকার
-    const portalKeys = Object.keys(localStorage).filter(k => k.startsWith('portal_jwt_'))
-    const portalData = {}
-    portalKeys.forEach(k => { portalData[k] = localStorage.getItem(k) })
+    // portal_jwt_* keys গুলো localStorage ও sessionStorage উভয় থেকে নাও
+    const portalKeysLS = Object.keys(localStorage).filter(k => k.startsWith('portal_jwt_'))
+    const portalKeysLS_data = {}
+    portalKeysLS.forEach(k => { portalKeysLS_data[k] = localStorage.getItem(k) })
 
     // ১. আগেই UI clear করো — ইউজার সাথে সাথে লগইন পেজে যাবে
     localStorage.clear()
+    sessionStorage.clear()  // sessionStorage-এর portal_jwt_* ও clear
     tokenStore.clear()   // memory-ও clear
 
-    // portal_jwt গুলো ফিরিয়ে দাও
-    Object.entries(portalData).forEach(([k, v]) => localStorage.setItem(k, v))
+    // portal_jwt গুলো ফিরিয়ে দাও (localStorage তে ছিল যেগুলো)
+    Object.entries(portalKeysLS_data).forEach(([k, v]) => localStorage.setItem(k, v))
 
     set({ user: null, token: null })
     if (typeof window.__hideEruda === 'function') window.__hideEruda()
