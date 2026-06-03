@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
+import ErrorBoundary from '../components/ErrorBoundary'
 import {
   FiHome, FiShoppingCart, FiFileText, FiCreditCard,
   FiBell, FiX, FiUser, FiMenu, FiCpu, FiLogOut,
@@ -422,7 +423,9 @@ export default function CustomerLayout() {
         id="cl-main"
         style={{ flex: 1, overflowY: 'auto', paddingBottom: 76 }}
       >
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </main>
 
       {/* ── Bottom Navigation ───────────────────────────────── */}
