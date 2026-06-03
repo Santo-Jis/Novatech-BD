@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet, NavLink } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
+import ErrorBoundary from '../components/ErrorBoundary'
 import {
   FiHome, FiUsers, FiShoppingCart, FiCheckSquare, FiInbox,
   FiCalendar, FiMapPin, FiUser, FiBell, FiMenu, FiX,
@@ -94,7 +95,9 @@ export default function ManagerLayout() {
       </header>
 
       <main className="p-4">
-        <Outlet />
+        <ErrorBoundary>
+          <Outlet />
+        </ErrorBoundary>
       </main>
     </div>
   )
