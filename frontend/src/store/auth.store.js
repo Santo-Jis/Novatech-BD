@@ -73,7 +73,7 @@ export const useAuthStore = create((set, get) => ({
   silentRefresh: async () => {
     try {
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 6000) // 6s timeout (was 10s)
       const response = await api.post('/auth/refresh', {}, { signal: controller.signal })
       clearTimeout(timeoutId)
 
@@ -85,7 +85,7 @@ export const useAuthStore = create((set, get) => ({
       // refreshToken নেই বা expire বা timeout — logout state
       tokenStore.clear()
       localStorage.removeItem('user')
-      set({ user: null, token: null, authReady: true })
+      set({ user: null, token: null, authReady: true }) // authReady সবসময় true হবে
       return false
     }
   },
