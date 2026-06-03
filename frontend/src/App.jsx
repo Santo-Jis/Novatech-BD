@@ -181,11 +181,20 @@ function AppWithPermissions() {
   const { silentRefresh, user, authReady } = useAuthStore()
 
   useEffect(() => {
+    // সর্বোচ্চ ৮ সেকেন্ড — এরপর যাই হোক authReady true করো
+    // না হলে network slow বা backend down হলে পেজ চিরকাল সাদা থাকে
+    const safetyTimer = setTimeout(() => {
+      useAuthStore.setState({ authReady: true })
+    }, 8000)
+
     if (user) {
-      silentRefresh()
+      silentRefresh().finally(() => clearTimeout(safetyTimer))
     } else {
       useAuthStore.setState({ authReady: true })
+      clearTimeout(safetyTimer)
     }
+
+    return () => clearTimeout(safetyTimer)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!authReady) {
