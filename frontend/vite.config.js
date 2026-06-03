@@ -41,13 +41,10 @@ export default defineConfig({
 
   build: {
     rollupOptions: {
-      // এই দুটো package শুধু Native Android-এ থাকে।
-      // Web/PWA build-এ লেগে — Vite কে বলা এগুলো external।
-      // Runtime-এ dynamic import() কাজ না হলে try/catch থাকে।
-      external: [
-        '@capacitor/push-notifications',
-        '@codetrix-studio/capacitor-google-auth',
-      ],
+      // external রাখা হয়নি — dynamic import + try/catch দিয়ে
+      // Login.jsx ও useFCMToken.js নিজেই handle করে।
+      // external রাখলে web build-এ dynamic import() silent fail করে
+      // এবং পুরো component crash করে সাদা পেজ দেখায়।
     },
   },
 })
