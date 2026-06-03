@@ -39,7 +39,6 @@ import NoticesView   from './pages/shared/NoticesView'
 import SRApplicationForm from './pages/SRApplicationForm'
 import CustomerPortal    from './pages/customer/CustomerPortal'
 import CustomerAIChat   from './pages/customer/CustomerAIChat'
-import CustomerLogin    from './pages/customer/CustomerPortal'
 
 // ── Google OAuth Popup Callback ──────────────────────────────
 const PortalOAuthCallback = () => {
@@ -213,7 +212,7 @@ function AppWithPermissions() {
       <Route path="/"                       element={<HomeRedirect />} />
       <Route path="/landing"               element={<LandingPage />} />
       <Route path="/login"                 element={<Login />} />
-      <Route path="/customer-login"        element={<CustomerLogin />} />
+      <Route path="/customer-login"        element={<CustomerPortal />} />
       <Route path="/apply/sr"              element={<SRApplicationForm />} />
       <Route path="/customer-portal"       element={<Navigate to="/customer/dashboard" replace />} />
       <Route path="/portal-oauth-callback" element={<PortalOAuthCallback />} />
