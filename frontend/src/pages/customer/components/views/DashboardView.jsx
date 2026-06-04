@@ -1,7 +1,8 @@
 // components/views/DashboardView.jsx
 // Dashboard — tabs, summary, invoices, orders, credit, complaints
 
-import { fmt, fmtDate, storageKeys, storageRemove } from '../../utils/helpers'
+import { fmt, fmtDate } from '../../utils/helpers'
+import { useEffect } from 'react'
 import MonthlyTrendChart from '../MonthlyTrendChart'
 import InvoiceCard from '../InvoiceCard'
 import OrderRequestTab from '../OrderRequestTab'
@@ -76,7 +77,13 @@ export default function DashboardView({
     { id: 'complaints', label: '📣 অভিযোগ' },
   ]
 
-  const fmtCur = (n) => parseFloat(n || 0).toLocaleString('en-BD')
+  const fmtCur = (n) => parseFloat(n || 0).toLocaleString('en-US')
+
+  // ── Tab change এ data load ──────────────────────────────────
+  useEffect(() => {
+    if (activeTab === 'credit_req' && !limitReqsLoaded) loadMyLimitReqs()
+    if (activeTab === 'complaints' && !complaintsLoaded) loadMyComplaints()
+  }, [activeTab])
 
   const limitStatusMap = {
     pending:  { l: '⏳ অপেক্ষমাণ', bg: '#FEF9C3', c: '#92400E' },
@@ -278,7 +285,6 @@ export default function DashboardView({
 
             {/* ── ক্রেডিট লিমিট আবেদন ── */}
             {activeTab === 'credit_req' && (() => {
-              if (!limitReqsLoaded) loadMyLimitReqs()
               return (
                 <div className="space-y-4">
                   {/* Credit Info Card */}
@@ -357,7 +363,6 @@ export default function DashboardView({
 
             {/* ── অভিযোগ / ফিডব্যাক ── */}
             {activeTab === 'complaints' && (() => {
-              if (!complaintsLoaded) loadMyComplaints()
               return (
                 <div className="space-y-4">
                   {!complaintOpen ? (
