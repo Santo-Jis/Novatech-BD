@@ -10,8 +10,15 @@ import { precacheAndRoute } from 'workbox-precaching'
 precacheAndRoute(self.__WB_MANIFEST)
 
 // ── Firebase compat scripts ──────────────────────────────────
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js')
-importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js')
+// try/catch: CDN unavailable হলে SW crash না করে gracefully fail করবে
+let firebaseLoaded = false
+try {
+  importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js')
+  importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js')
+  firebaseLoaded = true
+} catch (e) {
+  console.warn('[SW] Firebase scripts load failed:', e.message)
+}
 
 // ============================================================
 // ✅ Firebase config — সরাসরি SW এ রাখা হয়েছে
@@ -30,10 +37,12 @@ const FIREBASE_CONFIG = {
 
 // ── Firebase init — SW start হওয়ার সাথে সাথেই ──────────────
 try {
-  if (!firebase.apps.length) {
-    firebase.initializeApp(FIREBASE_CONFIG)
+  if (firebaseLoaded && typeof firebase !== 'undefined') {
+    if (!firebase.apps.length) {
+      firebase.initializeApp(FIREBASE_CONFIG)
+    }
+    setupMessaging()
   }
-  setupMessaging()
 } catch (e) {
   console.error('[SW] Firebase init error:', e)
 }
