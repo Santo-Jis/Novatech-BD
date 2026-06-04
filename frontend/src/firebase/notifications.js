@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { ref, onValue, off, set, serverTimestamp } from 'firebase/database'
-import { db } from './config'
+import { db, firebaseReady } from './config'
 import { useFCMToken } from './useFCMToken'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore }  from '../store/app.store'
@@ -18,6 +18,7 @@ export function useFirebaseNotifications() {
 
   useEffect(() => {
     if (!user?.id) return
+    if (!firebaseReady || !db) return  // ⚠️ Firebase env vars নেই — skip
 
     // সব পুরনো listener বন্ধ করো
     listenersRef.current.forEach(({ ref: r, handler }) => off(r, 'value', handler))
@@ -235,6 +236,7 @@ export function useOnlinePresence() {
 
   useEffect(() => {
     if (!user?.id) return
+    if (!firebaseReady || !db) return  // ⚠️ Firebase env vars নেই — skip
 
     const presenceRef    = ref(db, `presence/${user.id}`)
     const connectedRef   = ref(db, '.info/connected')
@@ -283,6 +285,7 @@ export function useTeamPresence(workerIds = []) {
 
   useEffect(() => {
     if (!workerIds.length) return
+    if (!firebaseReady || !db) return  // ⚠️ Firebase guard
 
     const listeners = workerIds.map(id => {
       const presRef = ref(db, `presence/${id}`)
