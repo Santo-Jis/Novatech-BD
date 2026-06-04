@@ -12,13 +12,23 @@ const logger = require('../config/logger');
 //   GET  /api/order-public/:order_id   → order status
 // ============================================================
 
+const crypto = require('crypto');
 const { query } = require('../config/db');
 const { sendPushToMany } = require('../services/fcm.service');
 
 // ── API Secret Middleware ────────────────────────────────────
+// ✅ FIX: === দিয়ে string compare করলে timing attack সম্ভব।
+// crypto.timingSafeEqual ব্যবহার করলে সব input-এ
+// একই সময় লাগে — attacker secret আন্দাজ করতে পারে না।
 const requireApiSecret = (req, res, next) => {
     const secret = req.headers['x-api-secret'];
-    if (!secret || secret !== process.env.API_SECRET) {
+    const expected = process.env.API_SECRET;
+    if (
+        !secret ||
+        !expected ||
+        secret.length !== expected.length ||
+        !crypto.timingSafeEqual(Buffer.from(secret), Buffer.from(expected))
+    ) {
         return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
     next();
