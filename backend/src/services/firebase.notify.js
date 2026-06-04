@@ -21,7 +21,9 @@ const { getDB } = require('../config/firebase');
  */
 const firebaseNotify = async (path, data) => {
     try {
-        await getDB().ref(path).push({
+        const db = getDB();
+        if (!db) return; // Firebase init হয়নি — silently skip
+        await db.ref(path).push({
             ...data,
             timestamp: Date.now(),
         });
