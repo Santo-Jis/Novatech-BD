@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { db } from '../../firebase/config'
+import { db, firebaseReady } from '../../firebase/config'
 import { ref, onValue, off } from 'firebase/database'
 import { FiMapPin, FiUsers, FiWifi, FiWifiOff, FiRefreshCw, FiAlertTriangle } from 'react-icons/fi'
 import api from '../../api/axios'
@@ -120,10 +120,12 @@ export default function LiveTracking() {
 
     // ── ৪. Firebase change হলে Backend থেকে fresh data আনো ─
     useEffect(() => {
-        const locationRef = ref(db, 'liveLocations')
-
         // প্রথমবার data আনো
         fetchLocations()
+
+        if (!firebaseReady || !db) return  // ⚠️ Firebase guard
+
+        const locationRef = ref(db, 'liveLocations')
 
         // Firebase-এ যেকোনো change হলে Backend থেকে আবার আনো
         const unsubscribe = onValue(locationRef, () => {
