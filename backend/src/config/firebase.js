@@ -30,6 +30,12 @@ const initializeFirebase = () => {
 // Firebase Realtime Database reference
 const getDB = () => {
     if (!firebaseApp) initializeFirebase();
+    // ⚠️ GUARD: Firebase init fail হলে (missing env vars) admin.database() crash করবে
+    // এটা না থাকলে যেকোনো route যেখানে getDB() আছে সেটা 500 error দেবে
+    if (!firebaseApp) {
+        logger.warn('[Firebase] getDB() called but Firebase not initialized — skipping');
+        return null;
+    }
     return admin.database();
 };
 
