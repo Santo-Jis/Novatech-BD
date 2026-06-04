@@ -1,4 +1,6 @@
 const { query } = require('../config/db');
+const axios     = require('axios');
+const logger    = require('../config/logger');
 
 // ============================================================
 // Attendance Service
@@ -256,7 +258,6 @@ const updateFirebaseAttendance = async (userId, date, data) => {
         const firebaseUrl = process.env.FIREBASE_DATABASE_URL;
         if (!firebaseUrl) return;
 
-        const axios  = require('axios');
         const path   = `${firebaseUrl}/live/attendance/${date}/${userId}.json`;
 
         await axios.put(path, {
@@ -280,8 +281,6 @@ const notifyManagerOnCheckIn = async (managerId, workerName, isLate, lateMinutes
         const firebaseUrl = process.env.FIREBASE_DATABASE_URL;
         if (!firebaseUrl || !managerId) return;
 
-        const axios = require('axios');
-const logger = require('../config/logger');
         const path  = `${firebaseUrl}/notifications/${managerId}/checkins.json`;
 
         await axios.post(path, {
