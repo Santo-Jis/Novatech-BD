@@ -1,5 +1,6 @@
 const { sendEmail } = require('../services/email.service');
 const bcrypt            = require('bcryptjs');
+const logger            = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
 const {
     generateEmployeeCode,
@@ -836,8 +837,6 @@ const resetPassword = async (req, res) => {
   try {
     const { id } = req.params;
     const { send_email } = req.body;
-    const bcrypt = require('bcryptjs');
-const logger = require('../config/logger');
     const newPass = generateTempPassword();
     const hashed = await bcrypt.hash(newPass, 10);
     const emp = await query(`UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2 RETURNING name_bn, email`, [hashed, id]);

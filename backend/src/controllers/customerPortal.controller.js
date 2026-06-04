@@ -11,10 +11,12 @@
 //        admin যেকোনো device revoke করতে পারবে
 // ============================================================
 
-const { query }  = require('../config/db');
-const jwt        = require('jsonwebtoken');
-const crypto     = require('crypto');
-const axios      = require('axios');
+const { query }       = require('../config/db');
+const jwt             = require('jsonwebtoken');
+const crypto          = require('crypto');
+const axios           = require('axios');
+const logger          = require('../config/logger');
+const PDFDocument     = require('pdfkit');
 
 // ── portalAuth cache invalidation (circular require এড়াতে lazy load) ──
 // invalidatePortalAuthCache এখন async (Redis DEL) — await করা হচ্ছে।
@@ -1419,8 +1421,6 @@ const getCustomerStatement = async (req, res) => {
         const totalCreditPaid     = payments.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
 
         // PDFKit দিয়ে তৈরি
-        const PDFDocument = require('pdfkit');
-const logger = require('../config/logger');
         const doc    = new PDFDocument({ margin: 40, size: 'A4' });
         const chunks = [];
 

@@ -1,5 +1,7 @@
 const bcrypt    = require('bcryptjs');
 const crypto    = require('crypto');
+const jwt       = require('jsonwebtoken');
+const logger    = require('../config/logger');
 const { query } = require('../config/db');
 const {
     generateAccessToken,
@@ -628,8 +630,6 @@ const checkEmailType = async (req, res) => {
         if (customerResult.rows.length > 0) {
             const customer = customerResult.rows[0];
 
-            const jwt = require('jsonwebtoken');
-const logger = require('../config/logger');
             // ✅ FIX: Employee JWT_ACCESS_SECRET থেকে আলাদা secret ব্যবহার করো।
             // একই secret হলে customer token দিয়ে employee route access সম্ভব।
             const portalSecret = process.env.JWT_PORTAL_SECRET;
