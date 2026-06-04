@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { db } from '../firebase/config'
+import { db, firebaseReady } from '../firebase/config'
 import { ref, onDisconnect, set, remove } from 'firebase/database'
 import api from '../api/axios'
 import { useAuthStore } from '../store/auth.store'
@@ -39,14 +39,16 @@ export function useLiveTracking() {
         }
 
         // Firebase-এ error status রাখো — Manager দেখবে
-        try {
+        if (firebaseReady && db) {
+          try {
             await set(ref(db, `liveLocations/${userId}`), {
                 gpsError: true,
                 gpsErrorCode: code,
                 gpsErrorMessage: message,
                 updatedAt: Date.now(),
             })
-        } catch { /* silent */ }
+          } catch { /* silent */ }
+        }
     }
 
     const sendLocation = (userId) => {
@@ -77,6 +79,7 @@ export function useLiveTracking() {
 
     useEffect(() => {
         if (!isWorker || !token || !user?.id) return
+        if (!firebaseReady || !db) return  // ⚠️ Firebase guard
 
         const userId = user.id
 
