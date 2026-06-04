@@ -99,13 +99,15 @@ api.interceptors.response.use(
       }
 
       // portal_jwt_* keys save করো, clear-এর পরে restore করবো
-      const portalKeys = Object.keys(localStorage).filter(k => k.startsWith('portal_jwt_'))
+      // ✅ FIX: portal_jwt sessionStorage-এ থাকে (Login.jsx এ setItem করা হয়)
+      //         localStorage-এ নয় — তাই sessionStorage থেকে নিতে হবে
+      const portalKeys = Object.keys(sessionStorage).filter(k => k.startsWith('portal_jwt_'))
       const portalData = {}
-      portalKeys.forEach(k => { portalData[k] = localStorage.getItem(k) })
+      portalKeys.forEach(k => { portalData[k] = sessionStorage.getItem(k) })
 
       localStorage.clear()
       tokenStore.clear()    // memory-ও clear
-      Object.entries(portalData).forEach(([k, v]) => localStorage.setItem(k, v))
+      Object.entries(portalData).forEach(([k, v]) => sessionStorage.setItem(k, v))
 
       // LandingPage visitor বা Customer কে /login এ পাঠাবো না
       // শুধু আগে logged-in ছিলেন তাদের পাঠাবো
@@ -156,13 +158,14 @@ api.interceptors.response.use(
         processQueue(refreshError, null)
 
         // portal_jwt_* keys save করো
-        const portalKeys2 = Object.keys(localStorage).filter(k => k.startsWith('portal_jwt_'))
+        // ✅ FIX: sessionStorage থেকে নিতে হবে — localStorage নয়
+        const portalKeys2 = Object.keys(sessionStorage).filter(k => k.startsWith('portal_jwt_'))
         const portalData2 = {}
-        portalKeys2.forEach(k => { portalData2[k] = localStorage.getItem(k) })
+        portalKeys2.forEach(k => { portalData2[k] = sessionStorage.getItem(k) })
 
         localStorage.clear()
         tokenStore.clear()    // memory-ও clear
-        Object.entries(portalData2).forEach(([k, v]) => localStorage.setItem(k, v))
+        Object.entries(portalData2).forEach(([k, v]) => sessionStorage.setItem(k, v))
 
         window.location.href = '/login'
         return Promise.reject(refreshError)
