@@ -1,0 +1,229 @@
+import { useNavigate } from 'react-router-dom'
+import { FiLogIn, FiShoppingBag, FiUsers, FiBarChart2, FiShield } from 'react-icons/fi'
+
+// ============================================================
+// Landing Page — NovaTechBD
+// লগইন না করা ব্যবহারকারীদের জন্য পাবলিক পেজ
+// ============================================================
+
+export default function LandingPage() {
+  const navigate = useNavigate()
+
+  const features = [
+    { icon: <FiShoppingBag />, title: 'বিক্রয় ব্যবস্থাপনা', desc: 'অর্ডার, ইনভয়েস ও পেমেন্ট সব এক জায়গায়' },
+    { icon: <FiUsers />,       title: 'টিম ম্যানেজমেন্ট',  desc: 'কর্মীদের অ্যাটেন্ডেন্স ও পারফরম্যান্স ট্র্যাকিং' },
+    { icon: <FiBarChart2 />,   title: 'রিয়েল-টাইম রিপোর্ট', desc: 'ব্যবসার সামগ্রিক চিত্র একনজরে দেখুন' },
+    { icon: <FiShield />,      title: 'নিরাপদ প্ল্যাটফর্ম', desc: 'এনক্রিপ্টেড ডেটা ও সুরক্ষিত অ্যাক্সেস' },
+  ]
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(135deg, #030712 0%, #0a0f1a 50%, #051a0e 100%)',
+      fontFamily: "'Hind Siliguri', Arial, sans-serif",
+      color: '#f1f5f9',
+      overflowX: 'hidden',
+    }}>
+      {/* Navbar */}
+      <nav style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '16px 24px',
+        borderBottom: '1px solid rgba(30,58,138,0.2)',
+        background: 'rgba(3,7,18,0.8)',
+        backdropFilter: 'blur(12px)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '36px', height: '36px',
+            background: 'linear-gradient(135deg, #1e3a8a, #065f46)',
+            borderRadius: '8px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '18px',
+          }}>🏢</div>
+          <span style={{ fontWeight: 700, fontSize: '17px', color: '#f1f5f9' }}>NovaTech BD</span>
+        </div>
+
+        <button
+          onClick={() => navigate('/login')}
+          style={{
+            padding: '8px 18px',
+            background: 'linear-gradient(135deg, #1e3a8a, #162d6e)',
+            border: '1px solid rgba(30,58,138,0.5)',
+            borderRadius: '8px',
+            color: '#f1f5f9',
+            fontSize: '13px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontFamily: "'Hind Siliguri', Arial, sans-serif",
+          }}
+        >
+          <FiLogIn style={{ fontSize: '14px' }} /> লগইন
+        </button>
+      </nav>
+
+      {/* Hero */}
+      <section style={{
+        textAlign: 'center',
+        padding: '72px 24px 48px',
+      }}>
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '6px 14px',
+          background: 'rgba(30,58,138,0.15)',
+          border: '1px solid rgba(30,58,138,0.3)',
+          borderRadius: '20px',
+          fontSize: '12px',
+          color: 'rgba(148,163,184,0.8)',
+          marginBottom: '24px',
+        }}>
+          ✨ আধুনিক ব্যবসা ব্যবস্থাপনা সফটওয়্যার
+        </div>
+
+        <h1 style={{
+          fontSize: 'clamp(28px, 6vw, 48px)',
+          fontWeight: 800,
+          lineHeight: 1.2,
+          margin: '0 auto 16px',
+          maxWidth: '600px',
+          background: 'linear-gradient(135deg, #f1f5f9, rgba(148,163,184,0.7))',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
+        }}>
+          আপনার ব্যবসাকে <br />
+          <span style={{
+            background: 'linear-gradient(135deg, #3b82f6, #10b981)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text',
+          }}>স্মার্ট করে তুলুন</span>
+        </h1>
+
+        <p style={{
+          color: 'rgba(148,163,184,0.7)',
+          fontSize: '15px',
+          maxWidth: '480px',
+          margin: '0 auto 36px',
+          lineHeight: 1.7,
+        }}>
+          বিক্রয়, কর্মী ও কাস্টমার — সব কিছু একটি প্ল্যাটফর্মে পরিচালনা করুন।
+          রিয়েল-টাইম ডেটা দিয়ে সঠিক সিদ্ধান্ত নিন।
+        </p>
+
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => navigate('/login')}
+            style={{
+              padding: '13px 28px',
+              background: 'linear-gradient(135deg, #1e3a8a, #065f46)',
+              border: 'none',
+              borderRadius: '10px',
+              color: '#f1f5f9',
+              fontSize: '15px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontFamily: "'Hind Siliguri', Arial, sans-serif",
+              boxShadow: '0 8px 24px rgba(30,58,138,0.3)',
+            }}
+          >
+            <FiLogIn /> লগইন করুন
+          </button>
+          <button
+            onClick={() => navigate('/apply/sr')}
+            style={{
+              padding: '13px 28px',
+              background: 'transparent',
+              border: '1px solid rgba(30,58,138,0.4)',
+              borderRadius: '10px',
+              color: 'rgba(148,163,184,0.9)',
+              fontSize: '15px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: "'Hind Siliguri', Arial, sans-serif",
+            }}
+          >
+            SR আবেদন করুন
+          </button>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section style={{
+        padding: '48px 24px 72px',
+        maxWidth: '900px',
+        margin: '0 auto',
+      }}>
+        <h2 style={{
+          textAlign: 'center',
+          fontSize: '20px',
+          fontWeight: 700,
+          color: 'rgba(148,163,184,0.8)',
+          marginBottom: '32px',
+        }}>
+          কেন NovaTech BD?
+        </h2>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: '16px',
+        }}>
+          {features.map((f, i) => (
+            <div key={i} style={{
+              background: 'rgba(15,23,42,0.6)',
+              border: '1px solid rgba(30,58,138,0.2)',
+              borderRadius: '14px',
+              padding: '22px 18px',
+              textAlign: 'center',
+              transition: 'border-color 0.2s',
+            }}
+              onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(30,58,138,0.5)'}
+              onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(30,58,138,0.2)'}
+            >
+              <div style={{
+                width: '44px', height: '44px',
+                background: 'rgba(30,58,138,0.2)',
+                borderRadius: '10px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '20px', color: '#60a5fa',
+                margin: '0 auto 12px',
+              }}>
+                {f.icon}
+              </div>
+              <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#f1f5f9', marginBottom: '6px' }}>
+                {f.title}
+              </h3>
+              <p style={{ fontSize: '12px', color: 'rgba(148,163,184,0.6)', lineHeight: 1.5, margin: 0 }}>
+                {f.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer style={{
+        textAlign: 'center',
+        padding: '20px',
+        borderTop: '1px solid rgba(30,58,138,0.15)',
+        color: 'rgba(100,116,139,0.5)',
+        fontSize: '12px',
+      }}>
+        © {new Date().getFullYear()} NovaTech BD. সর্বস্বত্ব সংরক্ষিত।
+      </footer>
+    </div>
+  )
+}
