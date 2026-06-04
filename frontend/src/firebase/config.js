@@ -9,26 +9,48 @@ import { getMessaging, isSupported } from 'firebase/messaging'
 // Realtime নোটিফিকেশন + FCM Push Notification
 // ============================================================
 
+const FIREBASE_PROJECT_ID = import.meta.env.VITE_FIREBASE_PROJECT_ID
+
+// ⚠️ GUARD: env vars না থাকলে Firebase init skip করো
+// না হলে initializeApp(undefined) → crash → পুরো app সাদা
+const firebaseReady = !!(
+  import.meta.env.VITE_FIREBASE_API_KEY &&
+  FIREBASE_PROJECT_ID &&
+  import.meta.env.VITE_FIREBASE_APP_ID
+)
+
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain:        `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
+  authDomain:        `${FIREBASE_PROJECT_ID}.firebaseapp.com`,
   databaseURL:       import.meta.env.VITE_FIREBASE_DATABASE_URL,
-  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket:     `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.appspot.com`,
+  projectId:         FIREBASE_PROJECT_ID,
+  storageBucket:     `${FIREBASE_PROJECT_ID}.appspot.com`,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 }
 
-// Firebase App initialize
-const app  = initializeApp(firebaseConfig)
-const db   = getDatabase(app)
-const auth = getAuth(app)
+// Firebase App initialize — config না থাকলে dummy fallback
+let app, db, auth
+
+try {
+  if (firebaseReady) {
+    app  = initializeApp(firebaseConfig)
+    db   = getDatabase(app)
+    auth = getAuth(app)
+  } else {
+    console.warn('[Firebase] env vars missing — Firebase disabled')
+    app = null; db = null; auth = null
+  }
+} catch (e) {
+  console.error('[Firebase] Init failed:', e.message)
+  app = null; db = null; auth = null
+}
 
 // ── FCM Messaging (browser support চেক করে তারপর initialize) ──
-// Safari / older browsers-এ isSupported() false দেয়
 let messaging = null
 
 const initMessaging = async () => {
+  if (!app) return null
   try {
     const supported = await isSupported()
     if (supported) {
@@ -40,8 +62,7 @@ const initMessaging = async () => {
   return messaging
 }
 
-// VAPID key — Firebase Console > Project Settings > Cloud Messaging > Web Push certificates
 export const VAPID_KEY = import.meta.env.VITE_FIREBASE_VAPID_KEY
 
-export { app, db, auth, messaging, initMessaging }
+export { app, db, auth, messaging, initMessaging, firebaseReady }
 export default app
