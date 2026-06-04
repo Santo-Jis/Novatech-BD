@@ -74,7 +74,7 @@ export default class ErrorBoundary extends Component {
             আবার চেষ্টা করুন
           </button>
           <button
-            onClick={() => window.location.href = '/worker/dashboard'}
+            onClick={() => window.location.href = '/'}  // HomeRedirect সব role handle করবে
             className="px-4 py-2 bg-primary text-white rounded-xl text-sm font-bold"
           >
             হোমে যান
