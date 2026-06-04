@@ -52,7 +52,8 @@ const updatePresence = async (req, res) => {
         await setPresence(userId, !!online);
 
         if (!online) {
-            await getDB().ref(`liveLocations/${userId}`).remove();
+            const db = getDB();
+            if (db) await db.ref(`liveLocations/${userId}`).remove();
         }
 
         res.json({ success: true });
