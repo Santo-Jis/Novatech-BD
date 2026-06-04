@@ -8,7 +8,8 @@ import { initAutoSync } from './api/syncService'
 import ErrorBoundary from './components/ErrorBoundary'
 
 // App চালু হলেই offline queue auto-sync শুরু
-initAutoSync()
+// try/catch: IndexedDB fail হলে (private mode, quota) React mount আটকাবে না
+try { initAutoSync() } catch (e) { console.warn('[Sync] initAutoSync failed:', e.message) }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
