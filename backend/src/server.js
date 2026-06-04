@@ -53,8 +53,12 @@ app.use(morgan(
     { stream: logger.stream }
 ));
 
-// ── Cache disable — 304 problem fix ──
-app.use((req, res, next) => {
+// ── Cache disable — শুধু API routes-এ (static /uploads-এ নয়) ──
+// ✅ FIX: আগে app.use(...) দিয়ে সব route-এ Cache-Control বসত,
+// ফলে /uploads static files-এও no-store লাগত — browser ছবি
+// cache করতে পারত না, প্রতিবার নতুন করে ডাউনলোড হত।
+// এখন শুধু /api/ route-এ apply হবে।
+app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
