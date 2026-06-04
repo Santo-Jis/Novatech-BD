@@ -20,20 +20,32 @@
   </head>
   <body>
     <div id="root"></div>
-    <script src="//cdn.jsdelivr.net/npm/eruda"></script>
+    <script src="//cdn.jsdelivr.net/npm/eruda" async></script>
     <script>
-      eruda.init();
-
-      // লগইন থাকলে দেখাও
-      if (localStorage.getItem('accessToken')) {
-        document.getElementById('eruda').style.display = 'block';
-      }
+      // async script load হওয়ার পর init করো — না হলে error
+      window.addEventListener('load', function() {
+        try {
+          if (typeof eruda !== 'undefined') {
+            eruda.init();
+            // user localStorage-এ থাকলে দেখাও (token memory-তে থাকে, user localStorage-এ)
+            if (localStorage.getItem('user')) {
+              document.getElementById('eruda').style.display = 'block';
+            }
+          }
+        } catch(e) { /* eruda failed — কোনো সমস্যা নেই */ }
+      });
 
       window.__showEruda = function() {
-        document.getElementById('eruda').style.display = 'block';
+        try {
+          var el = document.getElementById('eruda');
+          if (el) el.style.display = 'block';
+        } catch(e) {}
       };
       window.__hideEruda = function() {
-        document.getElementById('eruda').style.display = 'none';
+        try {
+          var el = document.getElementById('eruda');
+          if (el) el.style.display = 'none';
+        } catch(e) {}
       };
     </script>
     <script type="module" src="/src/main.jsx"></script>
