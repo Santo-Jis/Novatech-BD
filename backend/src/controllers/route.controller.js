@@ -345,6 +345,33 @@ const getLiveRouteStatus = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET PENDING ROUTES
+// GET /api/routes/pending/list
+// Admin: pending অনুমোদনের অপেক্ষায় থাকা রুট তালিকা
+// ============================================================
+
+const getPendingRoutes = async (req, res) => {
+    try {
+        const result = await query(
+            `SELECT r.id, r.name, r.description, r.status,
+                    r.created_at  AS requested_at,
+                    u.name_bn     AS requested_by_name
+             FROM routes r
+             LEFT JOIN users u ON u.id = r.manager_id
+             WHERE (r.status = 'pending' OR r.status IS NULL)
+               AND r.is_active = true
+             ORDER BY r.created_at DESC`
+        );
+
+        return res.status(200).json({ success: true, data: result.rows });
+
+    } catch (error) {
+        logger.error('❌ Get Pending Routes Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getRoutes,
     createRoute,
@@ -354,4 +381,5 @@ module.exports = {
     getRouteWorkers,
     getRouteCustomers,
     getLiveRouteStatus,
+    getPendingRoutes,
 };
