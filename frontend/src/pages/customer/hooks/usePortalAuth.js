@@ -28,7 +28,8 @@ export function usePortalAuth(defaultTab = 'summary') {
   const redirectId = searchParams.get('r')
 
   const [phase,       setPhase]       = useState('loading')
-  const portalJWTRef = useRef(null)  // BUG FIX: stale closure এড়াতে latest JWT ref
+  const portalJWTRef  = useRef(null)  // BUG FIX: stale closure এড়াতে latest JWT ref
+  const toastTimerRef = useRef(null)  // auto-dismiss toast timer
   const [tokenInfo,   setTokenInfo]   = useState(null)
   const [portalJWT,   setPortalJWT]   = useState(null)
   const [dashboard,   setDashboard]   = useState(null)
@@ -40,6 +41,18 @@ export function usePortalAuth(defaultTab = 'summary') {
   // redirect_id → resolve-link → link_token
   // এই link_token দিয়ে verify-token / device-login / google-auth call হবে
   const linkTokenRef = useRef(null)
+
+  // ── Toast Notification ───────────────────────────────────────
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' })
+
+  const showToast = (message, type = 'success') => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    setToast({ show: true, message, type })
+    toastTimerRef.current = setTimeout(
+      () => setToast(t => ({ ...t, show: false })),
+      3500
+    )
+  }
 
   // ── Notification state ──────────────────────────────────────
   const [notifications,  setNotifications]  = useState([])
@@ -83,6 +96,18 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [stmtFrom,    setStmtFrom]    = useState('')
   const [stmtTo,      setStmtTo]      = useState('')
   const [stmtOpen,    setStmtOpen]    = useState(false)
+
+  // ── Payment History State ────────────────────────────────────
+  const [paymentHistory,    setPaymentHistory]    = useState([])
+  const [paymentPage,       setPaymentPage]       = useState(1)
+  const [paymentTotalPages, setPaymentTotalPages] = useState(1)
+  const [paymentTotal,      setPaymentTotal]      = useState(0)
+  const [paymentLoading,    setPaymentLoading]    = useState(false)
+  const [paymentSummary,    setPaymentSummary]    = useState(null)
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState('')
+  const [paymentDateFrom,   setPaymentDateFrom]   = useState('')
+  const [paymentDateTo,     setPaymentDateTo]     = useState('')
+  const [paymentFilterOpen, setPaymentFilterOpen] = useState(false)
 
   // ── Helpers ─────────────────────────────────────────────────
   const loadNotifications = async (jwt) => {
@@ -185,7 +210,7 @@ export function usePortalAuth(defaultTab = 'summary') {
   // ── Credit Limit Request ─────────────────────────────────────
   const submitCreditRequest = async () => {
     if (!creditReqAmt || isNaN(creditReqAmt) || parseFloat(creditReqAmt) <= 0) {
-      return alert('সঠিক পরিমাণ দিন।')
+      return showToast('সঠিক পরিমাণ দিন।', 'warning')
     }
     setCreditReqLoading(true)
     try {
@@ -198,8 +223,8 @@ export function usePortalAuth(defaultTab = 'summary') {
       setCreditReqAmt('')
       setCreditReqReason('')
       setLimitReqsLoaded(false)
-      alert('✅ আবেদন সফলভাবে জমা হয়েছে। Manager অনুমোদন দিলে আপনাকে জানানো হবে।')
-    } catch (e) { alert('❌ ' + (e.message || 'সমস্যা হয়েছে')) }
+      showToast('আবেদন সফলভাবে জমা হয়েছে। Manager অনুমোদন দিলে আপনাকে জানানো হবে।', 'success')
+    } catch (e) { showToast(e.message || 'সমস্যা হয়েছে', 'error') }
     finally { setCreditReqLoading(false) }
   }
 
@@ -217,7 +242,7 @@ export function usePortalAuth(defaultTab = 'summary') {
   // ── Complaint ────────────────────────────────────────────────
   const submitComplaint = async () => {
     if (!cmpSubject.trim() || !cmpDesc.trim()) {
-      return alert('বিষয় এবং বিস্তারিত বিবরণ লিখুন।')
+      return showToast('বিষয় এবং বিস্তারিত বিবরণ লিখুন।', 'warning')
     }
     setCmpLoading(true)
     try {
@@ -231,8 +256,8 @@ export function usePortalAuth(defaultTab = 'summary') {
       setCmpDesc('')
       setCmpType('complaint')
       setComplaintsLoaded(false)
-      alert('✅ আপনার অভিযোগ/ফিডব্যাক গ্রহণ করা হয়েছে। শীঘ্রই সাড়া পাবেন।')
-    } catch (e) { alert('❌ ' + (e.message || 'সমস্যা হয়েছে')) }
+      showToast('অভিযোগ/ফিডব্যাক গ্রহণ করা হয়েছে। শীঘ্রই সাড়া পাবেন।', 'success')
+    } catch (e) { showToast(e.message || 'সমস্যা হয়েছে', 'error') }
     finally { setCmpLoading(false) }
   }
 
@@ -272,7 +297,7 @@ export function usePortalAuth(defaultTab = 'summary') {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
       setStmtOpen(false)
-    } catch (e) { alert('Statement ডাউনলোড ব্যর্থ: ' + e.message) }
+    } catch (e) { showToast('Statement ডাউনলোড ব্যর্থ: ' + e.message, 'error') }
     finally { setStmtLoading(false) }
   }
 
@@ -298,11 +323,55 @@ export function usePortalAuth(defaultTab = 'summary') {
     loadInvoices(portalJWT, 1, {})
   }
 
+  // ── Payment History ──────────────────────────────────────────
+  const loadPaymentHistory = async (jwt, page = 1, filters = {}) => {
+    setPaymentLoading(true)
+    try {
+      const params = new URLSearchParams({ page, limit: 20 })
+      if (filters.type)     params.set('type',      filters.type)
+      if (filters.dateFrom) params.set('date_from', filters.dateFrom)
+      if (filters.dateTo)   params.set('date_to',   filters.dateTo)
+      const data = await portalFetch(`/portal/payment-history?${params}`, {
+        headers: { Authorization: `Bearer ${jwt}` }
+      })
+      if (page === 1) setPaymentHistory(data.data || [])
+      else setPaymentHistory(prev => [...prev, ...(data.data || [])])
+      setPaymentPage(data.pagination?.page || page)
+      setPaymentTotalPages(data.pagination?.totalPages || 1)
+      setPaymentTotal(data.pagination?.total || 0)
+      if (page === 1) setPaymentSummary(data.summary || null)
+    } catch (err) { console.error('Payment history load error:', err) }
+    finally { setPaymentLoading(false) }
+  }
+
+  const applyPaymentFilter = () => {
+    setPaymentHistory([])
+    setPaymentPage(1)
+    setPaymentFilterOpen(false)
+    loadPaymentHistory(portalJWTRef.current || portalJWT, 1, {
+      type:     paymentTypeFilter,
+      dateFrom: paymentDateFrom,
+      dateTo:   paymentDateTo,
+    })
+  }
+
+  const clearPaymentFilter = () => {
+    setPaymentTypeFilter('')
+    setPaymentDateFrom('')
+    setPaymentDateTo('')
+    setPaymentHistory([])
+    setPaymentFilterOpen(false)
+    loadPaymentHistory(portalJWTRef.current || portalJWT, 1, {})
+  }
+
   // ── Tab change ───────────────────────────────────────────────
   const handleTabChange = (tabId) => {
     setActiveTab(tabId)
     if (tabId === 'invoices' && invoices.length === 0 && !invoiceLoading) {
       loadInvoices(portalJWTRef.current || portalJWT, 1, {})
+    }
+    if (tabId === 'payments' && paymentHistory.length === 0 && !paymentLoading) {
+      loadPaymentHistory(portalJWTRef.current || portalJWT, 1, {})
     }
   }
 
@@ -457,6 +526,8 @@ export function usePortalAuth(defaultTab = 'summary') {
     phase, tokenInfo, portalJWT, dashboard,
     activeTab, error, loggingIn,
     googleLogin, handleLogout, handleTabChange,
+    // toast
+    toast,
     // notifications
     notifications, unreadCount, showBell, setShowBell,
     unreadBanner, setUnreadBanner, markAllAsRead,
@@ -486,5 +557,13 @@ export function usePortalAuth(defaultTab = 'summary') {
     stmtFrom, setStmtFrom,
     stmtTo, setStmtTo,
     stmtLoading, downloadStatement,
+    // payment history
+    paymentHistory, paymentPage, paymentTotalPages, paymentTotal, paymentLoading,
+    paymentSummary,
+    paymentTypeFilter, setPaymentTypeFilter,
+    paymentDateFrom,   setPaymentDateFrom,
+    paymentDateTo,     setPaymentDateTo,
+    paymentFilterOpen, setPaymentFilterOpen,
+    loadPaymentHistory, applyPaymentFilter, clearPaymentFilter,
   }
 }
