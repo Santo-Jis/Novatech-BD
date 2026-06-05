@@ -116,9 +116,17 @@ const query = async (text, params) => {
 
         return result;
     } catch (error) {
-        logger.error('❌ Query Error:', error.message);
-        logger.error('Query:', text);
-        logger.error('Params:', params);
+        // ✅ FIX: logger দ্বিতীয় argument-এ object চায়, string/array নয়।
+        // আগের কোড: logger.error('❌ Query Error:', error.message)
+        //   → error.message string হওয়ায় character-by-character log হত (800+ লাইন!)
+        // এখন: একটি structured object-এ সব তথ্য একসাথে লগ হবে।
+        logger.error('❌ Query Error', {
+            err:    error,
+            query:  text.substring(0, 300),   // দীর্ঘ SQL truncate করো
+            params: Array.isArray(params)
+                    ? params.slice(0, 10)       // প্রথম ১০টি param দেখাও
+                    : params,
+        });
         throw error;
     }
 };
