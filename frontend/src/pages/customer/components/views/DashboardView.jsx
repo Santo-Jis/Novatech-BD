@@ -13,6 +13,7 @@ export default function DashboardView({
   activeTab,
   onTabChange,
   onLogout,
+  toast,
   // notification
   notifications,
   unreadCount,
@@ -60,19 +61,35 @@ export default function DashboardView({
   stmtTo, setStmtTo,
   stmtLoading,
   downloadStatement,
+  // payment history
+  paymentHistory = [],
+  paymentPage,
+  paymentTotalPages,
+  paymentTotal,
+  paymentLoading,
+  paymentSummary,
+  paymentTypeFilter, setPaymentTypeFilter,
+  paymentDateFrom,   setPaymentDateFrom,
+  paymentDateTo,     setPaymentDateTo,
+  paymentFilterOpen, setPaymentFilterOpen,
+  loadPaymentHistory,
+  applyPaymentFilter,
+  clearPaymentFilter,
 }) {
   const {
     customer,
     credit_payments = [],
     monthly_summary = {},
     total_summary   = {},
+    returns         = [],
   } = dashboard
 
   const tabs = [
     { id: 'summary',    label: 'সারসংক্ষেপ' },
     { id: 'orders',     label: '🛒 অর্ডার' },
     { id: 'invoices',   label: `ইনভয়েস (${invoiceTotal > 0 ? invoiceTotal : total_summary?.total_invoices || 0})` },
-    { id: 'payments',   label: `পরিশোধ (${credit_payments.length})` },
+    { id: 'payments',   label: `পরিশোধ (${paymentTotal > 0 ? paymentTotal : credit_payments.length})` },
+    { id: 'returns',    label: `🔄 রিটার্ন${returns.length > 0 ? ` (${returns.length})` : ''}` },
     { id: 'credit_req', label: '💳 লিমিট' },
     { id: 'complaints', label: '📣 অভিযোগ' },
   ]
@@ -568,22 +585,224 @@ export default function DashboardView({
             {/* ── পরিশোধ ── */}
             {activeTab === 'payments' && (
               <div className="space-y-3">
-                {credit_payments.length === 0
-                  ? <p className="text-center text-gray-400 text-sm py-8">কোনো পরিশোধ নেই।</p>
-                  : credit_payments.map((p, i) => (
-                    <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex justify-between items-start">
-                      <div>
-                        <p className="text-xs text-gray-400">{fmtDate(p.created_at)}</p>
-                        <p className="text-sm font-semibold text-gray-700 mt-0.5">{p.collected_by} আদায় করেছেন</p>
-                        {p.notes && <p className="text-xs text-gray-400 mt-1">{p.notes}</p>}
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-green-600 text-lg">৳{fmt(p.amount)}</p>
-                        <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">পরিশোধিত</span>
+
+                {/* ফিল্টার বার */}
+                <div className="flex gap-2">
+                  <button onClick={() => setPaymentFilterOpen(v => !v)}
+                    className={`flex-1 px-3 py-2 rounded-xl border text-sm font-semibold transition-colors
+                      ${paymentFilterOpen || paymentTypeFilter || paymentDateFrom || paymentDateTo
+                        ? 'bg-indigo-600 text-white border-indigo-600'
+                        : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}>
+                    🔍 ফিল্টার {(paymentTypeFilter || paymentDateFrom || paymentDateTo) ? '●' : ''}
+                  </button>
+                  <button onClick={applyPaymentFilter}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-colors">
+                    দেখুন
+                  </button>
+                </div>
+
+                {/* ফিল্টার প্যানেল */}
+                {paymentFilterOpen && (
+                  <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 space-y-3">
+                    <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">ফিল্টার</p>
+                    <div>
+                      <p className="text-xs text-gray-500 mb-1">পেমেন্টের ধরন</p>
+                      <div className="flex gap-2">
+                        {[['', 'সব'], ['cash', '💵 নগদ'], ['credit', '🔄 ক্রেডিট']].map(([val, label]) => (
+                          <button key={val} onClick={() => setPaymentTypeFilter(val)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-colors
+                              ${paymentTypeFilter === val
+                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300'}`}>
+                            {label}
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  ))
-                }
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">তারিখ থেকে</p>
+                        <input type="date" value={paymentDateFrom} onChange={e => setPaymentDateFrom(e.target.value)}
+                          className="w-full border border-gray-200 rounded-xl px-2 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500 mb-1">তারিখ পর্যন্ত</p>
+                        <input type="date" value={paymentDateTo} onChange={e => setPaymentDateTo(e.target.value)}
+                          className="w-full border border-gray-200 rounded-xl px-2 py-1.5 text-xs focus:outline-none focus:border-indigo-400" />
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <button onClick={applyPaymentFilter}
+                        className="flex-1 bg-indigo-600 text-white rounded-xl py-2 text-sm font-bold hover:bg-indigo-700 transition-colors">
+                        ফিল্টার প্রয়োগ
+                      </button>
+                      <button onClick={clearPaymentFilter}
+                        className="px-4 bg-white border border-gray-200 text-gray-500 rounded-xl py-2 text-sm hover:bg-gray-50 transition-colors">
+                        রিসেট
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* সক্রিয় ফিল্টার ট্যাগ */}
+                {(paymentTypeFilter || paymentDateFrom || paymentDateTo) && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {paymentTypeFilter && (
+                      <span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-1 rounded-full flex items-center gap-1">
+                        {paymentTypeFilter === 'cash' ? '💵 নগদ' : '🔄 ক্রেডিট'}
+                        <button onClick={() => { setPaymentTypeFilter(''); applyPaymentFilter() }} className="text-indigo-400 hover:text-indigo-700">✕</button>
+                      </span>
+                    )}
+                    {paymentDateFrom && (
+                      <span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-1 rounded-full flex items-center gap-1">
+                        📅 {paymentDateFrom}
+                        <button onClick={() => { setPaymentDateFrom(''); applyPaymentFilter() }} className="text-indigo-400 hover:text-indigo-700">✕</button>
+                      </span>
+                    )}
+                    {paymentDateTo && (
+                      <span className="bg-indigo-100 text-indigo-700 text-xs px-2.5 py-1 rounded-full flex items-center gap-1">
+                        📅 {paymentDateTo} পর্যন্ত
+                        <button onClick={() => { setPaymentDateTo(''); applyPaymentFilter() }} className="text-indigo-400 hover:text-indigo-700">✕</button>
+                      </span>
+                    )}
+                    <span className="text-xs text-gray-400 py-1">— {paymentTotal}টি পাওয়া গেছে</span>
+                  </div>
+                )}
+
+                {/* সারসংক্ষেপ কার্ড (প্রথম লোডে দেখায়) */}
+                {paymentSummary && !paymentTypeFilter && !paymentDateFrom && !paymentDateTo && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-green-50 border border-green-100 rounded-2xl p-3 text-center">
+                      <p className="text-xs text-green-600 font-semibold">💵 মোট নগদ</p>
+                      <p className="text-sm font-bold text-green-700 mt-0.5">৳{fmtCur(paymentSummary.total_cash_received)}</p>
+                    </div>
+                    <div className="bg-blue-50 border border-blue-100 rounded-2xl p-3 text-center">
+                      <p className="text-xs text-blue-600 font-semibold">🔄 মোট ক্রেডিট</p>
+                      <p className="text-sm font-bold text-blue-700 mt-0.5">৳{fmtCur(paymentSummary.total_credit_collected)}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* পেমেন্ট তালিকা */}
+                {paymentLoading && paymentHistory.length === 0 ? (
+                  <div className="space-y-3">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="h-20 bg-white rounded-2xl animate-pulse border border-gray-100" />
+                    ))}
+                  </div>
+                ) : paymentHistory.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-3xl mb-2">💳</p>
+                    <p className="text-gray-400 text-sm">কোনো পেমেন্ট পাওয়া যায়নি।</p>
+                  </div>
+                ) : (
+                  <>
+                    {paymentHistory.map((p, i) => (
+                      <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex justify-between items-start">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-gray-400">{fmtDate(p.created_at)}</p>
+                          <p className="text-sm font-semibold text-gray-700 mt-0.5 truncate">{p.collected_by} আদায় করেছেন</p>
+                          {p.reference && (
+                            <p className="text-xs text-gray-400 mt-0.5 truncate">
+                              {p.payment_type === 'cash' ? `INV: ${p.reference}` : p.reference}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right ml-3 shrink-0">
+                          <p className="font-bold text-green-600 text-lg">৳{fmtCur(p.amount)}</p>
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium
+                            ${p.payment_type === 'cash'
+                              ? 'bg-green-100 text-green-700'
+                              : 'bg-blue-100 text-blue-700'}`}>
+                            {p.payment_type === 'cash' ? '💵 নগদ' : '🔄 ক্রেডিট'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+
+                    {paymentPage < paymentTotalPages && (
+                      <button
+                        onClick={() => loadPaymentHistory(portalJWT, paymentPage + 1, {
+                          type:     paymentTypeFilter,
+                          dateFrom: paymentDateFrom,
+                          dateTo:   paymentDateTo,
+                        })}
+                        disabled={paymentLoading}
+                        className="w-full py-3 bg-white border border-gray-200 rounded-2xl text-sm text-indigo-600 font-semibold hover:bg-indigo-50 transition-colors disabled:opacity-50">
+                        {paymentLoading ? '⏳ লোড হচ্ছে...' : `আরো দেখুন (${paymentHistory.length}/${paymentTotal})`}
+                      </button>
+                    )}
+                    {paymentPage >= paymentTotalPages && paymentHistory.length > 0 && (
+                      <p className="text-center text-xs text-gray-400 py-2">সব {paymentTotal}টি পেমেন্ট দেখানো হয়েছে।</p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── রিটার্ন / রিপ্লেসমেন্ট ── */}
+            {activeTab === 'returns' && (
+              <div className="space-y-3">
+                {returns.length === 0 ? (
+                  <div className="text-center py-10">
+                    <p className="text-4xl mb-2">📦</p>
+                    <p className="text-gray-400 text-sm">কোনো রিটার্ন বা রিপ্লেসমেন্ট নেই।</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 flex items-center gap-3">
+                      <span className="text-2xl">ℹ️</span>
+                      <p className="text-xs text-amber-700 font-medium leading-relaxed">
+                        SR কর্তৃক প্রদত্ত পণ্য বদল বা রিটার্নের রেকর্ড। মোট <span className="font-bold">{returns.length}টি</span> এন্ট্রি।
+                      </p>
+                    </div>
+
+                    {returns.map((r, i) => {
+                      const items = Array.isArray(r.replacement_items) ? r.replacement_items : []
+                      return (
+                        <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                          {/* Card Header */}
+                          <div className="flex justify-between items-center px-4 py-3 border-b border-gray-50 bg-amber-50">
+                            <div>
+                              <p className="text-xs font-bold text-amber-800">INV: {r.invoice_number}</p>
+                              <p className="text-xs text-amber-600 mt-0.5">{r.sr_name} • {fmtDate(r.created_at)}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-bold text-amber-700">৳{fmtCur(r.replacement_value)}</p>
+                              <p className="text-xs text-amber-500">পণ্যের মূল্য</p>
+                            </div>
+                          </div>
+
+                          {/* Items list */}
+                          {items.length > 0 && (
+                            <div className="px-4 py-2 space-y-1.5">
+                              {items.map((item, j) => (
+                                <div key={j} className="flex justify-between items-center py-1 border-b border-gray-50 last:border-0">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold text-gray-700 truncate">{item.product_name}</p>
+                                    <p className="text-xs text-gray-400">
+                                      {item.qty} × ৳{fmtCur(item.unit_price)}
+                                      {item.vat_rate > 0 && ` (+${(item.vat_rate * 100).toFixed(0)}% VAT)`}
+                                    </p>
+                                  </div>
+                                  <p className="text-xs font-bold text-gray-700 ml-3 shrink-0">৳{fmtCur(item.total)}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Footer: credit balance info */}
+                          {parseFloat(r.credit_balance_added || 0) > 0 && (
+                            <div className="mx-4 mb-3 bg-green-50 border border-green-100 rounded-xl px-3 py-2 flex justify-between items-center">
+                              <p className="text-xs text-green-700 font-medium">💰 ক্রেডিট ব্যালেন্সে যোগ</p>
+                              <p className="text-xs font-bold text-green-700">+৳{fmtCur(r.credit_balance_added)}</p>
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </>
+                )}
               </div>
             )}
           </div>
@@ -636,6 +855,35 @@ export default function DashboardView({
           তথ্য সংক্রান্ত সমস্যায় আপনার SR-এর সাথে যোগাযোগ করুন।
         </p>
       </div>
+
+      {/* ── Toast Notification ── */}
+      {toast?.show && (
+        <div style={{
+          position: 'fixed',
+          bottom: 28,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 9999,
+          maxWidth: 380,
+          width: 'calc(100% - 32px)',
+          borderRadius: 18,
+          padding: '14px 16px',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: 12,
+          boxShadow: '0 8px 32px rgba(0,0,0,0.22)',
+          background:
+            toast.type === 'success' ? '#064e3b' :
+            toast.type === 'warning' ? '#78350f' : '#7f1d1d',
+        }}>
+          <span style={{ fontSize: 22, lineHeight: 1, flexShrink: 0, marginTop: 1 }}>
+            {toast.type === 'success' ? '✅' : toast.type === 'warning' ? '⚠️' : '❌'}
+          </span>
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'white', lineHeight: 1.55, flex: 1 }}>
+            {toast.message}
+          </p>
+        </div>
+      )}
     </div>
   )
 }
