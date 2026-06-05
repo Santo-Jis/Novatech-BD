@@ -22,7 +22,7 @@ const addLedgerEntry = async (clientOrNull, entry) => {
         entry.txn_type,
         entry.direction,
         Math.abs(parseInt(entry.qty)),
-        entry.reference_id   || null,     // INT
+        entry.reference_id   || null,     // UUID (orders, settlements, etc. এর reference)
         entry.reference_type || null,
         entry.note           || null,
         entry.created_by     || null,     // UUID
