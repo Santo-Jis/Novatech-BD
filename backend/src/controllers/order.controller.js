@@ -203,7 +203,7 @@ const createOrder = async (req, res) => {
                 logger.info('⚠️ কোনো Admin/Manager এর email পাওয়া যায়নি।');
             }
         } catch (emailErr) {
-            logger.error('⚠️ Order Email Error:', emailErr.message);
+            logger.error('⚠️ Order Email Error', { err: emailErr });
         }
 
         return res.status(201).json({
@@ -213,7 +213,7 @@ const createOrder = async (req, res) => {
         });
 
     } catch (error) {
-        logger.error('❌ Create Order Error:', error.message);
+        logger.error('❌ Create Order Error', { err: error });
         return res.status(500).json({ success: false, message: 'অর্ডার তৈরিতে সমস্যা হয়েছে।' });
     }
 };
@@ -238,7 +238,7 @@ const getMyOrders = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        logger.error('❌ My Orders Error:', error.message);
+        logger.error('❌ My Orders Error', { err: error });
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -286,7 +286,7 @@ const getTodayOrder = async (req, res) => {
         });
 
     } catch (error) {
-        logger.error('❌ Today Order Error:', error.message);
+        logger.error('❌ Today Order Error', { err: error });
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -321,7 +321,7 @@ const getPendingOrders = async (req, res) => {
         return res.status(200).json({ success: true, data: result.rows });
 
     } catch (error) {
-        logger.error('❌ Pending Orders Error:', error.message);
+        logger.error('❌ Pending Orders Error', { err: error });
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -407,7 +407,7 @@ const approveOrder = async (req, res) => {
         // কারণ: itemPrice ও approvedQty উভয়ই valid হলে NaN হওয়া উচিত নয়।
         // যদি হয়, এটা data corruption — fallback নয়, hard stop দরকার।
         if (isNaN(totalAmount) || !isFinite(totalAmount)) {
-            logger.error('❌ totalAmount is NaN/Infinity — order rejected. items:', JSON.stringify(safeItems));
+            logger.error('❌ totalAmount is NaN/Infinity — order rejected.', { items: safeItems });
             return res.status(422).json({
                 success: false,
                 message: 'অর্ডারের মূল্য হিসাব করা যাচ্ছে না — পণ্যের price data ঠিক করুন।',
@@ -459,7 +459,7 @@ const approveOrder = async (req, res) => {
                         txn_type:       'order_in',
                         direction:      1,
                         qty:            item.approved_qty,
-                        reference_id:   parseInt(id),
+                        reference_id:   id,
                         reference_type: 'order',
                         note:           `অর্ডার #${id} অনুমোদন`,
                         created_by:     req.user.id,
@@ -492,7 +492,7 @@ const approveOrder = async (req, res) => {
         });
 
     } catch (error) {
-        logger.error('❌ Approve Order Error:', error.message);
+        logger.error('❌ Approve Order Error', { err: error });
         return res.status(500).json({ success: false, message: 'অনুমোদনে সমস্যা হয়েছে।' });
     }
 };
@@ -572,7 +572,7 @@ const rejectOrder = async (req, res) => {
         return res.status(200).json({ success: true, message: 'অর্ডার বাতিল করা হয়েছে।' });
 
     } catch (error) {
-        logger.error('❌ Reject Order Error:', error.message);
+        logger.error('❌ Reject Order Error', { err: error });
         return res.status(500).json({ success: false, message: 'বাতিলে সমস্যা হয়েছে।' });
     }
 };
@@ -670,7 +670,7 @@ const getStockStatus = async (req, res) => {
         });
 
     } catch (error) {
-        logger.error('❌ Stock Status Error:', error.message);
+        logger.error('❌ Stock Status Error', { err: error });
         return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
@@ -731,7 +731,7 @@ const cancelOrder = async (req, res) => {
         });
 
     } catch (error) {
-        logger.error('❌ Cancel Order Error:', error.message);
+        logger.error('❌ Cancel Order Error', { err: error });
         return res.status(500).json({ success: false, message: 'বাতিলে সমস্যা হয়েছে।' });
     }
 };
