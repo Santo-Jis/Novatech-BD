@@ -15,6 +15,8 @@ import { useSearchParams } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { portalFetch, BACKEND } from '../utils/api'
 import { getDeviceFingerprint, webGoogleLogin } from '../utils/fingerprint'
+import { initializeApp, getApps } from 'firebase/app'
+import { getMessaging, getToken } from 'firebase/messaging'
 import {
   getStorageKey, storageGet, storageSet, storageRemove, storageKeys
 } from '../utils/helpers'
@@ -115,9 +117,7 @@ export function usePortalAuth(defaultTab = 'summary') {
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') return
       const swReg = await navigator.serviceWorker.ready
-      const { initializeApp, getApps } = await import('firebase/app')
-      const { getMessaging, getToken }  = await import('firebase/messaging')
-      const firebaseConfig = {
+      const app = getApps().length > 0 ? getApps()[0] : initializeApp({
         apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
         authDomain:        `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
         databaseURL:       import.meta.env.VITE_FIREBASE_DATABASE_URL,
@@ -125,8 +125,7 @@ export function usePortalAuth(defaultTab = 'summary') {
         storageBucket:     `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.appspot.com`,
         messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
         appId:             import.meta.env.VITE_FIREBASE_APP_ID,
-      }
-      const app = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig)
+      })
       const messaging = getMessaging(app)
       const fcmToken = await getToken(messaging, {
         vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
