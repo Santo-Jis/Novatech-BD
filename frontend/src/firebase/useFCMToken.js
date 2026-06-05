@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import api from '../api/axios'
 import toast from 'react-hot-toast'
+import { getToken, onMessage } from 'firebase/messaging'
+import { initMessaging, VAPID_KEY } from './config'
 
 // ============================================================
 // useFCMToken Hook — Web + Native Android উভয়ই সাপোর্ট করে
@@ -196,14 +198,12 @@ async function setupWebFCM(cancelledRef) {
   await sendConfigToSW()
 
   // ── ৩. Firebase Messaging initialize ──────────────────
-  const { initMessaging, VAPID_KEY } = await import('./config')
   const messaging = await initMessaging()
   if (!messaging || cancelledRef.current) return null
 
   // ── ৪. FCM token নাও ──────────────────────────────────
   let fcmToken
   try {
-    const { getToken } = await import('firebase/messaging')
     fcmToken = await getToken(messaging, {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: await navigator.serviceWorker.ready,
@@ -217,7 +217,6 @@ async function setupWebFCM(cancelledRef) {
   await saveTokenToBackend(fcmToken)
 
   // ── ৫. Foreground message handler ─────────────────────
-  const { onMessage } = await import('firebase/messaging')
   const unsub = onMessage(messaging, (payload) => {
     if (cancelledRef.current) return
     const { title, body } = payload.notification || {}
