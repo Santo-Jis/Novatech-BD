@@ -66,17 +66,34 @@ const pool = new Pool({
 });
 
 // ============================================================
-// CONNECTION TEST
+// CONNECTION TEST — Retry সহ
+// Render free tier cold-start এ DB সাথে সাথে ready নাও থাকতে পারে।
+// ৫ বার চেষ্টা করবে, প্রতিবার একটু বেশি অপেক্ষা করবে।
 // ============================================================
 
-pool.connect((err, client, release) => {
-    if (err) {
-        logger.error('❌ Database সংযোগ ব্যর্থ:', err.message);
-        return;
+const MAX_RETRIES    = 5;
+const RETRY_DELAY_MS = 3000; // শুরু: ৩ সেকেন্ড (প্রতিবার ×১.৫ বাড়বে)
+
+async function testConnection(attempt = 1) {
+    try {
+        const client = await pool.connect();
+        client.release();
+        logger.info('✅ Database সংযোগ সফল — Supabase PostgreSQL (SSL verified)');
+    } catch (err) {
+        logger.error(`❌ Database সংযোগ ব্যর্থ (চেষ্টা ${attempt}/${MAX_RETRIES}): ${err.message}`);
+
+        if (attempt < MAX_RETRIES) {
+            const delay = Math.round(RETRY_DELAY_MS * Math.pow(1.5, attempt - 1));
+            logger.info(`⏳ ${delay / 1000} সেকেন্ড পরে আবার চেষ্টা করা হবে...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            return testConnection(attempt + 1);
+        }
+
+        logger.error('🔴 Database সংযোগ সম্পূর্ণ ব্যর্থ। Server চলছে — query-তে error হবে।');
     }
-    release();
-    logger.info('✅ Database সংযোগ সফল — Supabase PostgreSQL (SSL verified)');
-});
+}
+
+testConnection();
 
 // ============================================================
 // QUERY HELPER
