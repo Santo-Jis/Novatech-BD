@@ -62,7 +62,8 @@ const getPortalReturnRequests = async (req, res) => {
                 c.owner_name   AS customer_name,
                 c.shop_name,
                 c.customer_code,
-                c.phone,
+                c.whatsapp,
+                c.sms_phone,
                 rv.name_bn     AS reviewed_by_name
              FROM customer_return_requests crr
              JOIN customers c  ON c.id  = crr.customer_id
@@ -121,8 +122,8 @@ const getPortalReturnRequestDetail = async (req, res) => {
                 c.owner_name   AS customer_name,
                 c.shop_name,
                 c.customer_code,
-                c.phone,
-                c.address,
+                c.whatsapp,
+                c.sms_phone,
                 rv.name_bn     AS reviewed_by_name
              FROM customer_return_requests crr
              JOIN customers c  ON c.id  = crr.customer_id
