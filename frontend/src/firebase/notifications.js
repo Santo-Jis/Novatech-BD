@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { ref, onValue, off, set, serverTimestamp } from 'firebase/database'
+import { ref, onValue, off, set, serverTimestamp, onDisconnect } from 'firebase/database'
 import { db, firebaseReady } from './config'
 import { useFCMToken } from './useFCMToken'
 import { useAuthStore } from '../store/auth.store'
@@ -251,7 +251,6 @@ export function useOnlinePresence() {
             lastSeen:  serverTimestamp()
           })
 
-          const { onDisconnect } = await import('firebase/database')
           await onDisconnect(presenceRef).set({
             online:   false,
             name:     user.name_bn,
