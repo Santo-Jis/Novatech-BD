@@ -48,6 +48,7 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
       activeTab={auth.activeTab}
       onTabChange={auth.handleTabChange}
       onLogout={auth.handleLogout}
+      toast={auth.toast}
       // notifications
       notifications={auth.notifications}
       unreadCount={auth.unreadCount}
@@ -95,6 +96,20 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
       stmtTo={auth.stmtTo}         setStmtTo={auth.setStmtTo}
       stmtLoading={auth.stmtLoading}
       downloadStatement={auth.downloadStatement}
+      // payment history
+      paymentHistory={auth.paymentHistory}
+      paymentPage={auth.paymentPage}
+      paymentTotalPages={auth.paymentTotalPages}
+      paymentTotal={auth.paymentTotal}
+      paymentLoading={auth.paymentLoading}
+      paymentSummary={auth.paymentSummary}
+      paymentTypeFilter={auth.paymentTypeFilter}  setPaymentTypeFilter={auth.setPaymentTypeFilter}
+      paymentDateFrom={auth.paymentDateFrom}      setPaymentDateFrom={auth.setPaymentDateFrom}
+      paymentDateTo={auth.paymentDateTo}          setPaymentDateTo={auth.setPaymentDateTo}
+      paymentFilterOpen={auth.paymentFilterOpen}  setPaymentFilterOpen={auth.setPaymentFilterOpen}
+      loadPaymentHistory={auth.loadPaymentHistory}
+      applyPaymentFilter={auth.applyPaymentFilter}
+      clearPaymentFilter={auth.clearPaymentFilter}
     />
   )
 
