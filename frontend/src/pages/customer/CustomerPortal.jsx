@@ -78,6 +78,7 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
       creditReqLoading={auth.creditReqLoading}
       myLimitReqs={auth.myLimitReqs}
       limitReqsLoaded={auth.limitReqsLoaded}
+      limitReqsLoading={auth.limitReqsLoading}
       loadMyLimitReqs={auth.loadMyLimitReqs}
       submitCreditRequest={auth.submitCreditRequest}
       // complaints
@@ -88,6 +89,7 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
       cmpLoading={auth.cmpLoading}
       myComplaints={auth.myComplaints}
       complaintsLoaded={auth.complaintsLoaded}
+      complaintsLoading={auth.complaintsLoading}
       loadMyComplaints={auth.loadMyComplaints}
       submitComplaint={auth.submitComplaint}
       // statement
