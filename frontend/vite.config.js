@@ -41,10 +41,31 @@ export default defineConfig({
 
   build: {
     rollupOptions: {
-      // external রাখা হয়নি — dynamic import + try/catch দিয়ে
-      // Login.jsx ও useFCMToken.js নিজেই handle করে।
-      // external রাখলে web build-এ dynamic import() silent fail করে
-      // এবং পুরো component crash করে সাদা পেজ দেখায়।
+      output: {
+        manualChunks: {
+          // React core — সবচেয়ে stable, আলাদা chunk-এ রাখো
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // Firebase — বড় library, আলাদা chunk
+          'vendor-firebase': [
+            'firebase/app',
+            'firebase/auth',
+            'firebase/database',
+            'firebase/messaging',
+          ],
+          // Charts — recharts ভারী, আলাদা chunk
+          'vendor-charts': ['recharts'],
+          // UI utilities
+          'vendor-ui': [
+            'react-hot-toast',
+            'react-icons',
+            'react-hook-form',
+            'clsx',
+            'date-fns',
+          ],
+          // Map — leaflet ভারী, lazy load
+          'vendor-map': ['leaflet', 'react-leaflet'],
+        },
+      },
     },
   },
 })
