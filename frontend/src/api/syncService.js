@@ -250,7 +250,6 @@ export async function retryFailed() {
     const msg = skippedCount === failed.length
       ? `⏳ সব item হয় সর্বোচ্চ retry শেষ করেছে বা backoff-এ আছে।`
       : `⚠️ ${skippedCount}টি item এখনও retry করার সময় হয়নি বা সর্বোচ্চ সীমায় পৌঁছেছে।`
-    const { default: toast } = await import('react-hot-toast')
     toast(msg, { icon: 'ℹ️', duration: 4000 })
   }
 
