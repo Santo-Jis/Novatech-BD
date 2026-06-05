@@ -7,6 +7,21 @@ import MonthlyTrendChart from '../MonthlyTrendChart'
 import InvoiceCard from '../InvoiceCard'
 import OrderRequestTab from '../OrderRequestTab'
 
+// ── Skeleton লোডিং কার্ড ──────────────────────────────────────
+function SkeletonCard({ rows = 3 }) {
+  return (
+    <div style={{ background: 'white', borderRadius: 14, padding: '14px 16px', border: '1px solid #f0f0f0', animation: 'pulse 1.5s ease-in-out infinite' }}>
+      <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: i < rows - 1 ? 12 : 0 }}>
+          <div style={{ height: 12, background: '#e5e7eb', borderRadius: 6, width: `${55 + (i % 3) * 15}%` }} />
+          <div style={{ height: 20, background: '#e5e7eb', borderRadius: 10, width: '22%' }} />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function DashboardView({
   dashboard,
   portalJWT,
@@ -43,6 +58,7 @@ export default function DashboardView({
   creditReqLoading,
   myLimitReqs,
   limitReqsLoaded,
+  limitReqsLoading,
   loadMyLimitReqs,
   submitCreditRequest,
   // complaints
@@ -53,6 +69,7 @@ export default function DashboardView({
   cmpLoading,
   myComplaints,
   complaintsLoaded,
+  complaintsLoading,
   loadMyComplaints,
   submitComplaint,
   // statement
@@ -156,19 +173,35 @@ export default function DashboardView({
                   {notifications.length === 0 ? (
                     <p style={{ textAlign: 'center', color: '#aaa', fontSize: 13, padding: '24px 16px' }}>কোনো notification নেই।</p>
                   ) : (
-                    notifications.map(n => (
-                      <div key={n.id} style={{ padding: '12px 16px', borderBottom: '1px solid #f9f9f9', background: n.is_read ? 'white' : '#eff6ff', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                        <span style={{ fontSize: 20, marginTop: 1 }}>{n.type === 'credit_reminder' ? '💳' : '🔔'}</span>
-                        <div style={{ flex: 1 }}>
-                          <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#1e1e1e' }}>{n.title}</p>
-                          <p style={{ margin: '3px 0 0', fontSize: 12, color: '#555', lineHeight: 1.5 }}>{n.body}</p>
-                          <p style={{ margin: '4px 0 0', fontSize: 10, color: '#aaa' }}>
-                            {new Date(n.created_at).toLocaleString('bn-BD', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                          </p>
+                    notifications.map(n => {
+                      // ✅ FIX: Notification deep link — return update হলে 'returns' ট্যাবে যাও
+                      const isReturnNotif = n.type === 'return_request_update' ||
+                        (n.title || '').toLowerCase().includes('ফেরত') ||
+                        (n.title || '').toLowerCase().includes('return')
+                      const handleNotifClick = () => {
+                        setShowBell(false)
+                        if (isReturnNotif) onTabChange('returns')
+                      }
+                      return (
+                        <div key={n.id} onClick={handleNotifClick}
+                          style={{ padding: '12px 16px', borderBottom: '1px solid #f9f9f9', background: n.is_read ? 'white' : '#eff6ff', display: 'flex', gap: 10, alignItems: 'flex-start', cursor: isReturnNotif ? 'pointer' : 'default', transition: 'background 0.15s' }}
+                          onMouseEnter={e => { if (isReturnNotif) e.currentTarget.style.background = '#dbeafe' }}
+                          onMouseLeave={e => { e.currentTarget.style.background = n.is_read ? 'white' : '#eff6ff' }}>
+                          <span style={{ fontSize: 20, marginTop: 1 }}>
+                            {n.type === 'credit_reminder' ? '💳' : isReturnNotif ? '🔄' : '🔔'}
+                          </span>
+                          <div style={{ flex: 1 }}>
+                            <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#1e1e1e' }}>{n.title}</p>
+                            <p style={{ margin: '3px 0 0', fontSize: 12, color: '#555', lineHeight: 1.5 }}>{n.body}</p>
+                            <p style={{ margin: '4px 0 0', fontSize: 10, color: '#aaa' }}>
+                              {new Date(n.created_at).toLocaleString('bn-BD', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </p>
+                            {isReturnNotif && <p style={{ margin: '4px 0 0', fontSize: 10, color: '#3b82f6', fontWeight: 600 }}>👆 ফেরত ট্যাবে যেতে ক্লিক করুন</p>}
+                          </div>
+                          {!n.is_read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', marginTop: 5, flexShrink: 0 }} />}
                         </div>
-                        {!n.is_read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', marginTop: 5, flexShrink: 0 }} />}
-                      </div>
-                    ))
+                      )
+                    })
                   )}
                 </div>
               )}
@@ -184,17 +217,25 @@ export default function DashboardView({
 
       <div className="px-4 -mt-10 space-y-4 pb-10">
         {/* Unread Banner */}
-        {unreadBanner && (
-          <div style={{ background: 'linear-gradient(135deg, #1e3a8a, #1d4ed8)', borderRadius: 16, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', boxShadow: '0 4px 16px rgba(29,78,216,0.3)' }}>
-            <span style={{ fontSize: 24, flexShrink: 0 }}>💳</span>
-            <div style={{ flex: 1 }}>
-              <p style={{ margin: 0, color: 'white', fontWeight: 700, fontSize: 14 }}>{unreadBanner.title}</p>
-              <p style={{ margin: '4px 0 0', color: '#bfdbfe', fontSize: 12, lineHeight: 1.5 }}>{unreadBanner.body}</p>
+        {unreadBanner && (() => {
+          const isBannerReturn = unreadBanner.type === 'return_request_update' ||
+            (unreadBanner.title || '').toLowerCase().includes('ফেরত') ||
+            (unreadBanner.title || '').toLowerCase().includes('return')
+          return (
+            <div
+              onClick={() => { if (isBannerReturn) { onTabChange('returns'); setUnreadBanner(null); markAllAsRead(portalJWT) } }}
+              style={{ background: 'linear-gradient(135deg, #1e3a8a, #1d4ed8)', borderRadius: 16, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', boxShadow: '0 4px 16px rgba(29,78,216,0.3)', cursor: isBannerReturn ? 'pointer' : 'default' }}>
+              <span style={{ fontSize: 24, flexShrink: 0 }}>{isBannerReturn ? '🔄' : '💳'}</span>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: 0, color: 'white', fontWeight: 700, fontSize: 14 }}>{unreadBanner.title}</p>
+                <p style={{ margin: '4px 0 0', color: '#bfdbfe', fontSize: 12, lineHeight: 1.5 }}>{unreadBanner.body}</p>
+                {isBannerReturn && <p style={{ margin: '6px 0 0', color: '#93c5fd', fontSize: 11, fontWeight: 600 }}>👆 ফেরত ট্যাবে দেখতে ক্লিক করুন</p>}
+              </div>
+              <button onClick={(e) => { e.stopPropagation(); setUnreadBanner(null); markAllAsRead(portalJWT) }}
+                style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '4px 8px', color: 'white', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>✕</button>
             </div>
-            <button onClick={() => { setUnreadBanner(null); markAllAsRead(portalJWT) }}
-              style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '4px 8px', color: 'white', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>✕</button>
-          </div>
-        )}
+          )
+        })()}
 
         {/* Balance Cards */}
         <div className="grid grid-cols-3 gap-3">
@@ -351,7 +392,13 @@ export default function DashboardView({
                     </div>
                   )}
 
-                  {myLimitReqs.length > 0 && (
+                  {/* ✅ FIX: Loading skeleton while credit history loads */}
+                  {limitReqsLoading ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>আবেদনের ইতিহাস</p>
+                      {[1,2].map(i => <SkeletonCard key={i} rows={2} />)}
+                    </div>
+                  ) : myLimitReqs.length > 0 ? (
                     <div>
                       <p style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>আবেদনের ইতিহাস</p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -373,7 +420,12 @@ export default function DashboardView({
                         })}
                       </div>
                     </div>
-                  )}
+                  ) : limitReqsLoaded ? (
+                    <div style={{ textAlign: 'center', padding: '24px 0' }}>
+                      <p style={{ fontSize: 30, margin: 0 }}>📋</p>
+                      <p style={{ color: '#9ca3af', fontSize: 13, marginTop: 8 }}>এখনো কোনো আবেদন নেই।</p>
+                    </div>
+                  ) : null}
                 </div>
               )
             })()}
@@ -424,7 +476,13 @@ export default function DashboardView({
                     </div>
                   )}
 
-                  {myComplaints.length > 0 ? (
+                  {/* ✅ FIX: Loading skeleton while complaints load */}
+                  {complaintsLoading ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <p style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>আমার অভিযোগসমূহ</p>
+                      {[1,2,3].map(i => <SkeletonCard key={i} rows={3} />)}
+                    </div>
+                  ) : myComplaints.length > 0 ? (
                     <div>
                       <p style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>আমার অভিযোগসমূহ</p>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -845,6 +903,17 @@ export default function DashboardView({
                   <><span>⬇️</span> {stmtFrom || stmtTo ? 'নির্বাচিত সময়ের Statement' : 'সম্পূর্ণ Statement'} ডাউনলোড</>
                 )}
               </button>
+              {/* ✅ FIX: Validation hint — একটি তারিখ দিলে সতর্কতা দেখাও */}
+              {((stmtFrom && !stmtTo) || (!stmtFrom && stmtTo)) && (
+                <p style={{ margin: 0, fontSize: 11, color: '#f59e0b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  ⚠️ {stmtFrom && !stmtTo ? '"পর্যন্ত" তারিখটিও দিন।' : '"থেকে" তারিখটিও দিন।'}
+                </p>
+              )}
+              {stmtFrom && stmtTo && stmtFrom > stmtTo && (
+                <p style={{ margin: 0, fontSize: 11, color: '#ef4444', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  ⚠️ "থেকে" তারিখ "পর্যন্ত" তারিখের আগে হতে হবে।
+                </p>
+              )}
               <p className="text-xs text-gray-400 text-center">তারিখ না দিলে সব লেনদেনের Statement পাবেন</p>
             </div>
           )}
