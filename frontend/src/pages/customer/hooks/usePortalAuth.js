@@ -74,6 +74,7 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [creditReqLoading, setCreditReqLoading] = useState(false)
   const [myLimitReqs,      setMyLimitReqs]      = useState([])
   const [limitReqsLoaded,  setLimitReqsLoaded]  = useState(false)
+  const [limitReqsLoading, setLimitReqsLoading] = useState(false)
 
   // ── Complaint State ─────────────────────────────────────────
   const [complaintOpen,    setComplaintOpen]    = useState(false)
@@ -83,6 +84,7 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [cmpLoading,       setCmpLoading]       = useState(false)
   const [myComplaints,     setMyComplaints]     = useState([])
   const [complaintsLoaded, setComplaintsLoaded] = useState(false)
+  const [complaintsLoading, setComplaintsLoading] = useState(false)
 
   // ── Invoice Filter State ────────────────────────────────────
   const [invoiceSearch,    setInvoiceSearch]    = useState('')
@@ -230,6 +232,7 @@ export function usePortalAuth(defaultTab = 'summary') {
 
   const loadMyLimitReqs = async () => {
     if (limitReqsLoaded) return
+    setLimitReqsLoading(true)
     try {
       const data = await portalFetch('/portal/credit-limit-request', {
         headers: { Authorization: `Bearer ${portalJWT}` }
@@ -237,6 +240,7 @@ export function usePortalAuth(defaultTab = 'summary') {
       setMyLimitReqs(data.data || [])
       setLimitReqsLoaded(true)
     } catch {}
+    finally { setLimitReqsLoading(false) }
   }
 
   // ── Complaint ────────────────────────────────────────────────
@@ -263,6 +267,7 @@ export function usePortalAuth(defaultTab = 'summary') {
 
   const loadMyComplaints = async () => {
     if (complaintsLoaded) return
+    setComplaintsLoading(true)
     try {
       const data = await portalFetch('/portal/complaint', {
         headers: { Authorization: `Bearer ${portalJWT}` }
@@ -270,10 +275,21 @@ export function usePortalAuth(defaultTab = 'summary') {
       setMyComplaints(data.data || [])
       setComplaintsLoaded(true)
     } catch {}
+    finally { setComplaintsLoading(false) }
   }
 
   // ── Statement PDF download ───────────────────────────────────
   const downloadStatement = async () => {
+    // ✅ FIX: Date validation — একটি তারিখ দিলে অন্যটিও দিতে হবে
+    if (stmtFrom && !stmtTo) {
+      return showToast('"পর্যন্ত" তারিখটিও দিন।', 'warning')
+    }
+    if (!stmtFrom && stmtTo) {
+      return showToast('"থেকে" তারিখটিও দিন।', 'warning')
+    }
+    if (stmtFrom && stmtTo && stmtFrom > stmtTo) {
+      return showToast('"থেকে" তারিখ "পর্যন্ত" তারিখের আগে হতে হবে।', 'warning')
+    }
     setStmtLoading(true)
     try {
       const params = new URLSearchParams()
@@ -543,14 +559,14 @@ export function usePortalAuth(defaultTab = 'summary') {
     creditReqOpen, setCreditReqOpen,
     creditReqAmt, setCreditReqAmt,
     creditReqReason, setCreditReqReason,
-    creditReqLoading, myLimitReqs, limitReqsLoaded,
+    creditReqLoading, myLimitReqs, limitReqsLoaded, limitReqsLoading,
     loadMyLimitReqs, submitCreditRequest,
     // complaints
     complaintOpen, setComplaintOpen,
     cmpType, setCmpType,
     cmpSubject, setCmpSubject,
     cmpDesc, setCmpDesc,
-    cmpLoading, myComplaints, complaintsLoaded,
+    cmpLoading, myComplaints, complaintsLoaded, complaintsLoading,
     loadMyComplaints, submitComplaint,
     // statement
     stmtOpen, setStmtOpen,
