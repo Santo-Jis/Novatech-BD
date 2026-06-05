@@ -28,19 +28,46 @@ app.use(helmet());
 app.use(cookieParser());   // HttpOnly cookie পড়ার জন্য
 
 // ── CORS ─────────────────────────────────────────────────────
-// Render-এ FRONTEND_URL env variable সেট করুন, যেমন:
-//   https://novatech-bd.vercel.app
-// একাধিক URL দিতে চাইলে comma দিয়ে আলাদা করুন:
-//   https://novatech-bd.vercel.app,https://novatech-bd-git-main.vercel.app
-const ALLOWED_ORIGINS = (process.env.FRONTEND_URL || 'http://localhost:3000')
+// Render-এ FRONTEND_URL env variable সেট করুন।
+//
+// একাধিক URL: comma দিয়ে আলাদা করুন
+//   https://novatech-bd-eta.vercel.app,https://localhost:3000
+//
+// Wildcard (*) সাপোর্ট — Vercel preview URL-এর জন্য:
+//   https://*.vercel.app         → সব vercel subdomain
+//   https://novatech-bd*.vercel.app → শুধু novatech-bd prefix
+//
+// Render → Environment → FRONTEND_URL তে সেট করুন:
+//   https://novatech-bd-eta.vercel.app,https://novatech-bd*.vercel.app
+
+const RAW_ORIGINS = (process.env.FRONTEND_URL || 'http://localhost:3000')
     .split(',')
-    .map(url => url.trim());
+    .map(url => url.trim())
+    .filter(Boolean);
+
+// Wildcard pattern → RegExp রূপান্তর
+// * → যেকোনো character (dot সহ)
+const ORIGIN_PATTERNS = RAW_ORIGINS.map(pattern => {
+    if (!pattern.includes('*')) return { type: 'exact', value: pattern };
+    const regexStr = pattern
+        .replace(/[.+?^${}()|[\]\\]/g, '\\$&') // special chars escape
+        .replace(/\*/g, '.*');                   // * → .*
+    return { type: 'regex', value: new RegExp(`^${regexStr}$`) };
+});
+
+function isOriginAllowed(origin) {
+    return ORIGIN_PATTERNS.some(p =>
+        p.type === 'exact'
+            ? p.value === origin
+            : p.value.test(origin)
+    );
+}
 
 app.use(cors({
     origin: (origin, callback) => {
         // Mobile app / Postman / Server-to-server — origin থাকে না
         if (!origin) return callback(null, true);
-        if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+        if (isOriginAllowed(origin)) return callback(null, true);
         callback(new Error(`CORS blocked: ${origin}`));
     },
     credentials: true,
