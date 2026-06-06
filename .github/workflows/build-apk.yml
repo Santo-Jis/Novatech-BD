@@ -115,10 +115,87 @@ jobs:
           echo "VITE_FIREBASE_VAPID_KEY=${{ secrets.VITE_FIREBASE_VAPID_KEY }}" >> .env
           echo "VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}" >> .env
 
+      # ── Android APK Patch: index.html ─────────────────────────
+      # Google Fonts <link rel="stylesheet"> → render-blocking।
+      # Android WebView-এ ধীর নেটে এই একটা tag-ই সম্পূর্ণ
+      # blank white screen ঘটায় — font load শেষ না হওয়া পর্যন্ত
+      # browser কিছুই render করে না।
+      # Fix: media="print" onload trick → non-blocking
+      - name: Patch index.html for Android (fixes blank white screen)
+        working-directory: frontend
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          with open('index.html', 'r') as f:
+              content = f.read()
+
+          before = content
+          content = re.sub(
+              r'(<link\s+[^>]*fonts\.googleapis\.com[^"]*"[^>]*?)\s+rel="stylesheet"(\s*/?>)',
+              lambda m: m.group(1) + " rel=\"stylesheet\" media=\"print\" onload=\"this.media='all'\"" + m.group(2),
+              content,
+              flags=re.DOTALL
+          )
+
+          if content != before:
+              print("✅ Google Fonts non-blocking করা হয়েছে (blank screen fix)")
+          else:
+              print("⚠️ Pattern match হয়নি — Google Fonts link manually চেক করুন")
+
+          with open('index.html', 'w') as f:
+              f.write(content)
+          PYEOF
+
       # ── React Production Build ─────────────────────────────────
       - name: Build React app (production)
         working-directory: frontend
         run: npm run build
+
+      # ── Remove Service Worker from APK build ──────────────────
+      # PWA Service Worker (Workbox) Android WebView-এ blank screen
+      # ঘটাতে পারে: SW https://localhost-এ register হয়ে Capacitor-এর
+      # HTTP bridge intercept করে, পুরনো cache serve করলে app খোলে না।
+      # Web/Vercel-এ SW থাকবে (PWA feature), APK-এ থাকবে না।
+      - name: Remove Service Worker from Capacitor APK build
+        working-directory: frontend
+        run: |
+          python3 << 'PYEOF'
+          import re, os
+
+          # SW files মুছো
+          removed = []
+          for sw_file in ['dist/sw.js', 'dist/registerSW.js']:
+              if os.path.exists(sw_file):
+                  os.remove(sw_file)
+                  removed.append(sw_file)
+
+          # dist/index.html থেকে SW registration script বাদ দাও
+          with open('dist/index.html', 'r') as f:
+              content = f.read()
+
+          before = content
+          # vite-plugin-pwa inject করা <script src="registerSW.js">
+          content = re.sub(r'\s*<script[^>]*?registerSW\.js[^>]*?></script>', '', content)
+          # Inline navigator.serviceWorker block (যদি থাকে)
+          content = re.sub(
+              r'\s*<script>\s*(?:if\s*\()?["\']serviceWorker["\'][^<]*?</script>',
+              '', content, flags=re.DOTALL
+          )
+
+          if content != before:
+              print("✅ SW registration script removed from dist/index.html")
+
+          with open('dist/index.html', 'w') as f:
+              f.write(content)
+
+          if removed:
+              print(f"✅ Removed: {', '.join(removed)}")
+          else:
+              print("ℹ️ SW files already absent")
+
+          print("✅ Service Worker disabled for Android APK")
+          PYEOF
 
       # ── Capacitor Android ──────────────────────────────────────
       - name: Add Android & Sync
