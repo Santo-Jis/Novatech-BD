@@ -111,6 +111,22 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [paymentDateTo,     setPaymentDateTo]     = useState('')
   const [paymentFilterOpen, setPaymentFilterOpen] = useState(false)
 
+  // ── Return Request State ─────────────────────────────────────
+  const [myReturnReqs,        setMyReturnReqs]        = useState([])
+  const [returnReqTotal,      setReturnReqTotal]      = useState(0)
+  const [returnReqPage,       setReturnReqPage]       = useState(1)
+  const [returnReqTotalPages, setReturnReqTotalPages] = useState(1)
+  const [returnReqLoading,    setReturnReqLoading]    = useState(false)
+  const [returnReqLoaded,     setReturnReqLoaded]     = useState(false)
+  const [returnReqFilter,     setReturnReqFilter]     = useState('all')
+  // Form state
+  const [returnFormOpen,      setReturnFormOpen]      = useState(false)
+  const [returnInvoice,       setReturnInvoice]       = useState('')
+  const [returnType,          setReturnType]          = useState('return')
+  const [returnItems,         setReturnItems]         = useState([{ product_name: '', qty: 1, reason: '' }])
+  const [returnNote,          setReturnNote]          = useState('')
+  const [returnSubmitLoading, setReturnSubmitLoading] = useState(false)
+
   // ── Helpers ─────────────────────────────────────────────────
   const loadNotifications = async (jwt) => {
     try {
@@ -135,6 +151,19 @@ export function usePortalAuth(defaultTab = 'summary') {
       setUnreadCount(0)
       setUnreadBanner(null)
     } catch (e) { console.error(e) }
+  }
+
+  const markOneRead = async (notifId) => {
+    const jwt = portalJWTRef.current || portalJWT
+    if (!jwt) return
+    try {
+      await portalFetch(`/portal/notifications/${notifId}/read`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${jwt}` }
+      })
+      setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, is_read: true } : n))
+      setUnreadCount(prev => Math.max(0, prev - 1))
+    } catch (e) { console.error('markOneRead error:', e) }
   }
 
   const requestPushPermission = async (jwt) => {
@@ -380,6 +409,65 @@ export function usePortalAuth(defaultTab = 'summary') {
     loadPaymentHistory(portalJWTRef.current || portalJWT, 1, {})
   }
 
+  // ── Return Requests ──────────────────────────────────────────
+  const loadMyReturnReqs = async (page = 1, status = 'all', reset = false) => {
+    const jwt = portalJWTRef.current || portalJWT
+    if (!jwt) return
+    setReturnReqLoading(true)
+    try {
+      const params = new URLSearchParams({ page, limit: 10 })
+      if (status !== 'all') params.set('status', status)
+      const data = await portalFetch(`/portal/return-requests?${params}`, {
+        headers: { Authorization: `Bearer ${jwt}` }
+      })
+      const rows = data.data || []
+      if (reset || page === 1) setMyReturnReqs(rows)
+      else setMyReturnReqs(prev => [...prev, ...rows])
+      setReturnReqPage(data.pagination?.page || page)
+      setReturnReqTotalPages(data.pagination?.totalPages || 1)
+      setReturnReqTotal(data.pagination?.total || 0)
+      setReturnReqLoaded(true)
+    } catch (e) { console.error('Return req load error:', e) }
+    setReturnReqLoading(false)
+  }
+
+  const submitReturnRequest = async () => {
+    if (!returnInvoice.trim()) return showToast('ইনভয়েস নম্বর দিন।', 'warning')
+    const validItems = returnItems.filter(
+      i => i.product_name.trim() && parseInt(i.qty) > 0 && i.reason.trim()
+    )
+    if (validItems.length === 0)
+      return showToast('কমপক্ষে একটি পণ্যের নাম, পরিমাণ ও কারণ দিন।', 'warning')
+    setReturnSubmitLoading(true)
+    try {
+      const jwt = portalJWTRef.current || portalJWT
+      const data = await portalFetch('/portal/return-request', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          invoice_number: returnInvoice.trim(),
+          type:           returnType,
+          items:          validItems.map(i => ({
+            product_name: i.product_name.trim(),
+            qty:          parseInt(i.qty),
+            reason:       i.reason.trim(),
+          })),
+          note: returnNote.trim() || undefined,
+        })
+      })
+      showToast(data.message || 'অনুরোধ পাঠানো হয়েছে।', 'success')
+      setReturnFormOpen(false)
+      setReturnInvoice('')
+      setReturnType('return')
+      setReturnItems([{ product_name: '', qty: 1, reason: '' }])
+      setReturnNote('')
+      setReturnReqLoaded(false)
+      setReturnReqFilter('all')
+      loadMyReturnReqs(1, 'all', true)
+    } catch (e) { showToast(e.message || 'সমস্যা হয়েছে।', 'error') }
+    setReturnSubmitLoading(false)
+  }
+
   // ── Tab change ───────────────────────────────────────────────
   const handleTabChange = (tabId) => {
     setActiveTab(tabId)
@@ -388,6 +476,9 @@ export function usePortalAuth(defaultTab = 'summary') {
     }
     if (tabId === 'payments' && paymentHistory.length === 0 && !paymentLoading) {
       loadPaymentHistory(portalJWTRef.current || portalJWT, 1, {})
+    }
+    if (tabId === 'returns' && !returnReqLoaded && !returnReqLoading) {
+      loadMyReturnReqs(1, 'all', true)
     }
   }
 
@@ -546,7 +637,7 @@ export function usePortalAuth(defaultTab = 'summary') {
     toast,
     // notifications
     notifications, unreadCount, showBell, setShowBell,
-    unreadBanner, setUnreadBanner, markAllAsRead,
+    unreadBanner, setUnreadBanner, markAllAsRead, markOneRead,
     // invoices
     invoices, invoicePage, invoiceTotalPages, invoiceTotal, invoiceLoading,
     invoiceSearch, setInvoiceSearch,
@@ -581,5 +672,16 @@ export function usePortalAuth(defaultTab = 'summary') {
     paymentDateTo,     setPaymentDateTo,
     paymentFilterOpen, setPaymentFilterOpen,
     loadPaymentHistory, applyPaymentFilter, clearPaymentFilter,
+    // return requests
+    myReturnReqs, returnReqTotal, returnReqPage, returnReqTotalPages,
+    returnReqLoading, returnReqLoaded,
+    returnReqFilter, setReturnReqFilter,
+    returnFormOpen,  setReturnFormOpen,
+    returnInvoice,   setReturnInvoice,
+    returnType,      setReturnType,
+    returnItems,     setReturnItems,
+    returnNote,      setReturnNote,
+    returnSubmitLoading,
+    loadMyReturnReqs, submitReturnRequest,
   }
 }
