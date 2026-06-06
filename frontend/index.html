@@ -9,41 +9,67 @@
     <title>NovaTech BD</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <!-- ✅ non-blocking font load — APK blank screen fix -->
     <link
       href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&display=swap"
       rel="stylesheet" media="print" onload="this.media='all'"
     />
     <style>
-      /* লগইনের আগে Eruda বাটন সম্পূর্ণ লুকিয়ে রাখো */
       #eruda { display: none !important; }
+      body { margin: 0; }
     </style>
-    <!-- ✅ APK crash catcher — error হলে screen-এ দেখাবে -->
+
+    <!-- ✅ STEP 1: Error catcher (ES module errors Android-এ silent হয়) -->
     <script>
+      window.__STEP__ = 1; // HTML loaded
+
       window.onerror = function(msg, src, line, col, err) {
         var box = document.getElementById('__err__');
         if (box) {
           box.style.display = 'block';
-          box.innerText = 'ERROR:\n' + msg + '\nLine: ' + line + '\n' + src;
+          box.innerText = 'JS ERROR (step ' + window.__STEP__ + '):\n' + msg + '\nLine: ' + line + '\nFile: ' + src;
         }
       };
       window.addEventListener('unhandledrejection', function(e) {
         var box = document.getElementById('__err__');
         if (box) {
           box.style.display = 'block';
-          box.innerText = 'PROMISE ERROR:\n' + (e.reason && e.reason.message ? e.reason.message : e.reason);
+          box.innerText = 'PROMISE ERROR (step ' + window.__STEP__ + '):\n' + (e.reason && e.reason.message ? e.reason.message : String(e.reason));
         }
       });
+
+      // ✅ ES module silent failure detector
+      // React mount হলে #root-এ children আসে — না হলে 6s পর error দেখাবে
+      setTimeout(function() {
+        var root = document.getElementById('root');
+        var err  = document.getElementById('__err__');
+        if (err && err.style.display === 'none' && root && root.children.length === 0) {
+          err.style.display = 'block';
+          err.innerText =
+            'React লোড হয়নি! (step ' + window.__STEP__ + ')\n\n' +
+            'সম্ভাব্য কারণ: JS bundle লোড হয়নি।\n\n' +
+            'URL: ' + window.location.href + '\n' +
+            'Android: ' + (navigator.userAgent.match(/Android ([0-9.]+)/) || ['','?'])[1] + '\n' +
+            'WebView: ' + (navigator.userAgent.match(/Chrome\/([0-9]+)/) || ['','?'])[1];
+        }
+      }, 6000);
     </script>
   </head>
   <body>
-    <!-- ✅ Error overlay — crash হলে এখানে দেখাবে -->
-    <div id="__err__" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#1a1a2e;color:#ff6b6b;padding:20px;font-size:13px;white-space:pre-wrap;z-index:99999;overflow:auto;"></div>
-    <div id="root"></div>
-    <!-- ✅ Eruda — শুধু লোড হলে init, error হলে skip -->
+    <!-- Error overlay -->
+    <div id="__err__" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#0a0f1a;color:#ff6b6b;padding:20px;font-size:13px;white-space:pre-wrap;z-index:99999;overflow:auto;font-family:monospace;"></div>
+
+    <!-- Loading screen — React mount হলে replace হবে -->
+    <div id="root" style="min-height:100vh;background:linear-gradient(135deg,#030712 0%,#0a0f1a 40%,#051a0e 100%);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;">
+      <div style="width:36px;height:36px;border:4px solid rgba(74,222,128,0.2);border-top:4px solid #4ade80;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
+      <p style="color:rgba(74,222,128,0.7);font-size:14px;font-family:sans-serif;margin:0;">লোড হচ্ছে...</p>
+      <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+    </div>
+
+    <!-- Eruda debugger -->
     <script src="https://cdn.jsdelivr.net/npm/eruda" async></script>
     <script>
       window.addEventListener('load', function() {
+        window.__STEP__ = 2; // DOM loaded
         try {
           if (typeof eruda !== 'undefined') {
             eruda.init();
@@ -51,20 +77,13 @@
               document.getElementById('eruda').style.display = 'block';
             }
           }
-        } catch(e) { /* eruda failed — কোনো সমস্যা নেই */ }
-      });
-
-      window.__showEruda = function() {
-        try {
-          var el = document.getElementById('eruda');
-          if (el) el.style.display = 'block';
         } catch(e) {}
+      });
+      window.__showEruda = function() {
+        try { var el = document.getElementById('eruda'); if (el) el.style.display = 'block'; } catch(e) {}
       };
       window.__hideEruda = function() {
-        try {
-          var el = document.getElementById('eruda');
-          if (el) el.style.display = 'none';
-        } catch(e) {}
+        try { var el = document.getElementById('eruda'); if (el) el.style.display = 'none'; } catch(e) {}
       };
     </script>
     <script type="module" src="/src/main.jsx"></script>
