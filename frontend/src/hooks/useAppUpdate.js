@@ -2,8 +2,12 @@
 import { useEffect, useState } from 'react'
 import api from '../api/axios'
 
-// ✅ GitHub Actions automatically এই number আপডেট করবে
-const CURRENT_VERSION_CODE = 713
+// ─── Build-time mode ──────────────────────────────────────────
+const IS_CUSTOMER_APP = import.meta.env.VITE_APP_MODE === 'customer'
+
+// ✅ GitHub Actions automatically এই numbers আপডেট করবে
+const CURRENT_VERSION_CODE = 713          // Main APK — build-apk.yml আপডেট করে
+const CURRENT_CUSTOMER_VERSION_CODE = 1   // Customer APK — build-customer-apk.yml আপডেট করে
 
 export function useAppUpdate() {
   const [updateInfo, setUpdateInfo] = useState(null)
@@ -32,7 +36,6 @@ export function useAppUpdate() {
     registerBackHandler()
 
     return () => {
-      // cleanup: listener সরিয়ে দাও
       listenerHandle?.remove?.()
     }
   }, [updateInfo?.forceUpdate])
@@ -42,12 +45,17 @@ export function useAppUpdate() {
       const isNative = window?.Capacitor?.isNativePlatform?.() ?? false
       if (!isNative) return
 
-      const res = await api.get('/app/version')
+      // Customer APK → /api/app/customer-version
+      // Main APK    → /api/app/version (আগের মতো)
+      const endpoint = IS_CUSTOMER_APP ? '/app/customer-version' : '/app/version'
+      const currentCode = IS_CUSTOMER_APP ? CURRENT_CUSTOMER_VERSION_CODE : CURRENT_VERSION_CODE
+
+      const res = await api.get(endpoint)
       if (!res.data?.success) return
 
       const { versionCode, versionName, apkUrl, forceUpdate, changelog } = res.data.data
 
-      if (versionCode > CURRENT_VERSION_CODE) {
+      if (versionCode > currentCode) {
         setUpdateInfo({ versionName, apkUrl, forceUpdate, changelog })
       }
     } catch (err) {
@@ -61,7 +69,7 @@ export function useAppUpdate() {
   }
 
   const dismissUpdate = () => {
-    if (updateInfo?.forceUpdate) return // forceUpdate হলে dismiss করতে দেবে না
+    if (updateInfo?.forceUpdate) return
     setUpdateInfo(null)
   }
 
