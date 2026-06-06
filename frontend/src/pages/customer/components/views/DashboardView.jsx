@@ -48,6 +48,7 @@ export default function DashboardView({
   unreadBanner,
   setUnreadBanner,
   markAllAsRead,
+  markOneRead,
   // invoices
   invoices,
   invoiceTotal,
@@ -103,6 +104,21 @@ export default function DashboardView({
   loadPaymentHistory,
   applyPaymentFilter,
   clearPaymentFilter,
+  // return requests
+  myReturnReqs       = [],
+  returnReqTotal     = 0,
+  returnReqPage      = 1,
+  returnReqTotalPages = 1,
+  returnReqLoading   = false,
+  returnReqFilter,   setReturnReqFilter,
+  returnFormOpen,    setReturnFormOpen,
+  returnInvoice,     setReturnInvoice,
+  returnType,        setReturnType,
+  returnItems,       setReturnItems,
+  returnNote,        setReturnNote,
+  returnSubmitLoading = false,
+  loadMyReturnReqs,
+  submitReturnRequest,
 }) {
   const {
     customer,
@@ -116,12 +132,15 @@ export default function DashboardView({
   // ── Logout confirmation modal state ──────────────────────────
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
+  // ── Returns tab sub-navigation ────────────────────────────────
+  const [returnSubTab, setReturnSubTab] = useState('requests')
+
   const tabs = [
     { id: 'summary',    label: 'সারসংক্ষেপ' },
     { id: 'orders',     label: '🛒 অর্ডার' },
     { id: 'invoices',   label: `🧾 ইনভয়েস (${invoiceTotal > 0 ? invoiceTotal : total_summary?.total_invoices || 0})` },
     { id: 'payments',   label: `পরিশোধ (${paymentTotal > 0 ? paymentTotal : credit_payments.length})` },
-    { id: 'returns',    label: `🔄 রিটার্ন${returns.length > 0 ? ` (${returns.length})` : ''}` },
+    { id: 'returns',    label: `🔄 রিটার্ন${returnReqTotal > 0 ? ` (${returnReqTotal})` : ''}` },
     { id: 'credit_req', label: '💳 লিমিট' },
     { id: 'complaints', label: '📣 অভিযোগ' },
     { id: 'ai_chat',    label: '🤖 AI চ্যাট' },
@@ -193,6 +212,7 @@ export default function DashboardView({
                       const cfg = NOTIF_CONFIG[n.type] || NOTIF_CONFIG.general
                       const isClickable = !!cfg.tab
                       const handleNotifClick = () => {
+                        if (!n.is_read) markOneRead(n.id)
                         setShowBell(false)
                         if (cfg.tab) onTabChange(cfg.tab)
                       }
@@ -210,7 +230,17 @@ export default function DashboardView({
                             </p>
                             {isClickable && <p style={{ margin: '4px 0 0', fontSize: 10, color: '#3b82f6', fontWeight: 600 }}>{cfg.hint}</p>}
                           </div>
-                          {!n.is_read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', marginTop: 5, flexShrink: 0 }} />}
+                          {/* Individual mark-read button */}
+                          {!n.is_read ? (
+                            <button
+                              onClick={e => { e.stopPropagation(); markOneRead(n.id) }}
+                              title="পঠিত চিহ্নিত করুন"
+                              style={{ flexShrink: 0, marginTop: 2, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 6, padding: '2px 7px', cursor: 'pointer', fontSize: 11, color: '#1d4ed8', fontWeight: 700, lineHeight: 1.4 }}>
+                              ✓
+                            </button>
+                          ) : (
+                            <span style={{ fontSize: 14, color: '#d1d5db', marginTop: 3, flexShrink: 0 }}>✓</span>
+                          )}
                         </div>
                       )
                     })
@@ -820,64 +850,188 @@ export default function DashboardView({
             {/* ── রিটার্ন / রিপ্লেসমেন্ট ── */}
             {activeTab === 'returns' && (
               <div className="space-y-3">
-                {returns.length === 0 ? (
-                  <div className="text-center py-10">
-                    <p className="text-4xl mb-2">📦</p>
-                    <p className="text-gray-400 text-sm">কোনো রিটার্ন বা রিপ্লেসমেন্ট নেই।</p>
+                {/* Sub-tab nav + নতুন অনুরোধ */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 4, background: '#f1f5f9', borderRadius: 14, padding: 4, flex: 1 }}>
+                    {[
+                      { id: 'requests',   label: '📋 আমার অনুরোধ' },
+                      { id: 'sr_records', label: '📦 SR রেকর্ড' },
+                    ].map(st => (
+                      <button key={st.id}
+                        onClick={() => setReturnSubTab(st.id)}
+                        style={{
+                          flex: 1, padding: '7px 0', borderRadius: 10, fontSize: 11, fontWeight: 700,
+                          border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                          background: returnSubTab === st.id ? 'white' : 'transparent',
+                          color:      returnSubTab === st.id ? '#1d4ed8' : '#64748b',
+                          boxShadow:  returnSubTab === st.id ? '0 1px 4px rgba(0,0,0,0.1)' : 'none',
+                        }}>
+                        {st.label}
+                      </button>
+                    ))}
                   </div>
-                ) : (
+                  {returnSubTab === 'requests' && (
+                    <button onClick={() => setReturnFormOpen(true)}
+                      style={{ background: 'linear-gradient(135deg,#1d4ed8,#1e40af)', border: 'none', borderRadius: 12, padding: '9px 14px', color: 'white', fontSize: 12, fontWeight: 700, cursor: 'pointer', flexShrink: 0 }}>
+                      + নতুন
+                    </button>
+                  )}
+                </div>
+
+                {/* আমার অনুরোধ sub-tab */}
+                {returnSubTab === 'requests' && (
                   <>
-                    <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 flex items-center gap-3">
-                      <span className="text-2xl">ℹ️</span>
-                      <p className="text-xs text-amber-700 font-medium leading-relaxed">
-                        SR কর্তৃক প্রদত্ত পণ্য বদল বা রিটার্নের রেকর্ড। মোট <span className="font-bold">{returns.length}টি</span> এন্ট্রি।
-                      </p>
+                    {/* Status filter pills */}
+                    <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+                      {[
+                        { id: 'all',       label: 'সব' },
+                        { id: 'pending',   label: '⏳ অপেক্ষমাণ' },
+                        { id: 'approved',  label: '✅ অনুমোদিত' },
+                        { id: 'rejected',  label: '❌ বাতিল' },
+                        { id: 'completed', label: '✔ সম্পন্ন' },
+                      ].map(f => (
+                        <button key={f.id}
+                          onClick={() => { setReturnReqFilter(f.id); loadMyReturnReqs(1, f.id, true) }}
+                          style={{
+                            padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+                            border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0,
+                            background: returnReqFilter === f.id ? '#1d4ed8' : '#f1f5f9',
+                            color:      returnReqFilter === f.id ? 'white'    : '#64748b',
+                          }}>
+                          {f.label}
+                        </button>
+                      ))}
                     </div>
 
-                    {returns.map((r, i) => {
-                      const items = Array.isArray(r.replacement_items) ? r.replacement_items : []
-                      return (
-                        <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-                          {/* Card Header */}
-                          <div className="flex justify-between items-center px-4 py-3 border-b border-gray-50 bg-amber-50">
-                            <div>
-                              <p className="text-xs font-bold text-amber-800">INV: {r.invoice_number}</p>
-                              <p className="text-xs text-amber-600 mt-0.5">{r.sr_name} • {fmtDate(r.created_at)}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-sm font-bold text-amber-700">৳{fmtCur(r.replacement_value)}</p>
-                              <p className="text-xs text-amber-500">পণ্যের মূল্য</p>
-                            </div>
-                          </div>
-
-                          {/* Items list */}
-                          {items.length > 0 && (
-                            <div className="px-4 py-2 space-y-1.5">
-                              {items.map((item, j) => (
-                                <div key={j} className="flex justify-between items-center py-1 border-b border-gray-50 last:border-0">
-                                  <div className="flex-1 min-w-0">
-                                    <p className="text-xs font-semibold text-gray-700 truncate">{item.product_name}</p>
-                                    <p className="text-xs text-gray-400">
-                                      {item.qty} × ৳{fmtCur(item.unit_price)}
-                                      {item.vat_rate > 0 && ` (+${(item.vat_rate * 100).toFixed(0)}% VAT)`}
-                                    </p>
-                                  </div>
-                                  <p className="text-xs font-bold text-gray-700 ml-3 shrink-0">৳{fmtCur(item.total)}</p>
+                    {returnReqLoading && myReturnReqs.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px 0' }}>
+                        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+                        <div style={{ width: 28, height: 28, border: '3px solid #e2e8f0', borderTopColor: '#3b82f6', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+                        <p style={{ color: '#94a3b8', fontSize: 13 }}>লোড হচ্ছে...</p>
+                      </div>
+                    ) : myReturnReqs.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                        <p style={{ fontSize: 40, marginBottom: 8 }}>↩️</p>
+                        <p style={{ color: '#9ca3af', fontSize: 14, fontWeight: 600 }}>কোনো ফেরত অনুরোধ নেই</p>
+                        <p style={{ color: '#d1d5db', fontSize: 12, marginTop: 4 }}>নতুন অনুরোধ করতে "+ নতুন" বাটন চাপুন</p>
+                      </div>
+                    ) : (
+                      <>
+                        {myReturnReqs.map(r => {
+                          let pi = []
+                          try { pi = Array.isArray(r.items) ? r.items : JSON.parse(r.items || '[]') } catch {}
+                          const SC = {
+                            pending:   { bg: '#fef3c7', color: '#92400e', label: '⏳ অপেক্ষমাণ' },
+                            approved:  { bg: '#dbeafe', color: '#1e40af', label: '✅ অনুমোদিত' },
+                            rejected:  { bg: '#fee2e2', color: '#991b1b', label: '❌ বাতিল' },
+                            completed: { bg: '#d1fae5', color: '#065f46', label: '✔ সম্পন্ন' },
+                          }
+                          const sc     = SC[r.status] || SC.pending
+                          const typeBn = r.type === 'replacement' ? '🔄 রিপ্লেসমেন্ট' : '↩️ পণ্য ফেরত'
+                          return (
+                            <div key={r.id} style={{ background: 'white', borderRadius: 16, border: '1px solid #f0f0f0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                              <div style={{ background: '#f8fafc', padding: '12px 16px', borderBottom: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+                                <div>
+                                  <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: '#1e293b' }}>INV: {r.invoice_number}</p>
+                                  <p style={{ margin: '3px 0 0', fontSize: 11, color: '#64748b' }}>{typeBn} • {fmtDate(r.created_at)}</p>
                                 </div>
-                              ))}
+                                <span style={{ background: sc.bg, color: sc.color, fontSize: 10, fontWeight: 800, padding: '4px 10px', borderRadius: 20, whiteSpace: 'nowrap', flexShrink: 0 }}>{sc.label}</span>
+                              </div>
+                              <div style={{ padding: '10px 16px' }}>
+                                {pi.slice(0, 3).map((item, j) => (
+                                  <div key={j} style={{ paddingBottom: 6, marginBottom: 6, borderBottom: j < Math.min(pi.length,3)-1 ? '1px solid #f8fafc' : 'none' }}>
+                                    <p style={{ margin: 0, fontSize: 12, fontWeight: 700, color: '#374151' }}>{item.product_name}</p>
+                                    <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8' }}>পরিমাণ: {item.qty} • {item.reason}</p>
+                                  </div>
+                                ))}
+                                {pi.length > 3 && <p style={{ margin: '2px 0 0', fontSize: 11, color: '#94a3b8' }}>+{pi.length - 3}টি আরো পণ্য</p>}
+                                {r.total_return_value > 0 && (
+                                  <p style={{ margin: '8px 0 0', fontSize: 12, fontWeight: 700, color: '#1d4ed8' }}>আনুমানিক মূল্য: ৳{fmtCur(r.total_return_value)}</p>
+                                )}
+                              </div>
+                              {r.admin_note && (
+                                <div style={{ margin: '0 12px 12px', background: r.status === 'rejected' ? '#fef2f2' : '#f0fdf4', borderRadius: 10, padding: '8px 12px' }}>
+                                  <p style={{ margin: 0, fontSize: 11, color: r.status === 'rejected' ? '#dc2626' : '#16a34a', fontWeight: 600 }}>💬 Admin: {r.admin_note}</p>
+                                </div>
+                              )}
+                              {r.note && (
+                                <div style={{ margin: '0 12px 12px', background: '#f8fafc', borderRadius: 10, padding: '8px 12px' }}>
+                                  <p style={{ margin: 0, fontSize: 11, color: '#64748b' }}>📝 {r.note}</p>
+                                </div>
+                              )}
                             </div>
-                          )}
+                          )
+                        })}
+                        {returnReqPage < returnReqTotalPages && (
+                          <button
+                            onClick={() => loadMyReturnReqs(returnReqPage + 1, returnReqFilter)}
+                            disabled={returnReqLoading}
+                            style={{ width: '100%', padding: '12px 0', borderRadius: 14, border: '1.5px solid #e2e8f0', background: 'white', fontSize: 13, fontWeight: 700, color: '#3b82f6', cursor: returnReqLoading ? 'not-allowed' : 'pointer' }}>
+                            {returnReqLoading ? 'লোড হচ্ছে...' : `আরো দেখুন (${returnReqTotal - myReturnReqs.length}টি বাকি)`}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
 
-                          {/* Footer: credit balance info */}
-                          {parseFloat(r.credit_balance_added || 0) > 0 && (
-                            <div className="mx-4 mb-3 bg-green-50 border border-green-100 rounded-xl px-3 py-2 flex justify-between items-center">
-                              <p className="text-xs text-green-700 font-medium">💰 ক্রেডিট ব্যালেন্সে যোগ</p>
-                              <p className="text-xs font-bold text-green-700">+৳{fmtCur(r.credit_balance_added)}</p>
-                            </div>
-                          )}
+                {/* SR রেকর্ড sub-tab */}
+                {returnSubTab === 'sr_records' && (
+                  <>
+                    {returns.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+                        <p style={{ fontSize: 40, marginBottom: 8 }}>📦</p>
+                        <p style={{ color: '#9ca3af', fontSize: 14, fontWeight: 600 }}>কোনো SR রেকর্ড নেই।</p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 flex items-center gap-3">
+                          <span className="text-2xl">ℹ️</span>
+                          <p className="text-xs text-amber-700 font-medium leading-relaxed">
+                            SR কর্তৃক প্রদত্ত পণ্য বদল বা রিটার্নের রেকর্ড। মোট <span className="font-bold">{returns.length}টি</span> এন্ট্রি।
+                          </p>
                         </div>
-                      )
-                    })}
+                        {returns.map((r, i) => {
+                          const srItems = Array.isArray(r.replacement_items) ? r.replacement_items : []
+                          return (
+                            <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                              <div className="flex justify-between items-center px-4 py-3 border-b border-gray-50 bg-amber-50">
+                                <div>
+                                  <p className="text-xs font-bold text-amber-800">INV: {r.invoice_number}</p>
+                                  <p className="text-xs text-amber-600 mt-0.5">{r.sr_name} • {fmtDate(r.created_at)}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm font-bold text-amber-700">৳{fmtCur(r.replacement_value)}</p>
+                                  <p className="text-xs text-amber-500">পণ্যের মূল্য</p>
+                                </div>
+                              </div>
+                              {srItems.length > 0 && (
+                                <div className="px-4 py-2 space-y-1.5">
+                                  {srItems.map((item, j) => (
+                                    <div key={j} className="flex justify-between items-center py-1 border-b border-gray-50 last:border-0">
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-semibold text-gray-700 truncate">{item.product_name}</p>
+                                        <p className="text-xs text-gray-400">
+                                          {item.qty} × ৳{fmtCur(item.unit_price)}
+                                          {item.vat_rate > 0 && ` (+${(item.vat_rate * 100).toFixed(0)}% VAT)`}
+                                        </p>
+                                      </div>
+                                      <p className="text-xs font-bold text-gray-700 ml-3 shrink-0">৳{fmtCur(item.total)}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {parseFloat(r.credit_balance_added || 0) > 0 && (
+                                <div className="mx-4 mb-3 bg-green-50 border border-green-100 rounded-xl px-3 py-2 flex justify-between items-center">
+                                  <p className="text-xs text-green-700 font-medium">💰 ক্রেডিট ব্যালেন্সে যোগ</p>
+                                  <p className="text-xs font-bold text-green-700">+৳{fmtCur(r.credit_balance_added)}</p>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </>
+                    )}
                   </>
                 )}
               </div>
@@ -977,6 +1131,91 @@ export default function DashboardView({
           <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'white', lineHeight: 1.55, flex: 1 }}>
             {toast.message}
           </p>
+        </div>
+      )}
+
+      {/* ── Return Request Form Bottom Sheet ── */}
+      {returnFormOpen && (
+        <div
+          onClick={() => setReturnFormOpen(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9998, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{ background: 'white', borderRadius: '24px 24px 0 0', width: '100%', maxWidth: 480, maxHeight: '90vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', animation: 'slideUp 0.22s cubic-bezier(.4,0,.2,1)' }}>
+            {/* Header */}
+            <div style={{ padding: '8px 20px 0', flexShrink: 0 }}>
+              <div style={{ width: 40, height: 4, borderRadius: 2, background: '#d1d5db', margin: '10px auto 16px' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 14, borderBottom: '1px solid #f0f0f0' }}>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#111' }}>↩️ পণ্য ফেরত অনুরোধ</h3>
+                <button onClick={() => setReturnFormOpen(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 10, padding: '6px 10px', cursor: 'pointer', color: '#64748b', fontSize: 16 }}>✕</button>
+              </div>
+            </div>
+            {/* Scrollable body */}
+            <div style={{ overflowY: 'auto', flex: 1, padding: '16px 20px 32px' }}>
+              {/* Invoice */}
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>ইনভয়েস নম্বর *</label>
+                <input type="text" value={returnInvoice} onChange={e => setReturnInvoice(e.target.value)}
+                  placeholder="যেমন: INV-2024-001"
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #e2e8f0', fontSize: 13, outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              {/* Type */}
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>অনুরোধের ধরন *</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[{ id: 'return', label: '↩️ পণ্য ফেরত' }, { id: 'replacement', label: '🔄 রিপ্লেসমেন্ট' }].map(t => (
+                    <button key={t.id} onClick={() => setReturnType(t.id)}
+                      style={{ flex: 1, padding: '10px 0', borderRadius: 12, border: `2px solid ${returnType === t.id ? '#1d4ed8' : '#e2e8f0'}`, background: returnType === t.id ? '#eff6ff' : 'white', fontSize: 12, fontWeight: 700, color: returnType === t.id ? '#1d4ed8' : '#64748b', cursor: 'pointer' }}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {/* Items */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <label style={{ fontSize: 12, fontWeight: 700, color: '#374151' }}>পণ্য তালিকা *</label>
+                  <button
+                    onClick={() => setReturnItems(prev => [...prev, { product_name: '', qty: 1, reason: '' }])}
+                    style={{ background: '#eff6ff', border: 'none', borderRadius: 8, padding: '4px 10px', fontSize: 12, fontWeight: 700, color: '#1d4ed8', cursor: 'pointer' }}>
+                    + পণ্য যোগ
+                  </button>
+                </div>
+                {(returnItems || []).map((item, idx) => (
+                  <div key={idx} style={{ background: '#f8fafc', borderRadius: 14, padding: '12px', marginBottom: 10, border: '1px solid #e2e8f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: '#64748b' }}>পণ্য #{idx + 1}</p>
+                      {(returnItems || []).length > 1 && (
+                        <button onClick={() => setReturnItems(prev => prev.filter((_, i) => i !== idx))}
+                          style={{ background: '#fee2e2', border: 'none', borderRadius: 6, padding: '2px 8px', fontSize: 11, color: '#dc2626', cursor: 'pointer', fontWeight: 700 }}>বাদ</button>
+                      )}
+                    </div>
+                    <input type="text" placeholder="পণ্যের নাম *" value={item.product_name}
+                      onChange={e => setReturnItems(prev => prev.map((it, i) => i === idx ? { ...it, product_name: e.target.value } : it))}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 12, marginBottom: 6, outline: 'none', boxSizing: 'border-box', background: 'white' }} />
+                    <input type="number" placeholder="পরিমাণ *" min="1" value={item.qty}
+                      onChange={e => setReturnItems(prev => prev.map((it, i) => i === idx ? { ...it, qty: e.target.value } : it))}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 12, marginBottom: 6, outline: 'none', boxSizing: 'border-box', background: 'white' }} />
+                    <input type="text" placeholder="ফেরতের কারণ *" value={item.reason}
+                      onChange={e => setReturnItems(prev => prev.map((it, i) => i === idx ? { ...it, reason: e.target.value } : it))}
+                      style={{ width: '100%', padding: '8px 12px', borderRadius: 10, border: '1.5px solid #e2e8f0', fontSize: 12, outline: 'none', boxSizing: 'border-box', background: 'white' }} />
+                  </div>
+                ))}
+              </div>
+              {/* Note */}
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 12, fontWeight: 700, color: '#374151', display: 'block', marginBottom: 6 }}>অতিরিক্ত নোট (ঐচ্ছিক)</label>
+                <textarea value={returnNote} onChange={e => setReturnNote(e.target.value)}
+                  placeholder="বিস্তারিত লিখুন..." rows={3}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #e2e8f0', fontSize: 12, resize: 'none', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
+              </div>
+              {/* Submit */}
+              <button onClick={submitReturnRequest} disabled={returnSubmitLoading}
+                style={{ width: '100%', padding: '14px 0', borderRadius: 14, border: 'none', background: returnSubmitLoading ? '#94a3b8' : 'linear-gradient(135deg,#1d4ed8,#1e40af)', color: 'white', fontSize: 14, fontWeight: 800, cursor: returnSubmitLoading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 14px rgba(29,78,216,0.3)' }}>
+                {returnSubmitLoading ? '⏳ পাঠানো হচ্ছে...' : '↩️ অনুরোধ পাঠান'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
