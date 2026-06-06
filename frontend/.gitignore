@@ -2,3 +2,8 @@ node_modules/
 dist/
 .env
 *.log
+
+# Capacitor-generated Android project — workflow প্রতিবার fresh তৈরি করে,
+# তাই repo-তে রাখার দরকার নেই। untrack করতে একবার চালাতে হবে:
+#   git rm -r --cached frontend/android/
+android/
