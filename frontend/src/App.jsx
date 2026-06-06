@@ -7,93 +7,106 @@ import PermissionSetup, { usePermissionSetup } from './components/PermissionSetu
 import AppUpdateDialog from './components/AppUpdateDialog'
 
 // ============================================================
-// Layouts — lazy import (role-specific, দরকার হলে তখনই লোড)
-// ✅ FIX: আগে static import ছিল, সব user-এর জন্যই সব Layout লোড হত।
-//         এখন lazy — শুধু সেই role-এর user navigate করলেই লোড হবে।
+// 🔑 Build-time mode flag
 // ============================================================
-const AdminLayout    = lazy(() => import('./layouts/AdminLayout'))
-const ManagerLayout  = lazy(() => import('./layouts/ManagerLayout'))
-const WorkerLayout   = lazy(() => import('./layouts/WorkerLayout'))
+// Customer APK workflow-এ .env-এ VITE_APP_MODE=customer সেট করা হয়।
+// Vite এই constant কে compile-time-এ true/false-এ replace করে,
+// ফলে IS_CUSTOMER_APP=true হলে Admin/Manager/Worker সব branch
+// dead code হিসেবে tree-shake হয়ে bundle-এ ঢোকেই না।
+// ➜ Main APK: VITE_APP_MODE not set → IS_CUSTOMER_APP = false (আগের মতো)
+// ➜ Customer APK: VITE_APP_MODE=customer → IS_CUSTOMER_APP = true
+const IS_CUSTOMER_APP = import.meta.env.VITE_APP_MODE === 'customer'
+
+// ============================================================
+// Layouts
+// ============================================================
 const CustomerLayout = lazy(() => import('./layouts/CustomerLayout'))
 
+// Staff layouts — Customer APK-এ import হবে না (Vite tree-shakes করবে)
+const AdminLayout   = IS_CUSTOMER_APP ? null : lazy(() => import('./layouts/AdminLayout'))
+const ManagerLayout = IS_CUSTOMER_APP ? null : lazy(() => import('./layouts/ManagerLayout'))
+const WorkerLayout  = IS_CUSTOMER_APP ? null : lazy(() => import('./layouts/WorkerLayout'))
+
 // ============================================================
-// Lazy Page Imports — শুধু route match হলে load হবে
+// Lazy Page Imports
 // ============================================================
+
+// Customer (সবসময় থাকবে — দুই APK-এই)
+const CustomerPortal = lazy(() => import('./pages/customer/CustomerPortal'))
+const CustomerAIChat = lazy(() => import('./pages/customer/CustomerAIChat'))
 
 // Auth / Public
-const Login           = lazy(() => import('./pages/Login'))
-const LandingPage     = lazy(() => import('./pages/LandingPage'))
-const SRApplicationForm = lazy(() => import('./pages/SRApplicationForm'))
+const Login     = lazy(() => import('./pages/Login'))
+const LandingPage = lazy(() => import('./pages/LandingPage'))
 
-// Customer
-const CustomerPortal  = lazy(() => import('./pages/customer/CustomerPortal'))
-const CustomerAIChat  = lazy(() => import('./pages/customer/CustomerAIChat'))
+// SR Application — Customer APK-এ নেই
+const SRApplicationForm = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/SRApplicationForm'))
 
-// Shared
-const AIChat          = lazy(() => import('./pages/shared/AIChat'))
-const NoticesView     = lazy(() => import('./pages/shared/NoticesView'))
+// Shared — Customer APK-এ নেই
+const AIChat      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/AIChat'))
+const NoticesView = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/NoticesView'))
 
-// Admin
-const AdminDashboard          = lazy(() => import('./pages/admin/Dashboard'))
-const AdminEmployees          = lazy(() => import('./pages/admin/Employees'))
-const EmployeeForm            = lazy(() => import('./pages/admin/EmployeeForm'))
-const PendingApprovals        = lazy(() => import('./pages/admin/PendingApprovals'))
-const AdminReports            = lazy(() => import('./pages/admin/Reports'))
-const CommissionPayment       = lazy(() => import('./pages/admin/CommissionPayment'))
-const SalaryPayment           = lazy(() => import('./pages/admin/SalaryPayment'))
-const AIInsights              = lazy(() => import('./pages/admin/AIInsights'))
-const AdminSettings           = lazy(() => import('./pages/admin/Settings'))
-const AdminProducts           = lazy(() => import('./pages/admin/Products'))
-const AdminNotices            = lazy(() => import('./pages/admin/Notices'))
-const AuditLogs               = lazy(() => import('./pages/admin/AuditLogs'))
-const PortalReturnRequests    = lazy(() => import('./pages/admin/PortalReturnRequests'))
-const CustomerRequestsPage    = lazy(() => import('./pages/admin/CustomerRequestsPage'))
-const SRRecruitmentDashboard  = lazy(() => import('./pages/admin/SRRecruitmentDashboard'))
-const AdminTeams              = lazy(() => import('./pages/admin/Teams'))
-const AdminCreditSettings     = lazy(() => import('./pages/admin/AdminCreditSettings'))
-const PortalDeviceManager     = lazy(() => import('./pages/admin/PortalDeviceManager'))
+// ── Admin pages — Customer APK-এ bundle হবে না ──────────────
+const AdminDashboard         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Dashboard'))
+const AdminEmployees         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Employees'))
+const EmployeeForm           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/EmployeeForm'))
+const PendingApprovals       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PendingApprovals'))
+const AdminReports           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Reports'))
+const CommissionPayment      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/CommissionPayment'))
+const SalaryPayment          = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/SalaryPayment'))
+const AIInsights             = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AIInsights'))
+const AdminSettings          = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Settings'))
+const AdminProducts          = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Products'))
+const AdminNotices           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Notices'))
+const AuditLogs              = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AuditLogs'))
+const PortalReturnRequests   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PortalReturnRequests'))
+const CustomerRequestsPage   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/CustomerRequestsPage'))
+const SRRecruitmentDashboard = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/SRRecruitmentDashboard'))
+const AdminTeams             = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Teams'))
+const AdminCreditSettings    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AdminCreditSettings'))
+const PortalDeviceManager    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PortalDeviceManager'))
 
-// Manager
-const ManagerDashboard        = lazy(() => import('./pages/manager/Dashboard'))
-const ManagerTeam             = lazy(() => import('./pages/manager/Team'))
-const VisitLog                = lazy(() => import('./pages/manager/VisitLog'))
-const ManagerOrders           = lazy(() => import('./pages/manager/Orders'))
-const ManagerSettlements      = lazy(() => import('./pages/manager/Settlements'))
-const SRLedger                = lazy(() => import('./pages/manager/SRLedger'))
-const SalesOrderLedger        = lazy(() => import('./pages/manager/SalesOrderLedger'))
-const ManagerAttendance       = lazy(() => import('./pages/manager/Attendance'))
-const ManagerCustomers        = lazy(() => import('./pages/manager/Customers'))
-const ManagerRoutes           = lazy(() => import('./pages/manager/Routes'))
-const VisitOrder              = lazy(() => import('./pages/manager/VisitOrder'))
-const LiveTracking            = lazy(() => import('./pages/manager/LiveTracking'))
-const TrailHistory            = lazy(() => import('./pages/manager/TrailHistory'))
-const ExpenseApprovals        = lazy(() => import('./pages/manager/ExpenseApprovals'))
-const ReturnApprovals         = lazy(() => import('./pages/manager/ReturnApprovals'))
-const ManagerPortalDevices    = lazy(() => import('./pages/manager/PortalDevices'))
-const CommissionTeam          = lazy(() => import('./pages/manager/CommissionTeam'))
-const ManagerCreditApprovals  = lazy(() => import('./pages/manager/ManagerCreditApprovals'))
+// ── Manager pages — Customer APK-এ bundle হবে না ─────────────
+const ManagerDashboard    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Dashboard'))
+const ManagerTeam         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Team'))
+const VisitLog            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/VisitLog'))
+const ManagerOrders       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Orders'))
+const ManagerSettlements  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Settlements'))
+const SRLedger            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/SRLedger'))
+const SalesOrderLedger    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/SalesOrderLedger'))
+const ManagerAttendance   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Attendance'))
+const ManagerCustomers    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Customers'))
+const ManagerRoutes       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Routes'))
+const VisitOrder          = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/VisitOrder'))
+const LiveTracking        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/LiveTracking'))
+const TrailHistory        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/TrailHistory'))
+const ExpenseApprovals    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/ExpenseApprovals'))
+const ReturnApprovals     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/ReturnApprovals'))
+const ManagerPortalDevices  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/PortalDevices'))
+const CommissionTeam        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/CommissionTeam'))
+const ManagerCreditApprovals = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/ManagerCreditApprovals'))
 
-// Worker
-const WorkerDashboard  = lazy(() => import('./pages/worker/Dashboard'))
-const WorkerAttendance = lazy(() => import('./pages/worker/Attendance'))
-const RouteSelect      = lazy(() => import('./pages/worker/RouteSelect'))
-const OrderForm        = lazy(() => import('./pages/worker/OrderForm'))
-const CustomerList     = lazy(() => import('./pages/worker/CustomerList'))
-const VisitPage        = lazy(() => import('./pages/worker/VisitPage'))
-const SalesForm        = lazy(() => import('./pages/worker/SalesForm'))
-const OTPVerify        = lazy(() => import('./pages/worker/OTPVerify'))
-const WorkerSettlement = lazy(() => import('./pages/worker/Settlement'))
-const Commission       = lazy(() => import('./pages/worker/Commission'))
-const SalaryHistory    = lazy(() => import('./pages/worker/SalaryHistory'))
-const Profile          = lazy(() => import('./pages/worker/Profile'))
-const SalesHistory     = lazy(() => import('./pages/worker/SalesHistory'))
-const StockStatus      = lazy(() => import('./pages/worker/StockStatus'))
-const LedgerHistory    = lazy(() => import('./pages/worker/LedgerHistory'))
-const ExpenseForm      = lazy(() => import('./pages/worker/ExpenseForm'))
-const ExpenseHistory   = lazy(() => import('./pages/worker/ExpenseHistory'))
-const ReturnForm       = lazy(() => import('./pages/worker/ReturnForm'))
-const ReturnHistory    = lazy(() => import('./pages/worker/ReturnHistory'))
-const MyReturnRequests = lazy(() => import('./pages/worker/MyReturnRequests'))
+// ── Worker pages — Customer APK-এ bundle হবে না ──────────────
+const WorkerDashboard  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/Dashboard'))
+const WorkerAttendance = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/Attendance'))
+const RouteSelect      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/RouteSelect'))
+const OrderForm        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/OrderForm'))
+const CustomerList     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/CustomerList'))
+const VisitPage        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/VisitPage'))
+const SalesForm        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/SalesForm'))
+const OTPVerify        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/OTPVerify'))
+const WorkerSettlement = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/Settlement'))
+const Commission       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/Commission'))
+const SalaryHistory    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/SalaryHistory'))
+const Profile          = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/Profile'))
+const SalesHistory     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/SalesHistory'))
+const StockStatus      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/StockStatus'))
+const LedgerHistory    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/LedgerHistory'))
+const ExpenseForm      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/ExpenseForm'))
+const ExpenseHistory   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/ExpenseHistory'))
+const ReturnForm       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/ReturnForm'))
+const ReturnHistory    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/ReturnHistory'))
+const MyReturnRequests = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/MyReturnRequests'))
 
 // ============================================================
 // Page Loading Spinner — Suspense fallback
@@ -103,17 +116,22 @@ const PageLoader = () => (
   <div style={{
     display: 'flex', alignItems: 'center', justifyContent: 'center',
     minHeight: '100vh',
-    background: 'linear-gradient(135deg, #030712 0%, #0a0f1a 40%, #051a0e 100%)',
+    background: IS_CUSTOMER_APP
+      ? 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f2744 100%)'
+      : 'linear-gradient(135deg, #030712 0%, #0a0f1a 40%, #051a0e 100%)',
     flexDirection: 'column', gap: 16,
   }}>
     <div style={{
       width: 36, height: 36,
-      border: '4px solid rgba(74,222,128,0.2)',
-      borderTop: '4px solid #4ade80',
+      border: IS_CUSTOMER_APP ? '4px solid rgba(96,165,250,0.2)' : '4px solid rgba(74,222,128,0.2)',
+      borderTop: IS_CUSTOMER_APP ? '4px solid #60a5fa' : '4px solid #4ade80',
       borderRadius: '50%',
       animation: 'spin 0.8s linear infinite',
     }} />
-    <p style={{ color: 'rgba(74,222,128,0.6)', fontSize: 13, fontFamily: 'sans-serif', margin: 0 }}>
+    <p style={{
+      color: IS_CUSTOMER_APP ? 'rgba(96,165,250,0.7)' : 'rgba(74,222,128,0.6)',
+      fontSize: 13, fontFamily: 'sans-serif', margin: 0,
+    }}>
       লোড হচ্ছে...
     </p>
     <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
@@ -137,20 +155,17 @@ const PortalOAuthCallback = () => (
 )
 
 // ============================================================
-// Protected Route Component
+// Protected Route — Staff only (Customer APK-এ লাগবে না)
 // ============================================================
 
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, token, authReady } = useAuthStore()
 
   if (!authReady) return <PageLoader />
-
   if (!token || !user) return <Navigate to="/login" replace />
-
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to="/unauthorized" replace />
   }
-
   return children
 }
 
@@ -161,11 +176,15 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 const HomeRedirect = () => {
   const { user } = useAuthStore()
 
-  // ── Role-based prefetch ──────────────────────────────────────
-  // ✅ FIX: Login সফল হওয়ার পর background-এ সেই role-এর chunk prefetch।
-  //   Navigate হওয়ার আগেই loading শুরু → পেইজে পৌঁছালে সাথে সাথেই দেখাবে।
-  //   vite.config.js-এর manualChunks-এ role chunk দিলে একটাই request-এ
-  //   সেই role-এর সব পেইজ লোড হবে, পরে সব navigation instant।
+  // ─── Customer APK: সরাসরি Customer flow-এ নিয়ে যাও ──────────
+  if (IS_CUSTOMER_APP) {
+    const hasPortalJWT = typeof window !== 'undefined' &&
+      Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
+    if (hasPortalJWT) return <Navigate to="/customer/dashboard" replace />
+    return <Navigate to="/customer-login" replace />
+  }
+
+  // ─── Staff APK: আগের মতোই role-based prefetch + redirect ────
   useEffect(() => {
     if (!user) return
     switch (user.role) {
@@ -184,7 +203,7 @@ const HomeRedirect = () => {
       case 'worker':
         import('./layouts/WorkerLayout')
         import('./pages/worker/Dashboard')
-        import('./pages/worker/CustomerList')  // সবচেয়ে বেশি ব্যবহৃত, আগেই লোড
+        import('./pages/worker/CustomerList')
         break
       default:
         break
@@ -198,18 +217,14 @@ const HomeRedirect = () => {
   if (!user) return <LandingPage />
 
   switch (user.role) {
-    case 'admin':
-      return <Navigate to="/admin/dashboard" replace={false} />
+    case 'admin':    return <Navigate to="/admin/dashboard" replace={false} />
     case 'manager':
     case 'supervisor':
     case 'asm':
     case 'rsm':
-    case 'accountant':
-      return <Navigate to="/manager/dashboard" replace={false} />
-    case 'worker':
-      return <Navigate to="/worker/dashboard" replace={false} />
-    default:
-      return <Navigate to="/login" replace />
+    case 'accountant': return <Navigate to="/manager/dashboard" replace={false} />
+    case 'worker':   return <Navigate to="/worker/dashboard" replace={false} />
+    default:         return <Navigate to="/login" replace />
   }
 }
 
@@ -227,7 +242,7 @@ const CustomerGuard = () => {
   const urlToken = params.get('token')
   if (urlToken) return <Outlet />
 
-  return <Navigate to="/landing" replace />
+  return <Navigate to={IS_CUSTOMER_APP ? '/customer-login' : '/landing'} replace />
 }
 
 // ============================================================
@@ -265,127 +280,146 @@ function AppWithPermissions() {
 
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          {/* Public */}
-          <Route path="/"                       element={<HomeRedirect />} />
-          <Route path="/landing"               element={<LandingPage />} />
-          <Route path="/login"                 element={<Login />} />
-          <Route path="/customer-login"        element={<CustomerPortal />} />
-          <Route path="/apply/sr"              element={<SRApplicationForm />} />
-          <Route path="/customer-portal"       element={<Navigate to="/customer/dashboard" replace />} />
-          <Route path="/portal-oauth-callback" element={<PortalOAuthCallback />} />
 
-          {/* ── CUSTOMER ROUTES ── */}
+          {/* ── Public ── */}
+          <Route path="/"                       element={<HomeRedirect />} />
+          <Route path="/customer-login"         element={<CustomerPortal />} />
+          <Route path="/customer-portal"        element={<Navigate to="/customer/dashboard" replace />} />
+          <Route path="/portal-oauth-callback"  element={<PortalOAuthCallback />} />
+
+          {/* Customer APK-এ /landing ও /login → customer-login-এ redirect */}
+          <Route path="/landing" element={IS_CUSTOMER_APP
+            ? <Navigate to="/customer-login" replace />
+            : <LandingPage />}
+          />
+          <Route path="/login" element={IS_CUSTOMER_APP
+            ? <Navigate to="/customer-login" replace />
+            : <Login />}
+          />
+
+          {/* SR Application — Customer APK-এ নেই */}
+          {!IS_CUSTOMER_APP && (
+            <Route path="/apply/sr" element={<SRApplicationForm />} />
+          )}
+
+          {/* ── CUSTOMER ROUTES (দুই APK-এই থাকবে) ── */}
           <Route element={<CustomerGuard />}>
             <Route path="/customer" element={<CustomerLayout />}>
               <Route index                element={<Navigate to="dashboard" replace />} />
-              <Route path="dashboard"     element={<CustomerPortal defaultTab="summary"  />} />
-              <Route path="orders"        element={<CustomerPortal defaultTab="orders"   />} />
-              <Route path="invoices"      element={<CustomerPortal defaultTab="invoices" />} />
-              <Route path="payments"      element={<CustomerPortal defaultTab="payments" />} />
+              <Route path="dashboard"     element={<CustomerPortal defaultTab="summary"       />} />
+              <Route path="orders"        element={<CustomerPortal defaultTab="orders"        />} />
+              <Route path="invoices"      element={<CustomerPortal defaultTab="invoices"      />} />
+              <Route path="payments"      element={<CustomerPortal defaultTab="payments"      />} />
               <Route path="notifications" element={<CustomerPortal defaultTab="notifications" />} />
-              <Route path="profile"       element={<CustomerPortal defaultTab="summary"  />} />
+              <Route path="profile"       element={<CustomerPortal defaultTab="summary"       />} />
               <Route path="ai-chat"       element={<CustomerAIChat />} />
             </Route>
           </Route>
 
-          {/* Unauthorized */}
-          <Route path="/unauthorized" element={
-            <div className="min-h-screen flex items-center justify-center">
-              <div className="text-center">
-                <h1 className="text-2xl font-bold text-red-600">অ্যাক্সেস নেই</h1>
-                <p className="text-gray-600 mt-2">আপনার এই পৃষ্ঠা দেখার অনুমতি নেই।</p>
-              </div>
-            </div>
-          } />
+          {/* ── STAFF ROUTES — Customer APK-এ সম্পূর্ণ বাদ ── */}
+          {/* IS_CUSTOMER_APP=true হলে Vite এই পুরো block tree-shake করে */}
+          {!IS_CUSTOMER_APP && (
+            <>
+              {/* Unauthorized */}
+              <Route path="/unauthorized" element={
+                <div className="min-h-screen flex items-center justify-center">
+                  <div className="text-center">
+                    <h1 className="text-2xl font-bold text-red-600">অ্যাক্সেস নেই</h1>
+                    <p className="text-gray-600 mt-2">আপনার এই পৃষ্ঠা দেখার অনুমতি নেই।</p>
+                  </div>
+                </div>
+              } />
 
-          {/* ── ADMIN ROUTES ── */}
-          <Route path="/admin" element={
-            <ProtectedRoute allowedRoles={['admin']}>
-              <AdminLayout />
-            </ProtectedRoute>
-          }>
-            <Route index                    element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard"         element={<AdminDashboard />} />
-            <Route path="employees"         element={<AdminEmployees />} />
-            <Route path="employees/new"     element={<EmployeeForm />} />
-            <Route path="employees/:id"     element={<EmployeeForm />} />
-            <Route path="pending"           element={<PendingApprovals />} />
-            <Route path="reports"           element={<AdminReports />} />
-            <Route path="commission-pay"    element={<CommissionPayment />} />
-            <Route path="salary-pay"        element={<SalaryPayment />} />
-            <Route path="ai-insights"       element={<AIInsights />} />
-            <Route path="ai-chat"           element={<AIChat />} />
-            <Route path="notices"           element={<AdminNotices />} />
-            <Route path="recruitment"       element={<SRRecruitmentDashboard />} />
-            <Route path="teams"             element={<AdminTeams />} />
-            <Route path="settings"          element={<AdminSettings />} />
-            <Route path="products"          element={<AdminProducts />} />
-            <Route path="audit-logs"        element={<AuditLogs />} />
-            <Route path="portal-returns"    element={<PortalReturnRequests />} />
-            <Route path="customer-requests" element={<CustomerRequestsPage />} />
-            <Route path="credit-settings"   element={<AdminCreditSettings />} />
-            <Route path="portal-devices"    element={<PortalDeviceManager />} />
-          </Route>
+              {/* ── ADMIN ROUTES ── */}
+              <Route path="/admin" element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminLayout />
+                </ProtectedRoute>
+              }>
+                <Route index                    element={<Navigate to="dashboard" replace />} />
+                <Route path="dashboard"         element={<AdminDashboard />} />
+                <Route path="employees"         element={<AdminEmployees />} />
+                <Route path="employees/new"     element={<EmployeeForm />} />
+                <Route path="employees/:id"     element={<EmployeeForm />} />
+                <Route path="pending"           element={<PendingApprovals />} />
+                <Route path="reports"           element={<AdminReports />} />
+                <Route path="commission-pay"    element={<CommissionPayment />} />
+                <Route path="salary-pay"        element={<SalaryPayment />} />
+                <Route path="ai-insights"       element={<AIInsights />} />
+                <Route path="ai-chat"           element={<AIChat />} />
+                <Route path="notices"           element={<AdminNotices />} />
+                <Route path="recruitment"       element={<SRRecruitmentDashboard />} />
+                <Route path="teams"             element={<AdminTeams />} />
+                <Route path="settings"          element={<AdminSettings />} />
+                <Route path="products"          element={<AdminProducts />} />
+                <Route path="audit-logs"        element={<AuditLogs />} />
+                <Route path="portal-returns"    element={<PortalReturnRequests />} />
+                <Route path="customer-requests" element={<CustomerRequestsPage />} />
+                <Route path="credit-settings"   element={<AdminCreditSettings />} />
+                <Route path="portal-devices"    element={<PortalDeviceManager />} />
+              </Route>
 
-          {/* ── MANAGER ROUTES ── */}
-          <Route path="/manager" element={
-            <ProtectedRoute allowedRoles={['manager', 'supervisor', 'asm', 'rsm', 'accountant']}>
-              <ManagerLayout />
-            </ProtectedRoute>
-          }>
-            <Route index                             element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard"                 element={<ManagerDashboard />} />
-            <Route path="team"                      element={<ManagerTeam />} />
-            <Route path="team/:workerId/visits"     element={<VisitLog />} />
-            <Route path="orders"                    element={<ManagerOrders />} />
-            <Route path="settlements"               element={<ManagerSettlements />} />
-            <Route path="attendance"                element={<ManagerAttendance />} />
-            <Route path="customers"                 element={<ManagerCustomers />} />
-            <Route path="routes"                    element={<ManagerRoutes />} />
-            <Route path="visit-order"               element={<VisitOrder />} />
-            <Route path="live-tracking"             element={<LiveTracking />} />
-            <Route path="trail-history"             element={<TrailHistory />} />
-            <Route path="sr-ledger"                 element={<SRLedger />} />
-            <Route path="order-ledger"              element={<SalesOrderLedger />} />
-            <Route path="expense"                   element={<ExpenseApprovals />} />
-            <Route path="returns"                   element={<ReturnApprovals />} />
-            <Route path="portal-devices"            element={<ManagerPortalDevices />} />
-            <Route path="commission/team"           element={<CommissionTeam />} />
-            <Route path="ai-chat"                   element={<AIChat />} />
-            <Route path="notices"                   element={<NoticesView />} />
-            <Route path="customer-requests"         element={<CustomerRequestsPage />} />
-            <Route path="credit-approvals"          element={<ManagerCreditApprovals />} />
-          </Route>
+              {/* ── MANAGER ROUTES ── */}
+              <Route path="/manager" element={
+                <ProtectedRoute allowedRoles={['manager', 'supervisor', 'asm', 'rsm', 'accountant']}>
+                  <ManagerLayout />
+                </ProtectedRoute>
+              }>
+                <Route index                              element={<Navigate to="dashboard" replace />} />
+                <Route path="dashboard"                  element={<ManagerDashboard />} />
+                <Route path="team"                       element={<ManagerTeam />} />
+                <Route path="team/:workerId/visits"      element={<VisitLog />} />
+                <Route path="orders"                     element={<ManagerOrders />} />
+                <Route path="settlements"                element={<ManagerSettlements />} />
+                <Route path="attendance"                 element={<ManagerAttendance />} />
+                <Route path="customers"                  element={<ManagerCustomers />} />
+                <Route path="routes"                     element={<ManagerRoutes />} />
+                <Route path="visit-order"                element={<VisitOrder />} />
+                <Route path="live-tracking"              element={<LiveTracking />} />
+                <Route path="trail-history"              element={<TrailHistory />} />
+                <Route path="sr-ledger"                  element={<SRLedger />} />
+                <Route path="order-ledger"               element={<SalesOrderLedger />} />
+                <Route path="expense"                    element={<ExpenseApprovals />} />
+                <Route path="returns"                    element={<ReturnApprovals />} />
+                <Route path="portal-devices"             element={<ManagerPortalDevices />} />
+                <Route path="commission/team"            element={<CommissionTeam />} />
+                <Route path="ai-chat"                    element={<AIChat />} />
+                <Route path="notices"                    element={<NoticesView />} />
+                <Route path="customer-requests"          element={<CustomerRequestsPage />} />
+                <Route path="credit-approvals"           element={<ManagerCreditApprovals />} />
+              </Route>
 
-          {/* ── WORKER ROUTES ── */}
-          <Route path="/worker" element={
-            <ProtectedRoute allowedRoles={['worker']}>
-              <WorkerLayout />
-            </ProtectedRoute>
-          }>
-            <Route index                    element={<Navigate to="dashboard" replace />} />
-            <Route path="dashboard"         element={<WorkerDashboard />} />
-            <Route path="attendance"        element={<WorkerAttendance />} />
-            <Route path="route"             element={<RouteSelect />} />
-            <Route path="order"             element={<OrderForm />} />
-            <Route path="customers"         element={<CustomerList />} />
-            <Route path="visit/:id"         element={<VisitPage />} />
-            <Route path="sales/:id"         element={<SalesForm />} />
-            <Route path="otp/:id"           element={<OTPVerify />} />
-            <Route path="settlement"        element={<WorkerSettlement />} />
-            <Route path="commission"        element={<Commission />} />
-            <Route path="salary-history"    element={<SalaryHistory />} />
-            <Route path="profile"           element={<Profile />} />
-            <Route path="sales-history"     element={<SalesHistory />} />
-            <Route path="stock-status"      element={<StockStatus />} />
-            <Route path="ledger-history"    element={<LedgerHistory />} />
-            <Route path="expense"           element={<ExpenseForm />} />
-            <Route path="expense-history"   element={<ExpenseHistory />} />
-            <Route path="return-form"       element={<ReturnForm />} />
-            <Route path="return-history"    element={<ReturnHistory />} />
-            <Route path="my-return-requests" element={<MyReturnRequests />} />
-            <Route path="notices"           element={<NoticesView />} />
-          </Route>
+              {/* ── WORKER ROUTES ── */}
+              <Route path="/worker" element={
+                <ProtectedRoute allowedRoles={['worker']}>
+                  <WorkerLayout />
+                </ProtectedRoute>
+              }>
+                <Route index                     element={<Navigate to="dashboard" replace />} />
+                <Route path="dashboard"          element={<WorkerDashboard />} />
+                <Route path="attendance"         element={<WorkerAttendance />} />
+                <Route path="route"              element={<RouteSelect />} />
+                <Route path="order"              element={<OrderForm />} />
+                <Route path="customers"          element={<CustomerList />} />
+                <Route path="visit/:id"          element={<VisitPage />} />
+                <Route path="sales/:id"          element={<SalesForm />} />
+                <Route path="otp/:id"            element={<OTPVerify />} />
+                <Route path="settlement"         element={<WorkerSettlement />} />
+                <Route path="commission"         element={<Commission />} />
+                <Route path="salary-history"     element={<SalaryHistory />} />
+                <Route path="profile"            element={<Profile />} />
+                <Route path="sales-history"      element={<SalesHistory />} />
+                <Route path="stock-status"       element={<StockStatus />} />
+                <Route path="ledger-history"     element={<LedgerHistory />} />
+                <Route path="expense"            element={<ExpenseForm />} />
+                <Route path="expense-history"    element={<ExpenseHistory />} />
+                <Route path="return-form"        element={<ReturnForm />} />
+                <Route path="return-history"     element={<ReturnHistory />} />
+                <Route path="my-return-requests" element={<MyReturnRequests />} />
+                <Route path="notices"            element={<NoticesView />} />
+              </Route>
+            </>
+          )}
 
           {/* 404 */}
           <Route path="*" element={
@@ -396,6 +430,7 @@ function AppWithPermissions() {
               </div>
             </div>
           } />
+
         </Routes>
       </Suspense>
     </>
