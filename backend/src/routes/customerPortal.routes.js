@@ -15,6 +15,7 @@ const {
     verifyPortalToken,
     deviceLogin,
     googleAuth,
+    directGoogleAuth,
     listCustomerDevices,
     revokeDevice,
     revokeAllDevices,
@@ -197,6 +198,9 @@ router.get('/verify-token', verifyPortalToken);
 // Google OAuth → email lock + device whitelist-এ add
 // POST /api/portal/google-auth  { google_token, link_token, device_id }
 router.post('/google-auth', googleAuth);
+
+// ✅ NEW: Permanent link auth — ?c=customer_code system
+router.post('/direct-auth', directGoogleAuth);
 
 // Whitelisted device-এ Google ছাড়া login
 // POST /api/portal/device-login  { link_token, device_id }
