@@ -50,12 +50,14 @@ jobs:
         id: version
         run: |
           # বর্তমান versionCode পড়ো এবং +1 করো (সবসময় monotonic increase)
-          CURRENT_CODE=$(grep -oP 'versionCode:\s*\K[0-9]+' backend/src/routes/app.routes.js)
+          # head -1 → শুধু প্রথম match নাও (Customer versionCode mix না হওয়ার জন্য)
+          CURRENT_CODE=$(grep -oP 'versionCode:\s*\K[0-9]+' backend/src/routes/app.routes.js | head -1)
           VERSION_CODE=$((CURRENT_CODE + 1))
           VERSION_NAME="1.0.${VERSION_CODE}"
 
           # versionCode ও versionName আপডেট
-          sed -i "s/versionCode: [0-9]*/versionCode: $VERSION_CODE/" backend/src/routes/app.routes.js
+          # [0-9][0-9]*, → সংখ্যার পরে comma → CUSTOMER_VERSION_CODE line কে skip করে
+          sed -i "s/versionCode: [0-9][0-9]*,/versionCode: $VERSION_CODE,/" backend/src/routes/app.routes.js
           sed -i "s/versionName: '[^']*'/versionName: '$VERSION_NAME'/" backend/src/routes/app.routes.js
 
           # APK filename আপডেট → NovaTech-BD-v1.0.X.apk
