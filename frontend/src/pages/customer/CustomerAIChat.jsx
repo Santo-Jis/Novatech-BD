@@ -3,7 +3,6 @@
 // Security: শুধু নিজের data দেখতে পাবে — backend-এ JWT-bound
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
 
 const BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
@@ -148,8 +147,6 @@ function TypingIndicator() {
 
 // ── Main Component ─────────────────────────────────────────────
 export default function CustomerAIChat() {
-  const navigate = useNavigate()
-
   // Customer info from JWT
   const [customerInfo, setCustomerInfo] = useState({})
   useEffect(() => {
@@ -160,7 +157,7 @@ export default function CustomerAIChat() {
       const decoded = JSON.parse(atob(jwt.split('.')[1]))
       setCustomerInfo(decoded)
     } catch { window.history.back() }
-  }, [navigate])
+  }, [])
 
   const [messages, setMessages]       = useState([])
   const [input, setInput]             = useState('')
@@ -267,7 +264,8 @@ export default function CustomerAIChat() {
     <div style={{
       display: 'flex',
       flexDirection: 'column',
-      height: 'calc(100vh - 140px)', // header + bottom nav বাদ
+      height: '100%', // standalone হলে wrapper, embedded হলে parent দেয়
+      minHeight: 480,
       padding: '0 0 0',
     }}>
       <style>{`
