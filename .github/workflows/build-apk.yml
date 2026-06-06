@@ -766,7 +766,10 @@ jobs:
 
       - name: "[Customer] Write google-services.json"
         env:
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          # CUSTOMER_GOOGLE_SERVICES_JSON আলাদা secret থাকলে সেটা ব্যবহার হবে।
+          # না থাকলে main GOOGLE_SERVICES_JSON ব্যবহার হবে — কিন্তু তখন
+          # Firebase-এ com.novatech.customer package register থাকতে হবে।
+          GOOGLE_SERVICES_JSON: ${{ secrets.CUSTOMER_GOOGLE_SERVICES_JSON || secrets.GOOGLE_SERVICES_JSON }}
         run: |
           echo "$GOOGLE_SERVICES_JSON" > frontend/android/app/google-services.json
           python3 -c "import json; json.load(open('frontend/android/app/google-services.json'))" \
