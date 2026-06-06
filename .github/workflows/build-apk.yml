@@ -197,6 +197,51 @@ jobs:
           print("✅ Service Worker disabled for Android APK")
           PYEOF
 
+      # ── Remove Eruda from APK build ───────────────────────────
+      # Eruda external CDN script APK-এ blank white screen ঘটায়:
+      # CDN load timeout হলে বা network না থাকলে app আটকে যায়।
+      # Error overlay div-ও APK-এ দরকার নেই (debug শেষে clean build)।
+      - name: Remove Eruda & error overlay from APK build
+        working-directory: frontend
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          with open('dist/index.html', 'r') as f:
+              content = f.read()
+
+          before = content
+
+          # Eruda CDN script tag সরাও
+          content = re.sub(
+              r'\s*<script[^>]*cdn\.jsdelivr\.net[^>]*></script>',
+              '', content
+          )
+          # Eruda init + __showEruda/__hideEruda script block সরাও
+          content = re.sub(
+              r'\s*<script>\s*window\.addEventListener\([\'"]load[\'"][\s\S]*?</script>',
+              '', content, count=1
+          )
+          # Error overlay div সরাও
+          content = re.sub(
+              r'\s*<div id="__err__"[^>]*></div>',
+              '', content
+          )
+          # Error catcher script সরাও
+          content = re.sub(
+              r'\s*<script>\s*window\.onerror[\s\S]*?</script>',
+              '', content, count=1
+          )
+
+          if content != before:
+              print("✅ Eruda & error overlay removed from APK build")
+          else:
+              print("ℹ️ Eruda already absent")
+
+          with open('dist/index.html', 'w') as f:
+              f.write(content)
+          PYEOF
+
       # ── Capacitor Android ──────────────────────────────────────
       - name: Add Android & Sync
         working-directory: frontend
