@@ -42,31 +42,44 @@ jobs:
           echo "✅ Debug SHA-1 printed above"
 
       # ── Auto Version ──────────────────────────────────────────
+      # বর্তমান versionCode পড়ে +1 করা হচ্ছে।
+      # github.run_number ব্যবহার করা হচ্ছে না কারণ:
+      #   run_number (≈ 159) < ম্যানুয়াল versionCode (702) হলে
+      #   পুরানো APK-এ আর update notification আসত না।
       - name: Update version automatically
+        id: version
         run: |
-          VERSION_CODE=${{ github.run_number }}
-          VERSION_NAME="1.0.${{ github.run_number }}"
+          # বর্তমান versionCode পড়ো এবং +1 করো (সবসময় monotonic increase)
+          CURRENT_CODE=$(grep -oP 'versionCode:\s*\K[0-9]+' backend/src/routes/app.routes.js)
+          VERSION_CODE=$((CURRENT_CODE + 1))
+          VERSION_NAME="1.0.${VERSION_CODE}"
 
           # versionCode ও versionName আপডেট
           sed -i "s/versionCode: [0-9]*/versionCode: $VERSION_CODE/" backend/src/routes/app.routes.js
-          sed -i "s/versionName: \'[^\']*\'/versionName: \'$VERSION_NAME\'/" backend/src/routes/app.routes.js
+          sed -i "s/versionName: '[^']*'/versionName: '$VERSION_NAME'/" backend/src/routes/app.routes.js
 
-          # B2 filename আপডেট → NovaTech-BD-v1.0.X.apk
+          # APK filename আপডেট → NovaTech-BD-v1.0.X.apk
           sed -i "s/NovaTech-BD-v[0-9.]*\.apk/NovaTech-BD-v${VERSION_NAME}.apk/g" backend/src/routes/app.routes.js
 
           # frontend version আপডেট
           sed -i "s/CURRENT_VERSION_CODE = [0-9]*/CURRENT_VERSION_CODE = $VERSION_CODE/" frontend/src/hooks/useAppUpdate.js
 
-          echo "✅ Version: $VERSION_NAME (code: $VERSION_CODE)"
+          # পরের step-এ commit message-এ ব্যবহারের জন্য output করা হচ্ছে
+          echo "version_name=$VERSION_NAME" >> $GITHUB_OUTPUT
+
+          echo "✅ Version: $VERSION_NAME (code: $VERSION_CODE, আগে ছিল: $CURRENT_CODE)"
 
       # ── Commit version bump so Render gets updated version ────
       - name: Commit version bump
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add backend/src/routes/app.routes.js frontend/src/hooks/useAppUpdate.js
-          git diff --staged --quiet || git commit -m "chore: bump version to 1.0.${{ github.run_number }} [skip ci]"
+          # ✅ সঠিক order: pull → add → commit → push
+          # আগের order (commit → pull --rebase → push) এ remote-এ নতুন commit
+          # থাকলে rebase fail করত এবং push হত না।
           git pull --rebase origin main
+          git add backend/src/routes/app.routes.js frontend/src/hooks/useAppUpdate.js
+          git diff --staged --quiet || git commit -m "chore: bump version to ${{ steps.version.outputs.version_name }} [skip ci]"
           git push
           echo "✅ Version committed and pushed"
 
@@ -75,12 +88,15 @@ jobs:
         working-directory: frontend
         run: |
           npm install
+          # @capacitor/cli, @capacitor/android, @capacitor/push-notifications
+          # package.json-এ নেই তাই আলাদাভাবে install করা হচ্ছে।
+          # @codetrix-studio/capacitor-google-auth আর এখানে দেওয়া হচ্ছে না —
+          # package.json-এ 3.3.1 fix করা হয়েছে, npm install-ই সঠিক version পাবে।
           npm install --legacy-peer-deps \
             @capacitor/core \
             @capacitor/cli \
             @capacitor/android \
-            @capacitor/push-notifications \
-            @codetrix-studio/capacitor-google-auth@3.3.1
+            @capacitor/push-notifications
 
       # ── Environment Variables ──────────────────────────────────
       - name: Create .env file
@@ -300,30 +316,69 @@ jobs:
 
       # ── Release build.gradle Patch ────────────────────────────
       # buildTypes { release { ... } } এ ProGuard + minify enable করা হয়েছে
+      # NOTE: আগের regex [^}]* debug block-এর প্রথম } দেখলেই থামত,
+      #       তাই release block পর্যন্ত পৌঁছাত না। এখন line-by-line
+      #       brace-depth tracking দিয়ে সঠিকভাবে release block খোঁজা হয়।
       - name: Enable ProGuard & minify in release buildType
         working-directory: frontend/android/app
         run: |
           python3 << 'PYEOF'
           import re
 
+          def patch_inside_release(content, find, replace=None, append_after=None):
+              """release { } block-এর ভেতরে নির্দিষ্ট line পরিবর্তন/যোগ করে।
+              [^}]* regex ব্যবহার করা হয়নি কারণ এটা nested brace handle করতে পারে না।
+              পরিবর্তে brace depth tracking করা হচ্ছে।"""
+              lines = content.split('\n')
+              result = []
+              depth = 0
+              in_release = False
+              entry_depth = None
+
+              for line in lines:
+                  opens = line.count('{')
+                  closes = line.count('}')
+
+                  # release { block শুরু হচ্ছে কিনা detect করো
+                  if not in_release and re.search(r'^\s*release\s*\{', line):
+                      in_release = True
+                      entry_depth = depth   # এই depth-এ ফিরে এলে block শেষ
+
+                  extra = None
+                  if in_release:
+                      if replace is not None and find in line:
+                          line = line.replace(find, replace, 1)
+                      elif append_after is not None and find in line:
+                          extra = append_after   # এই line-এর পরে insert করবো
+
+                  depth += opens - closes
+
+                  # release block শেষ হয়ে গেছে কিনা
+                  if in_release and depth <= entry_depth:
+                      in_release = False
+
+                  result.append(line)
+                  if extra:
+                      result.append(extra)
+
+              return '\n'.join(result)
+
           with open("build.gradle", "r") as f:
               content = f.read()
 
-          # release block-এ minifyEnabled false → true করো
-          content = re.sub(
-              r'(buildTypes\s*\{[^}]*release\s*\{[^}]*?)minifyEnabled\s+false',
-              r'\1minifyEnabled true',
+          # release block-এ minifyEnabled false → true
+          content = patch_inside_release(
               content,
-              flags=re.DOTALL
+              find='minifyEnabled false',
+              replace='minifyEnabled true'
           )
 
-          # যদি proguardFiles line না থাকে, add করো
+          # proguardFiles না থাকলে minifyEnabled true-এর পরে যোগ করো
           if "proguardFiles" not in content:
-              content = re.sub(
-                  r'(buildTypes\s*\{[^}]*release\s*\{[^}]*?minifyEnabled\s+true)',
-                  r"\1\n            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'",
+              content = patch_inside_release(
                   content,
-                  flags=re.DOTALL
+                  find='minifyEnabled true',
+                  append_after="            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'"
               )
 
           with open("build.gradle", "w") as f:
@@ -382,7 +437,7 @@ jobs:
               }}
           """
 
-          # android {{ ... }} block-এর শুরুতে signingConfigs যোগ করো
+          # android { ... } block-এর শুরুতে signingConfigs যোগ করো
           if "signingConfigs" not in content:
               content = re.sub(
                   r'(android\s*\{)',
@@ -392,13 +447,38 @@ jobs:
               )
 
           # release buildType-এ signingConfig reference যোগ করো
+          # NOTE: আগের [^}]* regex debug block-এর প্রথম } দেখলেই থামত।
+          #       এখন brace-depth tracking দিয়ে সঠিক release block খোঁজা হয়।
           if "signingConfig signingConfigs.release" not in content:
-              content = re.sub(
-                  r'(buildTypes\s*\{[^}]*release\s*\{[^}]*?minifyEnabled\s+true)',
-                  r'\1\n            signingConfig signingConfigs.release',
-                  content,
-                  flags=re.DOTALL
-              )
+              lines = content.split('\n')
+              result = []
+              depth = 0
+              in_release = False
+              entry_depth = None
+              inserted = False
+
+              for line in lines:
+                  opens = line.count('{')
+                  closes = line.count('}')
+
+                  if not in_release and re.search(r'^\s*release\s*\{', line):
+                      in_release = True
+                      entry_depth = depth
+
+                  extra = None
+                  if in_release and not inserted and 'minifyEnabled true' in line:
+                      extra = '            signingConfig signingConfigs.release'
+                      inserted = True
+
+                  depth += opens - closes
+                  if in_release and depth <= entry_depth:
+                      in_release = False
+
+                  result.append(line)
+                  if extra:
+                      result.append(extra)
+
+              content = '\n'.join(result)
 
           with open("build.gradle", "w") as f:
               f.write(content)
@@ -425,22 +505,22 @@ jobs:
           fi
 
       # ── GitHub Release ─────────────────────────────────────────
+      # steps.version.outputs.version_name ব্যবহার — app version ও tag সব এক থাকে
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: NovaTech BD v1.0.${{ github.run_number }}
+          tag_name: v${{ steps.version.outputs.version_name }}
+          name: NovaTech BD v${{ steps.version.outputs.version_name }}
           body: |
             ## NovaTech BD App Update
-            **Version:** 1.0.${{ github.run_number }}
+            **Version:** ${{ steps.version.outputs.version_name }}
             **Build Type:** Release (ProGuard + Signed)
           files: frontend/android/app/build/outputs/apk/release/app-release.apk
-
 
       # ── Artifact Upload ────────────────────────────────────────
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NovaTech-BD-v1.0.${{ github.run_number }}-release
+          name: NovaTech-BD-v${{ steps.version.outputs.version_name }}-release
           path: frontend/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
