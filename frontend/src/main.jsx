@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter } from 'react-router-dom'
+import { HashRouter } from 'react-router-dom' // ✅ BrowserRouter → HashRouter (APK fix)
 import { Toaster } from 'react-hot-toast'
 import App from './App'
 import './index.css'
@@ -14,7 +14,7 @@ try { initAutoSync() } catch (e) { console.warn('[Sync] initAutoSync failed:', e
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <BrowserRouter>
+      <HashRouter>
         <App />
         <Toaster
           position="top-center"
@@ -35,7 +35,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
             }
           }}
         />
-      </BrowserRouter>
+      </HashRouter>
     </ErrorBoundary>
   </React.StrictMode>
 )
