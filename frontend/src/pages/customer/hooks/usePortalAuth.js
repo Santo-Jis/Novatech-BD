@@ -1,14 +1,11 @@
 // hooks/usePortalAuth.js
 // Authentication, dashboard loading, notifications, push permission — সব এখানে
 //
-// ✅ FIX: URL parameter mismatch সংশোধন
-//   আগে: searchParams.get('token')  → সবসময় null
-//   এখন: searchParams.get('r')      → redirect_id সঠিকভাবে পড়া হচ্ছে
-//
-// ✅ FIX: Missing resolve-link step যোগ করা হয়েছে
-//   আগে: redirect_id দিয়ে সরাসরি verify-token call → কাজ করত না
-//   এখন: redirect_id → POST /portal/resolve-link → link_token পাওয়া
-//         → তারপর link_token দিয়ে verify-token / device-login / google-auth
+// ✅ NEW SYSTEM: Permanent Link (?c=customer_code)
+//   - SR একবার permanent link পাঠায় — কখনো expire হয় না
+//   - প্রথমবার: Google login → 30-day JWT localStorage-এ সেভ
+//   - পরের বার: JWT valid থাকলে auto-login (Google লাগে না)
+//   - 30 দিন পরে: JWT expire → Google দিয়ে আবার login
 
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -18,29 +15,25 @@ import { getDeviceFingerprint, webGoogleLogin } from '../utils/fingerprint'
 import { initializeApp, getApps } from 'firebase/app'
 import { getMessaging, getToken } from 'firebase/messaging'
 import {
-  getStorageKey, storageGet, storageSet, storageRemove, storageKeys
+  getStorageKey, storageGet, storageSet, storageRemove, storageKeys,
+  getCustomerCode, setCustomerCode, isJWTValid
 } from '../utils/helpers'
 
 export function usePortalAuth(defaultTab = 'summary') {
   const [searchParams] = useSearchParams()
 
-  // ✅ FIX: 'token' → 'r'  (backend sendPortalLink পাঠায় ?r=<redirectId>)
-  const redirectId = searchParams.get('r')
+  // ✅ NEW: ?c=customer_code (permanent, কখনো expire হয় না)
+  const customerCodeFromURL = searchParams.get('c')
 
   const [phase,       setPhase]       = useState('loading')
-  const portalJWTRef  = useRef(null)  // BUG FIX: stale closure এড়াতে latest JWT ref
-  const toastTimerRef = useRef(null)  // auto-dismiss toast timer
+  const portalJWTRef  = useRef(null)
+  const toastTimerRef = useRef(null)
   const [tokenInfo,   setTokenInfo]   = useState(null)
   const [portalJWT,   setPortalJWT]   = useState(null)
   const [dashboard,   setDashboard]   = useState(null)
   const [activeTab,   setActiveTab]   = useState(defaultTab)
   const [error,       setError]       = useState('')
   const [loggingIn,   setLoggingIn]   = useState(false)
-
-  // ── Resolve করা link_token (5-মিনিট one-time token) ──────────
-  // redirect_id → resolve-link → link_token
-  // এই link_token দিয়ে verify-token / device-login / google-auth call হবে
-  const linkTokenRef = useRef(null)
 
   // ── Toast Notification ───────────────────────────────────────
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' })
@@ -483,15 +476,20 @@ export function usePortalAuth(defaultTab = 'summary') {
   }
 
   // ── Logout ───────────────────────────────────────────────────
+  // ✅ NEW: customer_code দিয়ে JWT সরানো হয়, customer_code রাখা হয়
+  // যাতে পরের বার login স্ক্রিন সরাসরি আসে (link লাগবে না)
   const handleLogout = () => {
-    storageKeys().forEach(k => storageRemove(k))
+    const code = getCustomerCode()
+    if (code) storageRemove(getStorageKey(code))
     storageRemove('portal_fcm_token')
-    setPhase('login')
+    setPhase('welcome')
     setDashboard(null)
     setPortalJWT(null)
+    portalJWTRef.current = null
   }
 
   // ── Google Login ─────────────────────────────────────────────
+  // ✅ NEW: link_token লাগে না — customer_code + google_token দিয়ে /portal/direct-auth
   const googleLogin = async () => {
     setLoggingIn(true)
     setError('')
@@ -509,27 +507,27 @@ export function usePortalAuth(defaultTab = 'summary') {
         access_token = await webGoogleLogin(clientId)
       }
 
-      const deviceId = await getDeviceFingerprint()
+      const deviceId     = await getDeviceFingerprint()
+      const customerCode = getCustomerCode()
 
-      // ✅ FIX: portal_token-এর বদলে link_token ব্যবহার
-      // linkTokenRef.current — resolve-link step-এ পাওয়া one-time token
-      const linkToken = linkTokenRef.current
-      if (!linkToken) throw new Error('লিংক token পাওয়া যায়নি। পুনরায় লিংকে ক্লিক করুন।')
+      if (!customerCode) throw new Error('Customer code পাওয়া যায়নি। SR-এর লিংক থেকে প্রবেশ করুন।')
 
-      const data = await portalFetch('/portal/google-auth', {
+      // ✅ NEW: /portal/direct-auth — permanent link system
+      const data = await portalFetch('/portal/direct-auth', {
         method: 'POST',
         body: JSON.stringify({
-          google_token: access_token,
-          link_token:   linkToken,   // ✅ FIX: portal_token → link_token
-          device_id:    deviceId,
+          google_token:  access_token,
+          customer_code: customerCode,
+          device_id:     deviceId,
         })
       })
-      const jwt        = data.data.portal_jwt
-      const customerId = data.data.customer?.id
-      if (customerId) storageSet(getStorageKey(customerId), jwt)
-      portalJWTRef.current = jwt
-      setPortalJWT(jwt)
-      await loadDashboard(jwt)
+
+      const jwtToken = data.data.portal_jwt
+      // JWT localStorage-এ সেভ — customer_code দিয়ে key তৈরি
+      storageSet(getStorageKey(customerCode), jwtToken)
+      portalJWTRef.current = jwtToken
+      setPortalJWT(jwtToken)
+      await loadDashboard(jwtToken)
     } catch (err) {
       if (!err?.message?.includes('cancel') && !err?.message?.includes('dismissed')) {
         setError(err.message || 'লগইন ব্যর্থ হয়েছে।')
@@ -538,95 +536,52 @@ export function usePortalAuth(defaultTab = 'summary') {
   }
 
   // ── Init effect ──────────────────────────────────────────────
+  // ✅ NEW SYSTEM: Permanent Link (?c=customer_code)
+  //
+  // Flow:
+  //  1. URL-এ ?c=CODE → localStorage-এ সেভ করো
+  //  2. localStorage-এ valid JWT আছে? → auto-login (dashboard)
+  //  3. JWT নেই বা 30 দিন শেষ? → Google login screen
   useEffect(() => {
     const init = async () => {
-      const deviceId = await getDeviceFingerprint()
+      // ── Step 1: customer_code সংগ্রহ ──────────────────────
+      // URL-এ থাকলে সেভ করো (permanent reference হিসেবে)
+      if (customerCodeFromURL) {
+        setCustomerCode(customerCodeFromURL)
+      }
 
-      if (redirectId) {
-        // ✅ FIX: Step 1 — redirect_id → resolve-link → link_token
-        // Backend architecture: URL-এ শুধু redirect_id, actual token কখনো URL-এ নেই
-        // এই POST call না করলে link_token পাওয়া যাবে না এবং পরের কোনো step কাজ করবে না
-        let linkToken
-        let resolvedInfo
-        try {
-          const resolveData = await portalFetch('/portal/resolve-link', {
-            method: 'POST',
-            body: JSON.stringify({ redirect_id: redirectId })
-          })
-          linkToken    = resolveData.data.link_token
-          resolvedInfo = resolveData.data
-          linkTokenRef.current = linkToken
-        } catch (err) {
-          setError(err.message || 'লিংকটি পাওয়া যায়নি বা মেয়াদ শেষ হয়েছে।')
-          setPhase('invalid')
-          return
-        }
+      const customerCode = customerCodeFromURL || getCustomerCode()
 
-        // ✅ FIX: Step 2 — link_token দিয়ে verify-token call
-        // আগে ভুলভাবে portal_token দিয়ে call হত, যেটা URL-এ ছিলই না
-        try {
-          const data = await portalFetch(
-            `/portal/verify-token?token=${linkToken}&device_id=${encodeURIComponent(deviceId)}`
-          )
-          const info = data.data
-          setTokenInfo(info)
-
-          if (info.can_skip_google) {
-            // ✅ FIX: device-login-এও link_token ব্যবহার
-            try {
-              const loginData = await portalFetch('/portal/device-login', {
-                method: 'POST',
-                body: JSON.stringify({ link_token: linkToken, device_id: deviceId })
-              })
-              const jwt        = loginData.data.portal_jwt
-              const customerId = loginData.data.customer?.id
-              if (customerId) storageSet(getStorageKey(customerId), jwt)
-              portalJWTRef.current = jwt
-              setPortalJWT(jwt)
-              await loadDashboard(jwt)
-            } catch {
-              setPhase('login')
-            }
-            return
-          }
-
-          // Google account আগে bind হয়েছে কিনা সেটা resolvedInfo থেকেও পাওয়া যায়
-          const savedJWT = storageGet(getStorageKey(info.customer_id))
-          if (savedJWT) {
-            portalJWTRef.current = savedJWT
-            setPortalJWT(savedJWT)
-            await loadDashboard(savedJWT)
-          } else {
-            setPhase('welcome')
-          }
-        } catch (err) {
-          if (err.status === 403) {
-            setError(err.message || 'এই লিংক অন্য ডিভাইসে lock করা আছে।')
-          } else {
-            setError(err.message || 'অবৈধ বা মেয়াদোত্তীর্ণ লিংক।')
-          }
-          setPhase('invalid')
-        }
+      if (!customerCode) {
+        // কোনো customer_code নেই — SR-এর লিংক দরকার
+        setError('লিংক পাওয়া যায়নি।')
+        setPhase('invalid')
         return
       }
 
-      // URL-এ 'r' নেই → sessionStorage চেক
-      const allKeys = storageKeys()
-      if (allKeys.length > 0) {
-        const savedJWT = storageGet(allKeys[0])
-        if (savedJWT) {
-          portalJWTRef.current = savedJWT
-          setPortalJWT(savedJWT)
-          await loadDashboard(savedJWT)
-          return
-        }
+      // ── Step 2: Valid JWT আছে? → Auto-login ───────────────
+      const jwtKey   = getStorageKey(customerCode)
+      const savedJWT = storageGet(jwtKey)
+
+      if (savedJWT && isJWTValid(savedJWT)) {
+        // JWT valid এবং 30 দিনের মধ্যে → সরাসরি dashboard
+        portalJWTRef.current = savedJWT
+        setPortalJWT(savedJWT)
+        await loadDashboard(savedJWT)
+        return
       }
 
-      setError('লিংক পাওয়া যায়নি।')
-      setPhase('invalid')
+      // ── Step 3: JWT নেই বা Expired → Google Login ─────────
+      if (savedJWT) {
+        // Expired JWT সরিয়ে দাও
+        storageRemove(jwtKey)
+      }
+
+      // Google login screen দেখাও
+      setPhase('welcome')
     }
     init()
-  }, [redirectId])
+  }, [customerCodeFromURL])
 
   return {
     // phase & auth
