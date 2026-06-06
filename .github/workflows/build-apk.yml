@@ -198,10 +198,10 @@ jobs:
           PYEOF
 
       # ── Remove Eruda from APK build ───────────────────────────
-      # Eruda external CDN script APK-এ blank white screen ঘটায়:
-      # CDN load timeout হলে বা network না থাকলে app আটকে যায়।
-      # Error overlay div-ও APK-এ দরকার নেই (debug শেষে clean build)।
-      - name: Remove Eruda & error overlay from APK build
+      # Eruda external CDN script APK-এ blank white screen ঘটায়।
+      # ⚠️ Error catcher (__err__ div + window.onerror) রাখা হয়েছে
+      # যাতে APK-এ crash হলে screen-এ লাল রঙে error দেখা যায়।
+      - name: Remove Eruda CDN from APK build (keep error catcher)
         working-directory: frontend
         run: |
           python3 << 'PYEOF'
@@ -212,29 +212,23 @@ jobs:
 
           before = content
 
-          # Eruda CDN script tag সরাও
+          # শুধু Eruda CDN script tag সরাও
           content = re.sub(
               r'\s*<script[^>]*cdn\.jsdelivr\.net[^>]*></script>',
               '', content
           )
           # Eruda init + __showEruda/__hideEruda script block সরাও
+          # (window.addEventListener('load',...) block)
           content = re.sub(
-              r'\s*<script>\s*window\.addEventListener\([\'"]load[\'"][\s\S]*?</script>',
-              '', content, count=1
-          )
-          # Error overlay div সরাও
-          content = re.sub(
-              r'\s*<div id="__err__"[^>]*></div>',
-              '', content
-          )
-          # Error catcher script সরাও
-          content = re.sub(
-              r'\s*<script>\s*window\.onerror[\s\S]*?</script>',
+              r'\s*<script>\s*window\.addEventListener\([\'"]load[\s\S]*?__hideEruda[\s\S]*?</script>',
               '', content, count=1
           )
 
+          # ✅ window.onerror error catcher রাখা হয়েছে — crash দেখার জন্য
+          # ✅ __err__ div রাখা হয়েছে — error screen দেখাবে
+
           if content != before:
-              print("✅ Eruda & error overlay removed from APK build")
+              print("✅ Eruda CDN removed — error catcher intact")
           else:
               print("ℹ️ Eruda already absent")
 
