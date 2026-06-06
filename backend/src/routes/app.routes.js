@@ -12,8 +12,8 @@ const router  = express.Router()
 const GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/latest/download/app-release.apk'
 
 const APP_VERSION = {
-  versionCode: 714,
-  versionName: '1.0.714',
+  versionCode: ,
+  versionName: '1.0.',
   apkUrl: 'https://novatechbd-backend.onrender.com/api/app/download',
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
@@ -29,7 +29,7 @@ const CUSTOMER_VERSION_NAME = '1.0.1'
 const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/download/customer-v1.0.1/customer-release.apk'
 
 const CUSTOMER_APP_VERSION = {
-  versionCode: 714CUSTOMER_VERSION_CODE,
+  versionCode: CUSTOMER_VERSION_CODE,
   versionName: CUSTOMER_VERSION_NAME,
   apkUrl: 'https://novatechbd-backend.onrender.com/api/app/customer-download',
   forceUpdate: false,
