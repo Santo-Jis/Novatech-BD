@@ -57,6 +57,7 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
       unreadBanner={auth.unreadBanner}
       setUnreadBanner={auth.setUnreadBanner}
       markAllAsRead={auth.markAllAsRead}
+      markOneRead={auth.markOneRead}
       // invoices
       invoices={auth.invoices}
       invoiceTotal={auth.invoiceTotal}
@@ -112,6 +113,21 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
       loadPaymentHistory={auth.loadPaymentHistory}
       applyPaymentFilter={auth.applyPaymentFilter}
       clearPaymentFilter={auth.clearPaymentFilter}
+      // return requests
+      myReturnReqs={auth.myReturnReqs}
+      returnReqTotal={auth.returnReqTotal}
+      returnReqPage={auth.returnReqPage}
+      returnReqTotalPages={auth.returnReqTotalPages}
+      returnReqLoading={auth.returnReqLoading}
+      returnReqFilter={auth.returnReqFilter}       setReturnReqFilter={auth.setReturnReqFilter}
+      returnFormOpen={auth.returnFormOpen}         setReturnFormOpen={auth.setReturnFormOpen}
+      returnInvoice={auth.returnInvoice}           setReturnInvoice={auth.setReturnInvoice}
+      returnType={auth.returnType}                 setReturnType={auth.setReturnType}
+      returnItems={auth.returnItems}               setReturnItems={auth.setReturnItems}
+      returnNote={auth.returnNote}                 setReturnNote={auth.setReturnNote}
+      returnSubmitLoading={auth.returnSubmitLoading}
+      loadMyReturnReqs={auth.loadMyReturnReqs}
+      submitReturnRequest={auth.submitReturnRequest}
     />
   )
 
