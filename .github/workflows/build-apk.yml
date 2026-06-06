@@ -53,7 +53,7 @@ jobs:
           MAIN_CODE=$((MAIN_CURRENT + 1))
           MAIN_NAME="1.0.${MAIN_CODE}"
 
-          sed -i "s/versionCode: [0-9][0-9]*,/versionCode: $MAIN_CODE,/" backend/src/routes/app.routes.js
+          sed -i "s/versionCode: [0-9]*,/versionCode: $MAIN_CODE,/" backend/src/routes/app.routes.js
           sed -i "s/versionName: '[^']*'/versionName: '$MAIN_NAME'/" backend/src/routes/app.routes.js
           sed -i "s/NovaTech-BD-v[0-9.]*\.apk/NovaTech-BD-v${MAIN_NAME}.apk/g" backend/src/routes/app.routes.js
           sed -i "s/CURRENT_VERSION_CODE = [0-9]*/CURRENT_VERSION_CODE = $MAIN_CODE/" frontend/src/hooks/useAppUpdate.js
