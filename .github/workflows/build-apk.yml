@@ -106,21 +106,30 @@ jobs:
           with open('index.html', 'r') as f:
               content = f.read()
 
-          before = content
-          content = re.sub(
-              r'(<link\s+[^>]*fonts\.googleapis\.com[^"]*"[^>]*?)\s+rel="stylesheet"(\s*/?>)',
-              lambda m: m.group(1) + " rel=\"stylesheet\" media=\"print\" onload=\"this.media='all'\"" + m.group(2),
+          # ইতোমধ্যে non-blocking আছে কিনা চেক করো
+          already_patched = bool(re.search(
+              r'fonts\.googleapis\.com[^>]*media=["\']print["\']',
               content,
               flags=re.DOTALL
-          )
+          ))
 
-          if content != before:
-              print("✅ Google Fonts non-blocking করা হয়েছে (blank screen fix)")
+          if already_patched:
+              print("✅ Google Fonts ইতোমধ্যে non-blocking আছে (skip)")
           else:
-              print("⚠️ Pattern match হয়নি — Google Fonts link manually চেক করুন")
+              before = content
+              content = re.sub(
+                  r'(<link\s+[^>]*fonts\.googleapis\.com[^>]*?)\s+rel="stylesheet"(\s*/?>)',
+                  lambda m: m.group(1) + " rel=\"stylesheet\" media=\"print\" onload=\"this.media='all'\"" + m.group(2),
+                  content,
+                  flags=re.DOTALL
+              )
 
-          with open('index.html', 'w') as f:
-              f.write(content)
+              if content != before:
+                  print("✅ Google Fonts non-blocking করা হয়েছে (blank screen fix)")
+                  with open('index.html', 'w') as f:
+                      f.write(content)
+              else:
+                  print("⚠️ Pattern match হয়নি — Google Fonts link manually চেক করুন")
           PYEOF
 
 
