@@ -24,9 +24,9 @@ const APP_VERSION = {
 // GitHub Actions (build-customer-apk.yml) auto-update করবে
 // ─────────────────────────────────────────────────────────────
 // CUSTOMER_VERSION_CODE — এই comment টি রাখো, workflow grep করে এটা দিয়ে
-const CUSTOMER_VERSION_CODE = 1
-const CUSTOMER_VERSION_NAME = '1.0.1'
-const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/download/customer-v1.0.1/customer-release.apk'
+const CUSTOMER_VERSION_CODE = 2
+const CUSTOMER_VERSION_NAME = '1.0.2'
+const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/download/customer-v1.0.2/customer-release.apk'
 
 const CUSTOMER_APP_VERSION = {
   versionCode: CUSTOMER_VERSION_CODE,
