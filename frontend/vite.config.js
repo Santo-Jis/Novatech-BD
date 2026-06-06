@@ -7,6 +7,8 @@ import { VitePWA } from 'vite-plugin-pwa'
 // ========================================================
 
 export default defineConfig({
+  base: './', // ✅ Capacitor APK-এর জন্য দরকার — file:// path fix
+
   plugins: [
     react(),
     VitePWA({

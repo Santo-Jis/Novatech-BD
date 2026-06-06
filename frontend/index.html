@@ -9,25 +9,44 @@
     <title>NovaTech BD</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- ✅ non-blocking font load — APK blank screen fix -->
     <link
       href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@300;400;500;600;700&display=swap"
-      rel="stylesheet"
+      rel="stylesheet" media="print" onload="this.media='all'"
     />
     <style>
       /* লগইনের আগে Eruda বাটন সম্পূর্ণ লুকিয়ে রাখো */
       #eruda { display: none !important; }
     </style>
+    <!-- ✅ APK crash catcher — error হলে screen-এ দেখাবে -->
+    <script>
+      window.onerror = function(msg, src, line, col, err) {
+        var box = document.getElementById('__err__');
+        if (box) {
+          box.style.display = 'block';
+          box.innerText = 'ERROR:\n' + msg + '\nLine: ' + line + '\n' + src;
+        }
+      };
+      window.addEventListener('unhandledrejection', function(e) {
+        var box = document.getElementById('__err__');
+        if (box) {
+          box.style.display = 'block';
+          box.innerText = 'PROMISE ERROR:\n' + (e.reason && e.reason.message ? e.reason.message : e.reason);
+        }
+      });
+    </script>
   </head>
   <body>
+    <!-- ✅ Error overlay — crash হলে এখানে দেখাবে -->
+    <div id="__err__" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:#1a1a2e;color:#ff6b6b;padding:20px;font-size:13px;white-space:pre-wrap;z-index:99999;overflow:auto;"></div>
     <div id="root"></div>
-    <script src="//cdn.jsdelivr.net/npm/eruda" async></script>
+    <!-- ✅ Eruda — শুধু লোড হলে init, error হলে skip -->
+    <script src="https://cdn.jsdelivr.net/npm/eruda" async></script>
     <script>
-      // async script load হওয়ার পর init করো — না হলে error
       window.addEventListener('load', function() {
         try {
           if (typeof eruda !== 'undefined') {
             eruda.init();
-            // user localStorage-এ থাকলে দেখাও (token memory-তে থাকে, user localStorage-এ)
             if (localStorage.getItem('user')) {
               document.getElementById('eruda').style.display = 'block';
             }
