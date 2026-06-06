@@ -93,7 +93,24 @@ async function testConnection(attempt = 1) {
     }
 }
 
-testConnection();
+// ============================================================
+// AUTO MIGRATION — Server start এ FCM columns নিশ্চিত করো
+// ============================================================
+
+async function runMigrations() {
+    try {
+        await pool.query(`
+            ALTER TABLE users
+                ADD COLUMN IF NOT EXISTS fcm_token TEXT,
+                ADD COLUMN IF NOT EXISTS fcm_token_updated_at TIMESTAMPTZ;
+        `);
+        logger.info('✅ FCM migration সফল');
+    } catch (err) {
+        logger.warn('⚠️ FCM migration:', err.message);
+    }
+}
+
+testConnection().then(() => runMigrations());
 
 // ============================================================
 // QUERY HELPER
