@@ -2,10 +2,11 @@
 // Dashboard — tabs, summary, invoices, orders, credit, complaints
 
 import { fmt, fmtDate } from '../../utils/helpers'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import MonthlyTrendChart from '../MonthlyTrendChart'
 import InvoiceCard from '../InvoiceCard'
 import OrderRequestTab from '../OrderRequestTab'
+import CustomerAIChat from '../../CustomerAIChat'
 
 // ── Skeleton লোডিং কার্ড ──────────────────────────────────────
 function SkeletonCard({ rows = 3 }) {
@@ -20,6 +21,16 @@ function SkeletonCard({ rows = 3 }) {
       ))}
     </div>
   )
+}
+
+// ── Notification type → icon / deep-link map ─────────────────
+const NOTIF_CONFIG = {
+  payment_received:      { icon: '💰', tab: 'payments', hint: '👆 পেমেন্ট ট্যাবে দেখুন' },
+  new_invoice:           { icon: '🧾', tab: 'invoices', hint: '👆 ইনভয়েস ট্যাবে দেখুন' },
+  order_request:         { icon: '📦', tab: 'orders',   hint: '👆 অর্ডার ট্যাবে দেখুন' },
+  credit_reminder:       { icon: '💳', tab: null,       hint: null },
+  return_request_update: { icon: '🔄', tab: 'returns',  hint: '👆 ফেরত ট্যাবে দেখুন' },
+  general:               { icon: '🔔', tab: null,       hint: null },
 }
 
 export default function DashboardView({
@@ -99,16 +110,21 @@ export default function DashboardView({
     monthly_summary = {},
     total_summary   = {},
     returns         = [],
+    sales_note      = null,
   } = dashboard
+
+  // ── Logout confirmation modal state ──────────────────────────
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
 
   const tabs = [
     { id: 'summary',    label: 'সারসংক্ষেপ' },
     { id: 'orders',     label: '🛒 অর্ডার' },
-    { id: 'invoices',   label: `ইনভয়েস (${invoiceTotal > 0 ? invoiceTotal : total_summary?.total_invoices || 0})` },
+    { id: 'invoices',   label: `🧾 ইনভয়েস (${invoiceTotal > 0 ? invoiceTotal : total_summary?.total_invoices || 0})` },
     { id: 'payments',   label: `পরিশোধ (${paymentTotal > 0 ? paymentTotal : credit_payments.length})` },
     { id: 'returns',    label: `🔄 রিটার্ন${returns.length > 0 ? ` (${returns.length})` : ''}` },
     { id: 'credit_req', label: '💳 লিমিট' },
     { id: 'complaints', label: '📣 অভিযোগ' },
+    { id: 'ai_chat',    label: '🤖 AI চ্যাট' },
   ]
 
   const fmtCur = (n) => parseFloat(n || 0).toLocaleString('en-US')
@@ -174,29 +190,25 @@ export default function DashboardView({
                     <p style={{ textAlign: 'center', color: '#aaa', fontSize: 13, padding: '24px 16px' }}>কোনো notification নেই।</p>
                   ) : (
                     notifications.map(n => {
-                      // ✅ FIX: Notification deep link — return update হলে 'returns' ট্যাবে যাও
-                      const isReturnNotif = n.type === 'return_request_update' ||
-                        (n.title || '').toLowerCase().includes('ফেরত') ||
-                        (n.title || '').toLowerCase().includes('return')
+                      const cfg = NOTIF_CONFIG[n.type] || NOTIF_CONFIG.general
+                      const isClickable = !!cfg.tab
                       const handleNotifClick = () => {
                         setShowBell(false)
-                        if (isReturnNotif) onTabChange('returns')
+                        if (cfg.tab) onTabChange(cfg.tab)
                       }
                       return (
                         <div key={n.id} onClick={handleNotifClick}
-                          style={{ padding: '12px 16px', borderBottom: '1px solid #f9f9f9', background: n.is_read ? 'white' : '#eff6ff', display: 'flex', gap: 10, alignItems: 'flex-start', cursor: isReturnNotif ? 'pointer' : 'default', transition: 'background 0.15s' }}
-                          onMouseEnter={e => { if (isReturnNotif) e.currentTarget.style.background = '#dbeafe' }}
+                          style={{ padding: '12px 16px', borderBottom: '1px solid #f9f9f9', background: n.is_read ? 'white' : '#eff6ff', display: 'flex', gap: 10, alignItems: 'flex-start', cursor: isClickable ? 'pointer' : 'default', transition: 'background 0.15s' }}
+                          onMouseEnter={e => { if (isClickable) e.currentTarget.style.background = '#dbeafe' }}
                           onMouseLeave={e => { e.currentTarget.style.background = n.is_read ? 'white' : '#eff6ff' }}>
-                          <span style={{ fontSize: 20, marginTop: 1 }}>
-                            {n.type === 'credit_reminder' ? '💳' : isReturnNotif ? '🔄' : '🔔'}
-                          </span>
+                          <span style={{ fontSize: 20, marginTop: 1 }}>{cfg.icon}</span>
                           <div style={{ flex: 1 }}>
                             <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#1e1e1e' }}>{n.title}</p>
                             <p style={{ margin: '3px 0 0', fontSize: 12, color: '#555', lineHeight: 1.5 }}>{n.body}</p>
                             <p style={{ margin: '4px 0 0', fontSize: 10, color: '#aaa' }}>
                               {new Date(n.created_at).toLocaleString('bn-BD', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                             </p>
-                            {isReturnNotif && <p style={{ margin: '4px 0 0', fontSize: 10, color: '#3b82f6', fontWeight: 600 }}>👆 ফেরত ট্যাবে যেতে ক্লিক করুন</p>}
+                            {isClickable && <p style={{ margin: '4px 0 0', fontSize: 10, color: '#3b82f6', fontWeight: 600 }}>{cfg.hint}</p>}
                           </div>
                           {!n.is_read && <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#3b82f6', marginTop: 5, flexShrink: 0 }} />}
                         </div>
@@ -207,7 +219,7 @@ export default function DashboardView({
               )}
             </div>
 
-            <button onClick={onLogout}
+            <button onClick={() => setShowLogoutConfirm(true)}
               style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 10, padding: '6px 12px', color: 'white', fontSize: 12, cursor: 'pointer' }}>
               লগআউট
             </button>
@@ -218,18 +230,17 @@ export default function DashboardView({
       <div className="px-4 -mt-10 space-y-4 pb-10">
         {/* Unread Banner */}
         {unreadBanner && (() => {
-          const isBannerReturn = unreadBanner.type === 'return_request_update' ||
-            (unreadBanner.title || '').toLowerCase().includes('ফেরত') ||
-            (unreadBanner.title || '').toLowerCase().includes('return')
+          const cfg = NOTIF_CONFIG[unreadBanner.type] || NOTIF_CONFIG.general
+          const isClickable = !!cfg.tab
           return (
             <div
-              onClick={() => { if (isBannerReturn) { onTabChange('returns'); setUnreadBanner(null); markAllAsRead(portalJWT) } }}
-              style={{ background: 'linear-gradient(135deg, #1e3a8a, #1d4ed8)', borderRadius: 16, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', boxShadow: '0 4px 16px rgba(29,78,216,0.3)', cursor: isBannerReturn ? 'pointer' : 'default' }}>
-              <span style={{ fontSize: 24, flexShrink: 0 }}>{isBannerReturn ? '🔄' : '💳'}</span>
+              onClick={() => { if (isClickable) { onTabChange(cfg.tab); setUnreadBanner(null); markAllAsRead(portalJWT) } }}
+              style={{ background: 'linear-gradient(135deg, #1e3a8a, #1d4ed8)', borderRadius: 16, padding: '14px 16px', display: 'flex', gap: 12, alignItems: 'flex-start', boxShadow: '0 4px 16px rgba(29,78,216,0.3)', cursor: isClickable ? 'pointer' : 'default' }}>
+              <span style={{ fontSize: 24, flexShrink: 0 }}>{cfg.icon}</span>
               <div style={{ flex: 1 }}>
                 <p style={{ margin: 0, color: 'white', fontWeight: 700, fontSize: 14 }}>{unreadBanner.title}</p>
                 <p style={{ margin: '4px 0 0', color: '#bfdbfe', fontSize: 12, lineHeight: 1.5 }}>{unreadBanner.body}</p>
-                {isBannerReturn && <p style={{ margin: '6px 0 0', color: '#93c5fd', fontSize: 11, fontWeight: 600 }}>👆 ফেরত ট্যাবে দেখতে ক্লিক করুন</p>}
+                {isClickable && <p style={{ margin: '6px 0 0', color: '#93c5fd', fontSize: 11, fontWeight: 600 }}>{cfg.hint}</p>}
               </div>
               <button onClick={(e) => { e.stopPropagation(); setUnreadBanner(null); markAllAsRead(portalJWT) }}
                 style={{ background: 'rgba(255,255,255,0.15)', border: 'none', borderRadius: 8, padding: '4px 8px', color: 'white', fontSize: 12, cursor: 'pointer', flexShrink: 0 }}>✕</button>
@@ -267,7 +278,7 @@ export default function DashboardView({
             ))}
           </div>
 
-          <div className="p-4">
+          <div className={activeTab === 'ai_chat' ? '' : 'p-4'}>
             {/* ── সারসংক্ষেপ ── */}
             {activeTab === 'summary' && (
               <div className="space-y-5">
@@ -607,6 +618,14 @@ export default function DashboardView({
                   </div>
                 )}
 
+                {/* ── sales_note banner ── */}
+                {sales_note && !invoiceSearch && !invoicePayMethod && !invoiceDateFrom && !invoiceDateTo && (
+                  <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontSize: 16, flexShrink: 0 }}>ℹ️</span>
+                    <p style={{ margin: 0, fontSize: 12, color: '#1d4ed8', fontWeight: 600, lineHeight: 1.5 }}>{sales_note}</p>
+                  </div>
+                )}
+
                 {invoiceLoading && invoices.length === 0 ? (
                   <div className="space-y-3">
                     {[...Array(3)].map((_, i) => (
@@ -863,6 +882,13 @@ export default function DashboardView({
                 )}
               </div>
             )}
+
+            {/* ── AI চ্যাট ── */}
+            {activeTab === 'ai_chat' && (
+              <div style={{ height: 'calc(100vh - 220px)', minHeight: 480, background: 'linear-gradient(160deg, #0f172a 0%, #1e1b4b 100%)', borderRadius: '0 0 16px 16px', overflow: 'hidden' }}>
+                <CustomerAIChat />
+              </div>
+            )}
           </div>
         </div>
 
@@ -951,6 +977,68 @@ export default function DashboardView({
           <p style={{ margin: 0, fontSize: 13, fontWeight: 600, color: 'white', lineHeight: 1.55, flex: 1 }}>
             {toast.message}
           </p>
+        </div>
+      )}
+
+      {/* ── Logout Confirmation Bottom Sheet ── */}
+      {showLogoutConfirm && (
+        <div
+          onClick={() => setShowLogoutConfirm(false)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
+            zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+            animation: 'fadeIn 0.18s ease',
+          }}>
+          <style>{`
+            @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
+            @keyframes slideUp { from { transform: translateY(60px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
+          `}</style>
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: 'white', borderRadius: '24px 24px 0 0',
+              padding: '8px 20px 36px', width: '100%', maxWidth: 480,
+              animation: 'slideUp 0.22s cubic-bezier(.4,0,.2,1)',
+            }}>
+            {/* drag handle */}
+            <div style={{ width: 40, height: 4, borderRadius: 2, background: '#d1d5db', margin: '10px auto 20px' }} />
+
+            {/* icon */}
+            <div style={{ width: 60, height: 60, borderRadius: '50%', background: '#fef2f2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 14px', fontSize: 28 }}>
+              🚪
+            </div>
+
+            <h3 style={{ margin: '0 0 8px', fontSize: 17, fontWeight: 800, color: '#111', textAlign: 'center' }}>
+              লগআউট করবেন?
+            </h3>
+            <p style={{ margin: '0 0 24px', fontSize: 13, color: '#6b7280', textAlign: 'center', lineHeight: 1.6 }}>
+              {customer?.name
+                ? <><strong style={{ color: '#374151' }}>{customer.name}</strong>-এর অ্যাকাউন্ট থেকে<br />বের হয়ে যাবেন।</>
+                : 'আপনি কি সত্যিই বের হয়ে যেতে চান?'}
+            </p>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button
+                onClick={() => setShowLogoutConfirm(false)}
+                style={{
+                  flex: 1, padding: '13px 0', borderRadius: 14,
+                  border: '1.5px solid #e5e7eb', background: 'white',
+                  fontSize: 14, fontWeight: 700, color: '#374151', cursor: 'pointer',
+                }}>
+                না, থাকুন
+              </button>
+              <button
+                onClick={() => { setShowLogoutConfirm(false); onLogout() }}
+                style={{
+                  flex: 1, padding: '13px 0', borderRadius: 14, border: 'none',
+                  background: 'linear-gradient(135deg, #dc2626, #b91c1c)',
+                  fontSize: 14, fontWeight: 700, color: 'white', cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(220,38,38,0.35)',
+                }}>
+                হ্যাঁ, লগআউট
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
