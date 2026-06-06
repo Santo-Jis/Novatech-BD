@@ -13,7 +13,7 @@ const GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/latest
 
 const APP_VERSION = {
   versionCode: ,
-  versionName: '1.0.',
+  versionName: '1.0.1',
   apkUrl: 'https://novatechbd-backend.onrender.com/api/app/download',
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
