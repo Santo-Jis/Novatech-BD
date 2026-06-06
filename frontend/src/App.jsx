@@ -7,12 +7,14 @@ import PermissionSetup, { usePermissionSetup } from './components/PermissionSetu
 import AppUpdateDialog from './components/AppUpdateDialog'
 
 // ============================================================
-// Layouts — static import (ছোট, সাথে সাথে দরকার)
+// Layouts — lazy import (role-specific, দরকার হলে তখনই লোড)
+// ✅ FIX: আগে static import ছিল, সব user-এর জন্যই সব Layout লোড হত।
+//         এখন lazy — শুধু সেই role-এর user navigate করলেই লোড হবে।
 // ============================================================
-import AdminLayout    from './layouts/AdminLayout'
-import ManagerLayout  from './layouts/ManagerLayout'
-import WorkerLayout   from './layouts/WorkerLayout'
-import CustomerLayout from './layouts/CustomerLayout'
+const AdminLayout    = lazy(() => import('./layouts/AdminLayout'))
+const ManagerLayout  = lazy(() => import('./layouts/ManagerLayout'))
+const WorkerLayout   = lazy(() => import('./layouts/WorkerLayout'))
+const CustomerLayout = lazy(() => import('./layouts/CustomerLayout'))
 
 // ============================================================
 // Lazy Page Imports — শুধু route match হলে load হবে
@@ -49,6 +51,7 @@ const CustomerRequestsPage    = lazy(() => import('./pages/admin/CustomerRequest
 const SRRecruitmentDashboard  = lazy(() => import('./pages/admin/SRRecruitmentDashboard'))
 const AdminTeams              = lazy(() => import('./pages/admin/Teams'))
 const AdminCreditSettings     = lazy(() => import('./pages/admin/AdminCreditSettings'))
+const PortalDeviceManager     = lazy(() => import('./pages/admin/PortalDeviceManager'))
 
 // Manager
 const ManagerDashboard        = lazy(() => import('./pages/manager/Dashboard'))
@@ -157,6 +160,36 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
 const HomeRedirect = () => {
   const { user } = useAuthStore()
+
+  // ── Role-based prefetch ──────────────────────────────────────
+  // ✅ FIX: Login সফল হওয়ার পর background-এ সেই role-এর chunk prefetch।
+  //   Navigate হওয়ার আগেই loading শুরু → পেইজে পৌঁছালে সাথে সাথেই দেখাবে।
+  //   vite.config.js-এর manualChunks-এ role chunk দিলে একটাই request-এ
+  //   সেই role-এর সব পেইজ লোড হবে, পরে সব navigation instant।
+  useEffect(() => {
+    if (!user) return
+    switch (user.role) {
+      case 'admin':
+        import('./layouts/AdminLayout')
+        import('./pages/admin/Dashboard')
+        break
+      case 'manager':
+      case 'supervisor':
+      case 'asm':
+      case 'rsm':
+      case 'accountant':
+        import('./layouts/ManagerLayout')
+        import('./pages/manager/Dashboard')
+        break
+      case 'worker':
+        import('./layouts/WorkerLayout')
+        import('./pages/worker/Dashboard')
+        import('./pages/worker/CustomerList')  // সবচেয়ে বেশি ব্যবহৃত, আগেই লোড
+        break
+      default:
+        break
+    }
+  }, [user?.role]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasPortalJWT = typeof window !== 'undefined' &&
     Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
@@ -291,6 +324,7 @@ function AppWithPermissions() {
             <Route path="portal-returns"    element={<PortalReturnRequests />} />
             <Route path="customer-requests" element={<CustomerRequestsPage />} />
             <Route path="credit-settings"   element={<AdminCreditSettings />} />
+            <Route path="portal-devices"    element={<PortalDeviceManager />} />
           </Route>
 
           {/* ── MANAGER ROUTES ── */}

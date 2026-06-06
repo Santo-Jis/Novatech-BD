@@ -6,8 +6,37 @@
 // ============================================================
 
 // ── Workbox manifest (vite-plugin-pwa এটা inject করবে) ─────
+// ✅ FIX: এখন শুধু app shell (HTML, CSS, icons) pre-cached।
+//   JS chunks আলাদাভাবে runtime cache-এ যাবে (নিচের fetch handler)।
 import { precacheAndRoute } from 'workbox-precaching'
 precacheAndRoute(self.__WB_MANIFEST)
+
+// ── Runtime caching for JS role chunks ─────────────────────
+// ✅ FIX: role-worker.js, role-admin.js ইত্যাদি প্রথমবার navigate করলে
+//   SW cache-এ রাখা হয়। পরের বার instant load — কোনো network request নেই।
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url)
+
+  // শুধু JS assets cache করবে (role chunks + vendor chunks)
+  if (
+    event.request.destination === 'script' &&
+    (url.pathname.includes('/assets/') || url.pathname.includes('/role-') || url.pathname.includes('/vendor-'))
+  ) {
+    event.respondWith(
+      caches.open('js-chunks-v1').then(async (cache) => {
+        // Cache-first: আগে cache চেক, না থাকলে network থেকে নিয়ে cache করে দাও
+        const cached = await cache.match(event.request)
+        if (cached) return cached
+
+        const response = await fetch(event.request)
+        if (response.ok) {
+          cache.put(event.request, response.clone())
+        }
+        return response
+      }).catch(() => fetch(event.request)) // cache ব্যর্থ হলে সরাসরি network
+    )
+  }
+})
 
 // ── Firebase compat scripts ──────────────────────────────────
 // try/catch: CDN unavailable হলে SW crash না করে gracefully fail করবে
@@ -77,48 +106,3 @@ self.addEventListener('message', (event) => {
     self.skipWaiting()
   }
 })
-
-// ── Notification click ───────────────────────────────────────
-self.addEventListener('notificationclick', (event) => {
-  event.notification.close()
-
-  const data = event.notification.data || {}
-  const url  = getClickUrl(data.type)
-
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
-      for (const client of list) {
-        if (client.url.includes(self.location.origin) && 'focus' in client) {
-          client.focus()
-          if (url) client.navigate(url)
-          return
-        }
-      }
-      if (clients.openWindow) return clients.openWindow(url || '/')
-    })
-  )
-})
-
-// ── Helpers ──────────────────────────────────────────────────
-function getActions(type) {
-  switch (type) {
-    case 'order':             return [{ action: 'view', title: '📦 দেখুন' }]
-    case 'settlement':
-    case 'settlement_result': return [{ action: 'view', title: '💰 দেখুন' }]
-    case 'approval':          return [{ action: 'view', title: '✅ দেখুন' }]
-    case 'credit_reminder':   return [{ action: 'view', title: '💳 দেখুন' }]
-    default:                  return []
-  }
-}
-
-function getClickUrl(type) {
-  switch (type) {
-    case 'order':             return '/manager/orders'
-    case 'settlement':        return '/manager/settlements'
-    case 'settlement_result': return '/worker/settlement'
-    case 'approval':          return '/worker/attendance'
-    case 'bonus':             return '/worker/dashboard'
-    case 'credit_reminder':   return '/manager/customers'
-    default:                  return '/'
-  }
-}
