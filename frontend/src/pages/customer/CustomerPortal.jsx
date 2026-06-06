@@ -30,7 +30,7 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
   const auth = usePortalAuth(defaultTab)
 
   if (auth.phase === 'loading')   return <LoadingView />
-  if (auth.phase === 'invalid')   return <InvalidView error={auth.error} />
+  if (auth.phase === 'invalid')   return <InvalidView error={auth.error} onGoToLogin={auth.handleLogout} />
   if (auth.phase === 'welcome')   return <WelcomeView tokenInfo={auth.tokenInfo} onLogin={() => auth.googleLogin()} />
   if (auth.phase === 'login')     return (
     <LoginView
