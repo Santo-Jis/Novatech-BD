@@ -99,37 +99,24 @@ const sendPortalLink = async (req, res) => {
             return res.status(400).json({ success: false, message: 'কাস্টমারের WhatsApp নম্বর নেই।' });
         }
 
-        const token      = generatePortalToken();
-        const redirectId = generateRedirectId();
-        const expiresAt  = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // ৭ দিন
+        if (!cust.customer_code) {
+            return res.status(400).json({ success: false, message: 'কাস্টমারের customer_code নেই।' });
+        }
 
-        // নতুন লিংক পাঠালে:
-        //   - token ও redirect_id রিসেট হয়
-        //   - token_version বাড়ে (সব device-এর পুরনো JWT invalid)
-        //   - bound_email রিসেট হয় (কাস্টমার নতুন Google account দিয়ে login করতে পারবে)
-        //   - device whitelist আলাদা টেবিলে — এই query-তে অটো clear হয় না
-        //     admin চাইলে GET /api/portal/devices/:customerId দিয়ে manage করবে
+        // ✅ NEW: Permanent link — customer_code ব্যবহার, কোনো expiry নেই
+        // portal_tokens টেবিলে bound_email সংরক্ষণের জন্য একটি row রাখা হয়
         await query(
             `INSERT INTO customer_portal_tokens
                 (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email)
-             VALUES ($1, $2, $3, $4, 1, NULL, NULL, NULL)
-             ON CONFLICT (customer_id) DO UPDATE SET
-                token         = $2,
-                redirect_id   = $3,
-                expires_at    = $4,
-                token_version = COALESCE(customer_portal_tokens.token_version, 0) + 1,
-                created_at    = NOW(),
-                bound_email   = NULL,
-                last_login    = NULL,
-                google_email  = NULL`,
-            [customerId, token, redirectId, expiresAt]
+             VALUES ($1, $2, $3, NOW() + INTERVAL '10 years', 1, NULL, NULL, NULL)
+             ON CONFLICT (customer_id) DO NOTHING`,
+            [customerId, generatePortalToken(), generateRedirectId()]
         );
 
-        // নতুন token_version — cache-এ পুরনো version বাতিল
-        invalidateAuthCache(customerId);
-
         const frontendUrl = process.env.FRONTEND_URL || 'https://novatech-bd-kqrn.vercel.app';
-        const portalLink  = `${frontendUrl}/customer/portal?r=${redirectId}`;
+
+        // ✅ NEW: ?c=customer_code — permanent, কখনো expire হয় না
+        const portalLink = `${frontendUrl}/customer/portal?c=${cust.customer_code}`;
 
         const rawPhone = cust.whatsapp.replace(/\D/g, '');
         const phone    = rawPhone.startsWith('880') ? rawPhone : '880' + rawPhone.replace(/^0/, '');
@@ -137,8 +124,7 @@ const sendPortalLink = async (req, res) => {
             `আস্সালামু আলাইকুম ${cust.owner_name} ভাই,\n\n` +
             `আপনার *${cust.shop_name}* এর সকল ক্রয় তথ্য, বাকি ও পেমেন্ট ইতিহাস দেখতে নিচের লিংকে ক্লিক করুন:\n\n` +
             `🔗 ${portalLink}\n\n` +
-            `👆 Google দিয়ে লগইন করুন\n` +
-            `_(এই লিংক ৭ দিন কার্যকর থাকবে)_\n\n` +
+            `👆 প্রথমবার Google দিয়ে লগইন করুন — পরে সরাসরি ঢুকতে পারবেন!\n\n` +
             `_NovaTech BD_`
         );
 
@@ -150,7 +136,7 @@ const sendPortalLink = async (req, res) => {
             data: {
                 portal_link:   portalLink,
                 whatsapp_url:  whatsappUrl,
-                expires_at:    expiresAt,
+                permanent:     true,
                 customer_name: cust.owner_name,
                 shop_name:     cust.shop_name,
             }
@@ -1585,12 +1571,178 @@ const getCustomerStatement = async (req, res) => {
     }
 };
 
+// ============================================================
+// NEW: DIRECT GOOGLE AUTH (Permanent Link System)
+// POST /api/portal/direct-auth
+// body: { google_token, customer_code, device_id }
+//
+// নতুন system: ?c=customer_code permanent link
+// - link_token / redirect_id লাগে না
+// - প্রথমবার Google login → 30-day JWT
+// - পরের বার localStorage-এর JWT দিয়ে auto-login
+// - 30 দিন পরে শুধু Google দিয়ে আবার login
+// ============================================================
+const directGoogleAuth = async (req, res) => {
+    try {
+        const { google_token, customer_code, device_id } = req.body;
+
+        if (!google_token || !customer_code || !device_id) {
+            return res.status(400).json({ success: false, message: 'সব তথ্য পাঠান: google_token, customer_code, device_id।' });
+        }
+
+        // customer_code দিয়ে customer খোঁজো
+        const customerResult = await query(
+            `SELECT id, shop_name, owner_name, customer_code, email, whatsapp,
+                    current_credit, credit_limit, credit_balance
+             FROM customers
+             WHERE customer_code = $1 AND is_active = true`,
+            [customer_code]
+        );
+
+        if (customerResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
+        }
+
+        const customer = customerResult.rows[0];
+
+        // ── Google token যাচাই ──────────────────────────────
+        let googleUser;
+        try {
+            const [userinfoRes, tokeninfoRes] = await Promise.all([
+                axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
+                    headers: { Authorization: `Bearer ${google_token}` }
+                }),
+                axios.post(
+                    'https://www.googleapis.com/oauth2/v3/tokeninfo',
+                    new URLSearchParams({ access_token: google_token }).toString(),
+                    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+                ),
+            ]);
+
+            googleUser = userinfoRes.data;
+
+            const expectedClientId = process.env.GOOGLE_CLIENT_ID;
+            if (!expectedClientId) {
+                return res.status(500).json({ success: false, message: 'Server configuration error।' });
+            }
+            const aud = tokeninfoRes.data.aud || tokeninfoRes.data.azp || '';
+            if (aud !== expectedClientId) {
+                return res.status(401).json({ success: false, message: 'Google token অবৈধ।' });
+            }
+        } catch {
+            return res.status(401).json({ success: false, message: 'Google যাচাই ব্যর্থ হয়েছে।' });
+        }
+
+        const { email, name, picture } = googleUser;
+        const userAgent    = req.headers['user-agent'] || '';
+        const hashedDevice = hashDeviceId(`${device_id}::${userAgent}`);
+        const deviceLabel  = guessDeviceLabel(userAgent);
+
+        // ── portal_tokens row আছে কিনা চেক (bound_email দেখতে) ──
+        const tokenResult = await query(
+            'SELECT bound_email, token_version FROM customer_portal_tokens WHERE customer_id = $1',
+            [customer.id]
+        );
+
+        const existingRow   = tokenResult.rows[0];
+        const boundEmail    = existingRow?.bound_email;
+        const tokenVersion  = existingRow?.token_version || 1;
+        const isFirstLogin  = !boundEmail;
+
+        // ── Email lock চেক ───────────────────────────────────
+        if (boundEmail && email.toLowerCase() !== boundEmail.toLowerCase()) {
+            return res.status(403).json({
+                success: false,
+                message: `এই পোর্টালে অন্য Gmail (${boundEmail}) দিয়ে আগে login করা আছে।`,
+                error_code: 'EMAIL_LOCKED',
+            });
+        }
+
+        // ── Device whitelist-এ add / update ─────────────────
+        await query(
+            `INSERT INTO customer_portal_devices (customer_id, device_hash, google_email, device_label)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (customer_id, device_hash) DO UPDATE SET
+                last_used_at = NOW(), is_active = true, device_label = EXCLUDED.device_label`,
+            [customer.id, hashedDevice, email.toLowerCase(), deviceLabel]
+        );
+
+        // ── portal_tokens row তৈরি বা আপডেট ────────────────
+        if (isFirstLogin) {
+            await query(
+                `INSERT INTO customer_portal_tokens
+                    (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email)
+                 VALUES ($1, $2, $3, NOW() + INTERVAL '10 years', 1, $4, NOW(), $4)
+                 ON CONFLICT (customer_id) DO UPDATE SET
+                    bound_email  = $4,
+                    google_email = $4,
+                    last_login   = NOW()`,
+                [customer.id, generatePortalToken(), generateRedirectId(), email.toLowerCase()]
+            );
+
+            // customers.email খালি থাকলে সেভ করো
+            if (!customer.email) {
+                await query(
+                    'UPDATE customers SET email = $1, updated_at = NOW() WHERE id = $2',
+                    [email, customer.id]
+                );
+            }
+        } else {
+            await query(
+                'UPDATE customer_portal_tokens SET last_login = NOW() WHERE customer_id = $1',
+                [customer.id]
+            );
+        }
+
+        // ── JWT generate — 30 দিনের session ─────────────────
+        const portalJWT = jwt.sign(
+            {
+                customer_id:    customer.id,
+                customer_code:  customer.customer_code,
+                email,
+                google_name:    name,
+                google_picture: picture,
+                type:           'customer_portal',
+                token_version:  tokenVersion,
+            },
+            process.env.JWT_PORTAL_SECRET,
+            { expiresIn: '30d', algorithm: 'HS256' }
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: isFirstLogin ? 'প্রথমবার লগইন সফল! ৩০ দিন একই লিংকে ঢুকতে পারবেন।'
+                                  : 'লগইন সফল!',
+            data: {
+                portal_jwt: portalJWT,
+                customer: {
+                    id:             customer.id,
+                    shop_name:      customer.shop_name,
+                    owner_name:     customer.owner_name,
+                    customer_code:  customer.customer_code,
+                    email,
+                    google_name:    name,
+                    google_picture: picture,
+                    current_credit: customer.current_credit,
+                    credit_limit:   customer.credit_limit,
+                    credit_balance: customer.credit_balance,
+                }
+            }
+        });
+
+    } catch (error) {
+        logger.error('❌ Direct Google Auth Error:', error.message);
+        return res.status(500).json({ success: false, message: 'লগইনে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     sendPortalLink,
-    resolveLink,
-    verifyPortalToken,
-    deviceLogin,
-    googleAuth,
+    resolveLink,       // backward compat — পুরনো link কাজ করবে
+    verifyPortalToken, // backward compat
+    deviceLogin,       // backward compat
+    googleAuth,        // backward compat
+    directGoogleAuth,  // ✅ NEW: permanent link system
     listCustomerDevices,
     revokeDevice,
     revokeAllDevices,
