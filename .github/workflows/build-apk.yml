@@ -170,18 +170,30 @@ jobs:
           pip install Pillow --break-system-packages -q
           python3 << 'PYEOF'
           from PIL import Image
-          import os, shutil
+          import os, subprocess
 
-          # GitHub repo তে রাখা icon ফাইল
-          # আপনি যেকোনো একটি path এ icon রাখতে পারেন:
+          # Repo root খুঁজে বের করো (git command দিয়ে)
+          result = subprocess.run(
+              ['git', 'rev-parse', '--show-toplevel'],
+              capture_output=True, text=True
+          )
+          repo_root = result.stdout.strip()
+          print(f"Repo root: {repo_root}")
+
+          # সব possible path
           possible_paths = [
-              "../../assets/app-icon.png",   # frontend/assets/app-icon.png ✅
-              "../../assets/app-icon.jpg",
-              "../../assets/icon.png",
-              "../../assets/icon.jpg",
-              "../../../../../app-icon.png",
-              "../../../../../app-icon.jpg",
+              f"{repo_root}/frontend/assets/app-icon.png",
+              f"{repo_root}/frontend/assets/app-icon.jpg",
+              f"{repo_root}/frontend/assets/icon.png",
+              f"{repo_root}/frontend/assets/icon.jpg",
+              f"{repo_root}/app-icon.png",
+              f"{repo_root}/app-icon.jpg",
           ]
+
+          # Debug: কোন files আছে দেখো
+          assets_dir = f"{repo_root}/frontend/assets"
+          if os.path.exists(assets_dir):
+              print(f"Assets folder contents: {os.listdir(assets_dir)}")
 
           icon_path = None
           for p in possible_paths:
@@ -191,7 +203,7 @@ jobs:
                   break
 
           if not icon_path:
-              print("❌ Icon file not found! Please add app-icon.png to repo root.")
+              print(f"❌ Icon not found! Searched: {possible_paths}")
               exit(1)
 
           img = Image.open(icon_path).convert("RGBA")
