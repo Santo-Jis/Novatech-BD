@@ -167,6 +167,7 @@ jobs:
       - name: Set NovaTech BD App Icon from repo
         working-directory: frontend/android/app/src/main
         run: |
+          pip install Pillow --break-system-packages -q
           python3 << 'PYEOF'
           from PIL import Image
           import os, shutil
