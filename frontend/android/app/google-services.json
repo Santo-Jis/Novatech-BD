@@ -15,6 +15,51 @@
       },
       "oauth_client": [
         {
+          "client_id": "1098950143887-08phec6ev083se0v6fmohigqfrr437gp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.novatech.bd",
+            "certificate_hash": "da15d13b2dfe872dbe09989f3361a2674b7f4c2f"
+          }
+        },
+        {
+          "client_id": "1098950143887-hom6pe4pht5o7rt3lr8c5f4pt8arvnnu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.novatech.bd",
+            "certificate_hash": "f420e35d8aeeff660a810f7e44463eaccf9a7d55"
+          }
+        },
+        {
+          "client_id": "1098950143887-0s1htavj6dh6p6vkrqumt62ljtce3qo2.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBQzhh_60D5w76fS62gQSiJ5rW9IW858rE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1098950143887-0s1htavj6dh6p6vkrqumt62ljtce3qo2.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1098950143887:android:8202bff1e4de73c3b165fa",
+        "android_client_info": {
+          "package_name": "com.novatech.customer"
+        }
+      },
+      "oauth_client": [
+        {
           "client_id": "1098950143887-0s1htavj6dh6p6vkrqumt62ljtce3qo2.apps.googleusercontent.com",
           "client_type": 3
         }
