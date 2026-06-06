@@ -74,26 +74,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          # ✅ সঠিক order: pull → add → commit → push
-          # আগের order (commit → pull --rebase → push) এ remote-এ নতুন commit
-          # থাকলে rebase fail করত এবং push হত না।
-          git pull --rebase origin main
-
-          # ── Auto-untrack android/ ──────────────────────────────
-          # frontend/android/ .gitignore-এ আছে, কিন্তু আগে থেকে tracked
-          # থাকলে manually git rm করতে হত। এখন workflow-ই handle করে:
-          # প্রথমবার tracked পেলে untrack করে commit-এ যোগ দেয়,
-          # পরের বার git ls-files খালি ফেরে — skip করে।
-          if [ -n "$(git ls-files frontend/android)" ]; then
-            echo "🗑️  frontend/android tracked পাওয়া গেছে — cache থেকে সরানো হচ্ছে..."
-            git rm -r --cached frontend/android
-            echo "✅ frontend/android untracked হয়েছে"
-          else
-            echo "✅ frontend/android already untracked — skip"
-          fi
-
+          # ✅ সঠিক order: add → commit → pull --rebase → push
+          # আগে pull --rebase করলে "Update version" step-এর unstaged changes
+          # থাকায় Git error দেয়: "cannot pull with rebase: You have unstaged changes"
+          # তাই আগে add → commit করে working tree clean করতে হবে,
+          # তারপর pull --rebase করলে remote-এর নতুন commit-ও safely merge হবে।
           git add backend/src/routes/app.routes.js frontend/src/hooks/useAppUpdate.js
           git diff --staged --quiet || git commit -m "chore: bump version to ${{ steps.version.outputs.version_name }} [skip ci]"
+          git pull --rebase origin main
           git push
           echo "✅ Version committed and pushed"
 
