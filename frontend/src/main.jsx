@@ -7,6 +7,9 @@ import './index.css'
 import { initAutoSync } from './api/syncService'
 import ErrorBoundary from './components/ErrorBoundary'
 
+// ✅ Diagnostic: JS bundle loaded হয়েছে
+if (typeof window !== 'undefined') window.__STEP__ = 3
+
 // App চালু হলেই offline queue auto-sync শুরু
 // try/catch: IndexedDB fail হলে (private mode, quota) React mount আটকাবে না
 try { initAutoSync() } catch (e) { console.warn('[Sync] initAutoSync failed:', e.message) }
