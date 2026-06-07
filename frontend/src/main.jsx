@@ -14,7 +14,13 @@ if (typeof window !== 'undefined') window.__STEP__ = 3
 // try/catch: IndexedDB fail হলে (private mode, quota) React mount আটকাবে না
 try { initAutoSync() } catch (e) { console.warn('[Sync] initAutoSync failed:', e.message) }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
+// ✅ FIX: React mount-এর আগে #root-এর inline style সরিয়ে দাও।
+// পুরনো cache বা যেকোনো কারণে loading screen-এর flex style থাকলে
+// সেটা সব screen-কে narrow করে দেয় — এই লাইনে সেটা পরিষ্কার হয়।
+const rootEl = document.getElementById('root')
+if (rootEl) rootEl.removeAttribute('style')
+
+ReactDOM.createRoot(rootEl).render(
   <React.StrictMode>
     <ErrorBoundary>
       <HashRouter>
