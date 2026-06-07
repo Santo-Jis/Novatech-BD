@@ -21,6 +21,7 @@ const {
     getMyLeaveRequests,
     getAllLeaveRequests,
     reviewLeaveRequest,
+    getLeaveBalance
     correctAttendance
 } = require('../controllers/attendance.controller');
 
@@ -121,6 +122,13 @@ router.get('/leave/all',
     auth,
     allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm'),
     getAllLeaveRequests
+);
+
+// টিমের ছুটির বার্ষিক হিসাব (Manager/Admin)
+router.get('/leave/balance',
+    auth,
+    allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm'),
+    getLeaveBalance
 );
 
 // আবেদন অনুমোদন / প্রত্যাখ্যান

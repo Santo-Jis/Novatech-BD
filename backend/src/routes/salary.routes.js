@@ -22,17 +22,17 @@ router.get('/my',
     getMySalaryHistory
 );
 
-// সব worker এর মাসিক বেতন শীট (Admin/Accountant)
+// সব worker এর মাসিক বেতন শীট (Admin/Accountant/Manager — Manager শুধু নিজের টিম)
 router.get('/sheet',
     auth,
-    allowRoles('admin', 'accountant'),
+    allowRoles('admin', 'accountant', 'manager'),
     getSalarySheet
 );
 
-// একজন worker এর বিস্তারিত বেতন স্লিপ (Admin/Accountant)
+// একজন worker এর বিস্তারিত বেতন স্লিপ (Admin/Accountant/Manager)
 router.get('/worker/:id',
     auth,
-    allowRoles('admin', 'accountant'),
+    allowRoles('admin', 'accountant', 'manager'),
     getWorkerSalaryDetail
 );
 

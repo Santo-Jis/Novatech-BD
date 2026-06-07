@@ -37,7 +37,7 @@ router.post('/',                auth, canManage, createRoute);
 
 // ── Single Route ──────────────────────────────────────────────
 router.put('/:id',              auth, canManage, updateRoute);
-router.delete('/:id',           auth, isAdmin,   deleteRoute);
+router.delete('/:id',           auth, canManage,   deleteRoute);
 
 // ── Workers & Customers in a Route ───────────────────────────
 router.get('/:id/workers',      auth, canManage, getRouteWorkers);
