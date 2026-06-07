@@ -28,6 +28,18 @@ body {
   color: #e2e8f0;
 }
 
+/*
+  ✅ FIX: #root সবসময় full-width block হবে।
+  Loading screen-এর inline style যদি কোনোভাবে #root-এ থেকে যায়
+  (display:flex, align-items:center), এই rule সেটা override করবে।
+*/
+#root {
+  display:    block !important;
+  width:      100% !important;
+  min-height: 100vh;
+  background: none !important;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar       { width: 6px; }
 ::-webkit-scrollbar-track { background: #f1f5f9; }
