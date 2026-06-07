@@ -30,7 +30,7 @@ export default function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors">
+    <div className="min-h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors">
 
       {/* Overlay */}
       {sidebarOpen && (

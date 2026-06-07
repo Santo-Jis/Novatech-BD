@@ -120,7 +120,7 @@ export default function ManagerLayout() {
   const [notifPanelOpen,   setNotifPanelOpen]  = useState(false)
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-900 transition-colors">
+    <div className="min-h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors">
 
       {sidebarOpen && (
         <div className="fixed inset-0 bg-black/50 z-40" onClick={() => setSidebarOpen(false)} />
