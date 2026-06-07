@@ -21,7 +21,7 @@ const {
     getMyLeaveRequests,
     getAllLeaveRequests,
     reviewLeaveRequest,
-    getLeaveBalance
+    getLeaveBalance,
     correctAttendance
 } = require('../controllers/attendance.controller');
 
