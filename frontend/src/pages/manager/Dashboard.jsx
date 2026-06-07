@@ -7,28 +7,118 @@ import Badge from '../../components/ui/Badge'
 import { useAuthStore } from '../../store/auth.store'
 import {
   FiUsers, FiShoppingBag, FiCheckSquare,
-  FiAlertTriangle, FiRefreshCw, FiDollarSign, FiMapPin
+  FiAlertTriangle, FiRefreshCw, FiDollarSign, FiMapPin, FiTarget
 } from 'react-icons/fi'
 
+// ── Team Target Widget ────────────────────────────────────────
+function TeamTargetWidget({ teamData, monthlySales }) {
+  if (!teamData?.team) return null
+
+  const team        = teamData.team
+  const members     = teamData.members || []
+  const teamTarget  = parseFloat(team.monthly_target || 0)
+
+  // Commission report থেকে SR-ভিত্তিক বিক্রয়
+  const salesMap = {}
+  ;(monthlySales || []).forEach(s => { salesMap[s.worker_id] = parseFloat(s.total_sales || 0) })
+
+  const totalAchieved = Object.values(salesMap).reduce((s, v) => s + v, 0)
+  const pct           = teamTarget > 0 ? Math.min(100, Math.round((totalAchieved / teamTarget) * 100)) : 0
+  const taka          = n => '৳' + Number(n || 0).toLocaleString('en-IN')
+
+  const barColor = pct >= 100 ? 'bg-emerald-500'
+                 : pct >= 70  ? 'bg-primary'
+                 : pct >= 40  ? 'bg-amber-500'
+                 : 'bg-red-400'
+
+  return (
+    <Card title="🎯 টিম লক্ষ্যমাত্রা">
+      {/* Overall */}
+      <div className="mb-4">
+        <div className="flex justify-between items-center mb-1.5">
+          <span className="text-xs text-gray-500">
+            অর্জন: <span className="font-bold text-gray-700">{taka(totalAchieved)}</span>
+          </span>
+          <span className="text-xs font-bold text-gray-600">{pct}%</span>
+        </div>
+        <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+          <div className={`h-3 rounded-full transition-all duration-700 ${barColor}`}
+            style={{ width: `${pct}%` }} />
+        </div>
+        <div className="flex justify-between mt-1">
+          <span className="text-xs text-gray-400">লক্ষ্য: {taka(teamTarget)}</span>
+          <span className={`text-xs font-semibold ${pct >= 100 ? 'text-emerald-600' : 'text-gray-500'}`}>
+            {pct >= 100 ? '🏆 লক্ষ্য পূরণ!' : `বাকি: ${taka(teamTarget - totalAchieved)}`}
+          </span>
+        </div>
+      </div>
+
+      {/* Per SR breakdown */}
+      {members.length > 0 && (
+        <div className="space-y-2 border-t border-gray-100 pt-3">
+          {members.map(sr => {
+            const srTarget   = parseFloat(sr.monthly_target || 0)
+            const srAchieved = salesMap[sr.id] || 0
+            const srPct      = srTarget > 0 ? Math.min(100, Math.round((srAchieved / srTarget) * 100)) : null
+            return (
+              <div key={sr.id} className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center mb-0.5">
+                    <p className="text-xs font-semibold text-gray-700 truncate">{sr.name_bn}</p>
+                    <span className="text-xs text-gray-500 flex-shrink-0 ml-2">{taka(srAchieved)}</span>
+                  </div>
+                  {srTarget > 0 ? (
+                    <div className="w-full bg-gray-100 rounded-full h-1.5">
+                      <div className={`h-1.5 rounded-full ${srPct >= 100 ? 'bg-emerald-400' : srPct >= 60 ? 'bg-primary/70' : 'bg-amber-400'}`}
+                        style={{ width: `${srPct}%` }} />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-300">লক্ষ্য নির্ধারিত নেই</p>
+                  )}
+                </div>
+                {srPct !== null && (
+                  <span className={`text-xs font-bold w-9 text-right flex-shrink-0 ${srPct >= 100 ? 'text-emerald-600' : 'text-gray-500'}`}>
+                    {srPct}%
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Card>
+  )
+}
+
 export default function ManagerDashboard() {
-  const navigate       = useNavigate()
-  const { user }       = useAuthStore()
-  const [kpi,      setKPI]      = useState(null)
-  const [sales,    setSales]    = useState([])
-  const [insights, setInsights] = useState([])
-  const [loading,  setLoading]  = useState(true)
+  const navigate         = useNavigate()
+  const { user }         = useAuthStore()
+  const [kpi,        setKPI]        = useState(null)
+  const [sales,      setSales]      = useState([])
+  const [insights,   setInsights]   = useState([])
+  const [teamData,   setTeamData]   = useState(null)
+  const [monthlySales, setMonthlySales] = useState([])
+  const [loading,    setLoading]    = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+
+  const now   = new Date()
+  const month = now.getMonth() + 1
+  const year  = now.getFullYear()
 
   const fetchData = async () => {
     try {
-      const [kpiRes, salesRes, insightRes] = await Promise.all([
+      const [kpiRes, salesRes, insightRes, teamRes, commRes] = await Promise.all([
         api.get('/reports/kpi'),
         api.get('/reports/sales?group_by=day'),
-        api.get('/ai/insights?limit=3')
+        api.get('/ai/insights?limit=3'),
+        api.get('/teams/manager/my'),
+        api.get(`/reports/commission?year=${year}&month=${month}`)
       ])
       setKPI(kpiRes.data.data)
       setSales(salesRes.data.data?.records || [])
       setInsights(insightRes.data.data?.insights || [])
+      setTeamData(teamRes.data.data)
+      setMonthlySales(commRes.data.data?.records || [])
     } catch (err) {
       console.error(err)
     } finally {
@@ -149,6 +239,9 @@ export default function ManagerDashboard() {
         </Card>
       </div>
 
+      {/* Team Target */}
+      <TeamTargetWidget teamData={teamData} monthlySales={monthlySales} />
+
       {/* AI Insights */}
       {insights.length > 0 && (
         <Card title="🤖 AI ইনসাইটস">
@@ -173,10 +266,10 @@ export default function ManagerDashboard() {
       <Card title="দ্রুত কার্যক্রম">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {[
-            { label: 'অর্ডার অনুমোদন', icon: '📦', path: '/manager/orders',      color: 'bg-primary/10 text-primary' },
-            { label: 'হিসাব অনুমোদন',  icon: '✅', path: '/manager/settlements', color: 'bg-secondary/10 text-secondary' },
-            { label: 'টিম হাজিরা',     icon: '📅', path: '/manager/attendance',  color: 'bg-amber-50 text-amber-600' },
-            { label: 'রুট ম্যানেজ',    icon: '🗺️', path: '/manager/routes',     color: 'bg-gray-100 text-gray-600' },
+            { label: 'অর্ডার অনুমোদন', icon: '📦', path: '/manager/orders',        color: 'bg-primary/10 text-primary' },
+            { label: 'হিসাব অনুমোদন',  icon: '✅', path: '/manager/settlements',   color: 'bg-secondary/10 text-secondary' },
+            { label: 'টিম রিপোর্ট',    icon: '📊', path: '/manager/reports',        color: 'bg-emerald-50 text-emerald-600' },
+            { label: 'রুট ম্যানেজ',    icon: '🗺️', path: '/manager/routes',         color: 'bg-gray-100 text-gray-600' },
           ].map(action => (
             <button key={action.path} onClick={() => navigate(action.path)}
               className={`flex flex-col items-center gap-2 p-4 rounded-xl ${action.color} hover:opacity-80 transition-opacity`}>

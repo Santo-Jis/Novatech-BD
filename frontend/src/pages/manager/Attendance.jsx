@@ -133,7 +133,20 @@ export function ManagerAttendance() {
   const [reviewNote,    setReviewNote]    = useState('')
   const [reviewAction,  setReviewAction]  = useState(null)
 
+  const [leaveBalance,  setLeaveBalance]  = useState([])
+  const [balanceLoading, setBalanceLoading] = useState(false)
+  const [balanceYear,   setBalanceYear]   = useState(String(new Date().getFullYear()))
+
   const todayStr = new Date().toISOString().split('T')[0]
+
+  const fetchLeaveBalance = async (yr) => {
+    setBalanceLoading(true)
+    try {
+      const res = await api.get(`/attendance/leave/balance?year=${yr || balanceYear}`)
+      setLeaveBalance(res.data.data?.workers || [])
+    } catch { /* silent */ }
+    finally { setBalanceLoading(false) }
+  }
 
   useEffect(() => {
     const fetchToday = async () => {
@@ -231,8 +244,9 @@ export function ManagerAttendance() {
           { key: 'today',   label: 'আজকের লাইভ' },
           { key: 'monthly', label: 'মাসিক রিপোর্ট' },
           { key: 'leave',   label: `ছুটির আবেদন${pendingLeaves.length > 0 ? ` (${pendingLeaves.length})` : ''}` },
+          { key: 'balance', label: 'ছুটির হিসাব' },
         ].map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
+          <button key={t.key} onClick={() => { setTab(t.key); if (t.key === 'balance') fetchLeaveBalance(balanceYear) }}
             className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-all ${tab === t.key ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}>
             {t.label}
             {t.key === 'leave' && pendingLeaves.length > 0 && (
@@ -433,6 +447,74 @@ export function ManagerAttendance() {
           })()}
 
           {leaveLoading && <div className="h-24 bg-white rounded-2xl animate-pulse" />}
+        </div>
+      )}
+
+      {/* ── Leave Balance Tab ── */}
+      {tab === 'balance' && (
+        <div className="space-y-4">
+          {/* Year selector */}
+          <div className="flex items-center gap-3">
+            <Select
+              options={[
+                { value: String(new Date().getFullYear() - 1), label: String(new Date().getFullYear() - 1) },
+                { value: String(new Date().getFullYear()),     label: String(new Date().getFullYear()) },
+              ]}
+              value={balanceYear}
+              onChange={e => { setBalanceYear(e.target.value); fetchLeaveBalance(e.target.value) }}
+              className="w-28"
+            />
+            <p className="text-xs text-gray-400">{balanceYear} সালের ছুটির হিসাব</p>
+          </div>
+
+          {balanceLoading ? (
+            <div className="space-y-3">
+              {[1,2,3].map(i => <div key={i} className="h-16 bg-white rounded-2xl animate-pulse border border-gray-100" />)}
+            </div>
+          ) : leaveBalance.length === 0 ? (
+            <div className="text-center py-12 text-gray-400">
+              <p className="text-4xl mb-3">📋</p>
+              <p className="text-sm">কোনো তথ্য নেই।</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto bg-white rounded-2xl border border-gray-100 shadow-sm">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50">
+                    {['নাম', 'মোট দিন', 'নৈমিত্তিক', 'অসুস্থতা', 'বার্ষিক', 'পেন্ডিং'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-600">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {leaveBalance.map((w, i) => (
+                    <tr key={w.id} className={`border-t border-gray-100 ${i % 2 === 0 ? '' : 'bg-gray-50/50'}`}>
+                      <td className="px-4 py-3">
+                        <p className="font-semibold text-gray-800 text-sm">{w.name_bn}</p>
+                        <p className="text-xs text-gray-400">{w.employee_code}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-bold text-primary">{w.approved_days}</span>
+                        <span className="text-xs text-gray-400 ml-1">দিন</span>
+                      </td>
+                      <td className="px-4 py-3 text-blue-600 font-semibold">{w.casual_days}</td>
+                      <td className="px-4 py-3 text-red-500 font-semibold">{w.sick_days}</td>
+                      <td className="px-4 py-3 text-emerald-600 font-semibold">{w.annual_days}</td>
+                      <td className="px-4 py-3">
+                        {w.pending_count > 0 ? (
+                          <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full font-semibold">
+                            {w.pending_count}টি
+                          </span>
+                        ) : (
+                          <span className="text-gray-300 text-xs">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
