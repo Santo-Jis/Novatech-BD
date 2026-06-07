@@ -273,12 +273,18 @@ const createEmployee = async (req, res) => {
 
 const getPendingEmployees = async (req, res) => {
     try {
+        // Manager শুধু নিজের টিমের pending employee দেখবে
+        const isManager = req.user.role === 'manager';
+        const params = isManager ? [req.user.id] : [];
+        const whereExtra = isManager ? ' AND manager_id = $1' : '';
+
         const result = await query(
             `SELECT id, role, name_bn, name_en, email, phone,
-                    join_date, profile_photo, created_at
+                    join_date, profile_photo, created_at, manager_id
              FROM users
-             WHERE status = 'pending'
-             ORDER BY created_at DESC`
+             WHERE status = 'pending'${whereExtra}
+             ORDER BY created_at DESC`,
+            params
         );
 
         return res.status(200).json({ success: true, data: result.rows });
@@ -314,6 +320,14 @@ const approveEmployee = async (req, res) => {
         }
 
         const employee = empResult.rows[0];
+
+        // Manager শুধু নিজের টিমের employee approve করতে পারবে
+        if (req.user.role === 'manager' && employee.manager_id !== req.user.id) {
+            return res.status(403).json({
+                success: false,
+                message: 'এই কর্মচারী আপনার টিমের সদস্য নন।'
+            });
+        }
 
         // Employee Code জেনারেট
         const employeeCode = await generateEmployeeCode(
@@ -385,6 +399,20 @@ const rejectEmployee = async (req, res) => {
         const { id }     = req.params;
         const { reason } = req.body;
 
+        // Manager শুধু নিজের টিমের employee reject করতে পারবে
+        if (req.user.role === 'manager') {
+            const check = await query(
+                'SELECT manager_id FROM users WHERE id = $1 AND status = $2',
+                [id, 'pending']
+            );
+            if (!check.rows.length || check.rows[0].manager_id !== req.user.id) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'এই কর্মচারী আপনার টিমের সদস্য নন।'
+                });
+            }
+        }
+
         await query(
             `UPDATE users SET status = 'archived', updated_at = NOW() WHERE id = $1`,
             [id]
@@ -417,6 +445,20 @@ const suspendEmployee = async (req, res) => {
     try {
         const { id }     = req.params;
         const { reason } = req.body;
+
+        // Manager শুধু নিজের টিমের worker suspend করতে পারবে
+        if (req.user.role === 'manager') {
+            const check = await query(
+                'SELECT manager_id, role FROM users WHERE id = $1',
+                [id]
+            );
+            if (!check.rows.length || check.rows[0].manager_id !== req.user.id) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'এই কর্মচারী আপনার টিমের সদস্য নন।'
+                });
+            }
+        }
 
         const result = await query(
             `UPDATE users 
@@ -944,7 +986,6 @@ module.exports = {
     createEmployee,
     getPendingEmployees,
     approveEmployee,
-    broadcastEmail,
     rejectEmployee,
     suspendEmployee,
     editEmployee,

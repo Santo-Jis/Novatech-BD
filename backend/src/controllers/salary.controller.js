@@ -16,11 +16,22 @@ const getSalarySheet = async (req, res) => {
         const limitNum     = Math.min(200, Math.max(1, parseInt(limit)));
         const offset       = (pageNum - 1) * limitNum;
 
-        // মোট active worker count (pagination-এর জন্য)
+        // Manager শুধু নিজের টিমের worker দেখবে
+        const isManager = req.user.role === 'manager';
+
+        // মোট active worker count (pagination-এর জন্য) — parameterized
+        const countParams = isManager ? [req.user.id] : [];
+        const countFilter = isManager ? ' AND manager_id = $1' : '';
         const countRes = await query(
-            `SELECT COUNT(*) FROM users WHERE role = 'worker' AND status = 'active'`
+            `SELECT COUNT(*) FROM users WHERE role = 'worker' AND status = 'active'${countFilter}`,
+            countParams
         );
         const totalWorkers = parseInt(countRes.rows[0].count);
+
+        // main query: $1=year, $2=month, $3=limit, $4=offset, $5=managerId (optional)
+        const managerFilter = isManager ? ' AND u.manager_id = $5' : '';
+        const queryParams   = [currentYear, currentMonth, limitNum, offset];
+        if (isManager) queryParams.push(req.user.id);
 
         const result = await query(
             `SELECT
@@ -72,7 +83,7 @@ const getSalarySheet = async (req, res) => {
              LEFT JOIN users approver ON sp.approved_by = approver.id
 
              WHERE u.role   = 'worker'
-               AND u.status = 'active'
+               AND u.status = 'active'${managerFilter}
 
              GROUP BY
                 u.id, u.name_bn, u.employee_code, u.basic_salary, u.outstanding_dues,
@@ -81,7 +92,7 @@ const getSalarySheet = async (req, res) => {
 
              ORDER BY u.name_bn ASC
              LIMIT $3 OFFSET $4`,
-            [currentYear, currentMonth, limitNum, offset]
+            queryParams
         );
 
         // নেট বেতন হিসাব (পরিশোধ না হলে)

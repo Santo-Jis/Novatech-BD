@@ -136,10 +136,29 @@ const updateRoute = async (req, res) => {
 
 const deleteRoute = async (req, res) => {
     try {
-        await query(
-            'UPDATE routes SET is_active = false, updated_at = NOW() WHERE id = $1',
-            [req.params.id]
+        // Manager শুধু নিজের (manager_id = নিজের id) route delete করতে পারবে
+        const isManager = req.user.role === 'manager';
+        const params    = [req.params.id];
+        let whereExtra  = '';
+
+        if (isManager) {
+            whereExtra = ' AND manager_id = $2';
+            params.push(req.user.id);
+        }
+
+        const result = await query(
+            `UPDATE routes SET is_active = false, updated_at = NOW()
+             WHERE id = $1${whereExtra}
+             RETURNING id`,
+            params
         );
+
+        if (result.rows.length === 0) {
+            return res.status(403).json({
+                success: false,
+                message: 'এই রুট মুছতে পারবেন না। এটি আপনার তৈরি নয় বা পাওয়া যায়নি।'
+            });
+        }
 
         return res.status(200).json({ success: true, message: 'রুট মুছে দেওয়া হয়েছে।' });
 

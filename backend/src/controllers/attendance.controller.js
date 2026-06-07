@@ -896,6 +896,96 @@ const correctAttendance = async (req, res) => {
 };
 
 
+// ============================================================
+// GET /api/attendance/leave/balance
+// Manager → টিমের প্রতিটি SR-এর এই বছরের ছুটির হিসাব
+// Admin  → সবার ছুটির হিসাব
+// ============================================================
+
+const getLeaveBalance = async (req, res) => {
+    try {
+        const year      = parseInt(req.query.year || new Date().getFullYear());
+        const isManager = req.user.role === 'manager';
+
+        // ── table guard ──────────────────────────────────────────
+        await query(`
+            CREATE TABLE IF NOT EXISTS leave_requests (
+                id              SERIAL PRIMARY KEY,
+                user_id         UUID NOT NULL,
+                start_date      DATE NOT NULL,
+                end_date        DATE NOT NULL,
+                leave_type      VARCHAR(50) DEFAULT 'casual',
+                reason          TEXT NOT NULL,
+                status          VARCHAR(20) DEFAULT 'pending',
+                reviewed_by     UUID,
+                reviewed_at     TIMESTAMP,
+                reviewer_note   TEXT,
+                created_at      TIMESTAMP DEFAULT NOW()
+            )
+        `);
+
+        // Manager শুধু নিজের টিমের দেখবে — parameterized
+        const params      = [year];
+        const teamFilter  = isManager ? 'AND u.manager_id = $2' : '';
+        if (isManager) params.push(req.user.id);
+
+        const result = await query(
+            `SELECT
+                u.id,
+                u.name_bn,
+                u.employee_code,
+
+                -- এই বছরে অনুমোদিত ছুটির সংখ্যা (request count)
+                COUNT(CASE WHEN lr.status = 'approved' THEN 1 END)::int  AS approved_count,
+
+                -- এই বছরে মোট ছুটির দিন
+                COALESCE(SUM(
+                    CASE WHEN lr.status = 'approved'
+                    THEN (lr.end_date - lr.start_date + 1)
+                    ELSE 0 END
+                ), 0)::int  AS approved_days,
+
+                -- ধরন ভেদে breakdown
+                COALESCE(SUM(CASE WHEN lr.status='approved' AND lr.leave_type='casual'
+                    THEN (lr.end_date - lr.start_date + 1) ELSE 0 END), 0)::int  AS casual_days,
+                COALESCE(SUM(CASE WHEN lr.status='approved' AND lr.leave_type='sick'
+                    THEN (lr.end_date - lr.start_date + 1) ELSE 0 END), 0)::int  AS sick_days,
+                COALESCE(SUM(CASE WHEN lr.status='approved' AND lr.leave_type='annual'
+                    THEN (lr.end_date - lr.start_date + 1) ELSE 0 END), 0)::int  AS annual_days,
+
+                -- পেন্ডিং আবেদন
+                COUNT(CASE WHEN lr.status = 'pending' THEN 1 END)::int  AS pending_count
+
+             FROM users u
+             LEFT JOIN leave_requests lr
+                ON lr.user_id = u.id
+                AND EXTRACT(YEAR FROM lr.start_date) = $1
+
+             WHERE u.role = 'worker'
+               AND u.status = 'active'
+               ${teamFilter}
+
+             GROUP BY u.id, u.name_bn, u.employee_code
+             ORDER BY u.name_bn`,
+            params
+        );
+
+        return res.json({
+            success: true,
+            data: {
+                year,
+                workers: result.rows,
+                total_approved_days: result.rows.reduce((s, r) => s + r.approved_days, 0)
+            }
+        });
+
+    } catch (error) {
+        logger.error('❌ Leave Balance Error:', error.message);
+        return res.status(500).json({ success: false, message: 'ছুটির হিসাব আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+
 module.exports = {
     checkIn,
     checkOut,
@@ -909,6 +999,7 @@ module.exports = {
     getMyLeaveRequests,
     getAllLeaveRequests,
     reviewLeaveRequest,
-    correctAttendance
+    correctAttendance,
+    getLeaveBalance
 };
 
