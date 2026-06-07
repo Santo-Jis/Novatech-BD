@@ -81,10 +81,13 @@ const VisitOrder          = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/
 const LiveTracking        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/LiveTracking'))
 const TrailHistory        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/TrailHistory'))
 const ExpenseApprovals    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/ExpenseApprovals'))
-const ReturnApprovals     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/ReturnApprovals'))
-const ManagerPortalDevices  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/PortalDevices'))
-const CommissionTeam        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/CommissionTeam'))
+const ReturnApprovals        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/ReturnApprovals'))
+const ManagerPortalDevices   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/PortalDevices'))
+const CommissionTeam         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/CommissionTeam'))
 const ManagerCreditApprovals = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/ManagerCreditApprovals'))
+const ManagerReports         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Reports'))
+const ManagerSalarySheet     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/SalarySheet'))
+const ManagerPortalReturns   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/PortalReturnRequests'))
 
 // ── Worker pages — Customer APK-এ bundle হবে না ──────────────
 const WorkerDashboard  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/Dashboard'))
@@ -387,6 +390,9 @@ function AppWithPermissions() {
                 <Route path="notices"                    element={<NoticesView />} />
                 <Route path="customer-requests"          element={<CustomerRequestsPage />} />
                 <Route path="credit-approvals"           element={<ManagerCreditApprovals />} />
+                <Route path="reports"                    element={<ManagerReports />} />
+                <Route path="salary-sheet"               element={<ManagerSalarySheet />} />
+                <Route path="portal-returns"             element={<ManagerPortalReturns />} />
               </Route>
 
               {/* ── WORKER ROUTES ── */}
