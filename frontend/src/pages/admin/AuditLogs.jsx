@@ -42,16 +42,50 @@ const ROLE_LABELS = {
 
 const ACTION_OPTIONS = [
   { value: '', label: 'সব অ্যাকশন' },
-  { value: 'CREATE', label: 'তৈরি (CREATE)' },
-  { value: 'UPDATE', label: 'আপডেট (UPDATE)' },
-  { value: 'DELETE', label: 'মুছে ফেলা (DELETE)' },
-  { value: 'LOGIN', label: 'লগইন' },
-  { value: 'LOGOUT', label: 'লগআউট' },
-  { value: 'APPROVE', label: 'অনুমোদন' },
-  { value: 'REJECT', label: 'বাতিল' },
-  { value: 'REVOKE_PORTAL_DEVICE', label: 'ডিভাইস বাতিল' },
-  { value: 'RESTORE_PORTAL_DEVICE', label: 'ডিভাইস পুনরুদ্ধার' },
-  { value: 'ADJUST_STOCK', label: 'স্টক এডজাস্ট' },
+  // কর্মচারী
+  { value: 'APPROVE_EMPLOYEE',    label: '✅ কর্মচারী অনুমোদন' },
+  { value: 'REJECT_EMPLOYEE',     label: '❌ কর্মচারী বাতিল' },
+  { value: 'SUSPEND_EMPLOYEE',    label: '⛔ কর্মচারী সাসপেন্ড' },
+  { value: 'REACTIVATE_EMPLOYEE', label: '🔄 কর্মচারী পুনরুদ্ধার' },
+  { value: 'EDIT_EMPLOYEE',       label: '✏️ কর্মচারী সম্পাদনা' },
+  { value: 'PAY_SALARY',          label: '💰 বেতন পরিশোধ' },
+  { value: 'CANCEL_SALARY',       label: '🚫 বেতন বাতিল' },
+  { value: 'PAY_COMMISSION',      label: '💵 কমিশন পরিশোধ' },
+  { value: 'ATTENDANCE_CORRECTION', label: '📋 হাজিরা সংশোধন' },
+  // টিম
+  { value: 'CREATE_TEAM',         label: '➕ টিম তৈরি' },
+  { value: 'UPDATE_TEAM',         label: '✏️ টিম আপডেট' },
+  { value: 'MOVE_SR_TO_TEAM',     label: '🔀 SR টিমে যোগ' },
+  { value: 'REMOVE_SR_FROM_TEAM', label: '➖ SR টিম থেকে সরানো' },
+  { value: 'SET_SR_TARGET',       label: '🎯 SR টার্গেট নির্ধারণ' },
+  { value: 'SET_TEAM_TARGET',     label: '🎯 টিম টার্গেট নির্ধারণ' },
+  // পোর্টাল
+  { value: 'REVOKE_PORTAL_DEVICE',     label: '📵 ডিভাইস বাতিল' },
+  { value: 'REVOKE_ALL_PORTAL_DEVICES',label: '📵 সব ডিভাইস বাতিল' },
+  { value: 'RESTORE_PORTAL_DEVICE',    label: '📱 ডিভাইস পুনরুদ্ধার' },
+  { value: 'APPROVE_CUSTOMER_EDIT',    label: '✅ কাস্টমার সম্পাদনা অনুমোদন' },
+  { value: 'SET_CREDIT_LIMIT',         label: '💳 ক্রেডিট সীমা নির্ধারণ' },
+  // সিস্টেম
+  { value: 'UPDATE_SETTINGS',           label: '⚙️ সেটিংস আপডেট' },
+  { value: 'UPDATE_AI_CONFIG',          label: '🤖 AI কনফিগ আপডেট' },
+  { value: 'UPDATE_COMMISSION_SETTINGS',label: '📊 কমিশন সেটিংস আপডেট' },
+]
+
+const CATEGORY_OPTIONS = [
+  { value: '',         label: 'সব বিভাগ' },
+  { value: 'employee', label: '👤 কর্মচারী' },
+  { value: 'team',     label: '👥 টিম' },
+  { value: 'portal',   label: '🌐 কাস্টমার পোর্টাল' },
+  { value: 'system',   label: '⚙️ সিস্টেম' },
+]
+
+const ROLE_OPTIONS = [
+  { value: '',           label: 'সব রোল' },
+  { value: 'admin',      label: 'অ্যাডমিন' },
+  { value: 'manager',    label: 'ম্যানেজার' },
+  { value: 'supervisor', label: 'সুপারভাইজার' },
+  { value: 'sr',         label: 'SR' },
+  { value: 'accountant', label: 'হিসাবরক্ষক' },
 ]
 
 // ─── Detail Modal ─────────────────────────────────────────────
@@ -134,8 +168,8 @@ export default function AuditLogs() {
   const [page,      setPage]      = useState(1)
   const [total,     setTotal]     = useState(0)
   const [selected,  setSelected]  = useState(null)
-  const [filters,   setFilters]   = useState({ action: '', from: weekAgo, to: today })
-  const [applied,   setApplied]   = useState({ action: '', from: weekAgo, to: today })
+  const [filters,   setFilters]   = useState({ action: '', category: '', user_role: '', from: weekAgo, to: today })
+  const [applied,   setApplied]   = useState({ action: '', category: '', user_role: '', from: weekAgo, to: today })
 
   const LIMIT = 50
 
@@ -143,12 +177,14 @@ export default function AuditLogs() {
     setLoading(true)
     try {
       const params = new URLSearchParams({ page: p, limit: LIMIT })
-      if (f.action) params.set('action', f.action)
-      if (f.from)   params.set('from', f.from)
-      if (f.to)     params.set('to', f.to)
+      if (f.action)    params.set('action', f.action)
+      if (f.category && !f.action) params.set('category', f.category)
+      if (f.user_role) params.set('user_role', f.user_role)
+      if (f.from)      params.set('from', f.from)
+      if (f.to)        params.set('to', f.to)
       const res = await api.get(`/admin/audit-logs?${params}`)
       setLogs(res.data.data || [])
-      setTotal(res.data.total || res.data.data?.length || 0)
+      setTotal(res.data.pagination?.total ?? res.data.data?.length ?? 0)
     } catch {
       toast.error('লগ আনতে সমস্যা হয়েছে।')
     } finally {
@@ -192,14 +228,37 @@ export default function AuditLogs() {
       <Card>
         <div className="p-4">
           <div className="flex flex-wrap gap-3 items-end">
+
+            {/* বিভাগ ফিল্টার */}
             <div className="w-44">
               <Select
-                label="অ্যাকশন ফিল্টার"
+                label="বিভাগ"
+                value={filters.category}
+                onChange={e => setFilters(f => ({ ...f, category: e.target.value, action: '' }))}
+                options={CATEGORY_OPTIONS}
+              />
+            </div>
+
+            {/* নির্দিষ্ট অ্যাকশন */}
+            <div className="w-52">
+              <Select
+                label="নির্দিষ্ট অ্যাকশন"
                 value={filters.action}
                 onChange={e => setFilters(f => ({ ...f, action: e.target.value }))}
                 options={ACTION_OPTIONS}
               />
             </div>
+
+            {/* রোল ফিল্টার */}
+            <div className="w-36">
+              <Select
+                label="রোল"
+                value={filters.user_role}
+                onChange={e => setFilters(f => ({ ...f, user_role: e.target.value }))}
+                options={ROLE_OPTIONS}
+              />
+            </div>
+
             <div>
               <Input
                 label="শুরুর তারিখ"
@@ -216,9 +275,23 @@ export default function AuditLogs() {
                 onChange={e => setFilters(f => ({ ...f, to: e.target.value }))}
               />
             </div>
+
             <Button onClick={applyFilters} icon={<FiFilter size={14} />}>
               ফিল্টার করুন
             </Button>
+
+            {/* active filter badge */}
+            {(applied.category || applied.action || applied.user_role) && (
+              <button
+                onClick={() => {
+                  const reset = { action: '', category: '', user_role: '', from: weekAgo, to: today }
+                  setFilters(reset); setApplied(reset); setPage(1); fetchLogs(reset, 1)
+                }}
+                className="text-xs text-red-500 hover:text-red-700 underline"
+              >
+                ফিল্টার মুছুন
+              </button>
+            )}
           </div>
         </div>
       </Card>

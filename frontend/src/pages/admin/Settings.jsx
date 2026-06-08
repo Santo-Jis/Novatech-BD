@@ -9,6 +9,7 @@ import AdminCreditSettings from './AdminCreditSettings'
 
 export default function AdminSettings() {
   const [settings,    setSettings]    = useState({})
+  const [grouped,     setGrouped]     = useState({})   // নতুন — বিভাগ অনুযায়ী
   const [holidays,    setHolidays]    = useState([])
   const [loading,     setLoading]     = useState(true)
   const [saving,      setSaving]      = useState(false)
@@ -23,6 +24,8 @@ export default function AdminSettings() {
       const s = {}
       res.data.data.forEach(item => { s[item.key] = item.value })
       setSettings(s)
+      // grouped data সংরক্ষণ করো (backend থেকে আসলে)
+      if (res.data.grouped) setGrouped(res.data.grouped)
       // API key masked থাকে (xxxx****), field খালি রাখো — user নতুন key দিলে update হবে
       setSmsApiKey(s.sms_api_key && s.sms_api_key.includes('****') ? '' : (s.sms_api_key || ''))
       try { setHolidays(JSON.parse(s.holidays || '[]')) } catch { setHolidays([]) }
