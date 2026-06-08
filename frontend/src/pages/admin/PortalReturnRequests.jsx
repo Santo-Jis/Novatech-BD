@@ -229,23 +229,29 @@ function ReviewModal({ req, onClose, onDone }) {
 // ─── Main Component ───────────────────────────────────────────
 export default function PortalReturnRequests() {
   const [requests,  setRequests]  = useState([])
-  const [summary,   setSummary]   = useState({ pending: 0, approved: 0, rejected: 0, completed: 0 })
+  const [summary,   setSummary]   = useState({ all: { pending: 0, approved: 0, rejected: 0, completed: 0 } })
   const [loading,   setLoading]   = useState(true)
   const [page,      setPage]      = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [selected,  setSelected]  = useState(null)
-  const [filters,   setFilters]   = useState({ status: '', from: '', to: '' })
+  const [bulkIds,   setBulkIds]   = useState([])
+  const [bulkLoading, setBulkLoading] = useState(false)
+  const [filters,   setFilters]   = useState({ status: '', type: '', from: '', to: '' })
 
   const fetchData = useCallback(async (f = filters, p = page) => {
     setLoading(true)
     try {
       const params = new URLSearchParams({ page: p, limit: 20 })
       if (f.status) params.set('status', f.status)
+      if (f.type)   params.set('type', f.type)
       if (f.from)   params.set('date_from', f.from)
       if (f.to)     params.set('date_to', f.to)
       const res = await api.get(`/admin/portal-returns?${params}`)
       setRequests(res.data.data || [])
-      setSummary(res.data.summary || {})
+      // নতুন summary format: { all: {...}, return: {...}, replacement: {...} }
+      // পুরনো format-ও support করে
+      const s = res.data.summary || {}
+      setSummary(s.all ? s : { all: s })
       setTotalPages(res.data.pagination?.totalPages || 1)
     } catch {
       toast.error('তথ্য আনতে সমস্যা হয়েছে।')
@@ -279,7 +285,64 @@ export default function PortalReturnRequests() {
       </div>
 
       {/* Summary */}
-      <SummaryCards summary={summary} />
+      <SummaryCards summary={summary.all || summary} />
+
+      {/* Type tabs */}
+      <div className="flex gap-2">
+        {[
+          { value: '', label: 'সব ধরন' },
+          { value: 'return', label: '↩ ফেরত' },
+          { value: 'replacement', label: '🔄 রিপ্লেসমেন্ট' },
+        ].map(t => (
+          <button
+            key={t.value}
+            onClick={() => { setFilters(f => ({ ...f, type: t.value })); setPage(1); fetchData({ ...filters, type: t.value }, 1) }}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+              filters.type === t.value
+                ? 'bg-primary text-white border-primary'
+                : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-600'
+            }`}
+          >
+            {t.label}
+            {t.value === 'return'       && summary.return?.pending       > 0 && <span className="ml-1 bg-red-500 text-white text-xs rounded-full px-1">{summary.return.pending}</span>}
+            {t.value === 'replacement'  && summary.replacement?.pending  > 0 && <span className="ml-1 bg-red-500 text-white text-xs rounded-full px-1">{summary.replacement.pending}</span>}
+          </button>
+        ))}
+      </div>
+
+      {/* Bulk Actions */}
+      {bulkIds.length > 0 && (
+        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-xl border border-blue-200 dark:border-blue-700">
+          <span className="text-sm text-blue-700 dark:text-blue-300 font-medium">{bulkIds.length}টি নির্বাচিত</span>
+          <button
+            disabled={bulkLoading}
+            onClick={async () => {
+              setBulkLoading(true)
+              try {
+                await api.post('/admin/portal-returns/bulk-review', { ids: bulkIds, status: 'approved' })
+                toast.success(`${bulkIds.length}টি অনুমোদিত হয়েছে।`)
+                setBulkIds([]); fetchData()
+              } catch { toast.error('সমস্যা হয়েছে।') }
+              finally { setBulkLoading(false) }
+            }}
+            className="px-3 py-1 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-50"
+          >✅ সব অনুমোদন</button>
+          <button
+            disabled={bulkLoading}
+            onClick={async () => {
+              setBulkLoading(true)
+              try {
+                await api.post('/admin/portal-returns/bulk-review', { ids: bulkIds, status: 'rejected' })
+                toast.success(`${bulkIds.length}টি বাতিল হয়েছে।`)
+                setBulkIds([]); fetchData()
+              } catch { toast.error('সমস্যা হয়েছে।') }
+              finally { setBulkLoading(false) }
+            }}
+            className="px-3 py-1 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 disabled:opacity-50"
+          >❌ সব বাতিল</button>
+          <button onClick={() => setBulkIds([])} className="ml-auto text-xs text-gray-500 hover:text-gray-700">বাতিল</button>
+        </div>
+      )}
 
       {/* Filters */}
       <Card>
@@ -290,6 +353,21 @@ export default function PortalReturnRequests() {
                 label="স্ট্যাটাস"
                 value={filters.status}
                 onChange={e => setFilters(f => ({ ...f, status: e.target.value }))}
+                options={[
+                  { value: '', label: 'সব' },
+                  { value: 'pending', label: 'পেন্ডিং' },
+                  { value: 'approved', label: 'অনুমোদিত' },
+                  { value: 'rejected', label: 'বাতিল' },
+                  { value: 'completed', label: 'সম্পন্ন' },
+                ]}
+              />
+            </div>
+            <Input label="শুরুর তারিখ" type="date" value={filters.from} onChange={e => setFilters(f => ({ ...f, from: e.target.value }))} />
+            <Input label="শেষ তারিখ"  type="date" value={filters.to}   onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} />
+            <Button onClick={applyFilters} icon={<FiFilter size={14} />}>ফিল্টার</Button>
+          </div>
+        </div>
+      </Card>
                 options={[
                   { value: '', label: 'সব' },
                   { value: 'pending', label: 'পেন্ডিং' },
@@ -322,8 +400,16 @@ export default function PortalReturnRequests() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-slate-700">
+                  <th className="px-4 py-3 w-8">
+                    <input type="checkbox"
+                      checked={bulkIds.length === requests.filter(r => r.status === 'pending').length && requests.length > 0}
+                      onChange={e => setBulkIds(e.target.checked ? requests.filter(r => r.status === 'pending').map(r => r.id) : [])}
+                      className="rounded"
+                    />
+                  </th>
                   <th className="text-left px-4 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold">কাস্টমার</th>
                   <th className="text-left px-4 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold">ইনভয়েস</th>
+                  <th className="text-left px-4 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold">ধরন</th>
                   <th className="text-left px-4 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold">তারিখ</th>
                   <th className="text-left px-4 py-3 text-xs text-gray-500 dark:text-gray-400 font-semibold">স্ট্যাটাস</th>
                   <th className="px-4 py-3" />
@@ -337,11 +423,25 @@ export default function PortalReturnRequests() {
                   return (
                     <tr key={r.id} className="border-b border-gray-50 dark:border-slate-700/50 hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors">
                       <td className="px-4 py-3">
+                        {r.status === 'pending' && (
+                          <input type="checkbox"
+                            checked={bulkIds.includes(r.id)}
+                            onChange={e => setBulkIds(prev => e.target.checked ? [...prev, r.id] : prev.filter(id => id !== r.id))}
+                            className="rounded"
+                          />
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
                         <p className="font-medium text-gray-800 dark:text-gray-100">{r.customer_name}</p>
                         <p className="text-xs text-gray-400">{r.shop_name} · {r.customer_code}</p>
                       </td>
                       <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
                         {r.invoice_number || '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.type === 'replacement' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                          {r.type === 'replacement' ? '🔄 রিপ্লেসমেন্ট' : '↩ ফেরত'}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
                         {fmtDate(r.created_at)}
