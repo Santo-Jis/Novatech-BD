@@ -368,21 +368,6 @@ export default function PortalReturnRequests() {
           </div>
         </div>
       </Card>
-                options={[
-                  { value: '', label: 'সব' },
-                  { value: 'pending', label: 'পেন্ডিং' },
-                  { value: 'approved', label: 'অনুমোদিত' },
-                  { value: 'rejected', label: 'বাতিল' },
-                  { value: 'completed', label: 'সম্পন্ন' },
-                ]}
-              />
-            </div>
-            <Input label="শুরুর তারিখ" type="date" value={filters.from} onChange={e => setFilters(f => ({ ...f, from: e.target.value }))} />
-            <Input label="শেষ তারিখ"  type="date" value={filters.to}   onChange={e => setFilters(f => ({ ...f, to: e.target.value }))} />
-            <Button onClick={applyFilters} icon={<FiFilter size={14} />}>ফিল্টার</Button>
-          </div>
-        </div>
-      </Card>
 
       {/* Table */}
       <Card>
