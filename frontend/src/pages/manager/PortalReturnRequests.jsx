@@ -155,6 +155,7 @@ function ReturnCard({ item, onAction }) {
 export default function ManagerPortalReturnRequests() {
   const navigate    = useNavigate()
   const [status,  setStatus]   = useState('')
+  const [type,    setType]     = useState('')
   const [data,    setData]     = useState([])
   const [loading, setLoading]  = useState(false)
   const [counts,  setCounts]   = useState({ pending: 0 })
@@ -162,17 +163,20 @@ export default function ManagerPortalReturnRequests() {
   const fetchData = useCallback(async () => {
     setLoading(true)
     try {
-      const params = status ? `?status=${status}` : ''
-      const res    = await api.get(`/admin/portal-returns${params}`)
+      const params = new URLSearchParams()
+      if (status) params.set('status', status)
+      if (type)   params.set('type', type)
+      const res    = await api.get(`/admin/portal-returns?${params}`)
       const rows   = res.data.data?.requests || res.data.data || []
       setData(rows)
-      setCounts({ pending: rows.filter(r => r.status === 'pending').length })
+      const s = res.data.summary || {}
+      setCounts({ pending: (s.all || s).pending || rows.filter(r => r.status === 'pending').length })
     } catch {
       toast.error('তথ্য আনতে সমস্যা হয়েছে')
     } finally {
       setLoading(false)
     }
-  }, [status])
+  }, [status, type])
 
   useEffect(() => { fetchData() }, [fetchData])
 
@@ -200,12 +204,23 @@ export default function ManagerPortalReturnRequests() {
       </div>
 
       {/* Filter */}
-      <Select
-        label="স্ট্যাটাস"
-        options={STATUS_OPTIONS}
-        value={status}
-        onChange={e => setStatus(e.target.value)}
-      />
+      <div className="flex gap-2 flex-wrap">
+        <div className="flex-1 min-w-32">
+          <Select label="স্ট্যাটাস" options={STATUS_OPTIONS} value={status} onChange={e => setStatus(e.target.value)} />
+        </div>
+        <div className="flex-1 min-w-32">
+          <Select
+            label="ধরন"
+            value={type}
+            onChange={e => setType(e.target.value)}
+            options={[
+              { value: '', label: 'সব ধরন' },
+              { value: 'return', label: '↩ ফেরত' },
+              { value: 'replacement', label: '🔄 রিপ্লেসমেন্ট' },
+            ]}
+          />
+        </div>
+      </div>
 
       {/* List */}
       {loading ? (
