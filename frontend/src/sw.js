@@ -38,21 +38,9 @@ self.addEventListener('fetch', (event) => {
   }
 })
 
-// ── Firebase compat scripts ──────────────────────────────────
-// try/catch: CDN unavailable হলে SW crash না করে gracefully fail করবে
-let firebaseLoaded = false
-try {
-  importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js')
-  importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js')
-  firebaseLoaded = true
-} catch (e) {
-  console.warn('[SW] Firebase scripts load failed:', e.message)
-}
-
 // ============================================================
-// ✅ Firebase config — সরাসরি SW এ রাখা হয়েছে
-// কারণ: app বন্ধ থাকলে postMessage কাজ করে না
-// এখন background push কখনো miss হবে না
+// ✅ FIX: importScripts ES module SW-তে কাজ করে না।
+// এখন 'install' event-এ Firebase compat scripts load করা হয়।
 // ============================================================
 const FIREBASE_CONFIG = {
   apiKey:            'AIzaSyAHdK7zelJcBFc8fOFSgH8G_6jEjZdNoSI',
@@ -64,41 +52,59 @@ const FIREBASE_CONFIG = {
   appId:             '1:1098950143887:web:bb7014007540c878b165fa',
 }
 
-// ── Firebase init — SW start হওয়ার সাথে সাথেই ──────────────
-try {
-  if (firebaseLoaded && typeof firebase !== 'undefined') {
+// ── Firebase Messaging setup ─────────────────────────────────
+function setupMessaging() {
+  if (typeof firebase === 'undefined') return
+  try {
     if (!firebase.apps.length) {
       firebase.initializeApp(FIREBASE_CONFIG)
     }
-    setupMessaging()
-  }
-} catch (e) {
-  console.error('[SW] Firebase init error:', e)
-}
+    const messaging = firebase.messaging()
 
-// ── Firebase Messaging setup ─────────────────────────────────
-function setupMessaging() {
-  const messaging = firebase.messaging()
-
-  // ✅ App বন্ধ বা background এ থাকলেও notification আসবে
-  messaging.onBackgroundMessage((payload) => {
-    console.log('[SW] Background push received:', payload)
-
-    const { title, body } = payload.notification || {}
-    const data = payload.data || {}
-
-    self.registration.showNotification(title || 'NovaTech BD', {
-      body:     body || 'নতুন আপডেট এসেছে',
-      icon:     '/icon-192.png',
-      badge:    '/badge-72.png',
-      tag:      data.type || 'general',
-      renotify: true,
-      data,
-      actions:  getActions(data.type),
-      vibrate:  [200, 100, 200],
+    // ✅ App বন্ধ বা background এ থাকলেও notification আসবে
+    messaging.onBackgroundMessage((payload) => {
+      console.log('[SW] Background push received:', payload)
+      const { title, body } = payload.notification || {}
+      const data = payload.data || {}
+      self.registration.showNotification(title || 'NovaTech BD', {
+        body:     body || 'নতুন আপডেট এসেছে',
+        icon:     '/icon-192.png',
+        badge:    '/badge-72.png',
+        tag:      data.type || 'general',
+        renotify: true,
+        data,
+        vibrate:  [200, 100, 200],
+      })
     })
-  })
+  } catch (e) {
+    console.error('[SW] Firebase Messaging setup error:', e.message)
+  }
 }
+
+// ── SW activate হলে Firebase compat load করো ─────────────────
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        // ES module SW-এ importScripts নেই — তাই fetch করে eval করো
+        // (classic SW হলে importScripts এখানে দেওয়া হত)
+        const [appResp, msgResp] = await Promise.all([
+          fetch('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js'),
+          fetch('https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js'),
+        ])
+        const appCode = await appResp.text()
+        const msgCode = await msgResp.text()
+        // eslint-disable-next-line no-new-func
+        new Function(appCode)()
+        // eslint-disable-next-line no-new-func
+        new Function(msgCode)()
+        setupMessaging()
+      } catch (e) {
+        console.warn('[SW] Firebase compat load failed:', e.message)
+      }
+    })()
+  )
+})
 
 // ── PWA skipWaiting ──────────────────────────────────────────
 self.addEventListener('message', (event) => {
