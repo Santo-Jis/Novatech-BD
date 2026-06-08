@@ -19,7 +19,9 @@ const {
     updateSettings,
     getAuditLogs,
     getSystemStats,
+    getSmsStatus,
     testSmsGateway,
+    getSmsLogs,
 } = require('../controllers/admin.controller');
 
 const {
@@ -37,6 +39,7 @@ const {
     getPortalReturnRequestDetail,
     reviewPortalReturnRequest,
     completePortalReturnRequest,
+    bulkReviewPortalReturnRequests,
 } = require('../controllers/customerPortalReturn.controller');
 
 // ── System Settings (Admin only) ─────────────────────────────
@@ -48,7 +51,9 @@ router.get('/audit-logs',      auth, isAdmin, getAuditLogs);
 router.get('/stats',           auth, isAdmin, getSystemStats);
 
 // ── SMS Gateway (Admin only) ─────────────────────────────────
-router.post('/sms-test',       auth, isAdmin, testSmsGateway);
+router.get('/sms-status',      auth, isAdmin, getSmsStatus);    // বর্তমান config অবস্থা
+router.post('/sms-test',       auth, isAdmin, testSmsGateway);  // test (type + provider)
+router.get('/sms-logs',        auth, isAdmin, getSmsLogs);      // SMS ইতিহাস
 
 // ── Portal Device Management (Admin + Manager) ───────────────
 //
@@ -72,17 +77,20 @@ router.patch('/portal-devices/:customerId/:deviceId/restore',   auth, isAdminOrM
 
 // ── Customer Portal Return Requests (Admin + Manager + Supervisor) ──
 //
-// GET    /api/admin/portal-returns                  → সব লিস্ট (filter করা যাবে)
-// GET    /api/admin/portal-returns/:id              → বিবরণ (invoice info সহ)
-// PATCH  /api/admin/portal-returns/:id/review       → approve / reject
-// PATCH  /api/admin/portal-returns/:id/complete     → পণ্য হাতে পেলে complete
+// GET    /api/admin/portal-returns                     → লিস্ট (type/status/date filter)
+// GET    /api/admin/portal-returns/:id                 → বিবরণ (invoice info সহ)
+// PATCH  /api/admin/portal-returns/:id/review          → approve / reject
+// PATCH  /api/admin/portal-returns/:id/complete        → পণ্য হাতে পেলে complete
+// POST   /api/admin/portal-returns/bulk-review         → একসাথে অনেকগুলো approve/reject
 
 const CAN_VIEW_RETURNS   = allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant');
 const CAN_REVIEW_RETURNS = allowRoles('admin', 'manager', 'supervisor');
 
-router.get('/portal-returns',              auth, CAN_VIEW_RETURNS,   getPortalReturnRequests);
-router.get('/portal-returns/:id',          auth, CAN_VIEW_RETURNS,   getPortalReturnRequestDetail);
-router.patch('/portal-returns/:id/review', auth, CAN_REVIEW_RETURNS, reviewPortalReturnRequest);
-router.patch('/portal-returns/:id/complete', auth, CAN_REVIEW_RETURNS, completePortalReturnRequest);
+// ⚠️ bulk-review আগে — না হলে ':id' এটাকে match করে নেবে
+router.post('/portal-returns/bulk-review',       auth, CAN_REVIEW_RETURNS, bulkReviewPortalReturnRequests);
+router.get('/portal-returns',                    auth, CAN_VIEW_RETURNS,   getPortalReturnRequests);
+router.get('/portal-returns/:id',                auth, CAN_VIEW_RETURNS,   getPortalReturnRequestDetail);
+router.patch('/portal-returns/:id/review',       auth, CAN_REVIEW_RETURNS, reviewPortalReturnRequest);
+router.patch('/portal-returns/:id/complete',     auth, CAN_REVIEW_RETURNS, completePortalReturnRequest);
 
 module.exports = router;
