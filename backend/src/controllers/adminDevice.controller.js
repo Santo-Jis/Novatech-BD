@@ -107,6 +107,13 @@ const getPortalOverview = async (req, res) => {
                   WHERE cpd.customer_id = c.id AND cpd.is_active = true)::int  AS active_device_count,
                  (SELECT COUNT(*) FROM customer_portal_devices cpd
                   WHERE cpd.customer_id = c.id)::int                           AS total_device_count,
+                 (SELECT MAX(cpd.last_used_at)
+                  FROM customer_portal_devices cpd
+                  WHERE cpd.customer_id = c.id AND cpd.is_active = true)       AS last_device_used_at,
+                 (SELECT cpd.device_label
+                  FROM customer_portal_devices cpd
+                  WHERE cpd.customer_id = c.id AND cpd.is_active = true
+                  ORDER BY cpd.last_used_at DESC NULLS LAST LIMIT 1)           AS last_active_device,
                  COUNT(*) OVER()          AS total_count
              FROM customers c
              LEFT JOIN routes r ON r.id = c.route_id
@@ -417,13 +424,16 @@ const getPortalStats = async (req, res) => {
         const [overview, recentLogins, deviceDist] = await Promise.all([
             query(
                 `SELECT
-                     COUNT(DISTINCT cpt.customer_id)                          AS total_portal_customers,
-                     COUNT(DISTINCT CASE WHEN cpd.is_active THEN cpd.customer_id END) AS customers_with_active_device,
-                     COUNT(DISTINCT CASE WHEN cpd.is_active THEN cpd.id END)  AS total_active_devices,
+                     COUNT(DISTINCT cpt.customer_id)                                        AS total_portal_customers,
+                     COUNT(DISTINCT CASE WHEN cpd.is_active THEN cpd.customer_id END)       AS customers_with_active_device,
+                     COUNT(DISTINCT CASE WHEN cpd.is_active THEN cpd.id END)                AS total_active_devices,
+                     COUNT(DISTINCT CASE WHEN NOT cpd.is_active THEN cpd.id END)            AS total_revoked_devices,
+                     COUNT(DISTINCT CASE WHEN cpt.last_login IS NULL
+                           THEN cpt.customer_id END)                                        AS never_logged_in,
                      COUNT(DISTINCT CASE WHEN cpt.last_login >= NOW() - INTERVAL '7 days'
-                           THEN cpt.customer_id END)                          AS active_last_7_days,
+                           THEN cpt.customer_id END)                                        AS active_last_7_days,
                      COUNT(DISTINCT CASE WHEN cpt.last_login >= NOW() - INTERVAL '30 days'
-                           THEN cpt.customer_id END)                          AS active_last_30_days
+                           THEN cpt.customer_id END)                                        AS active_last_30_days
                  FROM customer_portal_tokens cpt
                  JOIN customers c ON c.id = cpt.customer_id
                  LEFT JOIN customer_portal_devices cpd ON cpd.customer_id = cpt.customer_id
