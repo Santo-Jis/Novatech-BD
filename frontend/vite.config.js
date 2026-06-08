@@ -6,8 +6,13 @@ import { VitePWA } from 'vite-plugin-pwa'
 // Vite Config - NovaTechBD
 // ========================================================
 
+// VITE_APP_BASE=./ শুধু Capacitor APK build-এর সময় set করো।
+// Vercel / web deploy-এ base '/' হওয়া দরকার, নইলে lazy chunk
+// URL ভুলভাবে resolve হয় → "$ is not defined" error।
+const base = process.env.VITE_APP_BASE || '/'
+
 export default defineConfig({
-  base: './', // ✅ Capacitor APK-এর জন্য দরকার — file:// path fix
+  base, // Vercel: '/'  |  Capacitor APK: './'
 
   plugins: [
     react(),

@@ -77,7 +77,9 @@
     <script src="https://cdn.jsdelivr.net/npm/eruda" async></script>
     <script>
       window.addEventListener('load', function() {
-        window.__STEP__ = 2; // DOM loaded
+        // ✅ FIX: main.jsx আগেই __STEP__=3 সেট করে।
+        // load event সেটা overwrite না করুক — শুধু 3-এর নিচে থাকলে 2 সেট করো।
+        if (window.__STEP__ < 3) window.__STEP__ = 2;
         try {
           if (typeof eruda !== 'undefined') {
             eruda.init();
