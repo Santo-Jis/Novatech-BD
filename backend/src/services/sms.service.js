@@ -189,21 +189,40 @@ const sendViaCustom = async (formattedPhone, message, config) => {
 };
 
 // ============================================================
+// SMS LOGGER — non-blocking, DB-এ log রাখে
+// ============================================================
+const logSms = async ({ phone, type = 'custom', provider, status, error = null, sent_by = null }) => {
+    try {
+        await query(
+            `INSERT INTO sms_logs (phone, message_type, provider, status, error_message, sent_by)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [phone, type, provider, status, error, sent_by]
+        );
+    } catch (e) {
+        logger.warn('⚠️ SMS log save failed:', e.message);
+    }
+};
+
+// ============================================================
 // CORE SENDER
 // ============================================================
 
-const sendSMS = async (phone, message) => {
+const sendSMS = async (phone, message, meta = {}) => {
+    // meta = { type: 'otp' | 'invoice' | 'login' | 'custom', sent_by: userId }
+    const { type = 'custom', sent_by = null } = meta;
     try {
         const formattedPhone = formatPhone(phone);
         const config = await getSmsConfig();
 
         if (!config.enabled) {
             logger.info(`📵 SMS বন্ধ (${formattedPhone})`);
+            await logSms({ phone: formattedPhone, type, provider: config.provider, status: 'disabled', sent_by });
             return { success: true, disabled: true };
         }
 
         if (!config.apiKey) {
             logger.info(`📱 Dev Mode [${config.provider}] → ${formattedPhone}: ${message}`);
+            await logSms({ phone: formattedPhone, type, provider: config.provider, status: 'dev', sent_by });
             return { success: true, dev: true };
         }
 
@@ -218,10 +237,13 @@ const sendSMS = async (phone, message) => {
         }
 
         logger.info(`✅ SMS সফল [${config.provider}] → ${formattedPhone}`);
+        await logSms({ phone: formattedPhone, type, provider: config.provider, status: 'sent', sent_by });
         return result;
 
     } catch (error) {
+        const config = _configCache;
         logger.error(`❌ SMS Error → ${phone}:`, error.message);
+        await logSms({ phone: formatPhone(phone), type, provider: config?.provider, status: 'failed', error: error.message, sent_by });
         return { success: false, error: error.message };
     }
 };
@@ -230,19 +252,19 @@ const sendSMS = async (phone, message) => {
 // HELPER FUNCTIONS
 // ============================================================
 
-const sendOTP = async (phone, otp, shopName) => {
+const sendOTP = async (phone, otp, shopName, meta = {}) => {
     const msg = `NovaTechBD\nদোকান: ${shopName}\nOTP: ${otp}\nমেয়াদ: ১০ মিনিট\nএই কোড কাউকে দেবেন না।`;
-    return sendSMS(phone, msg);
+    return sendSMS(phone, msg, { type: 'otp', ...meta });
 };
 
-const sendInvoice = async (phone, invoiceNumber, totalAmount, shopName) => {
+const sendInvoice = async (phone, invoiceNumber, totalAmount, shopName, meta = {}) => {
     const msg = `NovaTechBD Invoice\nদোকান: ${shopName}\nInvoice: ${invoiceNumber}\nমোট: ৳${totalAmount.toLocaleString('bn-BD')}\nধন্যবাদ।`;
-    return sendSMS(phone, msg);
+    return sendSMS(phone, msg, { type: 'invoice', ...meta });
 };
 
-const sendLoginCredentials = async (phone, employeeCode, password, name) => {
+const sendLoginCredentials = async (phone, employeeCode, password, name, meta = {}) => {
     const msg = `NovaTechBD\nস্বাগতম ${name}!\nID: ${employeeCode}\nPassword: ${password}\nপ্রথম লগইনে পাসওয়ার্ড পরিবর্তন করুন।`;
-    return sendSMS(phone, msg);
+    return sendSMS(phone, msg, { type: 'login', ...meta });
 };
 
 const getWhatsAppInvoiceLink = (phone, invoiceNumber, totalAmount, shopName, items) => {
@@ -265,5 +287,6 @@ module.exports = {
     sendInvoice,
     sendLoginCredentials,
     getWhatsAppInvoiceLink,
-    clearSmsConfigCache
+    clearSmsConfigCache,
+    getSmsConfig,       // admin status endpoint-এর জন্য
 };
