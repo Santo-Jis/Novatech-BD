@@ -391,6 +391,111 @@ const getPendingRoutes = async (req, res) => {
     }
 };
 
+// ============================================================
+// REQUEST A NEW ROUTE (Worker/SR)
+// POST /api/routes/request
+// SR নতুন রুটের জন্য Manager-এর কাছে request পাঠাবে
+// ============================================================
+
+const requestRoute = async (req, res) => {
+    try {
+        const { route_name, description } = req.body;
+
+        if (!route_name || !route_name.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: 'রুটের নাম দিন।'
+            });
+        }
+
+        const result = await query(
+            `INSERT INTO route_requests (route_name, description, requested_by, status)
+             VALUES ($1, $2, $3, 'pending')
+             RETURNING *`,
+            [route_name.trim(), description?.trim() || null, req.user.id]
+        );
+
+        return res.status(201).json({
+            success: true,
+            message: 'রুট request পাঠানো হয়েছে। Manager অনুমোদন করলে দেখা যাবে।',
+            data: result.rows[0]
+        });
+
+    } catch (error) {
+        logger.error('❌ Request Route Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET MY ROUTE REQUESTS (Worker/SR)
+// GET /api/routes/my-requests
+// SR নিজের সব route request-এর status দেখবে
+// ============================================================
+
+const getMyRouteRequests = async (req, res) => {
+    try {
+        const result = await query(
+            `SELECT id, route_name AS name, description, status,
+                    reviewed_by_name, review_note, created_at AS requested_at
+             FROM route_requests
+             WHERE requested_by = $1
+             ORDER BY created_at DESC`,
+            [req.user.id]
+        );
+
+        return res.status(200).json({ success: true, data: result.rows });
+
+    } catch (error) {
+        logger.error('❌ Get My Route Requests Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET ROUTES FOR WORKER (SR)
+// GET /api/routes/worker-list
+// SR-এর assigned রুটগুলো দেখাবে (canManage bypass)
+// ============================================================
+
+const getWorkerRoutes = async (req, res) => {
+    try {
+        const result = await query(
+            `SELECT r.id, r.name, r.description,
+                    COUNT(DISTINCT c.id) AS customer_count,
+                    lv.last_visited_at,
+                    lv.last_visited_by_name
+             FROM routes r
+             JOIN customer_assignments ca
+               ON ca.route_id = r.id
+               AND ca.worker_id = $1
+               AND ca.is_active = true
+               AND ca.customer_id IS NULL
+             LEFT JOIN customers c
+               ON c.route_id = r.id AND c.is_active = true
+             LEFT JOIN LATERAL (
+                 SELECT v.created_at AS last_visited_at,
+                        u.name_bn   AS last_visited_by_name
+                 FROM visits v
+                 JOIN users u ON v.worker_id = u.id
+                 WHERE v.route_id = r.id
+                 ORDER BY v.created_at DESC
+                 LIMIT 1
+             ) lv ON true
+             WHERE r.is_active = true
+             GROUP BY r.id, r.name, r.description, lv.last_visited_at, lv.last_visited_by_name
+             ORDER BY r.name`,
+            [req.user.id]
+        );
+
+        return res.status(200).json({ success: true, data: result.rows });
+
+    } catch (error) {
+        logger.error('❌ Get Worker Routes Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getRoutes,
     createRoute,
@@ -401,4 +506,7 @@ module.exports = {
     getRouteCustomers,
     getLiveRouteStatus,
     getPendingRoutes,
+    requestRoute,
+    getMyRouteRequests,
+    getWorkerRoutes,
 };
