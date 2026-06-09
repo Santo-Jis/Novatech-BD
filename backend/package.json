@@ -28,7 +28,11 @@
     "nodemailer": "^6.9.7",
     "pdfkit": "^0.14.0",
     "pg": "^8.11.3",
-    "redis": "^4.6.12"
+    "redis": "^4.6.12",
+    "sharp": "^0.33.5"
+  },
+  "optionalDependencies": {
+    "@img/sharp-linux-x64": "^0.33.5"
   },
   "devDependencies": {
     "jest": "^29.7.0",
