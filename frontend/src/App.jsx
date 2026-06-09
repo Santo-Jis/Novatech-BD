@@ -65,6 +65,9 @@ const SRRecruitmentDashboard = IS_CUSTOMER_APP ? null : lazy(() => import('./pag
 const AdminTeams             = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Teams'))
 const AdminCreditSettings    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AdminCreditSettings'))
 const PortalDeviceManager    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PortalDeviceManager'))
+const AdminRoutes            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Admin Routes'))
+const AdminCustomerOrderRequests = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/CustomerOrderRequests'))
+const AdminLeaveManagement   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AdminLeaveManagement'))
 
 // ── Manager pages — Customer APK-এ bundle হবে না ─────────────
 const ManagerDashboard    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Dashboard'))
@@ -360,6 +363,9 @@ function AppWithPermissions() {
                 <Route path="customer-requests" element={<CustomerRequestsPage />} />
                 <Route path="credit-settings"   element={<AdminCreditSettings />} />
                 <Route path="portal-devices"    element={<PortalDeviceManager />} />
+                <Route path="routes"            element={<AdminRoutes />} />
+                <Route path="customer-order-requests" element={<AdminCustomerOrderRequests />} />
+                <Route path="leave-management"  element={<AdminLeaveManagement />} />
               </Route>
 
               {/* ── MANAGER ROUTES ── */}
