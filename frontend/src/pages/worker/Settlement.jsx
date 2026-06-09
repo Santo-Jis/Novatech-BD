@@ -71,6 +71,7 @@ export default function Settlement() {
   const [preview,          setPreview]          = useState(null)
   const [showReturnHelp,   setShowReturnHelp]   = useState(false)
   const [alreadySubmitted, setAlreadySubmitted] = useState(false)
+  const [colSummary,       setColSummary]       = useState(null)  // ✅ collection summary
 
   useEffect(() => {
     const load = async () => {
@@ -105,6 +106,14 @@ export default function Settlement() {
         } catch (err) {
           console.error('Sales summary load failed:', err)
           toast.error('বিক্রয় সারাংশ লোড হয়নি — পেজ রিফ্রেশ করুন অথবা পরে চেষ্টা করুন')
+        }
+
+        // ✅ আজকের collection summary আনা
+        try {
+          const colRes = await api.get('/collections/settlement-summary')
+          setColSummary(colRes.data.data)
+        } catch (err) {
+          console.error('Collection summary load failed:', err)
         }
 
         // product-wise sold qty আনা
@@ -270,6 +279,27 @@ export default function Settlement() {
           <FiInfo size={11} /> এই তথ্য বিক্রয় রেকর্ড থেকে স্বয়ংক্রিয়ভাবে আসছে
         </p>
       </div>
+
+      {/* ✅ আজকের বাকি আদায় summary */}
+      {colSummary?.count > 0 && (
+        <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
+          <p className="text-xs text-emerald-600 font-semibold mb-2">
+            💰 আজকের বাকি আদায়
+          </p>
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-gray-600">
+              {colSummary.count}টি দোকান
+            </span>
+            <span className="text-base font-bold text-emerald-700">
+              ৳{parseInt(colSummary.total_cash).toLocaleString()}
+            </span>
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            নগদ: ৳{parseInt(colSummary.cash_amount).toLocaleString()} |
+            অন্যান্য: ৳{parseInt(colSummary.non_cash_amount).toLocaleString()}
+          </p>
+        </div>
+      )}
 
       {/* ফেরত পণ্যের ইনপুট */}
       {orderItems.length > 0 && (
