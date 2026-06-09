@@ -3,25 +3,30 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
 import ErrorBoundary from '../components/ErrorBoundary'
-import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox } from 'react-icons/fi'
+import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar } from 'react-icons/fi'
 
 const navItems = [
-  { path: '/admin/dashboard',       icon: <FiHome />,         label: 'ড্যাশবোর্ড' },
-  { path: '/admin/employees',       icon: <FiUsers />,        label: 'কর্মী তালিকা' },
-  { path: '/admin/teams',           icon: <FiGrid />,         label: 'টিম ম্যানেজমেন্ট' },
-  { path: '/admin/recruitment',     icon: <FiUserPlus />,     label: 'SR নিয়োগ' },
-  { path: '/admin/pending',         icon: <FiCheckSquare />,  label: 'অনুমোদন বাকি' },
-  { path: '/admin/products',        icon: <FiPackage />,      label: 'পণ্য' },
-  { path: '/admin/portal-returns',  icon: <FiRotateCcw />,    label: 'পোর্টাল রিটার্ন' },
-  { path: '/admin/commission-pay',  icon: <FiDollarSign />,   label: 'কমিশন পরিশোধ' },
-  { path: '/admin/salary-pay',      icon: <FiCreditCard />,   label: 'বেতন পরিশোধ' },
-  { path: '/admin/reports',         icon: <FiBarChart2 />,    label: 'রিপোর্ট' },
-  { path: '/admin/ai-insights',     icon: <FiCpu />,          label: 'AI বিশ্লেষণ' },
-  { path: '/admin/ai-chat',         icon: <FiMessageSquare />,label: 'AI চ্যাট' },
-  { path: '/admin/notices',         icon: <FiBell />,         label: 'নোটিশ বোর্ড' },
-  { path: '/admin/audit-logs',      icon: <FiShield />,       label: 'অডিট লগ' },
-  { path: '/admin/customer-requests', icon: <FiInbox />,        label: 'কাস্টমার রিকোয়েস্ট' },
-  { path: '/admin/settings',        icon: <FiSettings />,     label: 'সেটিংস' },
+  { path: '/admin/dashboard',               icon: <FiHome />,         label: 'ড্যাশবোর্ড' },
+  { path: '/admin/employees',               icon: <FiUsers />,        label: 'কর্মী তালিকা' },
+  { path: '/admin/teams',                   icon: <FiGrid />,         label: 'টিম ম্যানেজমেন্ট' },
+  { path: '/admin/recruitment',             icon: <FiUserPlus />,     label: 'SR নিয়োগ' },
+  { path: '/admin/pending',                 icon: <FiCheckSquare />,  label: 'অনুমোদন বাকি' },
+  { path: '/admin/products',               icon: <FiPackage />,      label: 'পণ্য' },
+  { path: '/admin/routes',                 icon: <FiMapPin />,       label: 'রুট ম্যানেজমেন্ট' },
+  { path: '/admin/portal-returns',          icon: <FiRotateCcw />,    label: 'পোর্টাল রিটার্ন' },
+  { path: '/admin/customer-order-requests', icon: <FiShoppingCart />, label: 'অর্ডার রিকোয়েস্ট' },
+  { path: '/admin/portal-devices',          icon: <FiSmartphone />,   label: 'পোর্টাল ডিভাইস' },
+  { path: '/admin/leave-management',        icon: <FiCalendar />,     label: 'ছুটি ব্যবস্থাপনা' },
+  { path: '/admin/commission-pay',          icon: <FiDollarSign />,   label: 'কমিশন পরিশোধ' },
+  { path: '/admin/salary-pay',              icon: <FiCreditCard />,   label: 'বেতন পরিশোধ' },
+  { path: '/admin/credit-settings',         icon: <FiCreditCard />,   label: 'ক্রেডিট সেটিংস' },
+  { path: '/admin/reports',                 icon: <FiBarChart2 />,    label: 'রিপোর্ট' },
+  { path: '/admin/ai-insights',             icon: <FiCpu />,          label: 'AI বিশ্লেষণ' },
+  { path: '/admin/ai-chat',                 icon: <FiMessageSquare />,label: 'AI চ্যাট' },
+  { path: '/admin/notices',                 icon: <FiBell />,         label: 'নোটিশ বোর্ড' },
+  { path: '/admin/audit-logs',              icon: <FiShield />,       label: 'অডিট লগ' },
+  { path: '/admin/customer-requests',       icon: <FiInbox />,        label: 'কাস্টমার রিকোয়েস্ট' },
+  { path: '/admin/settings',               icon: <FiSettings />,     label: 'সেটিংস' },
 ]
 
 export default function AdminLayout() {
