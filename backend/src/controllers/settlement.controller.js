@@ -1,4 +1,5 @@
 const { query, withTransaction } = require('../config/db');
+const { submitCollectionsWithSettlement } = require('./collection.controller'); // ✅ collection auto-submit
 const axios = require('axios');
 const logger = require('../config/logger');
 const { sendPushNotification } = require('../services/fcm.service');
@@ -252,7 +253,8 @@ const createSettlement = async (req, res) => {
 
             const settlementId = insertResult.rows[0].id;
 
-            // ─── Ledger: ফেরত ও ঘাটতি — একই transaction client দিয়ে ────
+            // ✅ আজকের pending collections → submitted হিসেবে mark করো
+            await submitCollectionsWithSettlement(client, workerId, settlementId, today);
             for (const item of itemsReport) {
                 // ফেরত দেওয়া পণ্য
                 if (item.returned_qty > 0) {
