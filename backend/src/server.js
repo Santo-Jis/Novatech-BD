@@ -178,6 +178,7 @@ const returnRoutes              = require('./routes/return.routes');
 const settingsRoutes            = require('./routes/settings.routes');   // ✅ public settings
 const creditApprovalRoutes      = require('./routes/creditApproval.routes'); // ✅ credit approval
 const jisAiRoutes               = require('./routes/jisai.routes');           // ✅ JIS-AI WhatsApp integration
+const collectionRoutes          = require('./routes/collection.routes');       // ✅ collection (বাকি আদায়)
 
 app.use('/api/auth',        loginLimiter, authRoutes);
 app.use('/api/portal',     loginLimiter, portalRoutes); // ✅ customer portal login-এও limiter
@@ -207,6 +208,7 @@ app.use('/api/expense',                 expenseRoutes);
 app.use('/api/settings',                settingsRoutes);       // ✅ public settings (expense limits etc.)
 app.use('/api/return',                  returnRoutes);
 app.use('/api/credit-approvals',        creditApprovalRoutes); // ✅ credit approval workflow
+app.use('/api/collections',             collectionRoutes);     // ✅ collection (বাকি আদায়)
 jisAiRoutes(app);                                              // ✅ JIS-AI WhatsApp integration
 
 // ============================================================
