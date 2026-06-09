@@ -105,7 +105,7 @@ export default function RouteSelect() {
         return
       }
       try {
-        const res = await api.get('/routes')
+        const res = await api.get('/routes/worker-list')
         const data = res.data.data || []
         setRoutes(data)
         saveCache('routes_list', data)
