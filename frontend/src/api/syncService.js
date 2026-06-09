@@ -35,6 +35,8 @@ function _itemLabel(item) {
     }
     case 'VISIT':
       return name ? `ভিজিট — ${name}` : 'ভিজিট'
+    case 'COLLECTION':
+      return name ? `আদায় — ${name}` : 'আদায়'
     case 'ORDER':
       return 'অর্ডার'
     case 'ATTENDANCE':
@@ -114,6 +116,27 @@ async function syncItem(item) {
 
     } else if (item.type === 'ATTENDANCE') {
       await api.post('/attendance/checkin', item.payload)
+
+    } else if (item.type === 'COLLECTION') {
+      // ✅ receipt photo base64 → blob, বাকি fields FormData-তে
+      const { _receipt_photo, ...body } = item.payload
+
+      const formData = new FormData()
+      Object.entries(body).forEach(([k, v]) => {
+        if (v !== undefined && v !== null) formData.append(k, v)
+      })
+
+      if (_receipt_photo) {
+        try {
+          const res  = await fetch(_receipt_photo)
+          const blob = await res.blob()
+          formData.append('receipt_photo', blob, 'receipt.jpg')
+        } catch { /* ছবি ছাড়াও collection submit হবে */ }
+      }
+
+      await api.post('/collections', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
     }
 
     await removeQueueItem(item.id)
