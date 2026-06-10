@@ -458,7 +458,7 @@ export default function CustomerList() {
       {/* ══════════════════════════════════════════════════════
           ── উপরে: Leaflet Map ──
       ══════════════════════════════════════════════════════ */}
-      <div style={{ height: 280, position: 'relative', flexShrink: 0 }}>
+      {!showAddModal && <div style={{ height: 280, position: 'relative', flexShrink: 0 }}>
 
         {/* Progress badge — map এর উপরে float করে */}
         <div style={{
@@ -595,7 +595,7 @@ export default function CustomerList() {
             })}
           </MapContainer>
         )}
-      </div>
+      </div>}
 
       {/* ══════════════════════════════════════════════════════
           ── নিচে: Header + Search + Customer List ──
