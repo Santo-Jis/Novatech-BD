@@ -56,7 +56,8 @@ router.delete('/:id',         auth, canManage, deleteRoute);
 
 // ── Workers & Customers in a Route ───────────────────────────
 router.get('/:id/workers',    auth, canManage, getRouteWorkers);
-router.get('/:id/customers',  auth, canManage, getRouteCustomers);
+// Worker নিজের manager-এর route-এর customer দেখতে পারবে
+router.get('/:id/customers',  auth, allowRoles('admin', 'manager', 'worker'), getRouteCustomers);
 
 // ── Assign Worker ─────────────────────────────────────────────
 router.post('/:id/assign',    auth, canManage, assignWorkerToRoute);
