@@ -30,9 +30,9 @@ const DRAWER_NAV = [
 ]
 
 function clearCustomerSession() {
-  Object.keys(sessionStorage)
+  Object.keys(localStorage)
     .filter(k => k.startsWith('portal_jwt_') || k === 'portal_fcm_token')
-    .forEach(k => sessionStorage.removeItem(k))
+    .forEach(k => localStorage.removeItem(k))
 }
 
 export default function CustomerLayout() {
@@ -42,10 +42,10 @@ export default function CustomerLayout() {
   const [scrolled, setScrolled] = useState(false)
 
   // JWT decode
-  const portalKey = Object.keys(sessionStorage).find(k => k.startsWith('portal_jwt_'))
+  const portalKey = Object.keys(localStorage).find(k => k.startsWith('portal_jwt_'))
   let customerInfo = {}
   try {
-    const jwt      = sessionStorage.getItem(portalKey)
+    const jwt      = localStorage.getItem(portalKey)
     const b64url   = jwt.split('.')[1]
     const b64      = b64url.replace(/-/g, '+').replace(/_/g, '/')
     const padded   = b64 + '=='.slice(0, (4 - b64.length % 4) % 4)
