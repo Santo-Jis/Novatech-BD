@@ -57,9 +57,9 @@ const createCollection = async (req, res) => {
         if (payment_mode === 'cheque' && (!cheque_bank || !cheque_no || !cheque_date))
             return res.status(400).json({ message: 'চেকের বিস্তারিত (ব্যাংক, নম্বর, তারিখ) দিন' });
 
-        // ── Customer validation — SR-এর route-এ আছে কিনা ────
+        // ── ✅ FIX: sr_id বাদ — customers এ sr_id column নেই ──
         const custResult = await query(
-            `SELECT c.id, c.shop_name, c.current_credit, c.sr_id
+            `SELECT c.id, c.shop_name, c.current_credit
              FROM customers c
              WHERE c.id = $1`,
             [customer_id]
@@ -69,9 +69,22 @@ const createCollection = async (req, res) => {
 
         const cust = custResult.rows[0];
 
-        // SR নিজের customer কিনা চেক (admin bypass করতে পারবে)
-        if (req.user.role === 'worker' && cust.sr_id !== sr_id)
-            return res.status(403).json({ message: 'এই কাস্টমারে আপনার অ্যাক্সেস নেই' });
+        // ── ✅ FIX: customer_assignments.worker_id দিয়ে চেক ───
+        // customers.sr_id নেই — customer_assignments table এ
+        // worker_id দিয়ে SR ↔ Customer relation আছে
+        if (req.user.role === 'worker') {
+            const assignCheck = await query(
+                `SELECT 1
+                 FROM customer_assignments
+                 WHERE customer_id = $1
+                   AND worker_id   = $2
+                   AND is_active   = true
+                 LIMIT 1`,
+                [customer_id, sr_id]
+            );
+            if (assignCheck.rows.length === 0)
+                return res.status(403).json({ message: 'এই কাস্টমারে আপনার অ্যাক্সেস নেই' });
+        }
 
         // পরিমাণ বকেয়ার চেয়ে বেশি হতে পারবে না (১ টাকা tolerance)
         const currentDue = parseFloat(cust.current_credit || 0);
