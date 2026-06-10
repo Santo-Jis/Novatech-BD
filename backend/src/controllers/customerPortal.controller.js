@@ -116,7 +116,7 @@ const sendPortalLink = async (req, res) => {
         const frontendUrl = process.env.FRONTEND_URL || 'https://novatech-bd-kqrn.vercel.app';
 
         // ✅ NEW: ?c=customer_code — permanent, কখনো expire হয় না
-        const portalLink = `${frontendUrl}/customer/portal?c=${cust.customer_code}`;
+        const portalLink = `${frontendUrl}/customer-login?c=${cust.customer_code}`;
 
         const rawPhone = cust.whatsapp.replace(/\D/g, '');
         const phone    = rawPhone.startsWith('880') ? rawPhone : '880' + rawPhone.replace(/^0/, '');
