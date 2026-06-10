@@ -14,7 +14,7 @@
 //   "react-leaflet": "^4.2.1"
 
 import { useState, useEffect, useRef, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -142,6 +142,7 @@ function StepBadge({ step }) {
 // ── Main Component ────────────────────────────────────────────
 export default function CustomerList() {
   const navigate        = useNavigate()
+  const location        = useLocation()
   const { selectedRoute, customerListView: viewMode, setCustomerListView: setViewMode } = useAppStore()
   const [customers,    setCustomers]    = useState([])
   const [routes,       setRoutes]       = useState([])
@@ -282,7 +283,9 @@ export default function CustomerList() {
       )
     }
     return () => { if (watchId != null) navigator.geolocation.clearWatch(watchId) }
-  }, [selectedRoute])
+  // ✅ FIX: location.key যোগ করা হয়েছে — VisitPage থেকে back করলে
+  //         fresh data reload হবে, stale cache দেখাবে না
+  }, [selectedRoute, location.key])
 
   // ── Map pin tap → সেই card-এ scroll করো ──────────────────
   const handlePinClick = (customerId) => {
