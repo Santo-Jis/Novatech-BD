@@ -185,7 +185,7 @@ const HomeRedirect = () => {
   // ─── Customer APK: সরাসরি Customer flow-এ নিয়ে যাও ──────────
   if (IS_CUSTOMER_APP) {
     const hasPortalJWT = typeof window !== 'undefined' &&
-      Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
+      Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
     if (hasPortalJWT) return <Navigate to="/customer/dashboard" replace />
     return <Navigate to="/customer-login" replace />
   }
@@ -217,7 +217,7 @@ const HomeRedirect = () => {
   }, [user?.role]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasPortalJWT = typeof window !== 'undefined' &&
-    Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
+    Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
   if (hasPortalJWT && !user) return <Navigate to="/customer/dashboard" replace />
 
   if (!user) return <LandingPage />
@@ -240,7 +240,7 @@ const HomeRedirect = () => {
 
 const CustomerGuard = () => {
   const hasPortalJWT = typeof window !== 'undefined' &&
-    Object.keys(sessionStorage).some(k => k.startsWith('portal_jwt_'))
+    Object.keys(localStorage).some(k => k.startsWith('portal_jwt_'))
 
   if (hasPortalJWT) return <Outlet />
 
