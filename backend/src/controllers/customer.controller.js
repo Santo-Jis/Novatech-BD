@@ -297,7 +297,8 @@ const createCustomer = async (req, res) => {
                     sms_phone || null, email || null,
                     route_id || null,
                     finalCreditLimit,
-                    req.user.id
+                    parsedLng, parsedLat,  // ✅ FIX: $11=longitude, $12=latitude
+                    req.user.id            // ✅ FIX: $13=created_by
                 ]
             );
         } else {
