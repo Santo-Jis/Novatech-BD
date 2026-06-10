@@ -168,6 +168,10 @@ const updateTeam = async (req, res) => {
             }
         }
 
+        const oldManagerId = existing.rows[0].manager_id;
+        const newManagerId  = manager_id || null;
+        const managerChanged = newManagerId && newManagerId !== oldManagerId;
+
         const result = await query(`
             UPDATE teams SET
                 name           = COALESCE($1, name),
@@ -179,23 +183,41 @@ const updateTeam = async (req, res) => {
             RETURNING *
         `, [
             name?.trim() || null,
-            manager_id || null,
+            newManagerId,
             monthly_target !== undefined ? monthly_target : null,
             description !== undefined ? description : null,
             is_active !== undefined ? is_active : null,
             id
         ]);
 
+        // ম্যানেজার বদলালে — এই টিমের সব SR-এর manager_id অটো আপডেট
+        if (managerChanged) {
+            await query(`
+                UPDATE users
+                SET manager_id = $1
+                WHERE team_id = $2 AND role = 'worker'
+            `, [newManagerId, id]);
+
+            logger.info(`✅ Team manager changed → updated all SR manager_id in team ${id}`);
+        }
+
         // Audit log
         await query(
             `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
              VALUES ($1, 'UPDATE_TEAM', 'teams', $2, $3)`,
-            [req.user.id, id, JSON.stringify(req.body)]
+            [req.user.id, id, JSON.stringify({
+                ...req.body,
+                manager_changed: managerChanged,
+                old_manager_id: oldManagerId,
+                new_manager_id: newManagerId
+            })]
         );
 
         return res.status(200).json({
             success: true,
-            message: 'টিম আপডেট হয়েছে।',
+            message: managerChanged
+                ? 'টিম আপডেট হয়েছে এবং সকল SR-এর ম্যানেজার আপডেট হয়েছে।'
+                : 'টিম আপডেট হয়েছে।',
             data: result.rows[0]
         });
     } catch (error) {
