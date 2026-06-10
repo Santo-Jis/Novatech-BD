@@ -460,19 +460,32 @@ const getMyRouteRequests = async (req, res) => {
 
 const getWorkerRoutes = async (req, res) => {
     try {
+        // Worker/SR এর manager_id বের করো
+        const workerInfo = await query(
+            `SELECT manager_id, team_id FROM users WHERE id = $1`,
+            [req.user.id]
+        );
+
+        if (!workerInfo.rows.length || !workerInfo.rows[0].manager_id) {
+            return res.status(200).json({
+                success: true,
+                data: [],
+                message: 'আপনাকে এখনো কোনো টিমে assign করা হয়নি।'
+            });
+        }
+
+        const managerId = workerInfo.rows[0].manager_id;
+
+        // শুধু নিজের Manager-এর routes দেখাবে
         const result = await query(
-            `SELECT r.id, r.name, r.description,
+            `SELECT r.*,
+                    m.name_bn AS manager_name,
                     COUNT(DISTINCT c.id) AS customer_count,
                     lv.last_visited_at,
                     lv.last_visited_by_name
              FROM routes r
-             JOIN customer_assignments ca
-               ON ca.route_id = r.id
-               AND ca.worker_id = $1
-               AND ca.is_active = true
-               AND ca.customer_id IS NULL
-             LEFT JOIN customers c
-               ON c.route_id = r.id AND c.is_active = true
+             LEFT JOIN users m ON r.manager_id = m.id
+             LEFT JOIN customers c ON c.route_id = r.id AND c.is_active = true
              LEFT JOIN LATERAL (
                  SELECT v.created_at AS last_visited_at,
                         u.name_bn   AS last_visited_by_name
@@ -483,9 +496,10 @@ const getWorkerRoutes = async (req, res) => {
                  LIMIT 1
              ) lv ON true
              WHERE r.is_active = true
-             GROUP BY r.id, r.name, r.description, lv.last_visited_at, lv.last_visited_by_name
-             ORDER BY r.name`,
-            [req.user.id]
+               AND r.manager_id = $1
+             GROUP BY r.id, m.name_bn, lv.last_visited_at, lv.last_visited_by_name
+             ORDER BY r.created_at DESC`,
+            [managerId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });
