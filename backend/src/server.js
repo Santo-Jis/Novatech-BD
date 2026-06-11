@@ -55,6 +55,14 @@ const ORIGIN_PATTERNS = RAW_ORIGINS.map(pattern => {
     return { type: 'regex', value: new RegExp(`^${regexStr}$`) };
 });
 
+// Capacitor APK request-এ origin হয় এগুলোর একটি অথবা সম্পূর্ণ absent।
+// CORS browser-only mechanism — এই origins block করলে APK ভেঙে যাবে।
+const CAPACITOR_ORIGINS = [
+    'capacitor://localhost',  // Capacitor v3+ Android/iOS
+    'http://localhost',       // Capacitor dev / older versions
+    'ionic://localhost',      // Ionic fallback
+];
+
 function isOriginAllowed(origin) {
     return ORIGIN_PATTERNS.some(p =>
         p.type === 'exact'
@@ -65,8 +73,12 @@ function isOriginAllowed(origin) {
 
 app.use(cors({
     origin: (origin, callback) => {
-        // Mobile app / Postman / Server-to-server — origin থাকে না
+        // Origin absent — server-to-server বা Capacitor APK।
+        // CORS browser-only mechanism, তাই এটা block করা অর্থহীন।
         if (!origin) return callback(null, true);
+        // Capacitor APK explicit origins
+        if (CAPACITOR_ORIGINS.includes(origin)) return callback(null, true);
+        // Configured frontend origins (FRONTEND_URL env)
         if (isOriginAllowed(origin)) return callback(null, true);
         callback(new Error(`CORS blocked: ${origin}`));
     },
@@ -80,11 +92,8 @@ app.use(morgan(
     { stream: logger.stream }
 ));
 
-// ── Cache disable — শুধু API routes-এ (static /uploads-এ নয়) ──
-// ✅ FIX: আগে app.use(...) দিয়ে সব route-এ Cache-Control বসত,
-// ফলে /uploads static files-এও no-store লাগত — browser ছবি
-// cache করতে পারত না, প্রতিবার নতুন করে ডাউনলোড হত।
-// এখন শুধু /api/ route-এ apply হবে।
+// ── Cache disable — শুধু API routes-এ ──
+// শুধু /api/ route-এ apply হবে।
 app.use('/api', (req, res, next) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
@@ -95,8 +104,6 @@ app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// আপলোড করা ছবি/সেলফি দেখানোর জন্য
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // ============================================================
 // RATE LIMITING
