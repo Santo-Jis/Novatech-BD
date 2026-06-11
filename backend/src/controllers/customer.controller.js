@@ -379,6 +379,22 @@ const updateCustomer = async (req, res) => {
             return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
         }
 
+        // ✅ FIX #1: Manager শুধু নিজের route-এর customer update করতে পারবে
+        // getCustomer ও getCustomerHistory-তে এই check আছে — updateCustomer-এও থাকা দরকার।
+        if (req.user.role === 'manager') {
+            const customer = current.rows[0];
+            if (!customer.route_id) {
+                return res.status(403).json({ success: false, message: 'এই কাস্টমার আপনার টিমে নেই।' });
+            }
+            const routeCheck = await query(
+                'SELECT id FROM routes WHERE id = $1 AND manager_id = $2',
+                [customer.route_id, req.user.id]
+            );
+            if (routeCheck.rows.length === 0) {
+                return res.status(403).json({ success: false, message: 'এই কাস্টমার আপনার টিমে নেই।' });
+            }
+        }
+
         // নতুন ছবি
         let shopPhotoUrl = current.rows[0].shop_photo;
         if (req.file) {
@@ -624,6 +640,23 @@ const collectCredit = async (req, res) => {
                 success: true,
                 message: `৳${amount} বাকি আদায় সফল। (পূর্বে সম্পন্ন হয়েছিল)`
             });
+        }
+
+        // ✅ FIX #2: Manager শুধু নিজের route-এর customer থেকে credit collect করতে পারবে
+        // Transaction-এর বাইরে check করো — FOR UPDATE lock নেওয়ার আগেই reject হোক।
+        if (req.user.role === 'manager') {
+            const routeCheck = await query(
+                `SELECT c.id FROM customers c
+                 JOIN routes r ON c.route_id = r.id
+                 WHERE c.id = $1 AND r.manager_id = $2`,
+                [customerId, req.user.id]
+            );
+            if (routeCheck.rows.length === 0) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'এই কাস্টমার আপনার টিমে নেই।'
+                });
+            }
         }
 
         let remainingCredit;
