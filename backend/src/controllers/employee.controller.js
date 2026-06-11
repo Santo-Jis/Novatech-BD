@@ -572,6 +572,13 @@ const editEmployee = async (req, res) => {
                 [req.user.id, id, JSON.stringify(currentData), JSON.stringify(changes)]
             );
 
+            // ✅ FIX #9: role বা manager_id পরিবর্তন হলে সব refresh token মুছে দাও।
+            // পুরনো token-এ পুরনো role থাকে — re-login না হওয়া পর্যন্ত stale role দিয়ে
+            // কাজ করতে পারত। softLogout: refresh tokens মুছে দেয়, block করে না।
+            if (changes.role !== undefined || changes.manager_id !== undefined) {
+                await deleteAllUserSessions(id, { softLogout: true });
+            }
+
             return res.status(200).json({ success: true, message: 'তথ্য আপডেট হয়েছে।' });
 
         } else {
