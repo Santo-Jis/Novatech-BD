@@ -101,15 +101,22 @@ const deleteRefreshToken = async (refreshToken) => {
 // ============================================================
 // একজন ইউজারের সব Session মুছে দেওয়া (সব ডিভাইস থেকে লগআউট)
 //
-// ✅ FIX: suspend/archive করলে শুধু DB session মুছলে হয় না —
+// ✅ FIX (suspend/archive): শুধু DB session মুছলে হয় না —
 //   বিদ্যমান access token এখনো valid থাকে (সর্বোচ্চ ১৫ মিনিট)।
 //   Redis blocklist-এ user-কে যোগ করলে instant block হয়।
 //
+// ✅ FIX #9 (role/manager_id change): softLogout option যোগ করা হয়েছে।
+//   role বা manager_id পরিবর্তনে শুধু refresh tokens মুছে দেওয়া হয়।
+//   বর্তমান access token (max ১৫ মিনিট) শেষ হলে user আর refresh
+//   করতে পারবে না — re-login বাধ্য। নতুন token-এ নতুন role থাকবে।
+//   suspend-এর মতো সাথে সাথে block করা হয় না (misleading 403 এড়ানো)।
+//
 // ব্যবহার:
-//   await deleteAllUserSessions(userId);                       // suspend/archive
+//   await deleteAllUserSessions(userId);                          // suspend/archive
 //   await deleteAllUserSessions(userId, { reactivating: true }); // পুনরায় active
+//   await deleteAllUserSessions(userId, { softLogout: true });   // role পরিবর্তন
 // ============================================================
-const deleteAllUserSessions = async (userId, { reactivating = false } = {}) => {
+const deleteAllUserSessions = async (userId, { reactivating = false, softLogout = false } = {}) => {
     await query(
         'DELETE FROM user_sessions WHERE user_id = $1',
         [userId]
@@ -117,6 +124,10 @@ const deleteAllUserSessions = async (userId, { reactivating = false } = {}) => {
 
     if (reactivating) {
         await unblockUser(userId);
+    } else if (softLogout) {
+        // শুধু refresh tokens মুছে দাও — Redis block নয়।
+        // current access token expire হলে user আর refresh করতে পারবে না,
+        // তখন re-login করলে নতুন token-এ নতুন role পাবে।
     } else {
         const ttlSeconds = parseTtlSeconds(process.env.JWT_ACCESS_EXPIRES || '15m');
         await blockUserTokens(userId, ttlSeconds);
