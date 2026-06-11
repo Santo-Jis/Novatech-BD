@@ -130,7 +130,10 @@ export default function DashboardView({
   } = dashboard
 
   // ── Logout confirmation modal state ──────────────────────────
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const [showLogoutConfirm,    setShowLogoutConfirm]    = useState(false)
+  const [showComplaintConfirm, setShowComplaintConfirm] = useState(false)
+  const [showCreditConfirm,    setShowCreditConfirm]    = useState(false)
+  const [showReturnConfirm,    setShowReturnConfirm]    = useState(false)
 
   // ── Returns tab sub-navigation ────────────────────────────────
   const [returnSubTab, setReturnSubTab] = useState('requests')
@@ -425,7 +428,7 @@ export default function DashboardView({
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                         <button onClick={() => setCreditReqOpen(false)}
                           style={{ padding: '12px', borderRadius: 12, border: '1.5px solid #e5e7eb', background: 'white', color: '#6b7280', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>বাতিল</button>
-                        <button onClick={submitCreditRequest} disabled={creditReqLoading}
+                        <button onClick={() => setShowCreditConfirm(true)} disabled={creditReqLoading}
                           style={{ padding: '12px', borderRadius: 12, border: 'none', background: creditReqLoading ? '#94a3b8' : '#4f46e5', color: 'white', fontWeight: 700, fontSize: 13, cursor: creditReqLoading ? 'not-allowed' : 'pointer' }}>
                           {creditReqLoading ? 'জমা হচ্ছে...' : '✅ জমা দিন'}
                         </button>
@@ -509,7 +512,7 @@ export default function DashboardView({
                       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                         <button onClick={() => setComplaintOpen(false)}
                           style={{ padding: '12px', borderRadius: 12, border: '1.5px solid #e5e7eb', background: 'white', color: '#6b7280', fontWeight: 700, fontSize: 13, cursor: 'pointer' }}>বাতিল</button>
-                        <button onClick={submitComplaint} disabled={cmpLoading}
+                        <button onClick={() => setShowComplaintConfirm(true)} disabled={cmpLoading}
                           style={{ padding: '12px', borderRadius: 12, border: 'none', background: cmpLoading ? '#94a3b8' : '#dc2626', color: 'white', fontWeight: 700, fontSize: 13, cursor: cmpLoading ? 'not-allowed' : 'pointer' }}>
                           {cmpLoading ? 'জমা হচ্ছে...' : '📣 জমা দিন'}
                         </button>
@@ -1210,9 +1213,108 @@ export default function DashboardView({
                   style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: '1.5px solid #e2e8f0', fontSize: 12, resize: 'none', outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit' }} />
               </div>
               {/* Submit */}
-              <button onClick={submitReturnRequest} disabled={returnSubmitLoading}
+              <button onClick={() => setShowReturnConfirm(true)} disabled={returnSubmitLoading}
                 style={{ width: '100%', padding: '14px 0', borderRadius: 14, border: 'none', background: returnSubmitLoading ? '#94a3b8' : 'linear-gradient(135deg,#1d4ed8,#1e40af)', color: 'white', fontSize: 14, fontWeight: 800, cursor: returnSubmitLoading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 14px rgba(29,78,216,0.3)' }}>
                 {returnSubmitLoading ? '⏳ পাঠানো হচ্ছে...' : '↩️ অনুরোধ পাঠান'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* ── Complaint Confirmation Dialog ── */}
+      {showComplaintConfirm && (
+        <div onClick={() => setShowComplaintConfirm(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', animation: 'fadeIn 0.18s ease' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: 'white', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '24px 20px 32px' }}>
+            <div style={{ width: 40, height: 4, background: '#e5e7eb', borderRadius: 2, margin: '0 auto 20px' }} />
+            <p style={{ margin: '0 0 8px', fontWeight: 800, fontSize: 16, color: '#1e1e1e' }}>📣 অভিযোগ পাঠাবেন?</p>
+            <div style={{ background: '#fef2f2', borderRadius: 12, padding: '12px 14px', marginBottom: 16 }}>
+              <p style={{ margin: '0 0 4px', fontSize: 12, color: '#6b7280', fontWeight: 600 }}>বিষয়</p>
+              <p style={{ margin: '0 0 8px', fontSize: 13, color: '#1e1e1e', fontWeight: 700 }}>{cmpSubject}</p>
+              <p style={{ margin: '0 0 4px', fontSize: 12, color: '#6b7280', fontWeight: 600 }}>বিবরণ</p>
+              <p style={{ margin: 0, fontSize: 12, color: '#374151', lineHeight: 1.5 }}>{cmpDesc}</p>
+            </div>
+            <p style={{ margin: '0 0 16px', fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>একবার পাঠালে সম্পাদনা করা যাবে না।</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button onClick={() => setShowComplaintConfirm(false)}
+                style={{ padding: '14px', borderRadius: 14, border: '1.5px solid #e5e7eb', background: 'white', color: '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                ← সম্পাদনা করুন
+              </button>
+              <button onClick={() => { setShowComplaintConfirm(false); submitComplaint() }}
+                style={{ padding: '14px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#dc2626,#b91c1c)', color: 'white', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>
+                📣 পাঠান
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Credit Request Confirmation Dialog ── */}
+      {showCreditConfirm && (
+        <div onClick={() => setShowCreditConfirm(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', animation: 'fadeIn 0.18s ease' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: 'white', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '24px 20px 32px' }}>
+            <div style={{ width: 40, height: 4, background: '#e5e7eb', borderRadius: 2, margin: '0 auto 20px' }} />
+            <p style={{ margin: '0 0 8px', fontWeight: 800, fontSize: 16, color: '#1e1e1e' }}>💳 আবেদন নিশ্চিত করুন</p>
+            <div style={{ background: '#eef2ff', borderRadius: 12, padding: '12px 14px', marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>বর্তমান লিমিট</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#374151' }}>৳{(customer?.credit_limit || 0).toLocaleString('bn-BD')}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 12, color: '#6b7280' }}>আবেদনকৃত লিমিট</span>
+                <span style={{ fontSize: 15, fontWeight: 800, color: '#4f46e5' }}>৳{(parseInt(creditReqAmt) || 0).toLocaleString('bn-BD')}</span>
+              </div>
+            </div>
+            <p style={{ margin: '0 0 16px', fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>অনুমোদনের জন্য কর্তৃপক্ষের কাছে পাঠানো হবে।</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button onClick={() => setShowCreditConfirm(false)}
+                style={{ padding: '14px', borderRadius: 14, border: '1.5px solid #e5e7eb', background: 'white', color: '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                ← ফিরে যান
+              </button>
+              <button onClick={() => { setShowCreditConfirm(false); submitCreditRequest() }}
+                style={{ padding: '14px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#4f46e5,#4338ca)', color: 'white', fontWeight: 800, fontSize: 14, cursor: 'pointer' }}>
+                ✅ নিশ্চিত করুন
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Return Request Confirmation Dialog ── */}
+      {showReturnConfirm && (
+        <div onClick={() => setShowReturnConfirm(false)}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', animation: 'fadeIn 0.18s ease' }}>
+          <div onClick={e => e.stopPropagation()}
+            style={{ background: 'white', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '24px 20px 32px' }}>
+            <div style={{ width: 40, height: 4, background: '#e5e7eb', borderRadius: 2, margin: '0 auto 20px' }} />
+            <p style={{ margin: '0 0 8px', fontWeight: 800, fontSize: 16, color: '#1e1e1e' }}>↩️ ফেরত অনুরোধ পাঠাবেন?</p>
+            <div style={{ background: '#eff6ff', borderRadius: 12, padding: '12px 14px', marginBottom: 6 }}>
+              {(returnItems || []).filter(it => it.product_name).map((item, i) => (
+                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: i < returnItems.length - 1 ? 8 : 0, marginBottom: i < returnItems.length - 1 ? 8 : 0, borderBottom: i < returnItems.length - 1 ? '1px solid #dbeafe' : 'none' }}>
+                  <span style={{ fontSize: 13, color: '#374151', fontWeight: 600 }}>{item.product_name}</span>
+                  <span style={{ fontSize: 13, color: '#1d4ed8', fontWeight: 800, background: '#dbeafe', borderRadius: 8, padding: '2px 10px' }}>× {item.qty}</span>
+                </div>
+              ))}
+            </div>
+            {returnNote && (
+              <div style={{ background: '#fffbeb', borderRadius: 10, padding: '8px 12px', marginBottom: 6 }}>
+                <p style={{ margin: 0, fontSize: 11, color: '#92400e' }}>📝 {returnNote}</p>
+              </div>
+            )}
+            <p style={{ margin: '8px 0 16px', fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>একবার পাঠালে SR আসার আগে বাতিল করা যাবে না।</p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button onClick={() => setShowReturnConfirm(false)}
+                style={{ padding: '14px', borderRadius: 14, border: '1.5px solid #e5e7eb', background: 'white', color: '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+                ← ফিরে যান
+              </button>
+              <button onClick={() => { setShowReturnConfirm(false); submitReturnRequest() }}
+                style={{ padding: '14px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#1d4ed8,#1e40af)', color: 'white', fontWeight: 800, fontSize: 14, cursor: 'pointer', boxShadow: '0 4px 14px rgba(29,78,216,0.3)' }}>
+                ↩️ নিশ্চিত করুন
               </button>
             </div>
           </div>
