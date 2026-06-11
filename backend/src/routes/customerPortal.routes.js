@@ -6,8 +6,11 @@
 const express    = require('express');
 const router     = express.Router();
 const jwt        = require('jsonwebtoken');
-const logger     = require('../config/logger');
+const rateLimit  = require('express-rate-limit');
+const RedisStore         = require('rate-limit-redis');
 const { getRedisClient } = require('../config/redis');
+const logger             = require('../config/logger');
+const { getCached, setCache, invalidatePortalAuthCache } = require('../services/portalCache.service');
 
 const {
     sendPortalLink,
@@ -56,36 +59,6 @@ const { auth }          = require('../middlewares/auth');
 const { aiTokenBucket } = require('../middlewares/aiTokenBucket');
 const { customerAiChat, getCustomerChatHistory } = require('../controllers/customerAiChat.controller');
 const { query }         = require('../config/db');
-
-// ============================================================
-// PORTAL AUTH CACHE — Redis-backed, in-memory fallback
-// key   → portal_auth:{customer_id}
-// value → JSON { token_version, cachedAt }
-// TTL   → 60 সেকেন্ড (Redis EX)
-// ============================================================
-const PORTAL_CACHE_TTL_SEC = 60;
-const PORTAL_CACHE_PREFIX  = 'portal_auth:';
-
-const getCached = async (customerId) => {
-    try {
-        const client = await getRedisClient();
-        const raw = await client.get(`${PORTAL_CACHE_PREFIX}${customerId}`);
-        if (!raw) return null;
-        return JSON.parse(raw);
-    } catch (err) {
-        logger.error('portalAuth cache GET error:', err.message);
-        return null;
-    }
-};
-
-const invalidatePortalAuthCache = async (customerId) => {
-    try {
-        const client = await getRedisClient();
-        await client.del(`${PORTAL_CACHE_PREFIX}${customerId}`);
-    } catch (err) {
-        logger.error('portalAuth cache DEL error:', err.message);
-    }
-};
 
 // ── Portal JWT Middleware ─────────────────────────────────────
 // ✅ শুধু short-lived access token (type: 'customer_portal') গ্রহণ করে।
@@ -139,17 +112,7 @@ const portalAuth = async (req, res, next) => {
 
                 const currentVersion = authCheck.rows[0].current_version || 1;
                 cached = { token_version: currentVersion, cachedAt: Date.now() };
-
-                try {
-                    const client = await getRedisClient();
-                    await client.set(
-                        `${PORTAL_CACHE_PREFIX}${customerId}`,
-                        JSON.stringify(cached),
-                        { EX: PORTAL_CACHE_TTL_SEC }
-                    );
-                } catch (cacheErr) {
-                    logger.error('portalAuth cache SET error:', cacheErr.message);
-                }
+                await setCache(customerId, cached);
 
             } catch (dbErr) {
                 logger.error('❌ portalAuth DB check error:', dbErr.message);
@@ -181,6 +144,41 @@ const portalAuth = async (req, res, next) => {
         return res.status(401).json({ success: false, message: 'অবৈধ টোকেন।' });
     }
 };
+
+// ============================================================
+// RATE LIMITERS — Redis-backed, customer_id keyed
+// IP-based নয় — প্রতিটি customer আলাদাভাবে track হয়।
+// Redis unavailable হলে keyGenerator-এ req.ip fallback আছে।
+// ============================================================
+
+const makeRedisStore = () => new RedisStore({
+    sendCommand: async (...args) => {
+        const client = await getRedisClient();
+        return client.sendCommand(args);
+    }
+});
+
+// Complaint: ১৫ মিনিটে সর্বোচ্চ ৫টি
+const complaintLimiter = rateLimit({
+    windowMs:     15 * 60 * 1000,
+    max:          5,
+    keyGenerator: (req) => `complaint:${req.portalUser?.customer_id || req.ip}`,
+    store:        makeRedisStore(),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: { success: false, message: 'অনেক বেশি অভিযোগ জমা হয়েছে। ১৫ মিনিট পর চেষ্টা করুন।' }
+});
+
+// Credit limit request: ১ ঘণ্টায় সর্বোচ্চ ৩টি
+const creditLimiter = rateLimit({
+    windowMs:     60 * 60 * 1000,
+    max:          3,
+    keyGenerator: (req) => `credit_req:${req.portalUser?.customer_id || req.ip}`,
+    store:        makeRedisStore(),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: { success: false, message: 'অনেক বেশি আবেদন করা হয়েছে। ১ ঘণ্টা পর চেষ্টা করুন।' }
+});
 
 // ============================================================
 // AUTH ROUTES
@@ -241,14 +239,13 @@ router.get('/return-requests',             portalAuth, getMyReturnRequests);
 
 router.get('/statement',                   portalAuth, getCustomerStatement);
 
-router.post('/credit-limit-request',       portalAuth, submitCreditLimitRequest);
+router.post('/credit-limit-request',       portalAuth, creditLimiter,   submitCreditLimitRequest);
 router.get('/credit-limit-request',        portalAuth, getMyLimitRequests);
 
-router.post('/complaint',                  portalAuth, submitComplaint);
+router.post('/complaint',                  portalAuth, complaintLimiter, submitComplaint);
 router.get('/complaint',                   portalAuth, getMyComplaints);
 
 router.post('/ai-chat',        portalAuth, aiTokenBucket, customerAiChat);
 router.get('/ai-chat/history', portalAuth, getCustomerChatHistory);
 
 module.exports = router;
-module.exports.invalidatePortalAuthCache = invalidatePortalAuthCache;
