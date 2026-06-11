@@ -9,7 +9,7 @@ import toast from 'react-hot-toast'
 import {
   FiSearch, FiUser, FiPhone, FiDollarSign, FiDownload,
   FiTarget, FiTrendingUp, FiUsers, FiCheck, FiEdit2,
-  FiMapPin
+  FiMapPin, FiHash, FiAlertCircle, FiCalendar
 } from 'react-icons/fi'
 
 const fmt  = n => Number(n || 0).toLocaleString('bn-BD')
@@ -25,6 +25,9 @@ export default function ManagerTeam() {
   const [targetModal, setTargetModal] = useState(null)
   const [targetVal,   setTargetVal]   = useState('')
   const [saving,      setSaving]      = useState(false)
+
+  // ✅ FIX #4: SR detail modal — admin route-এ navigate করার বদলে এখানেই দেখাও
+  const [detailModal, setDetailModal] = useState(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -171,7 +174,7 @@ export default function ManagerTeam() {
               worker={worker}
               onTarget={openTarget}
               onDownload={downloadPDF}
-              onDetails={() => navigate(`/admin/employees/${worker.id}`)}
+              onDetails={() => setDetailModal(worker)}
               onVisitLog={() => navigate(`/manager/team/${worker.id}/visits?name=${encodeURIComponent(worker.name_bn)}`)}
             />
           ))}
@@ -217,6 +220,24 @@ export default function ManagerTeam() {
             </p>
           </div>
         </div>
+      </Modal>
+
+      {/* ════════════════════════════════════════════════════
+          MODAL: SR বিস্তারিত
+          ✅ FIX #4: আগে /admin/employees/:id-এ navigate করত —
+          admin route manager-এর জন্য blocked।
+          এখন available data দিয়ে এখানেই modal-এ দেখানো হচ্ছে।
+      ════════════════════════════════════════════════════ */}
+      <Modal
+        isOpen={!!detailModal}
+        onClose={() => setDetailModal(null)}
+        title="SR বিস্তারিত"
+        size="sm"
+        footer={
+          <Button variant="outline" onClick={() => setDetailModal(null)}>বন্ধ করুন</Button>
+        }
+      >
+        {detailModal && <SRDetailView worker={detailModal} onVisitLog={() => { setDetailModal(null); navigate(`/manager/team/${detailModal.id}/visits?name=${encodeURIComponent(detailModal.name_bn)}`); }} />}
       </Modal>
 
     </div>
@@ -298,6 +319,70 @@ function SRCard({ worker, onTarget, onDownload, onDetails, onVisitLog }) {
           <FiDownload />
         </button>
       </div>
+    </div>
+  )
+}
+
+// ─── SR Detail View (modal content) ───────────────────────
+function SRDetailView({ worker, onVisitLog }) {
+  const hasTarget = parseFloat(worker.monthly_target || 0) > 0
+  const hasDues   = parseFloat(worker.outstanding_dues || 0) > 0
+
+  return (
+    <div className="space-y-4">
+      {/* প্রোফাইল হেডার */}
+      <div className="flex items-center gap-4 bg-gradient-to-r from-secondary to-secondary-light rounded-xl p-4">
+        <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center overflow-hidden flex-shrink-0 border-2 border-white/40">
+          {worker.profile_photo
+            ? <img src={worker.profile_photo} alt="" className="w-full h-full object-cover" />
+            : <FiUser className="text-white text-2xl" />
+          }
+        </div>
+        <div>
+          <p className="text-white font-bold text-lg leading-tight">{worker.name_bn}</p>
+          {worker.name_en && <p className="text-white/70 text-sm">{worker.name_en}</p>}
+          <Badge variant={worker.status === 'active' ? 'active' : 'inactive'} className="mt-1" />
+        </div>
+      </div>
+
+      {/* তথ্য */}
+      <div className="space-y-2.5">
+        <InfoRow icon={<FiHash />}       label="কোড"            value={worker.employee_code} mono />
+        <InfoRow icon={<FiPhone />}      label="ফোন"            value={worker.phone} />
+        <InfoRow icon={<FiDollarSign />} label="বেতন"           value={`৳${fmt(worker.basic_salary)}`} />
+        <InfoRow
+          icon={<FiTarget />}
+          label="মাসিক টার্গেট"
+          value={hasTarget ? `৳${fmt(worker.monthly_target)}` : 'সেট হয়নি'}
+          valueClass={hasTarget ? 'text-green-600 font-semibold' : 'text-orange-500'}
+        />
+        {hasDues && (
+          <InfoRow
+            icon={<FiAlertCircle />}
+            label="বকেয়া"
+            value={`৳${fmt(worker.outstanding_dues)}`}
+            valueClass="text-red-600 font-semibold"
+          />
+        )}
+      </div>
+
+      {/* ভিজিট লগ শর্টকাট */}
+      <button
+        onClick={onVisitLog}
+        className="w-full py-2.5 text-sm border border-blue-200 rounded-xl text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+      >
+        <FiMapPin className="text-sm" /> ভিজিট লগ দেখুন
+      </button>
+    </div>
+  )
+}
+
+function InfoRow({ icon, label, value, mono = false, valueClass = 'text-gray-800' }) {
+  return (
+    <div className="flex items-center gap-3 px-1">
+      <span className="text-gray-400 flex-shrink-0">{icon}</span>
+      <span className="text-gray-500 text-sm w-28 flex-shrink-0">{label}</span>
+      <span className={`text-sm flex-1 ${mono ? 'font-mono' : ''} ${valueClass}`}>{value}</span>
     </div>
   )
 }
