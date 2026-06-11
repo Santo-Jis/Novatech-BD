@@ -202,26 +202,38 @@ const createSale = async (req, res) => {
 
         const cust = customer.rows[0];
 
+        // ── Batch Product Fetch — N+1 Fix ────────────────────────────────
+        // আগে items ও replacement_items-এর প্রতিটি product আলাদা DB query-তে
+        // fetch হতো (N+1 pattern)। এখন সব product_id একটি SET-এ deduplicate
+        // করে একটিমাত্র ANY($1::uuid[]) query-তে fetch করা হচ্ছে।
+        const allProductIds = [...new Set([
+            ...items.map(i => i.product_id),
+            ...(replacement_items || []).map(i => i.product_id)
+        ])];
+
+        const prodResult = await query(
+            'SELECT id, name, price, vat, tax FROM products WHERE id = ANY($1::uuid[])',
+            [allProductIds]
+        );
+        const productMap = Object.fromEntries(prodResult.rows.map(p => [p.id, p]));
+
         // মোট হিসাব
         let totalAmount       = 0;
         let replacementValue  = 0;
         const processedItems  = [];
 
         for (const item of items) {
-            const product = await query(
-                'SELECT id, name, price, vat, tax FROM products WHERE id = $1',
-                [item.product_id]
-            );
-            if (product.rows.length === 0) continue;
+            const product = productMap[item.product_id];
+            if (!product) continue;
 
             const { unitPrice, vatRate, taxRate,
                     vatAmount, taxAmount, finalPrice, subtotal } =
-                calcFromProduct(product.rows[0], item.qty);
+                calcFromProduct(product, item.qty);
             totalAmount += subtotal;
 
             processedItems.push({
                 product_id:   item.product_id,
-                product_name: product.rows[0].name,
+                product_name: product.name,
                 qty:          item.qty,
                 price:        unitPrice,
                 vat_rate:     vatRate,
@@ -237,21 +249,18 @@ const createSale = async (req, res) => {
         const processedReplacement = [];
         if (replacement_items?.length > 0) {
             for (const item of replacement_items) {
-                const product = await query(
-                    'SELECT id, name, price, vat, tax FROM products WHERE id = $1',
-                    [item.product_id]
-                );
-                if (product.rows.length === 0) continue;
+                const product = productMap[item.product_id];
+                if (!product) continue;
 
                 const { unitPrice, vatRate, taxRate,
                         vatAmount, taxAmount, finalPrice,
                         subtotal: total } =
-                    calcFromProduct(product.rows[0], item.qty);
+                    calcFromProduct(product, item.qty);
                 replacementValue += total;
 
                 processedReplacement.push({
                     product_id:   item.product_id,
-                    product_name: product.rows[0].name,
+                    product_name: product.name,
                     qty:          item.qty,
                     unit_price:   unitPrice,
                     vat_rate:     vatRate,
