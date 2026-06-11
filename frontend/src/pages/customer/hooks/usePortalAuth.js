@@ -1,11 +1,16 @@
 // hooks/usePortalAuth.js
 // Authentication, dashboard loading, notifications, push permission — সব এখানে
 //
-// ✅ NEW SYSTEM: Permanent Link (?c=customer_code)
-//   - SR একবার permanent link পাঠায় — কখনো expire হয় না
-//   - প্রথমবার: Google login → 30-day JWT localStorage-এ সেভ
-//   - পরের বার: JWT valid থাকলে auto-login (Google লাগে না)
-//   - 30 দিন পরে: JWT expire → Google দিয়ে আবার login
+// ✅ SECURITY FIX: JWT আর localStorage-এ নেই।
+//
+// ❌ আগের system:
+//     Google login → 30d JWT → localStorage  (XSS-এ চুরি সম্ভব)
+//     page refresh → localStorage থেকে JWT → auto-login
+//
+// ✅ নতুন system:
+//     Google login → backend 15-min access JWT (memory) + 30-day refresh (HttpOnly cookie)
+//     page refresh → /portal/refresh (cookie auto-পাঠায়) → নতুন access token
+//     JS refresh token পড়তে পারে না — HttpOnly cookie
 
 import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -14,28 +19,26 @@ import { portalFetch, BACKEND } from '../utils/api'
 import { getDeviceFingerprint, webGoogleLogin } from '../utils/fingerprint'
 import { initializeApp, getApps } from 'firebase/app'
 import { getMessaging, getToken } from 'firebase/messaging'
-import {
-  getStorageKey, storageGet, storageSet, storageRemove, storageKeys,
-  getCustomerCode, setCustomerCode, isJWTValid
-} from '../utils/helpers'
+import { getCustomerCode, setCustomerCode } from '../utils/helpers'
+import { portalTokenStore } from '../utils/portalTokenStore'
 
 export function usePortalAuth(defaultTab = 'summary') {
   const [searchParams] = useSearchParams()
 
-  // ✅ NEW: ?c=customer_code (permanent, কখনো expire হয় না)
+  // ?c=customer_code — permanent link, কখনো expire হয় না
   const customerCodeFromURL = searchParams.get('c')
 
   const [phase,       setPhase]       = useState('loading')
-  const portalJWTRef  = useRef(null)
+  const portalJWTRef  = useRef(null)   // stale closure এড়াতে (React state mirror)
   const toastTimerRef = useRef(null)
-  const [tokenInfo,   setTokenInfo]   = useState(null)
+  const [tokenInfo,   setTokenInfo]   = useState(null)  // backward compat
   const [portalJWT,   setPortalJWT]   = useState(null)
   const [dashboard,   setDashboard]   = useState(null)
   const [activeTab,   setActiveTab]   = useState(defaultTab)
   const [error,       setError]       = useState('')
   const [loggingIn,   setLoggingIn]   = useState(false)
 
-  // ── Toast Notification ───────────────────────────────────────
+  // ── Toast ───────────────────────────────────────────────────
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' })
 
   const showToast = (message, type = 'success') => {
@@ -53,14 +56,14 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [showBell,       setShowBell]       = useState(false)
   const [unreadBanner,   setUnreadBanner]   = useState(null)
 
-  // ── Invoice Pagination State ────────────────────────────────
+  // ── Invoice state ───────────────────────────────────────────
   const [invoices,          setInvoices]          = useState([])
   const [invoicePage,       setInvoicePage]       = useState(1)
   const [invoiceTotalPages, setInvoiceTotalPages] = useState(1)
   const [invoiceTotal,      setInvoiceTotal]      = useState(0)
   const [invoiceLoading,    setInvoiceLoading]    = useState(false)
 
-  // ── Credit Limit Request State ──────────────────────────────
+  // ── Credit Limit Request state ──────────────────────────────
   const [creditReqOpen,    setCreditReqOpen]    = useState(false)
   const [creditReqAmt,     setCreditReqAmt]     = useState('')
   const [creditReqReason,  setCreditReqReason]  = useState('')
@@ -69,30 +72,30 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [limitReqsLoaded,  setLimitReqsLoaded]  = useState(false)
   const [limitReqsLoading, setLimitReqsLoading] = useState(false)
 
-  // ── Complaint State ─────────────────────────────────────────
-  const [complaintOpen,    setComplaintOpen]    = useState(false)
-  const [cmpType,          setCmpType]          = useState('complaint')
-  const [cmpSubject,       setCmpSubject]       = useState('')
-  const [cmpDesc,          setCmpDesc]          = useState('')
-  const [cmpLoading,       setCmpLoading]       = useState(false)
-  const [myComplaints,     setMyComplaints]     = useState([])
-  const [complaintsLoaded, setComplaintsLoaded] = useState(false)
+  // ── Complaint state ─────────────────────────────────────────
+  const [complaintOpen,     setComplaintOpen]     = useState(false)
+  const [cmpType,           setCmpType]           = useState('complaint')
+  const [cmpSubject,        setCmpSubject]        = useState('')
+  const [cmpDesc,           setCmpDesc]           = useState('')
+  const [cmpLoading,        setCmpLoading]        = useState(false)
+  const [myComplaints,      setMyComplaints]      = useState([])
+  const [complaintsLoaded,  setComplaintsLoaded]  = useState(false)
   const [complaintsLoading, setComplaintsLoading] = useState(false)
 
-  // ── Invoice Filter State ────────────────────────────────────
+  // ── Invoice filter state ────────────────────────────────────
   const [invoiceSearch,    setInvoiceSearch]    = useState('')
   const [invoicePayMethod, setInvoicePayMethod] = useState('')
   const [invoiceDateFrom,  setInvoiceDateFrom]  = useState('')
   const [invoiceDateTo,    setInvoiceDateTo]    = useState('')
   const [filterOpen,       setFilterOpen]       = useState(false)
 
-  // ── Statement download state ────────────────────────────────
+  // ── Statement state ─────────────────────────────────────────
   const [stmtLoading, setStmtLoading] = useState(false)
   const [stmtFrom,    setStmtFrom]    = useState('')
   const [stmtTo,      setStmtTo]      = useState('')
   const [stmtOpen,    setStmtOpen]    = useState(false)
 
-  // ── Payment History State ────────────────────────────────────
+  // ── Payment History state ────────────────────────────────────
   const [paymentHistory,    setPaymentHistory]    = useState([])
   const [paymentPage,       setPaymentPage]       = useState(1)
   const [paymentTotalPages, setPaymentTotalPages] = useState(1)
@@ -104,7 +107,7 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [paymentDateTo,     setPaymentDateTo]     = useState('')
   const [paymentFilterOpen, setPaymentFilterOpen] = useState(false)
 
-  // ── Return Request State ─────────────────────────────────────
+  // ── Return Request state ─────────────────────────────────────
   const [myReturnReqs,        setMyReturnReqs]        = useState([])
   const [returnReqTotal,      setReturnReqTotal]      = useState(0)
   const [returnReqPage,       setReturnReqPage]       = useState(1)
@@ -112,7 +115,6 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [returnReqLoading,    setReturnReqLoading]    = useState(false)
   const [returnReqLoaded,     setReturnReqLoaded]     = useState(false)
   const [returnReqFilter,     setReturnReqFilter]     = useState('all')
-  // Form state
   const [returnFormOpen,      setReturnFormOpen]      = useState(false)
   const [returnInvoice,       setReturnInvoice]       = useState('')
   const [returnType,          setReturnType]          = useState('return')
@@ -120,12 +122,11 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [returnNote,          setReturnNote]          = useState('')
   const [returnSubmitLoading, setReturnSubmitLoading] = useState(false)
 
-  // ── Helpers ─────────────────────────────────────────────────
-  const loadNotifications = async (jwt) => {
+  // ── Notifications ────────────────────────────────────────────
+  // jwt parameter সরানো হয়েছে — portalFetch auto-inject করে (portalTokenStore থেকে)
+  const loadNotifications = async () => {
     try {
-      const data = await portalFetch('/portal/notifications', {
-        headers: { Authorization: `Bearer ${jwt}` }
-      })
+      const data   = await portalFetch('/portal/notifications')
       const notifs = data.data.notifications || []
       setNotifications(notifs)
       setUnreadCount(data.data.unread_count || 0)
@@ -134,12 +135,9 @@ export function usePortalAuth(defaultTab = 'summary') {
     } catch (e) { console.error('Notification load error:', e) }
   }
 
-  const markAllAsRead = async (jwt) => {
+  const markAllAsRead = async () => {
     try {
-      await portalFetch('/portal/notifications/read-all', {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${jwt}` }
-      })
+      await portalFetch('/portal/notifications/read-all', { method: 'PATCH' })
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
       setUnreadCount(0)
       setUnreadBanner(null)
@@ -147,26 +145,23 @@ export function usePortalAuth(defaultTab = 'summary') {
   }
 
   const markOneRead = async (notifId) => {
-    const jwt = portalJWTRef.current || portalJWT
-    if (!jwt) return
+    if (!portalTokenStore.get()) return
     try {
-      await portalFetch(`/portal/notifications/${notifId}/read`, {
-        method: 'PATCH',
-        headers: { Authorization: `Bearer ${jwt}` }
-      })
+      await portalFetch(`/portal/notifications/${notifId}/read`, { method: 'PATCH' })
       setNotifications(prev => prev.map(n => n.id === notifId ? { ...n, is_read: true } : n))
       setUnreadCount(prev => Math.max(0, prev - 1))
     } catch (e) { console.error('markOneRead error:', e) }
   }
 
-  const requestPushPermission = async (jwt) => {
+  // ── Push Permission ──────────────────────────────────────────
+  const requestPushPermission = async () => {
     try {
       if (!('Notification' in window) || !('serviceWorker' in navigator)) return
       if (Notification.permission === 'denied') return
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') return
       const swReg = await navigator.serviceWorker.ready
-      const app = getApps().length > 0 ? getApps()[0] : initializeApp({
+      const app   = getApps().length > 0 ? getApps()[0] : initializeApp({
         apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
         authDomain:        `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com`,
         databaseURL:       import.meta.env.VITE_FIREBASE_DATABASE_URL,
@@ -176,7 +171,7 @@ export function usePortalAuth(defaultTab = 'summary') {
         appId:             import.meta.env.VITE_FIREBASE_APP_ID,
       })
       const messaging = getMessaging(app)
-      const fcmToken = await getToken(messaging, {
+      const fcmToken  = await getToken(messaging, {
         vapidKey: import.meta.env.VITE_FIREBASE_VAPID_KEY,
         serviceWorkerRegistration: swReg,
       })
@@ -185,33 +180,31 @@ export function usePortalAuth(defaultTab = 'summary') {
       if (sessionStorage.getItem(cacheKey) === fcmToken) return
       await portalFetch('/portal/save-fcm-token', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${jwt}` },
-        body: JSON.stringify({ fcm_token: fcmToken }),
+        body:   JSON.stringify({ fcm_token: fcmToken }),
       })
       sessionStorage.setItem(cacheKey, fcmToken)
     } catch (e) { console.warn('[Portal FCM] Permission/token error:', e.message) }
   }
 
-  const loadDashboard = async (jwt) => {
+  // ── Dashboard ────────────────────────────────────────────────
+  const loadDashboard = async () => {
     try {
-      const data = await portalFetch('/portal/dashboard', {
-        headers: { Authorization: `Bearer ${jwt}` }
-      })
+      const data = await portalFetch('/portal/dashboard')
       setDashboard(data.data)
       const totalFromDashboard = data.data?.total_summary?.total_invoices
       if (totalFromDashboard) setInvoiceTotal(parseInt(totalFromDashboard))
       setPhase('dashboard')
-      loadNotifications(jwt)
-      requestPushPermission(jwt)
+      loadNotifications()
+      requestPushPermission()
     } catch (err) {
       console.error('Dashboard error:', err)
       setError('Session শেষ হয়েছে। আবার লগইন করুন।')
-      setPhase('login')
+      setPhase('welcome')
     }
   }
 
-  // ── Paginated invoice loader ─────────────────────────────────
-  const loadInvoices = async (jwt, page = 1, filters = {}) => {
+  // ── Invoices ─────────────────────────────────────────────────
+  const loadInvoices = async (page = 1, filters = {}) => {
     setInvoiceLoading(true)
     try {
       const params = new URLSearchParams({ page, limit: 15 })
@@ -219,9 +212,7 @@ export function usePortalAuth(defaultTab = 'summary') {
       if (filters.payMethod) params.set('payment_method', filters.payMethod)
       if (filters.dateFrom)  params.set('date_from',      filters.dateFrom)
       if (filters.dateTo)    params.set('date_to',        filters.dateTo)
-      const data = await portalFetch(`/portal/invoices?${params}`, {
-        headers: { Authorization: `Bearer ${jwt}` }
-      })
+      const data = await portalFetch(`/portal/invoices?${params}`)
       if (page === 1) setInvoices(data.data || [])
       else setInvoices(prev => [...prev, ...(data.data || [])])
       setInvoicePage(data.pagination?.page || page)
@@ -229,6 +220,27 @@ export function usePortalAuth(defaultTab = 'summary') {
       setInvoiceTotal(data.pagination?.total || 0)
     } catch (err) { console.error('Invoice load error:', err) }
     finally { setInvoiceLoading(false) }
+  }
+
+  const applyInvoiceFilter = () => {
+    setInvoices([])
+    setFilterOpen(false)
+    loadInvoices(1, {
+      search:    invoiceSearch,
+      payMethod: invoicePayMethod,
+      dateFrom:  invoiceDateFrom,
+      dateTo:    invoiceDateTo,
+    })
+  }
+
+  const clearInvoiceFilter = () => {
+    setInvoiceSearch('')
+    setInvoicePayMethod('')
+    setInvoiceDateFrom('')
+    setInvoiceDateTo('')
+    setInvoices([])
+    setFilterOpen(false)
+    loadInvoices(1, {})
   }
 
   // ── Credit Limit Request ─────────────────────────────────────
@@ -240,8 +252,7 @@ export function usePortalAuth(defaultTab = 'summary') {
     try {
       await portalFetch('/portal/credit-limit-request', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${portalJWT}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ requested_amount: parseFloat(creditReqAmt), reason: creditReqReason }),
+        body:   JSON.stringify({ requested_amount: parseFloat(creditReqAmt), reason: creditReqReason }),
       })
       setCreditReqOpen(false)
       setCreditReqAmt('')
@@ -256,9 +267,7 @@ export function usePortalAuth(defaultTab = 'summary') {
     if (limitReqsLoaded) return
     setLimitReqsLoading(true)
     try {
-      const data = await portalFetch('/portal/credit-limit-request', {
-        headers: { Authorization: `Bearer ${portalJWT}` }
-      })
+      const data = await portalFetch('/portal/credit-limit-request')
       setMyLimitReqs(data.data || [])
       setLimitReqsLoaded(true)
     } catch {}
@@ -274,8 +283,7 @@ export function usePortalAuth(defaultTab = 'summary') {
     try {
       await portalFetch('/portal/complaint', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${portalJWT}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: cmpType, subject: cmpSubject.trim(), description: cmpDesc.trim() }),
+        body:   JSON.stringify({ type: cmpType, subject: cmpSubject.trim(), description: cmpDesc.trim() }),
       })
       setComplaintOpen(false)
       setCmpSubject('')
@@ -291,9 +299,7 @@ export function usePortalAuth(defaultTab = 'summary') {
     if (complaintsLoaded) return
     setComplaintsLoading(true)
     try {
-      const data = await portalFetch('/portal/complaint', {
-        headers: { Authorization: `Bearer ${portalJWT}` }
-      })
+      const data = await portalFetch('/portal/complaint')
       setMyComplaints(data.data || [])
       setComplaintsLoaded(true)
     } catch {}
@@ -301,29 +307,46 @@ export function usePortalAuth(defaultTab = 'summary') {
   }
 
   // ── Statement PDF download ───────────────────────────────────
+  // raw fetch ব্যবহার করতে হয় (blob response) — portalFetch শুধু JSON করে
   const downloadStatement = async () => {
-    // ✅ FIX: Date validation — একটি তারিখ দিলে অন্যটিও দিতে হবে
-    if (stmtFrom && !stmtTo) {
+    if (stmtFrom && !stmtTo)
       return showToast('"পর্যন্ত" তারিখটিও দিন।', 'warning')
-    }
-    if (!stmtFrom && stmtTo) {
+    if (!stmtFrom && stmtTo)
       return showToast('"থেকে" তারিখটিও দিন।', 'warning')
-    }
-    if (stmtFrom && stmtTo && stmtFrom > stmtTo) {
+    if (stmtFrom && stmtTo && stmtFrom > stmtTo)
       return showToast('"থেকে" তারিখ "পর্যন্ত" তারিখের আগে হতে হবে।', 'warning')
-    }
+
     setStmtLoading(true)
     try {
       const params = new URLSearchParams()
       if (stmtFrom) params.set('from', stmtFrom)
       if (stmtTo)   params.set('to',   stmtTo)
-      const res = await fetch(`${BACKEND}/portal/statement?${params}`, {
-        headers: { Authorization: `Bearer ${portalJWT}` }
-      })
+
+      const doFetch = (token) =>
+        fetch(`${BACKEND}/portal/statement?${params}`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+
+      let res = await doFetch(portalTokenStore.get())
+
+      // 401 → একবার refresh করে retry
+      if (res.status === 401) {
+        const rr = await fetch(`${BACKEND}/portal/refresh`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        })
+        if (!rr.ok) throw new Error('Session শেষ হয়েছে। পুনরায় লগইন করুন।')
+        const rd = await rr.json()
+        portalTokenStore.set(rd.data.portal_jwt, rd.data.expires_in || 900)
+        res = await doFetch(portalTokenStore.get())
+      }
+
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         throw new Error(err.message || 'Download failed')
       }
+
       const blob  = await res.blob()
       const url   = URL.createObjectURL(blob)
       const a     = document.createElement('a')
@@ -339,39 +362,15 @@ export function usePortalAuth(defaultTab = 'summary') {
     finally { setStmtLoading(false) }
   }
 
-  // ── Invoice filter helpers ───────────────────────────────────
-  const applyInvoiceFilter = () => {
-    setInvoices([])
-    setFilterOpen(false)
-    loadInvoices(portalJWT, 1, {
-      search:    invoiceSearch,
-      payMethod: invoicePayMethod,
-      dateFrom:  invoiceDateFrom,
-      dateTo:    invoiceDateTo,
-    })
-  }
-
-  const clearInvoiceFilter = () => {
-    setInvoiceSearch('')
-    setInvoicePayMethod('')
-    setInvoiceDateFrom('')
-    setInvoiceDateTo('')
-    setInvoices([])
-    setFilterOpen(false)
-    loadInvoices(portalJWT, 1, {})
-  }
-
   // ── Payment History ──────────────────────────────────────────
-  const loadPaymentHistory = async (jwt, page = 1, filters = {}) => {
+  const loadPaymentHistory = async (page = 1, filters = {}) => {
     setPaymentLoading(true)
     try {
       const params = new URLSearchParams({ page, limit: 20 })
       if (filters.type)     params.set('type',      filters.type)
       if (filters.dateFrom) params.set('date_from', filters.dateFrom)
       if (filters.dateTo)   params.set('date_to',   filters.dateTo)
-      const data = await portalFetch(`/portal/payment-history?${params}`, {
-        headers: { Authorization: `Bearer ${jwt}` }
-      })
+      const data = await portalFetch(`/portal/payment-history?${params}`)
       if (page === 1) setPaymentHistory(data.data || [])
       else setPaymentHistory(prev => [...prev, ...(data.data || [])])
       setPaymentPage(data.pagination?.page || page)
@@ -386,11 +385,7 @@ export function usePortalAuth(defaultTab = 'summary') {
     setPaymentHistory([])
     setPaymentPage(1)
     setPaymentFilterOpen(false)
-    loadPaymentHistory(portalJWTRef.current || portalJWT, 1, {
-      type:     paymentTypeFilter,
-      dateFrom: paymentDateFrom,
-      dateTo:   paymentDateTo,
-    })
+    loadPaymentHistory(1, { type: paymentTypeFilter, dateFrom: paymentDateFrom, dateTo: paymentDateTo })
   }
 
   const clearPaymentFilter = () => {
@@ -399,20 +394,17 @@ export function usePortalAuth(defaultTab = 'summary') {
     setPaymentDateTo('')
     setPaymentHistory([])
     setPaymentFilterOpen(false)
-    loadPaymentHistory(portalJWTRef.current || portalJWT, 1, {})
+    loadPaymentHistory(1, {})
   }
 
   // ── Return Requests ──────────────────────────────────────────
   const loadMyReturnReqs = async (page = 1, status = 'all', reset = false) => {
-    const jwt = portalJWTRef.current || portalJWT
-    if (!jwt) return
+    if (!portalTokenStore.get()) return
     setReturnReqLoading(true)
     try {
       const params = new URLSearchParams({ page, limit: 10 })
       if (status !== 'all') params.set('status', status)
-      const data = await portalFetch(`/portal/return-requests?${params}`, {
-        headers: { Authorization: `Bearer ${jwt}` }
-      })
+      const data = await portalFetch(`/portal/return-requests?${params}`)
       const rows = data.data || []
       if (reset || page === 1) setMyReturnReqs(rows)
       else setMyReturnReqs(prev => [...prev, ...rows])
@@ -421,7 +413,7 @@ export function usePortalAuth(defaultTab = 'summary') {
       setReturnReqTotal(data.pagination?.total || 0)
       setReturnReqLoaded(true)
     } catch (e) { console.error('Return req load error:', e) }
-    setReturnReqLoading(false)
+    finally { setReturnReqLoading(false) }
   }
 
   const submitReturnRequest = async () => {
@@ -433,11 +425,9 @@ export function usePortalAuth(defaultTab = 'summary') {
       return showToast('কমপক্ষে একটি পণ্যের নাম, পরিমাণ ও কারণ দিন।', 'warning')
     setReturnSubmitLoading(true)
     try {
-      const jwt = portalJWTRef.current || portalJWT
       const data = await portalFetch('/portal/return-request', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body:   JSON.stringify({
           invoice_number: returnInvoice.trim(),
           type:           returnType,
           items:          validItems.map(i => ({
@@ -446,7 +436,7 @@ export function usePortalAuth(defaultTab = 'summary') {
             reason:       i.reason.trim(),
           })),
           note: returnNote.trim() || undefined,
-        })
+        }),
       })
       showToast(data.message || 'অনুরোধ পাঠানো হয়েছে।', 'success')
       setReturnFormOpen(false)
@@ -458,38 +448,39 @@ export function usePortalAuth(defaultTab = 'summary') {
       setReturnReqFilter('all')
       loadMyReturnReqs(1, 'all', true)
     } catch (e) { showToast(e.message || 'সমস্যা হয়েছে।', 'error') }
-    setReturnSubmitLoading(false)
+    finally { setReturnSubmitLoading(false) }
   }
 
   // ── Tab change ───────────────────────────────────────────────
   const handleTabChange = (tabId) => {
     setActiveTab(tabId)
-    if (tabId === 'invoices' && invoices.length === 0 && !invoiceLoading) {
-      loadInvoices(portalJWTRef.current || portalJWT, 1, {})
-    }
-    if (tabId === 'payments' && paymentHistory.length === 0 && !paymentLoading) {
-      loadPaymentHistory(portalJWTRef.current || portalJWT, 1, {})
-    }
-    if (tabId === 'returns' && !returnReqLoaded && !returnReqLoading) {
+    if (tabId === 'invoices' && invoices.length === 0 && !invoiceLoading)
+      loadInvoices(1, {})
+    if (tabId === 'payments' && paymentHistory.length === 0 && !paymentLoading)
+      loadPaymentHistory(1, {})
+    if (tabId === 'returns' && !returnReqLoaded && !returnReqLoading)
       loadMyReturnReqs(1, 'all', true)
-    }
   }
 
   // ── Logout ───────────────────────────────────────────────────
-  // ✅ NEW: customer_code দিয়ে JWT সরানো হয়, customer_code রাখা হয়
-  // যাতে পরের বার login স্ক্রিন সরাসরি আসে (link লাগবে না)
-  const handleLogout = () => {
-    const code = getCustomerCode()
-    if (code) storageRemove(getStorageKey(code))
-    storageRemove('portal_fcm_token')
-    setPhase('welcome')
-    setDashboard(null)
-    setPortalJWT(null)
+  // ✅ memory clear + backend HttpOnly cookie মুছে দেয়
+  // customer_code localStorage-এ থাকে — পরের বার login screen সরাসরি আসে
+  const handleLogout = async () => {
+    portalTokenStore.clear()
     portalJWTRef.current = null
+    setPortalJWT(null)
+    setDashboard(null)
+    setPhase('welcome')
+    try {
+      await fetch(`${BACKEND}/portal/logout`, {
+        method:      'POST',
+        credentials: 'include',
+        headers:     { 'Content-Type': 'application/json' },
+      })
+    } catch { /* silent — local state already cleared */ }
   }
 
   // ── Google Login ─────────────────────────────────────────────
-  // ✅ NEW: link_token লাগে না — customer_code + google_token দিয়ে /portal/direct-auth
   const googleLogin = async () => {
     setLoggingIn(true)
     setError('')
@@ -509,91 +500,79 @@ export function usePortalAuth(defaultTab = 'summary') {
 
       const deviceId     = await getDeviceFingerprint()
       const customerCode = getCustomerCode()
-
       if (!customerCode) throw new Error('Customer code পাওয়া যায়নি। SR-এর লিংক থেকে প্রবেশ করুন।')
 
-      // ✅ NEW: /portal/direct-auth — permanent link system
       const data = await portalFetch('/portal/direct-auth', {
         method: 'POST',
-        body: JSON.stringify({
-          google_token:  access_token,
-          customer_code: customerCode,
-          device_id:     deviceId,
-        })
+        body:   JSON.stringify({ google_token: access_token, customer_code: customerCode, device_id: deviceId }),
       })
 
-      const jwtToken = data.data.portal_jwt
-      // JWT localStorage-এ সেভ — customer_code দিয়ে key তৈরি
-      storageSet(getStorageKey(customerCode), jwtToken)
-      portalJWTRef.current = jwtToken
-      setPortalJWT(jwtToken)
-      await loadDashboard(jwtToken)
+      // ✅ access token  → memory (15 মিনিট)
+      // ✅ refresh token → HttpOnly cookie (backend set করেছে, JS জানে না)
+      const { portal_jwt, expires_in = 900 } = data.data
+      portalTokenStore.set(portal_jwt, expires_in)
+      portalJWTRef.current = portal_jwt
+      setPortalJWT(portal_jwt)
+      await loadDashboard()
+
     } catch (err) {
-      if (!err?.message?.includes('cancel') && !err?.message?.includes('dismissed')) {
+      if (!err?.message?.includes('cancel') && !err?.message?.includes('dismissed'))
         setError(err.message || 'লগইন ব্যর্থ হয়েছে।')
-      }
     } finally { setLoggingIn(false) }
   }
 
   // ── Init effect ──────────────────────────────────────────────
-  // ✅ NEW SYSTEM: Permanent Link (?c=customer_code)
   //
-  // Flow:
-  //  1. URL-এ ?c=CODE → localStorage-এ সেভ করো
-  //  2. localStorage-এ valid JWT আছে? → auto-login (dashboard)
-  //  3. JWT নেই বা 30 দিন শেষ? → Google login screen
+  // ❌ আগের flow:
+  //   1. localStorage থেকে JWT পড়ো
+  //   2. Valid? → auto-login
+  //   3. না? → Google login screen
+  //
+  // ✅ নতুন flow:
+  //   1. পুরনো localStorage JWT সরিয়ে দাও (migration cleanup)
+  //   2. POST /portal/refresh → browser HttpOnly cookie auto-পাঠায়
+  //   3. সফল? → নতুন access token memory-তে → dashboard
+  //   4. ব্যর্থ (cookie নেই/মেয়াদোত্তীর্ণ)? → Google login screen
   useEffect(() => {
     const init = async () => {
-      // ── Step 1: customer_code সংগ্রহ ──────────────────────
-      // URL-এ থাকলে সেভ করো (permanent reference হিসেবে)
-      if (customerCodeFromURL) {
-        setCustomerCode(customerCodeFromURL)
-      }
+
+      // 🧹 Migration: পুরনো localStorage JWT সরিয়ে দাও
+      Object.keys(localStorage)
+        .filter(k => k.startsWith('portal_jwt_'))
+        .forEach(k => localStorage.removeItem(k))
+
+      if (customerCodeFromURL) setCustomerCode(customerCodeFromURL)
 
       const customerCode = customerCodeFromURL || getCustomerCode()
-
       if (!customerCode) {
-        // কোনো customer_code নেই — SR-এর লিংক দরকার
         setError('লিংক পাওয়া যায়নি।')
         setPhase('invalid')
         return
       }
 
-      // ── Step 2: Valid JWT আছে? → Auto-login ───────────────
-      const jwtKey   = getStorageKey(customerCode)
-      const savedJWT = storageGet(jwtKey)
-
-      if (savedJWT && isJWTValid(savedJWT)) {
-        // JWT valid এবং 30 দিনের মধ্যে → সরাসরি dashboard
-        portalJWTRef.current = savedJWT
-        setPortalJWT(savedJWT)
-        await loadDashboard(savedJWT)
-        return
+      // HttpOnly cookie দিয়ে silent re-auth
+      try {
+        const data = await portalFetch('/portal/refresh', { method: 'POST' })
+        const { portal_jwt, expires_in = 900 } = data.data
+        portalTokenStore.set(portal_jwt, expires_in)
+        portalJWTRef.current = portal_jwt
+        setPortalJWT(portal_jwt)
+        await loadDashboard()
+      } catch {
+        // Cookie নেই বা মেয়াদোত্তীর্ণ → Google login
+        setPhase('welcome')
       }
-
-      // ── Step 3: JWT নেই বা Expired → Google Login ─────────
-      if (savedJWT) {
-        // Expired JWT সরিয়ে দাও
-        storageRemove(jwtKey)
-      }
-
-      // Google login screen দেখাও
-      setPhase('welcome')
     }
     init()
   }, [customerCodeFromURL])
 
   return {
-    // phase & auth
     phase, tokenInfo, portalJWT, dashboard,
     activeTab, error, loggingIn,
     googleLogin, handleLogout, handleTabChange,
-    // toast
     toast,
-    // notifications
     notifications, unreadCount, showBell, setShowBell,
     unreadBanner, setUnreadBanner, markAllAsRead, markOneRead,
-    // invoices
     invoices, invoicePage, invoiceTotalPages, invoiceTotal, invoiceLoading,
     invoiceSearch, setInvoiceSearch,
     invoicePayMethod, setInvoicePayMethod,
@@ -601,25 +580,21 @@ export function usePortalAuth(defaultTab = 'summary') {
     invoiceDateTo, setInvoiceDateTo,
     filterOpen, setFilterOpen,
     loadInvoices, applyInvoiceFilter, clearInvoiceFilter,
-    // credit
     creditReqOpen, setCreditReqOpen,
     creditReqAmt, setCreditReqAmt,
     creditReqReason, setCreditReqReason,
     creditReqLoading, myLimitReqs, limitReqsLoaded, limitReqsLoading,
     loadMyLimitReqs, submitCreditRequest,
-    // complaints
     complaintOpen, setComplaintOpen,
     cmpType, setCmpType,
     cmpSubject, setCmpSubject,
     cmpDesc, setCmpDesc,
     cmpLoading, myComplaints, complaintsLoaded, complaintsLoading,
     loadMyComplaints, submitComplaint,
-    // statement
     stmtOpen, setStmtOpen,
     stmtFrom, setStmtFrom,
     stmtTo, setStmtTo,
     stmtLoading, downloadStatement,
-    // payment history
     paymentHistory, paymentPage, paymentTotalPages, paymentTotal, paymentLoading,
     paymentSummary,
     paymentTypeFilter, setPaymentTypeFilter,
@@ -627,7 +602,6 @@ export function usePortalAuth(defaultTab = 'summary') {
     paymentDateTo,     setPaymentDateTo,
     paymentFilterOpen, setPaymentFilterOpen,
     loadPaymentHistory, applyPaymentFilter, clearPaymentFilter,
-    // return requests
     myReturnReqs, returnReqTotal, returnReqPage, returnReqTotalPages,
     returnReqLoading, returnReqLoaded,
     returnReqFilter, setReturnReqFilter,
