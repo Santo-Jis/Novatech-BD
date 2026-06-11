@@ -75,8 +75,8 @@ export default function SRLedger() {
     if (!workerId || !adjForm.product_id || !adjForm.qty) return
     try {
       await api.post('/ledger/adjust', {
-        worker_id:    parseInt(workerId),
-        product_id:   parseInt(adjForm.product_id),
+        worker_id:    workerId,                   // ✅ FIX #5: UUID string — parseInt করলে NaN হয়
+        product_id:   parseInt(adjForm.product_id), // ✅ product_id সংখ্যা, parseInt ঠিকঠাক
         product_name: adjForm.product_name,
         qty:          parseInt(adjForm.qty),
         direction:    parseInt(adjForm.direction),
