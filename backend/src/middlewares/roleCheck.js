@@ -94,9 +94,11 @@ const checkTeamAccess = async (req, res, next) => {
         return next();
     }
 
-    // Worker শুধু নিজের ডাটা
+    // Worker — customer_assignments table-এ আলাদাভাবে ফিল্টার হয়,
+    // teamFilter দিয়ে নয়। তাই null দেওয়া হচ্ছে (কোনো team filter নেই)।
+    // customer.controller.js-এ worker-এর জন্য ca.worker_id = $1 condition দেখুন।
     if (user.role === 'worker') {
-        req.teamFilter = null; // worker সব routes দেখবে
+        req.teamFilter = null;
         return next();
     }
 
