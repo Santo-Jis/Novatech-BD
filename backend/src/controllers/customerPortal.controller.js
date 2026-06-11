@@ -73,6 +73,22 @@ const guessDeviceLabel = (userAgent = '') => {
     return `${os} · ${browser}`;
 };
 
+
+// ── Refresh token HttpOnly cookie helper ─────────────────────
+// HttpOnly: JS পড়তে পারে না (XSS-proof)
+// secure:   production-এ HTTPS only
+// sameSite: production strict, dev lax (cross-port সাপোর্ট)
+// path:     শুধু /api/portal routes-এ cookie পাঠাবে
+const setRefreshCookie = (res, refreshJWT) => {
+    res.cookie('portal_rt', refreshJWT, {
+        httpOnly: true,
+        secure:   process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        maxAge:   30 * 24 * 60 * 60 * 1000,   // 30 দিন (ms)
+        path:     '/api/portal',
+    });
+};
+
 // ============================================================
 // 1. SEND PORTAL LINK (WhatsApp)
 // POST /api/portal/send-link/:customerId
@@ -370,22 +386,31 @@ const deviceLogin = async (req, res) => {
             return res.status(500).json({ success: false, message: 'সার্ভার কনফিগারেশন সমস্যা।' });
         }
 
-        const portalJWT = jwt.sign(
-            {
-                customer_id:   record.customer_id,
-                email:         record.bound_email,
-                type:          'customer_portal',
-                token_version: record.token_version || 1,
-            },
+        const jwtPayload_device = {
+            customer_id:   record.customer_id,
+            email:         record.bound_email,
+            type:          'customer_portal',
+            token_version: record.token_version || 1,
+        };
+
+        const accessJWT_device = jwt.sign(
+            jwtPayload_device,
+            process.env.JWT_PORTAL_SECRET,
+            { expiresIn: '15m', algorithm: 'HS256' }
+        );
+        const refreshJWT_device = jwt.sign(
+            { ...jwtPayload_device, type: 'customer_portal_refresh' },
             process.env.JWT_PORTAL_SECRET,
             { expiresIn: '30d', algorithm: 'HS256' }
         );
+        setRefreshCookie(res, refreshJWT_device);
 
         return res.status(200).json({
             success: true,
             message: 'লগইন সফল!',
             data: {
-                portal_jwt: portalJWT,
+                portal_jwt: accessJWT_device,
+                expires_in: 900,
                 customer: {
                     id:             record.customer_id,
                     shop_name:      record.shop_name,
@@ -561,20 +586,27 @@ const googleAuth = async (req, res) => {
             return res.status(500).json({ success: false, message: 'সার্ভার কনফিগারেশন সমস্যা।' });
         }
 
-        const portalJWT = jwt.sign(
-            {
-                customer_id:    customerData.cid,
-                email,
-                google_name:    name,
-                google_picture: picture,
-                type:           'customer_portal',
-                token_version:  customerData.token_version || 1,
-            },
+        const jwtPayload_google = {
+            customer_id:    customerData.cid,
+            email,
+            google_name:    name,
+            google_picture: picture,
+            type:           'customer_portal',
+            token_version:  customerData.token_version || 1,
+        };
+
+        const accessJWT_google = jwt.sign(
+            jwtPayload_google,
+            process.env.JWT_PORTAL_SECRET,
+            { expiresIn: '15m', algorithm: 'HS256' }
+        );
+        const refreshJWT_google = jwt.sign(
+            { ...jwtPayload_google, type: 'customer_portal_refresh' },
             process.env.JWT_PORTAL_SECRET,
             { expiresIn: '30d', algorithm: 'HS256' }
         );
+        setRefreshCookie(res, refreshJWT_google);
 
-        // Device count — কতটি device এখন whitelisted
         const deviceCount = await query(
             'SELECT COUNT(*) AS count FROM customer_portal_devices WHERE customer_id = $1 AND is_active = true',
             [customerData.cid]
@@ -586,8 +618,9 @@ const googleAuth = async (req, res) => {
                 ? 'প্রথমবার লগইন সফল! এই ডিভাইস যোগ করা হয়েছে।'
                 : 'লগইন সফল! এই ডিভাইস whitelisted।',
             data: {
-                portal_jwt:   portalJWT,
-                device_added: true,
+                portal_jwt:    accessJWT_google,
+                expires_in:    900,
+                device_added:  true,
                 total_devices: parseInt(deviceCount.rows[0].count),
                 customer: {
                     id:             customerData.cid,
@@ -1694,27 +1727,39 @@ const directGoogleAuth = async (req, res) => {
             );
         }
 
-        // ── JWT generate — 30 দিনের session ─────────────────
-        const portalJWT = jwt.sign(
-            {
-                customer_id:    customer.id,
-                customer_code:  customer.customer_code,
-                email,
-                google_name:    name,
-                google_picture: picture,
-                type:           'customer_portal',
-                token_version:  tokenVersion,
-            },
+        const jwtPayload_direct = {
+            customer_id:    customer.id,
+            customer_code:  customer.customer_code,
+            email,
+            google_name:    name,
+            google_picture: picture,
+            type:           'customer_portal',
+            token_version:  tokenVersion,
+        };
+
+        // ✅ 15-মিনিট access token → response body → frontend memory
+        const accessJWT_direct = jwt.sign(
+            jwtPayload_direct,
+            process.env.JWT_PORTAL_SECRET,
+            { expiresIn: '15m', algorithm: 'HS256' }
+        );
+
+        // ✅ 30-দিন refresh token → HttpOnly cookie → JS পড়তে পারে না
+        const refreshJWT_direct = jwt.sign(
+            { ...jwtPayload_direct, type: 'customer_portal_refresh' },
             process.env.JWT_PORTAL_SECRET,
             { expiresIn: '30d', algorithm: 'HS256' }
         );
+        setRefreshCookie(res, refreshJWT_direct);
 
         return res.status(200).json({
             success: true,
-            message: isFirstLogin ? 'প্রথমবার লগইন সফল! ৩০ দিন একই লিংকে ঢুকতে পারবেন।'
-                                  : 'লগইন সফল!',
+            message: isFirstLogin
+                ? 'প্রথমবার লগইন সফল! ৩০ দিন একই লিংকে ঢুকতে পারবেন।'
+                : 'লগইন সফল!',
             data: {
-                portal_jwt: portalJWT,
+                portal_jwt: accessJWT_direct,
+                expires_in: 900,
                 customer: {
                     id:             customer.id,
                     shop_name:      customer.shop_name,
@@ -1736,13 +1781,119 @@ const directGoogleAuth = async (req, res) => {
     }
 };
 
+
+// ============================================================
+// REFRESH PORTAL TOKEN
+// POST /api/portal/refresh
+// HttpOnly cookie → token_version চেক → নতুন 15-মিনিট access JWT
+// Authorization header লাগে না — browser cookie auto-পাঠায়
+// ============================================================
+const refreshPortalToken = async (req, res) => {
+    const refreshToken = req.cookies?.portal_rt;
+
+    if (!refreshToken) {
+        return res.status(401).json({
+            success: false,
+            message: 'Session নেই। Google দিয়ে লগইন করুন।',
+        });
+    }
+
+    let decoded;
+    try {
+        decoded = jwt.verify(refreshToken, process.env.JWT_PORTAL_SECRET, {
+            algorithms: ['HS256'],
+        });
+    } catch {
+        res.clearCookie('portal_rt', { path: '/api/portal' });
+        return res.status(401).json({
+            success: false,
+            message: 'Session মেয়াদোত্তীর্ণ। পুনরায় লগইন করুন।',
+        });
+    }
+
+    if (decoded.type !== 'customer_portal_refresh') {
+        return res.status(401).json({ success: false, message: 'অবৈধ token।' });
+    }
+
+    // token_version চেক — নতুন লিংক ইস্যু হলে refresh reject হবে
+    try {
+        const authCheck = await query(
+            `SELECT c.is_active, cpt.token_version AS current_version
+             FROM customers c
+             LEFT JOIN customer_portal_tokens cpt ON cpt.customer_id = c.id
+             WHERE c.id = $1`,
+            [decoded.customer_id]
+        );
+
+        if (authCheck.rows.length === 0 || !authCheck.rows[0].is_active) {
+            res.clearCookie('portal_rt', { path: '/api/portal' });
+            return res.status(403).json({
+                success: false,
+                message: 'আপনার অ্যাকাউন্ট নিষ্ক্রিয় করা হয়েছে।',
+            });
+        }
+
+        const currentVersion = authCheck.rows[0].current_version || 1;
+        if ((decoded.token_version || 1) !== currentVersion) {
+            res.clearCookie('portal_rt', { path: '/api/portal' });
+            return res.status(401).json({
+                success:    false,
+                message:    'নতুন লিংক ইস্যু হয়েছে। পুনরায় লগইন করুন।',
+                error_code: 'TOKEN_REVOKED',
+            });
+        }
+    } catch (dbErr) {
+        logger.error('❌ refreshPortalToken DB error:', dbErr.message);
+        return res.status(500).json({ success: false, message: 'যাচাই করতে সমস্যা হয়েছে।' });
+    }
+
+    // নতুন 15-মিনিট access token
+    const accessJWT = jwt.sign(
+        {
+            customer_id:    decoded.customer_id,
+            customer_code:  decoded.customer_code,
+            email:          decoded.email,
+            google_name:    decoded.google_name,
+            google_picture: decoded.google_picture,
+            type:           'customer_portal',
+            token_version:  decoded.token_version || 1,
+        },
+        process.env.JWT_PORTAL_SECRET,
+        { expiresIn: '15m', algorithm: 'HS256' }
+    );
+
+    return res.status(200).json({
+        success: true,
+        data: { portal_jwt: accessJWT, expires_in: 900 },
+    });
+};
+
+
+// ============================================================
+// LOGOUT PORTAL
+// POST /api/portal/logout
+// HttpOnly cookie মুছে দেয় — frontend memory নিজেই clear করে
+// ============================================================
+const logoutPortal = (req, res) => {
+    res.clearCookie('portal_rt', {
+        httpOnly: true,
+        secure:   process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        path:     '/api/portal',
+    });
+    return res.status(200).json({ success: true, message: 'লগআউট সফল।' });
+};
+
+
 module.exports = {
     sendPortalLink,
-    resolveLink,       // backward compat — পুরনো link কাজ করবে
-    verifyPortalToken, // backward compat
-    deviceLogin,       // backward compat
-    googleAuth,        // backward compat
-    directGoogleAuth,  // ✅ NEW: permanent link system
+    resolveLink,           // backward compat — পুরনো link কাজ করবে
+    verifyPortalToken,     // backward compat
+    deviceLogin,           // backward compat
+    googleAuth,            // backward compat
+    directGoogleAuth,      // permanent link system
+    refreshPortalToken,    // ✅ NEW: HttpOnly cookie → নতুন access token
+    logoutPortal,          // ✅ NEW: cookie clear
     listCustomerDevices,
     revokeDevice,
     revokeAllDevices,
