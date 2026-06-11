@@ -19,6 +19,8 @@ export default function OrderRequestTab({ portalJWT }) {
   const [trackingId,   setTrackingId]   = useState(null)
   const [deliveredToast, setDeliveredToast] = useState(null)
 
+  const [showReview,      setShowReview]      = useState(false)
+
   const [catalogSearch,   setCatalogSearch]   = useState('')
   const [catalogHasNext,  setCatalogHasNext]  = useState(false)
   const [catalogPage,     setCatalogPage]     = useState(1)
@@ -107,6 +109,15 @@ export default function OrderRequestTab({ portalJWT }) {
 
     if (items.length === 0) { setErrorMsg('কমপক্ষে একটি পণ্য সিলেক্ট করুন।'); return }
     setErrorMsg('')
+    setShowReview(true)
+  }
+
+  const confirmSubmit = async () => {
+    const items = Object.entries(cart)
+      .filter(([, qty]) => parseInt(qty) > 0)
+      .map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
+
+    setShowReview(false)
     setSubmitting(true)
     try {
       const res = await portalFetch('/portal/order-request', {
@@ -524,4 +535,64 @@ export default function OrderRequestTab({ portalJWT }) {
       </button>
     </div>
   )
+
+  // ── ORDER REVIEW MODAL ────────────────────────────────────────
+  if (showReview) {
+    const reviewItems = Object.entries(cart)
+      .filter(([, qty]) => parseInt(qty) > 0)
+      .map(([product_id, qty]) => {
+        const prod = products.find(p => p.id === product_id)
+        return { product_id, qty: parseInt(qty), name: prod?.name || product_id, unit: prod?.unit || '' }
+      })
+
+    return (
+      <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 9999, display: 'flex', alignItems: 'flex-end', justifyContent: 'center', animation: 'fadeIn 0.18s ease' }}>
+        <style>{`@keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
+        <div style={{ background: 'white', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, padding: '24px 20px 32px', animation: 'slideUp 0.22s ease' }}>
+          {/* Handle */}
+          <div style={{ width: 40, height: 4, background: '#e5e7eb', borderRadius: 2, margin: '0 auto 20px' }} />
+
+          <p style={{ margin: '0 0 16px', fontWeight: 800, fontSize: 16, color: '#1e1e1e' }}>📋 অর্ডার নিশ্চিত করুন</p>
+
+          {/* Item list */}
+          <div style={{ background: '#f8fafc', borderRadius: 14, padding: '12px 14px', marginBottom: 14 }}>
+            {reviewItems.map((item, i) => (
+              <div key={item.product_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: i < reviewItems.length - 1 ? 10 : 0, marginBottom: i < reviewItems.length - 1 ? 10 : 0, borderBottom: i < reviewItems.length - 1 ? '1px solid #e5e7eb' : 'none' }}>
+                <span style={{ fontSize: 13, color: '#374151', fontWeight: 600, flex: 1 }}>{item.name}</span>
+                <span style={{ fontSize: 13, color: '#4f46e5', fontWeight: 800, background: '#eef2ff', borderRadius: 8, padding: '2px 10px' }}>× {item.qty} {item.unit}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Total count */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 12, color: '#6b7280' }}>মোট পণ্যের ধরন</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#1e1e1e' }}>{reviewItems.length}টি</span>
+          </div>
+
+          {note && (
+            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '8px 12px', marginBottom: 14 }}>
+              <p style={{ margin: 0, fontSize: 11, color: '#92400e', fontWeight: 600 }}>📝 নির্দেশনা: {note}</p>
+            </div>
+          )}
+
+          <p style={{ margin: '0 0 16px', fontSize: 12, color: '#9ca3af', textAlign: 'center' }}>
+            একবার পাঠালে SR আসার আগে বাতিল করা যাবে না।
+          </p>
+
+          {/* Buttons */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <button onClick={() => setShowReview(false)}
+              style={{ padding: '14px', borderRadius: 14, border: '1.5px solid #e5e7eb', background: 'white', color: '#374151', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>
+              ← ফিরে যান
+            </button>
+            <button onClick={confirmSubmit}
+              style={{ padding: '14px', borderRadius: 14, border: 'none', background: 'linear-gradient(135deg,#4f46e5,#4338ca)', color: 'white', fontWeight: 800, fontSize: 14, cursor: 'pointer', boxShadow: '0 4px 14px rgba(79,70,229,0.35)' }}>
+              ✅ নিশ্চিত করুন
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 }
