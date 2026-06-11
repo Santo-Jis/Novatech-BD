@@ -17,16 +17,7 @@ const crypto          = require('crypto');
 const axios           = require('axios');
 const logger          = require('../config/logger');
 const PDFDocument     = require('pdfkit');
-
-// ── portalAuth cache invalidation (circular require এড়াতে lazy load) ──
-// invalidatePortalAuthCache এখন async (Redis DEL) — await করা হচ্ছে।
-// fire-and-forget: caller await না করলেও চলে, error নিজেই log করে।
-const invalidateAuthCache = async (customerId) => {
-    try {
-        const { invalidatePortalAuthCache } = require('../routes/customerPortal.routes');
-        await invalidatePortalAuthCache(customerId);
-    } catch { /* routes লোড না হলে silent fail */ }
-};
+const { invalidatePortalAuthCache } = require('../services/portalCache.service');
 
 // ============================================================
 // HELPERS
@@ -695,6 +686,9 @@ const revokeDevice = async (req, res) => {
             return res.status(404).json({ success: false, message: 'Device পাওয়া যায়নি।' });
         }
 
+        // Device revoke হলে Redis cache মুছো — পরের request-এ DB থেকে fresh data আসবে
+        await invalidatePortalAuthCache(customerId);
+
         return res.status(200).json({
             success: true,
             message: `"${result.rows[0].device_label}" revoke করা হয়েছে।`,
@@ -724,6 +718,9 @@ const revokeAllDevices = async (req, res) => {
              RETURNING id`,
             [customerId]
         );
+
+        // সব device revoke হলে Redis cache মুছো — পরের request-এ DB থেকে fresh data আসবে
+        await invalidatePortalAuthCache(customerId);
 
         return res.status(200).json({
             success: true,
@@ -1206,13 +1203,26 @@ const getCreditOverview = async (req, res) => {
 // POST /api/portal/credit-limit-request
 // GET  /api/portal/credit-limit-request (নিজের আবেদন দেখো)
 // ============================================================
+const MAX_CREDIT_REQUEST = 10_000_000; // সর্বোচ্চ ১ কোটি টাকা
+const MIN_CREDIT_REQUEST =      1_000; // ন্যূনতম ১ হাজার টাকা
+
 const submitCreditLimitRequest = async (req, res) => {
     try {
         const { customer_id } = req.portalUser;
         const { requested_amount, reason } = req.body;
 
-        if (!requested_amount || isNaN(requested_amount) || parseFloat(requested_amount) <= 0) {
+        const amount = parseFloat(requested_amount);
+        if (!requested_amount || isNaN(amount) || amount <= 0) {
             return res.status(400).json({ success: false, message: 'সঠিক পরিমাণ দিন।' });
+        }
+        if (amount < MIN_CREDIT_REQUEST) {
+            return res.status(400).json({ success: false, message: 'ন্যূনতম ১,০০০ টাকার আবেদন করুন।' });
+        }
+        if (amount > MAX_CREDIT_REQUEST) {
+            return res.status(400).json({ success: false, message: 'অনুরোধকৃত পরিমাণ সর্বোচ্চ ১,০০,০০,০০০ টাকার বেশি হবে না।' });
+        }
+        if (reason && reason.trim().length > 500) {
+            return res.status(400).json({ success: false, message: 'কারণ ৫০০ অক্ষরের বেশি হবে না।' });
         }
 
         // কাস্টমার তথ্য আনো
@@ -1244,7 +1254,7 @@ const submitCreditLimitRequest = async (req, res) => {
                  (customer_id, current_limit, requested_amount, reason, status)
              VALUES ($1, $2, $3, $4, 'pending')
              RETURNING id, created_at`,
-            [customer_id, cust.credit_limit, parseFloat(requested_amount), reason || null]
+            [customer_id, cust.credit_limit, amount, reason?.trim() || null]
         );
 
         // Manager/Admin notification
@@ -1256,7 +1266,7 @@ const submitCreditLimitRequest = async (req, res) => {
             [
                 customer_id,
                 '📋 ক্রেডিট লিমিট আবেদন জমা হয়েছে',
-                `আপনার ৳${parseFloat(requested_amount).toLocaleString()} ক্রেডিট লিমিট বৃদ্ধির আবেদন জমা হয়েছে। Manager অনুমোদন দিলে আপনাকে জানানো হবে।`
+                `আপনার ৳${amount.toLocaleString()} ক্রেডিট লিমিট বৃদ্ধির আবেদন জমা হয়েছে। Manager অনুমোদন দিলে আপনাকে জানানো হবে।`
             ]
         );
 
@@ -1297,14 +1307,28 @@ const getMyLimitRequests = async (req, res) => {
 // POST /api/portal/complaint         — নতুন অভিযোগ/ফিডব্যাক
 // GET  /api/portal/complaint         — নিজের অভিযোগগুলো দেখো
 // ============================================================
+const VALID_COMPLAINT_TYPES = [
+    'complaint', 'feedback', 'delivery_issue',
+    'product_issue', 'payment_issue', 'other'
+];
+
 const submitComplaint = async (req, res) => {
     try {
         const { customer_id } = req.portalUser;
         const { type, subject, description } = req.body;
         // type: 'complaint' | 'feedback' | 'delivery_issue' | 'product_issue' | 'payment_issue' | 'other'
 
-        if (!subject || !description) {
+        if (!subject?.trim() || !description?.trim()) {
             return res.status(400).json({ success: false, message: 'বিষয় ও বিস্তারিত বিবরণ দিন।' });
+        }
+        if (subject.trim().length > 200) {
+            return res.status(400).json({ success: false, message: 'বিষয় ২০০ অক্ষরের বেশি হবে না।' });
+        }
+        if (description.trim().length > 2000) {
+            return res.status(400).json({ success: false, message: 'বিবরণ ২০০০ অক্ষরের বেশি হবে না।' });
+        }
+        if (type && !VALID_COMPLAINT_TYPES.includes(type)) {
+            return res.status(400).json({ success: false, message: 'অবৈধ অভিযোগের ধরন।' });
         }
 
         const result = await query(

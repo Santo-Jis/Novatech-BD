@@ -103,6 +103,19 @@ const getCustomers = async (req, res) => {
         // Worker হলে ca JOIN-এ worker_id filter (param $1 সবসময় req.user.id worker-এর জন্য)
         const caWorkerCondition = req.user.role === 'worker' ? 'AND ca.worker_id = $1' : '';
 
+        // visited_today — শুধু worker-এর জন্য প্রযোজ্য।
+        // Worker-এর জন্য $1 = req.user.id (ইতোমধ্যে params-এ আছে), CURRENT_DATE = SQL function।
+        // Extra query ছাড়াই EXISTS subquery-তে করা হচ্ছে।
+        const visitedTodaySelect = req.user.role === 'worker'
+            ? `,
+                EXISTS(
+                    SELECT 1 FROM visits v
+                    WHERE v.customer_id = c.id
+                      AND v.worker_id   = $1
+                      AND v.visit_date  = CURRENT_DATE
+                ) AS visited_today`
+            : '';
+
         const result = await query(
             `SELECT c.id, c.customer_code, c.shop_name, c.owner_name,
                     c.shop_photo, c.business_type,
@@ -116,6 +129,7 @@ const getCustomers = async (req, res) => {
                     ${distanceSelect},
                     COALESCE(crr.pending_return, 0)::int      AS pending_return_count,
                     COALESCE(crr.pending_replacement, 0)::int AS pending_replacement_count
+                    ${visitedTodaySelect}
              FROM customers c
              LEFT JOIN routes r ON c.route_id = r.id
              LEFT JOIN customer_assignments ca
@@ -136,24 +150,9 @@ const getCustomers = async (req, res) => {
             params
         );
 
-        // আজকের ভিজিট স্ট্যাটাস যোগ করো
-        const today      = new Date().toISOString().split('T')[0];
-        const customerIds = result.rows.map(c => c.id);
-
-        let visitedToday = [];
-        if (customerIds.length > 0) {
-            const visits = await query(
-                `SELECT customer_id FROM visits
-                 WHERE worker_id = $1 AND visit_date = $2
-                   AND customer_id = ANY($3)`,
-                [req.user.id, today, customerIds]
-            );
-            visitedToday = visits.rows.map(v => v.customer_id);
-        }
-
         const customers = result.rows.map(c => ({
             ...c,
-            visited_today: visitedToday.includes(c.id),
+            visited_today: c.visited_today ?? false,
             has_pending_request: (
                 parseInt(c.pending_return_count || 0) +
                 parseInt(c.pending_replacement_count || 0)
