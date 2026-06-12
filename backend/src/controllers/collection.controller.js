@@ -319,7 +319,7 @@ const getSettlementCollectionSummary = async (req, res) => {
                  SUM(CASE WHEN payment_mode != 'cash'  THEN amount ELSE 0 END), 0
                )::numeric AS non_cash_amount,
                JSON_AGG(JSON_BUILD_OBJECT(
-                 'id',           id,
+                 'id',           col.id,
                  'shop_name',    c.shop_name,
                  'amount',       col.amount,
                  'payment_mode', col.payment_mode
