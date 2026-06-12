@@ -248,6 +248,10 @@ const CustomerGuard = () => {
   const urlToken = params.get('token')
   if (urlToken) return <Outlet />
 
+  // ?c=customer_code — permanent customer portal link
+  const customerCode = params.get('c')
+  if (customerCode) return <Outlet />
+
   return <Navigate to={IS_CUSTOMER_APP ? '/customer-login' : '/landing'} replace />
 }
 
@@ -319,6 +323,8 @@ function AppWithPermissions() {
               <Route path="notifications" element={<CustomerPortal defaultTab="notifications" />} />
               <Route path="profile"       element={<CustomerPortal defaultTab="summary"       />} />
               <Route path="ai-chat"       element={<CustomerAIChat />} />
+              {/* ?c=customer_code permanent link — /customer/portal?c=NTB-C-XX */}
+              <Route path="portal"        element={<CustomerPortal defaultTab="summary" />} />
             </Route>
           </Route>
 
