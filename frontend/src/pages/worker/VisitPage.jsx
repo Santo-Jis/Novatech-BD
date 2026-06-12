@@ -19,6 +19,7 @@ import {
 import toast from 'react-hot-toast'
 import Camera from '../../components/Camera'
 import { enqueue, saveCache, getCache } from '../../api/offlineQueue'
+import { useAppStore } from '../../store/app.store'
 
 // ─── GPS helper ───────────────────────────────────────────────
 function getGPS() {
@@ -551,6 +552,7 @@ function CollectionModal({ customer, location, onClose, onSuccess }) {
 export default function VisitPage() {
   const { id }     = useParams()
   const navigate   = useNavigate()
+  const { selectedRoute } = useAppStore()
 
   const [customer,           setCustomer]           = useState(null)
   const [loading,            setLoading]            = useState(true)
@@ -704,11 +706,33 @@ export default function VisitPage() {
   }
 
   // ✅ Collection সফল হলে locally due কমাও (refresh ছাড়া)
-  const handleCollectionSuccess = ({ amount }) => {
-    setLocalDue(prev => Math.max(0, (prev ?? 0) - amount))
+  const handleCollectionSuccess = async ({ amount }) => {
+    const prevDue  = localDue ?? parseFloat(customer?.current_credit || 0)
+    const newCredit = Math.max(0, prevDue - amount)
+
+    setLocalDue(newCredit)
     setShowCollection(false)
-    // Customer cache invalidate করো যাতে পরের বার fresh data আসে
-    saveCache(`customer_${id}`, { ...customer, current_credit: Math.max(0, (localDue ?? 0) - amount) })
+
+    // Individual customer cache update
+    saveCache(`customer_${id}`, { ...customer, current_credit: newCredit })
+
+    // ✅ localStorage-এ pending reduction রাখো — online API fetch-এও টিকে থাকবে
+    try {
+      const pending = JSON.parse(localStorage.getItem('pending_credit_reductions') || '{}')
+      pending[String(id)] = newCredit
+      localStorage.setItem('pending_credit_reductions', JSON.stringify(pending))
+    } catch (_) {}
+
+    // ✅ Customer LIST cache-ও update করো — CustomerList-এ সঠিক বাকি দেখাবে
+    const routeId      = selectedRoute?.id || 'all'
+    const listCacheKey = `customers_route_${routeId}`
+    const cached       = await getCache(listCacheKey)
+    if (cached?.data) {
+      const updatedList = cached.data.map(c =>
+        String(c.id) === String(id) ? { ...c, current_credit: newCredit } : c
+      )
+      saveCache(listCacheKey, updatedList)
+    }
   }
 
   // ── display due (local override থাকলে সেটা দেখাও) ──────────
