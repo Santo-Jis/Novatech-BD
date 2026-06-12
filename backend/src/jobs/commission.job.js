@@ -10,7 +10,14 @@ const { calculateCommission } = require('../services/commission.service');
 // ============================================================
 
 const runDailyCommissionJob = async (targetDate = null) => {
-    const date = targetDate || new Date().toISOString().split('T')[0];
+    // ✅ FIX Bug-2: Cron 'Asia/Dhaka' timezone-এ চলে কিন্তু
+    // new Date().toISOString() দেয় UTC date — রাত ১২:০০ BD = UTC ১৮:০০,
+    // তাই UTC date হয় আগের দিনের। getBDToday() দিয়ে সঠিক BD local date নাও।
+    const getBDToday = () => {
+        const bdOffset = 6 * 60 * 60 * 1000;
+        return new Date(Date.now() + bdOffset).toISOString().split('T')[0];
+    };
+    const date = targetDate || getBDToday();
     logger.info(`\n💰 Commission Job শুরু: ${date}`);
 
     try {
