@@ -59,10 +59,11 @@ const createSettlement = async (req, res) => {
 
         // ─── Body থেকে SR-এর ইনপুট ─────────────────────────
         const {
-            cash_collected: srCashInput,   // SR নিজে দেওয়া নগদ
-            returned_items,                 // [{ product_id, qty }]
+            cash_collected: srCashInput,
+            returned_items,             // [{ product_id, qty }] — আজকে ফেরত দিয়েছে
+            carry_forward_items,        // [{ product_id, qty }] — ✅ NEW: আগামীকালের জন্য রেখেছে
             shortage_note,
-            mismatch_explanation            // নগদ পার্থক্যের কারণ (৳৫০০+ হলে বাধ্যতামূলক)
+            mismatch_explanation
         } = req.body;
 
         if (srCashInput === undefined || srCashInput === null) {
@@ -72,37 +73,57 @@ const createSettlement = async (req, res) => {
             });
         }
 
-        // ─── আজকের সব approved অর্ডার নাও (একটা নয়, সব) ─────
+        // lastOrderId — settlement record-এর reference হিসেবে শুধু
         const ordersResult = await query(
-            `SELECT id, items, total_amount FROM orders
-             WHERE worker_id = $1 AND DATE(requested_at) = $2 AND status = 'approved'
-             ORDER BY requested_at ASC`,
+            `SELECT id FROM orders
+             WHERE worker_id = $1 AND DATE(approved_at) = $2 AND status = 'approved'
+             ORDER BY approved_at DESC LIMIT 1`,
             [workerId, today]
         );
 
-        // সব অর্ডারের items একত্রিত করো — একই product_id হলে qty যোগ হবে
-        const mergedItemsMap = {};
-        const allOrderIds    = ordersResult.rows.map(o => o.id);
+        // ✅ FIX: taken_qty এখন orders থেকে নয়, ledger balance থেকে।
+        // কারণ: SR একাধিক দিন পণ্য ধরে রাখতে পারে।
+        // Ledger balance = সব দিনের order_in − sale_out − return_out − shortage_out
+        //                = SR হাতে এই মুহূর্তে যা আছে (সব দিন মিলিয়ে)
+        const ledgerRes = await query(
+            `SELECT
+                product_id,
+                product_name,
+                SUM(qty * direction) AS in_hand_qty
+             FROM sr_stock_ledger
+             WHERE worker_id = $1::uuid
+             GROUP BY product_id, product_name
+             HAVING SUM(qty * direction) > 0`,
+            [workerId]
+        );
 
-        for (const ord of ordersResult.rows) {
-            const items = Array.isArray(ord.items) ? ord.items :
-                (typeof ord.items === 'string' ? JSON.parse(ord.items) : []);
-            for (const item of items) {
-                const pid = item.product_id;
-                if (!mergedItemsMap[pid]) {
-                    mergedItemsMap[pid] = { ...item, approved_qty: 0 };
-                }
-                mergedItemsMap[pid].approved_qty +=
-                    parseInt(item.approved_qty || item.requested_qty) || 0;
-                // final_price (VAT+Tax সহ) থাকলে সেটা ব্যবহার করো
-                if (item.final_price) {
-                    mergedItemsMap[pid].final_price = parseFloat(item.final_price);
-                }
-            }
-        }
-        const allOrderItems = Object.values(mergedItemsMap);
+        const allProductIds = ledgerRes.rows.map(r => String(r.product_id));
+        const emptyGuard    = allProductIds.length > 0 ? allProductIds : ['00000000-0000-0000-0000-000000000000'];
 
-        // ─── আজকের বিক্রয় ডাটা (sales_transactions থেকে) ──
+        // ─── Price lookup — সর্বশেষ approved order থেকে bulk ────
+        const priceRes = await query(
+            `SELECT DISTINCT ON ((item->>'product_id')::uuid)
+                    (item->>'product_id')::uuid AS product_id,
+                    (item->>'product_name')::text AS product_name,
+                    COALESCE(
+                        (item->>'final_price')::numeric,
+                        (item->>'price')::numeric, 0
+                    ) AS effective_price
+             FROM orders o,
+                  jsonb_array_elements(
+                      CASE WHEN jsonb_typeof(o.items::jsonb) = 'array'
+                           THEN o.items::jsonb ELSE '[]'::jsonb END
+                  ) AS item
+             WHERE o.worker_id = $1::uuid
+               AND (item->>'product_id')::uuid = ANY($2::uuid[])
+               AND o.status = 'approved'
+             ORDER BY (item->>'product_id')::uuid, o.approved_at DESC`,
+            [workerId, emptyGuard]
+        );
+        const priceMap = {};
+        priceRes.rows.forEach(r => { priceMap[String(r.product_id)] = r; });
+
+        // ─── আজকের বিক্রয় ডাটা ─────────────────────────────
         const salesData = await query(
             `SELECT
                 COALESCE(SUM(total_amount), 0)        AS total_sales,
@@ -115,59 +136,40 @@ const createSettlement = async (req, res) => {
             [workerId, today]
         );
 
-        const sales         = salesData.rows[0];
-        const systemCash    = parseFloat(sales.cash_collected) || 0;
-        const srCash        = parseFloat(srCashInput)          || 0;
+        const sales      = salesData.rows[0];
+        const systemCash = parseFloat(sales.cash_collected) || 0;
+        const srCash     = parseFloat(srCashInput)          || 0;
+        const cashDifference = srCash - systemCash;
 
-        // ─── নগদ মিলানো — পার্থক্য রেকর্ড করা হবে ─────────
-        const cashDifference = srCash - systemCash;   // + হলে বেশি জমা, - হলে কম জমা
-
-        // ─── পণ্যভিত্তিক হিসাব ──────────────────────────────
-        const itemsReport      = [];
-        let   totalShortageValue = 0;
-
-        // ─── FIX: N+1 সমস্যা সমাধান ─────────────────────────────
-        // আগে প্রতিটি orderItem-এর জন্য আলাদা sold_qty ও replaced_qty query ছিল।
-        // allOrderItems-এ N টি পণ্য থাকলে 2×N টি query হতো।
-        // এখন দুটো bulk query দিয়ে সব পণ্যের qty একবারে এনে Map-এ রাখা হচ্ছে।
-        // NOTE: এই দুটো query সবসময় চালানো হয় (এমনকি allProductIds খালি হলেও)।
-        // কারণ: পরীক্ষার mock sequence ঠিক রাখতে early return-এর আগে এগুলো সম্পন্ন হওয়া দরকার।
-        const allProductIds = allOrderItems.map(o => String(o.product_id));
-
+        // ─── Bulk sold + replaced qty ────────────────────────
         const soldBulkRes = await query(
-            `SELECT
-                (item->>'product_id') AS product_id,
-                COALESCE(SUM((item->>'qty')::int), 0) AS qty
+            `SELECT (item->>'product_id') AS product_id,
+                    COALESCE(SUM((item->>'qty')::int), 0) AS qty
              FROM sales_transactions,
                   jsonb_array_elements(COALESCE(items, '[]'::jsonb)) AS item
-             WHERE worker_id = $1
-               AND date = $2
+             WHERE worker_id = $1 AND date = $2
                AND (item->>'product_id') = ANY($3)
              GROUP BY (item->>'product_id')`,
-            [workerId, today, allProductIds]
+            [workerId, today, allProductIds.length > 0 ? allProductIds : ['__none__']]
         );
 
         const replacedBulkRes = await query(
-            `SELECT
-                (item->>'product_id') AS product_id,
-                COALESCE(SUM((item->>'qty')::int), 0) AS qty
+            `SELECT (item->>'product_id') AS product_id,
+                    COALESCE(SUM((item->>'qty')::int), 0) AS qty
              FROM sales_transactions,
                   jsonb_array_elements(COALESCE(replacement_items, '[]'::jsonb)) AS item
-             WHERE worker_id = $1
-               AND date = $2
+             WHERE worker_id = $1 AND date = $2
                AND (item->>'product_id') = ANY($3)
              GROUP BY (item->>'product_id')`,
-            [workerId, today, allProductIds]
+            [workerId, today, allProductIds.length > 0 ? allProductIds : ['__none__']]
         );
 
-        // product_id → qty lookup Map
         const soldMap     = {};
         const replacedMap = {};
         soldBulkRes.rows.forEach(r     => { soldMap[r.product_id]     = parseInt(r.qty) || 0; });
         replacedBulkRes.rows.forEach(r => { replacedMap[r.product_id] = parseInt(r.qty) || 0; });
 
-        // ─── নগদ পার্থক্য সীমা যাচাই (backend guard) ────────
-        // NOTE: এই চেক bulk query-গুলোর পরে করা হচ্ছে যাতে mock sequence সঠিক থাকে।
+        // ─── নগদ পার্থক্য সীমা যাচাই ────────────────────────
         const absDiff = Math.abs(srCash - systemCash);
         if (absDiff > CASH_BLOCK_LIMIT) {
             if (!mismatch_explanation || !String(mismatch_explanation).trim()) {
@@ -178,39 +180,55 @@ const createSettlement = async (req, res) => {
             }
         }
 
-        for (const orderItem of allOrderItems) {
-            const takenQty    = parseInt(orderItem.approved_qty || orderItem.requested_qty) || 0;
-            const soldQty     = soldMap[String(orderItem.product_id)]     || 0;
-            const replacedQty = replacedMap[String(orderItem.product_id)] || 0;
+        // ─── পণ্যভিত্তিক হিসাব ──────────────────────────────
+        const itemsReport      = [];
+        let   totalShortageValue = 0;
 
-            // SR-এর জানানো ফেরত পরিমাণ (frontend থেকে পাঠানো)
-            const returnedItem   = Array.isArray(returned_items)
-                ? returned_items.find(r => r.product_id === orderItem.product_id)
+        for (const ledgerRow of ledgerRes.rows) {
+            const pid      = String(ledgerRow.product_id);
+            // ✅ taken_qty = ledger balance (সব দিনের জমা হিসেব)
+            const takenQty = parseInt(ledgerRow.in_hand_qty) || 0;
+
+            const soldQty     = soldMap[pid]     || 0;
+            const replacedQty = replacedMap[pid] || 0;
+
+            const returnedItem = Array.isArray(returned_items)
+                ? returned_items.find(r => String(r.product_id) === pid)
                 : null;
-            const returnedQty    = parseInt(returnedItem?.qty) || 0;
+            const returnedQty = parseInt(returnedItem?.qty) || 0;
 
-            // ঘাটতি = নেওয়া - (বিক্রি + রিপ্লেস আউট + ফেরত)
-            const accountedFor   = soldQty + replacedQty + returnedQty;
-            const shortageQty    = Math.max(0, takenQty - accountedFor);
-            // VAT+Tax সহ final_price ব্যবহার করো, না থাকলে base price
-            const effectivePrice = parseFloat(orderItem.final_price || orderItem.price) || 0;
+            // ✅ carry_forward: SR আগামীকালের জন্য রাখছে — shortage নয়
+            // Ledger-এ কোনো পরিবর্তন নেই, পণ্য SR-এর কাছেই থাকবে।
+            // পরের দিন takenQty-তে এটা স্বয়ংক্রিয়ভাবে ধরা পড়বে।
+            const carryItem = Array.isArray(carry_forward_items)
+                ? carry_forward_items.find(r => String(r.product_id) === pid)
+                : null;
+            const carryQty = parseInt(carryItem?.qty) || 0;
+
+            // ঘাটতি = হাতে ছিল - (বিক্রি + রিপ্লেস + ফেরত + carry forward)
+            const accountedFor = soldQty + replacedQty + returnedQty + carryQty;
+            const shortageQty  = Math.max(0, takenQty - accountedFor);
+
+            const priceInfo      = priceMap[pid];
+            const effectivePrice = parseFloat(priceInfo?.effective_price || 0);
             const shortageValue  = shortageQty * effectivePrice;
             totalShortageValue  += shortageValue;
 
             itemsReport.push({
-                product_id:      orderItem.product_id,
-                name:            orderItem.product_name,
-                taken_qty:       takenQty,
-                sold_qty:        soldQty,
-                replacement_qty: replacedQty,
-                returned_qty:    returnedQty,
-                shortage_qty:    shortageQty,
-                shortage_value:  shortageValue,
-                price:           effectivePrice   // VAT+Tax সহ final price
+                product_id:        ledgerRow.product_id,
+                name:              priceInfo?.product_name || ledgerRow.product_name || 'অজানা',
+                taken_qty:         takenQty,
+                sold_qty:          soldQty,
+                replacement_qty:   replacedQty,
+                returned_qty:      returnedQty,
+                carry_forward_qty: carryQty,
+                shortage_qty:      shortageQty,
+                shortage_value:    shortageValue,
+                price:             effectivePrice
             });
         }
 
-        // ─── Settlement সেভ ──────────────────────────────────
+                // ─── Settlement সেভ ──────────────────────────────────
         //   cash_collected = SR-এর দেওয়া নগদ (sr input)
         //   cash_difference = পার্থক্য (audit এর জন্য)
         //   order_id = শেষ অর্ডারের id (reference হিসেবে)
@@ -444,6 +462,8 @@ const approveSettlement = async (req, res) => {
         const systemCash     = srCash - cashDiff;   // সিস্টেমে বিক্রয় অনুযায়ী প্রত্যাশিত নগদ
         // cashDiff < 0 → SR কম জমা দিয়েছে → বকেয়া বাড়বে
         const cashShortfall  = cashDiff < 0 ? Math.abs(cashDiff) : 0;
+        // ✅ FIX: DB থেকে shortage_qty_value নাও — approve path-এও dues যোগ হবে
+        const productShortage = parseFloat(s.shortage_qty_value || 0);
 
         await withTransaction(async (client) => {
             await client.query(
@@ -464,52 +484,78 @@ const approveSettlement = async (req, res) => {
                 [s.worker_id, s.settlement_date]
             );
 
-            // নগদ ঘাটতি থাকলে outstanding_dues এ যোগ করো
-            if (cashShortfall > 0) {
+            // ✅ FIX: নগদ ঘাটতি + পণ্য ঘাটতি — দুটোই outstanding_dues-এ যোগ করো
+            // আগে approve path-এ শুধু cashShortfall যোগ হতো।
+            // SR 0 sales করলে কিন্তু পণ্য ফেরত না দিলে সেই ঘাটতি silently মাফ হয়ে যেত।
+            const totalShortfall = cashShortfall + productShortage;
+            if (totalShortfall > 0) {
                 await client.query(
                     `UPDATE users
-                     SET outstanding_dues      = outstanding_dues + $1,
-                         cash_dues             = COALESCE(cash_dues, 0) + $1,
-                         updated_at            = NOW()
-                     WHERE id = $2`,
-                    [cashShortfall, s.worker_id]
+                     SET outstanding_dues = outstanding_dues + $1,
+                         cash_dues        = COALESCE(cash_dues, 0) + $2,
+                         updated_at       = NOW()
+                     WHERE id = $3`,
+                    [totalShortfall, cashShortfall, s.worker_id]
                 );
 
-                // audit trail
-                await client.query(
-                    `INSERT INTO dues_ledger
-                     (worker_id, settlement_id, due_type, amount, note, created_by)
-                     VALUES ($1, $2, 'cash_mismatch', $3, $4, $5)`,
-                    [
-                        s.worker_id, id, cashShortfall,
-                        `নগদ ঘাটতি: সিস্টেম ৳${systemCash.toFixed(0)} — SR জমা ৳${srCash.toFixed(0)}`,
-                        req.user.id
-                    ]
-                );
+                // নগদ ঘাটতি audit trail
+                if (cashShortfall > 0) {
+                    await client.query(
+                        `INSERT INTO dues_ledger
+                         (worker_id, settlement_id, due_type, amount, note, created_by)
+                         VALUES ($1, $2, 'cash_mismatch', $3, $4, $5)`,
+                        [
+                            s.worker_id, id, cashShortfall,
+                            `নগদ ঘাটতি: সিস্টেম ৳${systemCash.toFixed(0)} — SR জমা ৳${srCash.toFixed(0)}`,
+                            req.user.id
+                        ]
+                    );
+                }
+
+                // পণ্য ঘাটতি audit trail
+                if (productShortage > 0) {
+                    await client.query(
+                        `INSERT INTO dues_ledger
+                         (worker_id, settlement_id, due_type, amount, note, created_by)
+                         VALUES ($1, $2, 'product_shortage', $3, $4, $5)`,
+                        [
+                            s.worker_id, id, productShortage,
+                            `পণ্য ঘাটতি ৳${productShortage.toFixed(0)} — অনুমোদন সময় রেকর্ড`,
+                            req.user.id
+                        ]
+                    );
+                }
             }
         });
 
-        const notifyMsg = cashShortfall > 0
-            ? `✅ হিসাব অনুমোদিত। তবে ৳${cashShortfall.toFixed(0)} নগদ ঘাটতি আপনার বকেয়ায় যোগ হয়েছে।`
+        // ✅ FIX: notification-এ পণ্য ঘাটতিও দেখাও
+        const parts = [];
+        if (cashShortfall  > 0) parts.push(`৳${cashShortfall.toFixed(0)} নগদ ঘাটতি`);
+        if (productShortage > 0) parts.push(`৳${productShortage.toFixed(0)} পণ্য ঘাটতি`);
+
+        const notifyMsg = parts.length > 0
+            ? `✅ হিসাব অনুমোদিত। তবে ${parts.join(' + ')} আপনার বকেয়ায় যোগ হয়েছে।`
             : '✅ Manager হিসাব অনুমোদন করেছেন। এখন চেক-আউট করুন।';
 
         await firebaseNotify(
             `notifications/${s.worker_id}/settlement`,
-            { settlementId: id, status: 'approved', cashShortfall, message: notifyMsg }
+            { settlementId: id, status: 'approved', cashShortfall, productShortage, message: notifyMsg }
         );
         // FCM Push
         sendPushNotification(s.worker_id, {
-            title: '✅ হিসাব অনুমোদিত',
+            title: parts.length > 0 ? '✅ হিসাব অনুমোদিত (ঘাটতি)' : '✅ হিসাব অনুমোদিত',
             body:  notifyMsg,
             type:  'settlement_result',
             data:  { settlementId: String(id) }
         }).catch(() => {});
 
+        const totalShortfallMsg = (cashShortfall + productShortage).toFixed(0);
         return res.status(200).json({
             success: true,
             cashShortfall,
-            message: cashShortfall > 0
-                ? `হিসাব অনুমোদন সফল। ৳${cashShortfall.toFixed(0)} নগদ ঘাটতি SR এর বকেয়ায় যোগ হয়েছে।`
+            productShortage,
+            message: parts.length > 0
+                ? `হিসাব অনুমোদন সফল। মোট ৳${totalShortfallMsg} (${parts.join(' + ')}) SR এর বকেয়ায় যোগ হয়েছে।`
                 : 'হিসাব অনুমোদন সফল। SR এখন চেক-আউট করতে পারবে।'
         });
 
@@ -934,9 +980,180 @@ const getTodayPreview = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET MY STATEMENT — মাসিক সারসংক্ষেপ (কয়েক মাস একসাথে)
+// GET /api/settlements/my/statement?from_month=1&from_year=2026&to_month=6&to_year=2026
+// SR নিজের যেকোনো date range-এর statement দেখতে পারবে
+// ============================================================
+
+const getMyStatement = async (req, res) => {
+    try {
+        const workerId = req.user.id;
+        const now      = getBDNow();
+
+        // Default: গত ৬ মাস
+        const toYear   = parseInt(req.query.to_year   || now.getUTCFullYear());
+        const toMonth  = parseInt(req.query.to_month  || now.getUTCMonth() + 1);
+        const fromYear = parseInt(req.query.from_year || (toMonth <= 6 ? toYear - 1 : toYear));
+        const fromMonth= parseInt(req.query.from_month|| (toMonth <= 6 ? toMonth + 6 : toMonth - 5));
+
+        // ─── প্রতি মাসের settlement summary ────────────────
+        const settlementSummary = await query(
+            `SELECT
+                EXTRACT(YEAR  FROM settlement_date)::int  AS year,
+                EXTRACT(MONTH FROM settlement_date)::int  AS month,
+                COUNT(*)                                  AS total_days,
+                COALESCE(SUM(total_sales_amount),  0)     AS total_sales,
+                COALESCE(SUM(cash_collected),      0)     AS total_cash_collected,
+                COALESCE(SUM(credit_given),        0)     AS total_credit_given,
+                COALESCE(SUM(shortage_qty_value),  0)     AS total_shortage_value,
+                COUNT(*) FILTER (WHERE status = 'approved')  AS approved_days,
+                COUNT(*) FILTER (WHERE status = 'disputed')  AS disputed_days,
+                COUNT(*) FILTER (WHERE status = 'pending')   AS pending_days
+             FROM daily_settlements
+             WHERE worker_id = $1
+               AND (
+                   EXTRACT(YEAR FROM settlement_date) * 12 + EXTRACT(MONTH FROM settlement_date)
+                   BETWEEN ($2 * 12 + $3) AND ($4 * 12 + $5)
+               )
+             GROUP BY year, month
+             ORDER BY year DESC, month DESC`,
+            [workerId, fromYear, fromMonth, toYear, toMonth]
+        );
+
+        // ─── প্রতি মাসের commission summary ─────────────────
+        const commissionSummary = await query(
+            `SELECT
+                EXTRACT(YEAR  FROM date)::int   AS year,
+                EXTRACT(MONTH FROM date)::int   AS month,
+                COALESCE(SUM(sales_amount),     0) AS total_sales,
+                COALESCE(SUM(commission_amount),0) AS total_commission,
+                COUNT(*) FILTER (WHERE paid = true)  AS paid_days,
+                COUNT(*) FILTER (WHERE paid = false) AS unpaid_days
+             FROM commission
+             WHERE user_id = $1
+               AND type = 'daily'
+               AND (
+                   EXTRACT(YEAR FROM date) * 12 + EXTRACT(MONTH FROM date)
+                   BETWEEN ($2 * 12 + $3) AND ($4 * 12 + $5)
+               )
+             GROUP BY year, month
+             ORDER BY year DESC, month DESC`,
+            [workerId, fromYear, fromMonth, toYear, toMonth]
+        );
+
+        // ─── প্রতি মাসের বেতন ────────────────────────────────
+        const salarySummary = await query(
+            `SELECT
+                sp.year,
+                sp.month,
+                sp.basic_salary,
+                sp.total_commission,
+                sp.attendance_deduction,
+                sp.outstanding_dues_deducted  AS dues_deducted,
+                sp.net_payable,
+                sp.paid_at,
+                sp.status,
+                u.name_bn AS approved_by_name
+             FROM salary_payments sp
+             LEFT JOIN users u ON sp.approved_by = u.id
+             WHERE sp.worker_id = $1
+               AND (sp.year * 12 + sp.month) BETWEEN ($2 * 12 + $3) AND ($4 * 12 + $5)
+             ORDER BY sp.year DESC, sp.month DESC`,
+            [workerId, fromYear, fromMonth, toYear, toMonth]
+        );
+
+        // ─── বর্তমান বকেয়া ───────────────────────────────────
+        const duesRes = await query(
+            `SELECT
+                outstanding_dues,
+                cash_dues,
+                name_bn AS name
+             FROM users WHERE id = $1`,
+            [workerId]
+        );
+        const currentDues = duesRes.rows[0] || {};
+
+        // ─── মাস অনুযায়ী একত্রিত করো ───────────────────────
+        // সব মাসের key তৈরি করো
+        const monthMap = {};
+        const addMonth = (year, month) => {
+            const key = `${year}-${String(month).padStart(2, '0')}`;
+            if (!monthMap[key]) {
+                monthMap[key] = {
+                    year, month,
+                    settlement: null,
+                    commission: null,
+                    salary:     null,
+                };
+            }
+            return key;
+        };
+
+        settlementSummary.rows.forEach(r => {
+            const key = addMonth(r.year, r.month);
+            monthMap[key].settlement = {
+                total_days:          parseInt(r.total_days),
+                approved_days:       parseInt(r.approved_days),
+                disputed_days:       parseInt(r.disputed_days),
+                pending_days:        parseInt(r.pending_days),
+                total_sales:         parseFloat(r.total_sales),
+                total_cash_collected:parseFloat(r.total_cash_collected),
+                total_credit_given:  parseFloat(r.total_credit_given),
+                total_shortage_value:parseFloat(r.total_shortage_value),
+            };
+        });
+
+        commissionSummary.rows.forEach(r => {
+            const key = addMonth(r.year, r.month);
+            monthMap[key].commission = {
+                total_sales:      parseFloat(r.total_sales),
+                total_commission: parseFloat(r.total_commission),
+                paid_days:        parseInt(r.paid_days),
+                unpaid_days:      parseInt(r.unpaid_days),
+            };
+        });
+
+        salarySummary.rows.forEach(r => {
+            const key = addMonth(r.year, r.month);
+            monthMap[key].salary = {
+                basic_salary:      parseFloat(r.basic_salary      || 0),
+                total_commission:  parseFloat(r.total_commission  || 0),
+                dues_deducted:     parseFloat(r.dues_deducted     || 0),
+                attendance_deduction: parseFloat(r.attendance_deduction || 0),
+                net_payable:       parseFloat(r.net_payable       || 0),
+                status:            r.status,
+                paid_at:           r.paid_at,
+                approved_by:       r.approved_by_name,
+            };
+        });
+
+        // তারিখ অনুযায়ী sort করে array বানাও
+        const months = Object.values(monthMap).sort(
+            (a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month)
+        );
+
+        return res.status(200).json({
+            success: true,
+            worker: {
+                name:             currentDues.name,
+                outstanding_dues: parseFloat(currentDues.outstanding_dues || 0),
+                cash_dues:        parseFloat(currentDues.cash_dues        || 0),
+            },
+            range: { from_year: fromYear, from_month: fromMonth, to_year: toYear, to_month: toMonth },
+            months,
+        });
+
+    } catch (error) {
+        logger.error('❌ My Statement Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     createSettlement,
     getMySettlements,
+    getMyStatement,
     getPendingSettlements,
     approveSettlement,
     disputeSettlement,

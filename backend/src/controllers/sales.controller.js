@@ -16,8 +16,21 @@ const { uploadToCloudinary } = require('../services/employee.service');
 // Firebase নোটিফিকেশন
 const { firebaseNotify } = require('../services/firebase.notify');
 
+// ✅ Real-time commission
+const { updateCommissionRealtime } = require('../services/commission.service');
+
 // WhatsApp Invoice Image
 const { sendInvoiceWhatsApp } = require('../services/invoiceWhatsapp.service');
+
+// ─── Bangladesh Timezone Helper (UTC+6) ───────────────────────────────────────
+// settlement.controller.js-এর মতোই এক helper।
+// new Date().toISOString() সবসময় UTC ধরে (বাংলাদেশ UTC+6 পিছিয়ে)।
+// রাত ১২টার পরে UTC date হয় আগের দিনের — DB-তে ভুল date সেভ হয়।
+// এই helper সরাসরি BD local date string (YYYY-MM-DD) রিটার্ন করে।
+const getBDToday = () => {
+    const bdOffset = 6 * 60 * 60 * 1000; // UTC+6
+    return new Date(Date.now() + bdOffset).toISOString().split('T')[0];
+};
 
 // ============================================================
 // CREATE VISIT
@@ -187,7 +200,8 @@ const createSale = async (req, res) => {
         // আগে এখানে transaction-এর বাইরে SELECT করা হতো, তারপর transaction-এ INSERT।
         // ফলে একাধিক SR একই সময়ে একই approved order পেয়ে যেত।
         // Fix: order lock + validation এখন withTransaction-এর ভেতরে নামানো হয়েছে।
-        const today = new Date().toISOString().split('T')[0];
+        // ✅ FIX Bug-1: UTC নয়, BD local date — settlement-এর getBDToday()-এর সাথে মিলবে
+        const today = getBDToday();
         const requested_order_id = order_id; // user যা পাঠিয়েছে সেটা ধরে রাখো
 
         // কাস্টমার তথ্য
@@ -573,6 +587,32 @@ const createSale = async (req, res) => {
             );
         }
 
+        // ✅ REAL-TIME COMMISSION: sale-এর পরেই commission হিসাব করো
+        // Main transaction-এর বাইরে — fail হলেও sale cancel হবে না।
+        // Midnight job reconciliation হিসেবে থাকবে।
+        setImmediate(async () => {
+            try {
+                const { rate, amount, totalSales } = await updateCommissionRealtime(
+                    req.user.id, today
+                );
+                if (amount > 0) {
+                    // SR-এর app-এ live commission badge আপডেট
+                    await firebaseNotify(
+                        `live/commission/${req.user.id}`,
+                        {
+                            date:        today,
+                            totalSales,
+                            rate,
+                            amount,
+                            updatedAt:   new Date().toISOString()
+                        }
+                    );
+                }
+            } catch (e) {
+                // silent fail — midnight job এ ঠিক হয়ে যাবে
+            }
+        });
+
         return res.status(201).json({
             success: true,
             message: 'বিক্রয় সফল।',
@@ -832,7 +872,8 @@ const verifyOTP = async (req, res) => {
 const getMySales = async (req, res) => {
     try {
         const { date, from, to } = req.query;
-        const today              = date || new Date().toISOString().split('T')[0];
+        // ✅ FIX Bug-1: BD local date default
+        const today              = date || getBDToday();
 
         let conditions = ['st.worker_id = $1'];
         let params     = [req.user.id];
@@ -941,7 +982,8 @@ const getMySales = async (req, res) => {
 
 const getTodaySummary = async (req, res) => {
     try {
-        const today    = new Date().toISOString().split('T')[0];
+        // ✅ FIX Bug-1: BD local date — sales_transactions.date এর সাথে মিলবে
+        const today    = getBDToday();
         const workerId = req.user.id;
 
         // বিক্রয় সারসংক্ষেপ
@@ -1033,7 +1075,8 @@ const getTodaySummary = async (req, res) => {
 const getTeamSales = async (req, res) => {
     try {
         const { from, to, worker_id } = req.query;
-        const today                   = new Date().toISOString().split('T')[0];
+        // ✅ FIX Bug-1: BD local date default
+        const today                   = getBDToday();
         const fromDate                = from || today;
         const toDate                  = to   || today;
 
@@ -1391,7 +1434,8 @@ const getVisitStatus = async (req, res) => {
     try {
         const { customerId } = req.params;
         const workerId = req.user.id;
-        const today = new Date().toISOString().split('T')[0];
+        // ✅ FIX Bug-1: BD local date
+        const today = getBDToday();
 
         const result = await query(
             `SELECT id, will_sell, no_sell_reason, created_at
@@ -1423,7 +1467,8 @@ const getVisitStatus = async (req, res) => {
 const getTeamVisits = async (req, res) => {
     try {
         const { worker_id, date, from, to } = req.query;
-        const today    = new Date().toISOString().split('T')[0];
+        // ✅ FIX Bug-1: BD local date default
+        const today    = getBDToday();
         const fromDate = from || date || today;
         const toDate   = to   || date || today;
 

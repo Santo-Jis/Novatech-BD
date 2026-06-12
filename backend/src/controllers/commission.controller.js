@@ -454,6 +454,98 @@ const getPayableCommissions = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET LIVE COMMISSION — আজকের চলমান commission (real-time)
+// GET /api/commission/live
+// SR প্রতিটি sale-এর পরে এই endpoint poll করবে অথবা
+// Firebase live/commission/{userId} node listen করবে
+// ============================================================
+
+const getLiveCommission = async (req, res) => {
+    try {
+        const workerId = req.user.id;
+        const bdOffset = 6 * 60 * 60 * 1000;
+        const today    = new Date(Date.now() + bdOffset).toISOString().split('T')[0];
+
+        // আজকের commission DB থেকে নাও
+        const commRes = await query(
+            `SELECT
+                sales_amount      AS total_sales,
+                commission_rate   AS rate,
+                commission_amount AS amount,
+                paid,
+                paid_at
+             FROM commission
+             WHERE user_id = $1 AND date = $2 AND type = 'daily'`,
+            [workerId, today]
+        );
+
+        // আজকের বিক্রয় সংখ্যা
+        const saleCountRes = await query(
+            `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS total
+             FROM sales_transactions
+             WHERE worker_id = $1 AND date = $2`,
+            [workerId, today]
+        );
+
+        // commission slab info — SR জানবে পরের slab কত দূরে
+        const slabRes = await query(
+            `SELECT slab_min, slab_max, rate
+             FROM commission_settings
+             WHERE is_active = true
+             ORDER BY slab_min ASC`
+        );
+
+        const commission   = commRes.rows[0] || null;
+        const sales        = saleCountRes.rows[0];
+        const totalSales   = parseFloat(sales.total) || 0;
+        const currentRate  = parseFloat(commission?.rate   || 0);
+        const earnedAmount = parseFloat(commission?.amount || 0);
+
+        // পরের slab কত দূরে
+        const currentSlab = slabRes.rows.find(s =>
+            totalSales >= parseFloat(s.slab_min) &&
+            (s.slab_max === null || totalSales <= parseFloat(s.slab_max))
+        );
+        const nextSlab = slabRes.rows.find(s =>
+            parseFloat(s.slab_min) > totalSales
+        );
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                date:           today,
+                total_sales:    totalSales,
+                sale_count:     parseInt(sales.count) || 0,
+                commission: {
+                    rate:       currentRate,
+                    amount:     earnedAmount,
+                    paid:       commission?.paid || false,
+                    paid_at:    commission?.paid_at || null,
+                },
+                current_slab: currentSlab
+                    ? { min: currentSlab.slab_min, max: currentSlab.slab_max, rate: currentSlab.rate }
+                    : null,
+                // পরের slab-এ যেতে আর কত বিক্রি করতে হবে
+                next_slab: nextSlab
+                    ? {
+                        min:          nextSlab.slab_min,
+                        rate:         nextSlab.rate,
+                        needed_sales: parseFloat(nextSlab.slab_min) - totalSales,
+                        bonus_if_reached: Math.round(
+                            (parseFloat(nextSlab.slab_min) * parseFloat(nextSlab.rate) / 100) - earnedAmount
+                        )
+                      }
+                    : null, // সর্বোচ্চ slab-এ আছে
+            }
+        });
+
+    } catch (error) {
+        logger.error('❌ Live Commission Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getMyCommission,
     getBonusStatus,
@@ -464,5 +556,6 @@ module.exports = {
     getCommissionSummary,
     calculateCommission,
     payCommission,
-    getPayableCommissions
+    getPayableCommissions,
+    getLiveCommission
 };

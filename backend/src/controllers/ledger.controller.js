@@ -61,23 +61,37 @@ const getMyStock = async (req, res) => {
             [workerId]
         );
 
-        // দাম orders থেকে নাও
-        const items = await Promise.all(result.rows.map(async row => {
-            const priceRes = await query(
-                `SELECT (item->>'price')::numeric AS price
+        // ✅ FIX Bug-4: আগে প্রতিটি product-এর জন্য আলাদা price query ছিল (N+1 সমস্যা)।
+        // ১০টি পণ্য থাকলে ১০টি DB round-trip হতো।
+        // এখন একটি bulk query — সব product_id-এর সর্বশেষ approved order price একবারে আনো।
+        const productIds = result.rows.map(r => r.product_id);
+        let priceMap = {};
+
+        if (productIds.length > 0) {
+            // প্রতিটি product-এর সর্বশেষ approved order-এর price নাও (DISTINCT ON)
+            const bulkPriceRes = await query(
+                `SELECT DISTINCT ON ((item->>'product_id')::uuid)
+                        (item->>'product_id')::uuid AS product_id,
+                        (item->>'price')::numeric   AS price
                  FROM orders o,
                       jsonb_array_elements(
                           CASE WHEN jsonb_typeof(o.items::jsonb) = 'array'
                                THEN o.items::jsonb ELSE '[]'::jsonb END
                       ) AS item
                  WHERE o.worker_id = $1::uuid
-                   AND (item->>'product_id')::uuid = $2
+                   AND (item->>'product_id')::uuid = ANY($2::uuid[])
                    AND o.status = 'approved'
-                 ORDER BY o.approved_at DESC
-                 LIMIT 1`,
-                [workerId, row.product_id]
+                 ORDER BY (item->>'product_id')::uuid, o.approved_at DESC`,
+                [workerId, productIds]
             );
-            const price    = parseFloat(priceRes.rows[0]?.price || 0);
+            bulkPriceRes.rows.forEach(r => {
+                priceMap[r.product_id] = parseFloat(r.price || 0);
+            });
+        }
+
+        // দাম orders থেকে নাও
+        const items = result.rows.map(row => {
+            const price    = priceMap[row.product_id] || 0;
             const inHand   = parseInt(row.in_hand_qty)  || 0;
             const totalIn  = parseInt(row.total_in)      || 0;
             const sold     = parseInt(row.total_sold)    || 0;
@@ -91,7 +105,7 @@ const getMyStock = async (req, res) => {
                 in_hand_qty:   inHand,
                 sell_percent:  totalIn > 0 ? Math.round((sold / totalIn) * 100) : 0,
             };
-        }));
+        });
 
         const totalInHand  = items.reduce((s, i) => s + i.in_hand_qty, 0);
         const totalSold    = items.reduce((s, i) => s + i.sold_qty, 0);

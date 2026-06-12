@@ -1,6 +1,7 @@
 const logger = require('../config/logger');
-const { query } = require('../config/db');
+const { query, withTransaction } = require('../config/db');
 const { calcFromProduct } = require('../services/price.utils');
+const { addLedgerEntry } = require('./ledger.controller');
 
 // ============================================================
 // POST /api/return/submit
@@ -321,17 +322,59 @@ const completeReturn = async (req, res) => {
         if (existing.rows[0].status !== 'approved')
             return res.status(400).json({ success: false, message: 'শুধুমাত্র approved রিকোয়েস্ট complete করা যাবে।' });
 
-        const result = await query(
-            `UPDATE return_requests SET
-                status       = 'completed',
-                completed_at = NOW()
-             WHERE id = $1 RETURNING *`,
-            [id]
-        );
+        const rr    = existing.rows[0];
+        const items = Array.isArray(rr.items)
+            ? rr.items
+            : (typeof rr.items === 'string' ? JSON.parse(rr.items) : []);
+
+        // ✅ FIX: withTransaction — status update + ledger + stock একসাথে
+        // আগে শুধু status = 'completed' হতো।
+        // কাস্টমার পণ্য ফেরত দিলে SR-এর হাতে সেই পণ্য যোগ হওয়া উচিত
+        // এবং warehouse stock-ও ফিরে আসা উচিত।
+        const result = await withTransaction(async (client) => {
+            // ১. status update
+            const updated = await client.query(
+                `UPDATE return_requests SET
+                    status       = 'completed',
+                    completed_at = NOW()
+                 WHERE id = $1 RETURNING *`,
+                [id]
+            );
+
+            for (const item of items) {
+                const qty = parseInt(item.qty) || 0;
+                if (qty <= 0) continue;
+
+                // ২. SR-এর stock ledger-এ পণ্য ফেরত IN করো
+                await addLedgerEntry(client, {
+                    worker_id:      srId,
+                    product_id:     item.product_id,
+                    product_name:   item.product_name,
+                    txn_type:       'order_in',
+                    direction:      1,
+                    qty,
+                    reference_id:   id,
+                    reference_type: 'return',
+                    note:           `কাস্টমার রিটার্ন — ${rr.customer_id}`,
+                    created_by:     srId,
+                });
+
+                // ৩. warehouse stock-এ পণ্য ফেরত যোগ করো
+                await client.query(
+                    `UPDATE products
+                     SET stock      = stock + $1,
+                         updated_at = NOW()
+                     WHERE id = $2`,
+                    [qty, item.product_id]
+                );
+            }
+
+            return updated;
+        });
 
         return res.json({
             success: true,
-            message: 'রিটার্ন সম্পন্ন হয়েছে।',
+            message: 'রিটার্ন সম্পন্ন হয়েছে। পণ্য আপনার stock-এ যোগ হয়েছে।',
             data: result.rows[0]
         });
 
