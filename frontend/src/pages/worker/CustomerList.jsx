@@ -215,9 +215,36 @@ export default function CustomerList() {
       try {
         const res = await api.get(`/customers?${params}${extraParams}`)
         const data = res.data.data || []
-        setCustomers(data)
+
+        // ✅ Pending collection reductions merge করো
+        // (Admin verify এর আগে SR-এর optimistic update টিকিয়ে রাখে)
+        let merged = data
+        try {
+          const pending = JSON.parse(localStorage.getItem('pending_credit_reductions') || '{}')
+          if (Object.keys(pending).length > 0) {
+            let changed = false
+            merged = data.map(c => {
+              const p = pending[String(c.id)]
+              if (p === undefined) return c
+              const apiCredit = parseFloat(c.current_credit || 0)
+              const pendingCredit = parseFloat(p)
+              if (pendingCredit < apiCredit) {
+                // Server এখনো পুরনো value দিচ্ছে — optimistic দেখাও
+                return { ...c, current_credit: pendingCredit }
+              } else {
+                // Server verified করে ফেলেছে — pending সরাও
+                delete pending[String(c.id)]
+                changed = true
+                return c
+              }
+            })
+            if (changed) localStorage.setItem('pending_credit_reductions', JSON.stringify(pending))
+          }
+        } catch (_) {}
+
+        setCustomers(merged)
         const cacheKey = `customers_route_${selectedRoute?.id || 'all'}`
-        saveCache(cacheKey, data)
+        saveCache(cacheKey, merged)
       } catch (err) {
         if (isNetworkError(err)) {
           const cacheKey = `customers_route_${selectedRoute?.id || 'all'}`
