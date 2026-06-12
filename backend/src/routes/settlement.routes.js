@@ -10,6 +10,7 @@ const {
 const {
     createSettlement,
     getMySettlements,
+    getMyStatement,
     getPendingSettlements,
     approveSettlement,
     disputeSettlement,
@@ -36,6 +37,14 @@ router.get('/my',
     auth,
     allowRoles('worker'),
     getMySettlements
+);
+
+// SR এর মাসিক statement (কয়েক মাস একসাথে)
+// ?from_month=1&from_year=2026&to_month=6&to_year=2026
+router.get('/my/statement',
+    auth,
+    allowRoles('worker'),
+    getMyStatement
 );
 
 // Manager এর pending তালিকা

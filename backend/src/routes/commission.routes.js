@@ -16,7 +16,8 @@ const {
     getBonusStatus,
     getCommissionSummary,
     payCommission,
-    getPayableCommissions
+    getPayableCommissions,
+    getLiveCommission
 } = require('../controllers/commission.controller');
 
 // ============================================================
@@ -26,6 +27,10 @@ const {
 
 // SR এর নিজের কমিশন
 router.get('/my',           auth, getMyCommission);
+
+// ✅ আজকের live commission — প্রতিটি sale-এর পরে আপডেট হয়
+// SR app-এ real-time badge দেখানোর জন্য
+router.get('/live',         auth, allowRoles('worker'), getLiveCommission);
 
 // বোনাসের অগ্রগতি
 router.get('/bonus-status', auth, getBonusStatus);
