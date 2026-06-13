@@ -219,14 +219,25 @@ export default function MyStatement() {
   useEffect(() => { fetchData(toYear, toMonth) }, [toYear, toMonth])
 
   const prevRange = () => {
-    if (toMonth === 1) { setToMonth(12); setToYear(y => y - 1) }
-    else setToMonth(m => m - 1)
+    let newMonth = toMonth - 6
+    let newYear  = toYear
+    if (newMonth <= 0) { newMonth += 12; newYear -= 1 }
+    setToMonth(newMonth)
+    setToYear(newYear)
   }
   const nextRange = () => {
-    const isCurrent = toMonth === now.getMonth() + 1 && toYear === now.getFullYear()
-    if (isCurrent) return
-    if (toMonth === 12) { setToMonth(1); setToYear(y => y + 1) }
-    else setToMonth(m => m + 1)
+    const nowMonth = now.getMonth() + 1
+    const nowYear  = now.getFullYear()
+    let newMonth = toMonth + 6
+    let newYear  = toYear
+    if (newMonth > 12) { newMonth -= 12; newYear += 1 }
+    // বর্তমান মাসের বেশি যাবে না
+    if (newYear * 12 + newMonth > nowYear * 12 + nowMonth) {
+      newMonth = nowMonth
+      newYear  = nowYear
+    }
+    setToMonth(newMonth)
+    setToYear(newYear)
   }
   const isCurrent = toMonth === now.getMonth() + 1 && toYear === now.getFullYear()
 
