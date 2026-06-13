@@ -710,6 +710,124 @@ const mySensitiveInfo = async (req, res) => {
     }
 };
 
+// ============================================================
+// CUSTOMER LOGIN
+// POST /api/auth/customer-login
+// কাস্টমার কোড + ফোন নম্বর দিয়ে কাস্টমার পোর্টালে লগইন
+// কারণ: customers টেবিলে password নেই —
+//        customer_code (কাস্টমার জানে) + phone (নিজের নম্বর) দিয়ে verify করা হয়
+// ============================================================
+
+const customerLogin = async (req, res) => {
+    try {
+        const { customer_code, phone } = req.body;
+
+        // ইনপুট যাচাই
+        if (!customer_code || !phone) {
+            return res.status(400).json({
+                success: false,
+                message: 'কাস্টমার কোড এবং ফোন নম্বর দিন।'
+            });
+        }
+
+        const cleanCode  = customer_code.trim().toUpperCase();
+        const cleanPhone = phone.trim().replace(/\s+/g, '');
+
+        // customer_code দিয়ে কাস্টমার খোঁজো
+        const result = await query(
+            `SELECT id, shop_name, owner_name, customer_code,
+                    whatsapp, sms_phone, email, is_active
+             FROM customers
+             WHERE customer_code = $1`,
+            [cleanCode]
+        );
+
+        // কাস্টমার না পেলে — generic error (code enumeration বন্ধ)
+        if (result.rows.length === 0) {
+            return res.status(401).json({
+                success: false,
+                message: 'কাস্টমার কোড বা ফোন নম্বর ভুল।'
+            });
+        }
+
+        const customer = result.rows[0];
+
+        // অ্যাকাউন্ট নিষ্ক্রিয় হলে
+        if (!customer.is_active) {
+            return res.status(403).json({
+                success: false,
+                message: 'আপনার অ্যাকাউন্ট নিষ্ক্রিয়। SR-এর সাথে যোগাযোগ করুন।'
+            });
+        }
+
+        // ফোন নম্বর নরমালাইজ করে তুলনা করো
+        // 01XXXXXXXXX এবং 8801XXXXXXXXX উভয়ই সমান মানা হবে
+        const normalize = (p) => {
+            if (!p) return '';
+            const digits = p.replace(/\D/g, '');
+            return digits.startsWith('880')
+                ? digits
+                : '880' + digits.replace(/^0/, '');
+        };
+
+        const inputNorm    = normalize(cleanPhone);
+        const whatsappNorm = normalize(customer.whatsapp);
+        const smsNorm      = normalize(customer.sms_phone);
+
+        // whatsapp বা sms_phone — যেকোনো একটা মিললেই হবে
+        const phoneMatched = (whatsappNorm && inputNorm === whatsappNorm)
+                          || (smsNorm      && inputNorm === smsNorm);
+
+        if (!phoneMatched) {
+            return res.status(401).json({
+                success: false,
+                message: 'কাস্টমার কোড বা ফোন নম্বর ভুল।'
+            });
+        }
+
+        // Portal JWT তৈরি (employee JWT থেকে আলাদা secret)
+        const portalSecret = process.env.JWT_PORTAL_SECRET;
+        if (!portalSecret) {
+            logger.error('❌ JWT_PORTAL_SECRET environment variable সেট নেই!');
+            return res.status(500).json({
+                success: false,
+                message: 'Server configuration error.'
+            });
+        }
+
+        const portalJWT = jwt.sign(
+            {
+                customer_id: customer.id,
+                email:       customer.email || null,
+                type:        'customer_portal'
+            },
+            portalSecret,
+            { expiresIn: '30d' }
+        );
+
+        logger.info(`✅ Customer Login: ${customer.customer_code} — ${customer.shop_name}`);
+
+        return res.status(200).json({
+            success: true,
+            message: 'লগইন সফল।',
+            data: {
+                portal_jwt:    portalJWT,
+                customer_id:   customer.id,
+                shop_name:     customer.shop_name,
+                owner_name:    customer.owner_name,
+                customer_code: customer.customer_code
+            }
+        });
+
+    } catch (error) {
+        logger.error('❌ Customer Login Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'লগইনে সমস্যা হয়েছে।'
+        });
+    }
+};
+
 module.exports = {
     login,
     refresh,
@@ -721,5 +839,6 @@ module.exports = {
     verifyOtp,
     resetPasswordWithOtp,
     saveFCMToken,
-    checkEmailType
+    checkEmailType,
+    customerLogin
 };
