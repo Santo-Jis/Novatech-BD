@@ -13,7 +13,8 @@ const {
     verifyOtp,
     resetPasswordWithOtp,
     saveFCMToken,
-    checkEmailType
+    checkEmailType,
+    customerLogin
 } = require('../controllers/auth.controller');
 
 const { auth } = require('../middlewares/auth');
@@ -100,5 +101,11 @@ router.post('/fcm-token', auth, saveFCMToken);
 // POST /api/auth/check-email
 // Google Login এর পর email দিয়ে কাস্টমার/কর্মী চেক
 router.post('/check-email', checkEmailType);
+
+// POST /api/auth/customer-login
+// কাস্টমার কোড + ফোন নম্বর দিয়ে কাস্টমার পোর্টালে লগইন
+// customers টেবিলে password নেই — customer_code + phone দিয়ে verify
+// ✅ loginLimiter: ১৫ মিনিটে ১০টি — brute force রোধ
+router.post('/customer-login', loginLimiter, customerLogin);
 
 module.exports = router;
