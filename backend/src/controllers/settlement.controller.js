@@ -982,171 +982,161 @@ const getTodayPreview = async (req, res) => {
 
 // ============================================================
 // GET MY STATEMENT — মাসিক সারসংক্ষেপ (কয়েক মাস একসাথে)
-// GET /api/settlements/my/statement?from_month=1&from_year=2026&to_month=6&to_year=2026
-// SR নিজের যেকোনো date range-এর statement দেখতে পারবে
-// ============================================================
-
 const getMyStatement = async (req, res) => {
     try {
         const workerId = req.user.id;
         const now      = getBDNow();
 
-        // Default: গত ৬ মাস
-        const toYear   = parseInt(req.query.to_year   || now.getUTCFullYear());
-        const toMonth  = parseInt(req.query.to_month  || now.getUTCMonth() + 1);
-        const fromYear = parseInt(req.query.from_year || (toMonth <= 6 ? toYear - 1 : toYear));
-        const fromMonth= parseInt(req.query.from_month|| (toMonth <= 6 ? toMonth + 6 : toMonth - 5));
+        const toYear  = parseInt(req.query.to_year  || now.getUTCFullYear());
+        const toMonth = parseInt(req.query.to_month || now.getUTCMonth() + 1);
 
-        // ─── প্রতি মাসের settlement summary ────────────────
-        const settlementSummary = await query(
-            `SELECT
-                EXTRACT(YEAR  FROM settlement_date)::int  AS year,
-                EXTRACT(MONTH FROM settlement_date)::int  AS month,
-                COUNT(*)                                  AS total_days,
-                COALESCE(SUM(total_sales_amount),  0)     AS total_sales,
-                COALESCE(SUM(cash_collected),      0)     AS total_cash_collected,
-                COALESCE(SUM(credit_given),        0)     AS total_credit_given,
-                COALESCE(SUM(shortage_qty_value),  0)     AS total_shortage_value,
-                COUNT(*) FILTER (WHERE status = 'approved')  AS approved_days,
-                COUNT(*) FILTER (WHERE status = 'disputed')  AS disputed_days,
-                COUNT(*) FILTER (WHERE status = 'pending')   AS pending_days
+        // ✅ FIX: JavaScript Date দিয়ে ৫ মাস পিছিয়ে → inclusive ৬ মাস
+        const fromDate  = new Date(Date.UTC(toYear, toMonth - 1 - 5, 1));
+        const fromYear  = parseInt(req.query.from_year  || fromDate.getUTCFullYear());
+        const fromMonth = parseInt(req.query.from_month || fromDate.getUTCMonth() + 1);
+
+        const [settlementRes, commissionRes, salaryRes, duesHistRes, duesRes] = await Promise.all([
+
+            query(`SELECT
+                EXTRACT(YEAR  FROM settlement_date)::int AS year,
+                EXTRACT(MONTH FROM settlement_date)::int AS month,
+                COUNT(*)                                 AS total_days,
+                COALESCE(SUM(total_sales_amount),  0)   AS total_sales,
+                COALESCE(SUM(cash_collected),      0)   AS total_cash_collected,
+                COALESCE(SUM(credit_given),        0)   AS total_credit_given,
+                COALESCE(SUM(shortage_qty_value),  0)   AS total_shortage_value,
+                COALESCE(SUM(replacement_value),   0)   AS total_replacement_value,
+                COALESCE(SUM(old_credit_collected),0)   AS total_old_credit_collected,
+                COUNT(*) FILTER (WHERE status='approved')  AS approved_days,
+                COUNT(*) FILTER (WHERE status='disputed')  AS disputed_days,
+                COUNT(*) FILTER (WHERE status='pending')   AS pending_days
              FROM daily_settlements
-             WHERE worker_id = $1
-               AND (
-                   EXTRACT(YEAR FROM settlement_date) * 12 + EXTRACT(MONTH FROM settlement_date)
-                   BETWEEN ($2 * 12 + $3) AND ($4 * 12 + $5)
-               )
-             GROUP BY year, month
-             ORDER BY year DESC, month DESC`,
-            [workerId, fromYear, fromMonth, toYear, toMonth]
-        );
+             WHERE worker_id=$1
+               AND EXTRACT(YEAR FROM settlement_date)*12+EXTRACT(MONTH FROM settlement_date)
+                   BETWEEN ($2*12+$3) AND ($4*12+$5)
+             GROUP BY year,month ORDER BY year DESC,month DESC`,
+            [workerId, fromYear, fromMonth, toYear, toMonth]),
 
-        // ─── প্রতি মাসের commission summary ─────────────────
-        const commissionSummary = await query(
-            `SELECT
-                EXTRACT(YEAR  FROM date)::int   AS year,
-                EXTRACT(MONTH FROM date)::int   AS month,
+            query(`SELECT
+                EXTRACT(YEAR  FROM date)::int AS year,
+                EXTRACT(MONTH FROM date)::int AS month,
                 COALESCE(SUM(sales_amount),     0) AS total_sales,
                 COALESCE(SUM(commission_amount),0) AS total_commission,
-                COUNT(*) FILTER (WHERE paid = true)  AS paid_days,
-                COUNT(*) FILTER (WHERE paid = false) AS unpaid_days
+                COUNT(*) FILTER (WHERE paid=true)  AS paid_days,
+                COUNT(*) FILTER (WHERE paid=false) AS unpaid_days
              FROM commission
-             WHERE user_id = $1
-               AND type = 'daily'
-               AND (
-                   EXTRACT(YEAR FROM date) * 12 + EXTRACT(MONTH FROM date)
-                   BETWEEN ($2 * 12 + $3) AND ($4 * 12 + $5)
-               )
-             GROUP BY year, month
-             ORDER BY year DESC, month DESC`,
-            [workerId, fromYear, fromMonth, toYear, toMonth]
-        );
+             WHERE user_id=$1 AND type='daily'
+               AND EXTRACT(YEAR FROM date)*12+EXTRACT(MONTH FROM date)
+                   BETWEEN ($2*12+$3) AND ($4*12+$5)
+             GROUP BY year,month ORDER BY year DESC,month DESC`,
+            [workerId, fromYear, fromMonth, toYear, toMonth]),
 
-        // ─── প্রতি মাসের বেতন ────────────────────────────────
-        const salarySummary = await query(
-            `SELECT
-                sp.year,
-                sp.month,
-                sp.basic_salary,
-                sp.total_commission,
+            query(`SELECT sp.year, sp.month,
+                sp.basic_salary, sp.total_commission,
                 sp.attendance_deduction,
-                sp.outstanding_dues_deducted  AS dues_deducted,
-                sp.net_payable,
-                sp.paid_at,
-                sp.status,
+                sp.outstanding_dues_deducted AS dues_deducted,
+                sp.net_payable, sp.paid_at, sp.status,
                 u.name_bn AS approved_by_name
              FROM salary_payments sp
-             LEFT JOIN users u ON sp.approved_by = u.id
-             WHERE sp.worker_id = $1
-               AND (sp.year * 12 + sp.month) BETWEEN ($2 * 12 + $3) AND ($4 * 12 + $5)
+             LEFT JOIN users u ON sp.approved_by=u.id
+             WHERE sp.worker_id=$1
+               AND (sp.year*12+sp.month) BETWEEN ($2*12+$3) AND ($4*12+$5)
              ORDER BY sp.year DESC, sp.month DESC`,
-            [workerId, fromYear, fromMonth, toYear, toMonth]
-        );
+            [workerId, fromYear, fromMonth, toYear, toMonth]),
 
-        // ─── বর্তমান বকেয়া ───────────────────────────────────
-        const duesRes = await query(
-            `SELECT
-                outstanding_dues,
-                cash_dues,
-                name_bn AS name
-             FROM users WHERE id = $1`,
-            [workerId]
-        );
+            query(`SELECT
+                EXTRACT(YEAR  FROM created_at)::int AS year,
+                EXTRACT(MONTH FROM created_at)::int AS month,
+                due_type,
+                COALESCE(SUM(CASE WHEN amount>0 THEN amount  ELSE 0 END),0) AS dues_added,
+                COALESCE(SUM(CASE WHEN amount<0 THEN ABS(amount) ELSE 0 END),0) AS dues_cleared
+             FROM dues_ledger
+             WHERE worker_id=$1
+               AND EXTRACT(YEAR FROM created_at)*12+EXTRACT(MONTH FROM created_at)
+                   BETWEEN ($2*12+$3) AND ($4*12+$5)
+             GROUP BY year,month,due_type ORDER BY year DESC,month DESC`,
+            [workerId, fromYear, fromMonth, toYear, toMonth]),
+
+            query(`SELECT outstanding_dues, cash_dues, name_bn AS name FROM users WHERE id=$1`,
+            [workerId]),
+        ]);
+
         const currentDues = duesRes.rows[0] || {};
 
-        // ─── মাস অনুযায়ী একত্রিত করো ───────────────────────
-        // সব মাসের key তৈরি করো
         const monthMap = {};
-        const addMonth = (year, month) => {
-            const key = `${year}-${String(month).padStart(2, '0')}`;
-            if (!monthMap[key]) {
-                monthMap[key] = {
-                    year, month,
-                    settlement: null,
-                    commission: null,
-                    salary:     null,
-                };
-            }
-            return key;
+        const touch = (year, month) => {
+            const k = `${year}-${String(month).padStart(2,'0')}`;
+            if (!monthMap[k]) monthMap[k] = { year, month, settlement:null, commission:null, salary:null, dues:null };
+            return k;
         };
 
-        settlementSummary.rows.forEach(r => {
-            const key = addMonth(r.year, r.month);
-            monthMap[key].settlement = {
-                total_days:          parseInt(r.total_days),
-                approved_days:       parseInt(r.approved_days),
-                disputed_days:       parseInt(r.disputed_days),
-                pending_days:        parseInt(r.pending_days),
-                total_sales:         parseFloat(r.total_sales),
-                total_cash_collected:parseFloat(r.total_cash_collected),
-                total_credit_given:  parseFloat(r.total_credit_given),
-                total_shortage_value:parseFloat(r.total_shortage_value),
+        settlementRes.rows.forEach(r => {
+            monthMap[touch(r.year, r.month)].settlement = {
+                total_days:                 +r.total_days,
+                approved_days:              +r.approved_days,
+                disputed_days:              +r.disputed_days,
+                pending_days:               +r.pending_days,
+                total_sales:                +r.total_sales,
+                total_cash_collected:       +r.total_cash_collected,
+                total_credit_given:         +r.total_credit_given,
+                total_shortage_value:       +r.total_shortage_value,
+                total_replacement_value:    +r.total_replacement_value,
+                total_old_credit_collected: +r.total_old_credit_collected,
             };
         });
 
-        commissionSummary.rows.forEach(r => {
-            const key = addMonth(r.year, r.month);
-            monthMap[key].commission = {
-                total_sales:      parseFloat(r.total_sales),
-                total_commission: parseFloat(r.total_commission),
-                paid_days:        parseInt(r.paid_days),
-                unpaid_days:      parseInt(r.unpaid_days),
+        commissionRes.rows.forEach(r => {
+            monthMap[touch(r.year, r.month)].commission = {
+                total_sales:      +r.total_sales,
+                total_commission: +r.total_commission,
+                paid_days:        +r.paid_days,
+                unpaid_days:      +r.unpaid_days,
             };
         });
 
-        salarySummary.rows.forEach(r => {
-            const key = addMonth(r.year, r.month);
-            monthMap[key].salary = {
-                basic_salary:      parseFloat(r.basic_salary      || 0),
-                total_commission:  parseFloat(r.total_commission  || 0),
-                dues_deducted:     parseFloat(r.dues_deducted     || 0),
-                attendance_deduction: parseFloat(r.attendance_deduction || 0),
-                net_payable:       parseFloat(r.net_payable       || 0),
-                status:            r.status,
-                paid_at:           r.paid_at,
-                approved_by:       r.approved_by_name,
+        salaryRes.rows.forEach(r => {
+            monthMap[touch(r.year, r.month)].salary = {
+                basic_salary:         +(r.basic_salary      ||0),
+                total_commission:     +(r.total_commission  ||0),
+                dues_deducted:        +(r.dues_deducted     ||0),
+                attendance_deduction: +(r.attendance_deduction||0),
+                net_payable:          +(r.net_payable       ||0),
+                status:    r.status,
+                paid_at:   r.paid_at,
+                approved_by: r.approved_by_name,
             };
         });
 
-        // তারিখ অনুযায়ী sort করে array বানাও
-        const months = Object.values(monthMap).sort(
-            (a, b) => (b.year * 12 + b.month) - (a.year * 12 + a.month)
-        );
+        const duesMonthMap = {};
+        duesHistRes.rows.forEach(r => {
+            const k = `${r.year}-${String(r.month).padStart(2,'0')}`;
+            if (!duesMonthMap[k]) duesMonthMap[k] = { dues_added:0, dues_cleared:0, breakdown:[] };
+            duesMonthMap[k].dues_added   += +r.dues_added;
+            duesMonthMap[k].dues_cleared += +r.dues_cleared;
+            duesMonthMap[k].breakdown.push({ type: r.due_type, added: +r.dues_added, cleared: +r.dues_cleared });
+        });
+        Object.entries(duesMonthMap).forEach(([k,d]) => {
+            const [y,m] = k.split('-').map(Number);
+            touch(y, m);
+            monthMap[k].dues = d;
+        });
+
+        const months = Object.values(monthMap).sort((a,b)=>(b.year*12+b.month)-(a.year*12+a.month));
 
         return res.status(200).json({
             success: true,
             worker: {
                 name:             currentDues.name,
-                outstanding_dues: parseFloat(currentDues.outstanding_dues || 0),
-                cash_dues:        parseFloat(currentDues.cash_dues        || 0),
+                outstanding_dues: +(currentDues.outstanding_dues||0),
+                cash_dues:        +(currentDues.cash_dues       ||0),
             },
-            range: { from_year: fromYear, from_month: fromMonth, to_year: toYear, to_month: toMonth },
+            range: { from_year:fromYear, from_month:fromMonth, to_year:toYear, to_month:toMonth },
             months,
         });
 
     } catch (error) {
         logger.error('❌ My Statement Error:', error.message);
-        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+        return res.status(500).json({ success:false, message:'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
 
