@@ -54,6 +54,11 @@ const menuItems = [
     path: '/worker/salary-history',
   },
   {
+    icon: <FiFileText />,
+    label: 'মাসিক স্টেটমেন্ট',
+    path: '/worker/statement',
+  },
+  {
     icon: <FiTrendingUp />,
     label: 'বিক্রয় ইতিহাস',
     path: '/worker/sales-history',
