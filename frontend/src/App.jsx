@@ -113,6 +113,7 @@ const ExpenseHistory   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/wor
 const ReturnForm       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/ReturnForm'))
 const ReturnHistory    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/ReturnHistory'))
 const MyReturnRequests = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/MyReturnRequests'))
+const MyStatement      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/MyStatement'))
 
 // ============================================================
 // Page Loading Spinner — Suspense fallback
@@ -248,10 +249,6 @@ const CustomerGuard = () => {
   const urlToken = params.get('token')
   if (urlToken) return <Outlet />
 
-  // ?c=customer_code — permanent customer portal link
-  const customerCode = params.get('c')
-  if (customerCode) return <Outlet />
-
   return <Navigate to={IS_CUSTOMER_APP ? '/customer-login' : '/landing'} replace />
 }
 
@@ -323,8 +320,6 @@ function AppWithPermissions() {
               <Route path="notifications" element={<CustomerPortal defaultTab="notifications" />} />
               <Route path="profile"       element={<CustomerPortal defaultTab="summary"       />} />
               <Route path="ai-chat"       element={<CustomerAIChat />} />
-              {/* ?c=customer_code permanent link — /customer/portal?c=NTB-C-XX */}
-              <Route path="portal"        element={<CustomerPortal defaultTab="summary" />} />
             </Route>
           </Route>
 
@@ -435,6 +430,7 @@ function AppWithPermissions() {
                 <Route path="return-history"     element={<ReturnHistory />} />
                 <Route path="my-return-requests" element={<MyReturnRequests />} />
                 <Route path="notices"            element={<NoticesView />} />
+                <Route path="statement"          element={<MyStatement />} />
               </Route>
             </>
           )}
