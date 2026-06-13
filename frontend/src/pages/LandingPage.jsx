@@ -1,5 +1,6 @@
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiLogIn, FiShoppingBag, FiUsers, FiBarChart2, FiShield } from 'react-icons/fi'
+import { FiLogIn, FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSettings } from 'react-icons/fi'
 
 // ============================================================
 // Landing Page — NovaTechBD
@@ -8,6 +9,19 @@ import { FiLogIn, FiShoppingBag, FiUsers, FiBarChart2, FiShield } from 'react-ic
 
 export default function LandingPage() {
   const navigate = useNavigate()
+  const [mgmtOpen, setMgmtOpen] = useState(false)
+  const dropRef = useRef(null)
+
+  // বাইরে ক্লিক করলে ড্রপডাউন বন্ধ
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropRef.current && !dropRef.current.contains(e.target)) {
+        setMgmtOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
 
   const features = [
     { icon: <FiShoppingBag />, title: 'বিক্রয় ব্যবস্থাপনা', desc: 'অর্ডার, ইনভয়েস ও পেমেন্ট সব এক জায়গায়' },
@@ -48,25 +62,142 @@ export default function LandingPage() {
           <span style={{ fontWeight: 700, fontSize: '17px', color: '#f1f5f9' }}>NovaTech BD</span>
         </div>
 
-        <button
-          onClick={() => navigate('/login')}
-          style={{
-            padding: '8px 18px',
-            background: 'linear-gradient(135deg, #1e3a8a, #162d6e)',
-            border: '1px solid rgba(30,58,138,0.5)',
-            borderRadius: '8px',
-            color: '#f1f5f9',
-            fontSize: '13px',
-            fontWeight: 600,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            fontFamily: "'Hind Siliguri', Arial, sans-serif",
-          }}
-        >
-          <FiLogIn style={{ fontSize: '14px' }} /> লগইন
-        </button>
+        {/* Navbar right — রিটেইলার + ম্যানেজমেন্ট */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+
+          {/* রিটেইলার শপ লগইন */}
+          <button
+            onClick={() => navigate('/customer-login')}
+            style={{
+              padding: '8px 16px',
+              background: 'linear-gradient(135deg, #065f46, #047857)',
+              border: '1px solid rgba(6,95,70,0.5)',
+              borderRadius: '8px',
+              color: '#f1f5f9',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontFamily: "'Hind Siliguri', Arial, sans-serif",
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <FiShoppingBag style={{ fontSize: '14px' }} /> রিটেইলার লগইন
+          </button>
+
+          {/* ম্যানেজমেন্ট লগইন ড্রপডাউন */}
+          <div ref={dropRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setMgmtOpen(p => !p)}
+              style={{
+                padding: '8px 16px',
+                background: mgmtOpen
+                  ? 'linear-gradient(135deg, #1e3a8a, #162d6e)'
+                  : 'rgba(30,58,138,0.15)',
+                border: '1px solid rgba(30,58,138,0.5)',
+                borderRadius: '8px',
+                color: '#f1f5f9',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontFamily: "'Hind Siliguri', Arial, sans-serif",
+                transition: 'background 0.2s',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <FiSettings style={{ fontSize: '14px' }} />
+              ম্যানেজমেন্ট লগইন
+              <FiChevronDown style={{
+                fontSize: '13px',
+                transition: 'transform 0.2s',
+                transform: mgmtOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+              }} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {mgmtOpen && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                right: 0,
+                minWidth: '200px',
+                background: 'rgba(10,15,26,0.97)',
+                border: '1px solid rgba(30,58,138,0.4)',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                boxShadow: '0 16px 40px rgba(0,0,0,0.6)',
+                backdropFilter: 'blur(20px)',
+                zIndex: 200,
+                animation: 'fadeSlideDown 0.15s ease-out',
+              }}>
+                <style>{`@keyframes fadeSlideDown { from { opacity:0; transform:translateY(-6px) } to { opacity:1; transform:translateY(0) } }`}</style>
+
+                {/* Header */}
+                <div style={{
+                  padding: '10px 16px 8px',
+                  borderBottom: '1px solid rgba(30,58,138,0.2)',
+                  color: 'rgba(148,163,184,0.6)',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}>
+                  ম্যানেজমেন্ট পোর্টাল
+                </div>
+
+                {[
+                  { label: 'SR লগইন',      role: 'sr',      icon: '👤', desc: 'Sales Representative' },
+                  { label: 'Manager লগইন', role: 'manager', icon: '📊', desc: 'ম্যানেজার / সুপারভাইজার' },
+                  { label: 'Admin লগইন',   role: 'admin',   icon: '⚙️', desc: 'অ্যাডমিন প্যানেল' },
+                ].map((item) => (
+                  <button
+                    key={item.role}
+                    onClick={() => {
+                      setMgmtOpen(false)
+                      navigate('/login', { state: { roleHint: item.role } })
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '12px 16px',
+                      background: 'transparent',
+                      border: 'none',
+                      borderBottom: '1px solid rgba(30,58,138,0.1)',
+                      color: '#f1f5f9',
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      fontFamily: "'Hind Siliguri', Arial, sans-serif",
+                      textAlign: 'left',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(30,58,138,0.2)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span style={{
+                      width: '34px', height: '34px',
+                      background: 'rgba(30,58,138,0.25)',
+                      borderRadius: '8px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '16px', flexShrink: 0,
+                    }}>{item.icon}</span>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 700 }}>{item.label}</div>
+                      <div style={{ fontSize: '11px', color: 'rgba(148,163,184,0.6)', marginTop: '1px' }}>{item.desc}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </nav>
 
       {/* Hero */}
@@ -121,12 +252,34 @@ export default function LandingPage() {
         </p>
 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
+          {/* রিটেইলার শপ লগইন — প্রধান CTA */}
+          <button
+            onClick={() => navigate('/customer-login')}
+            style={{
+              padding: '13px 28px',
+              background: 'linear-gradient(135deg, #065f46, #047857)',
+              border: 'none',
+              borderRadius: '10px',
+              color: '#f1f5f9',
+              fontSize: '15px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontFamily: "'Hind Siliguri', Arial, sans-serif",
+              boxShadow: '0 8px 24px rgba(6,95,70,0.35)',
+            }}
+          >
+            <FiShoppingBag /> রিটেইলার শপ লগইন
+          </button>
+          {/* ম্যানেজমেন্ট লগইন */}
           <button
             onClick={() => navigate('/login')}
             style={{
               padding: '13px 28px',
-              background: 'linear-gradient(135deg, #1e3a8a, #065f46)',
-              border: 'none',
+              background: 'linear-gradient(135deg, #1e3a8a, #162d6e)',
+              border: '1px solid rgba(30,58,138,0.5)',
               borderRadius: '10px',
               color: '#f1f5f9',
               fontSize: '15px',
@@ -139,7 +292,7 @@ export default function LandingPage() {
               boxShadow: '0 8px 24px rgba(30,58,138,0.3)',
             }}
           >
-            <FiLogIn /> লগইন করুন
+            <FiLogIn /> ম্যানেজমেন্ট লগইন
           </button>
           <button
             onClick={() => navigate('/apply/sr')}
