@@ -68,13 +68,16 @@ const guessDeviceLabel = (userAgent = '') => {
 // ── Refresh token HttpOnly cookie helper ─────────────────────
 // HttpOnly: JS পড়তে পারে না (XSS-proof)
 // secure:   production-এ HTTPS only
-// sameSite: production strict, dev lax (cross-port সাপোর্ট)
+// sameSite: production-এ 'none' (Vercel→Render cross-origin দরকার)
+//           'strict' হলে cross-origin request-এ browser cookie পাঠায় না!
+//           'none' requires Secure=true — production-এ সেটা আছে।
+//           dev-এ 'lax' (localhost same-origin, Secure বাদে চলে)
 // path:     শুধু /api/portal routes-এ cookie পাঠাবে
 const setRefreshCookie = (res, refreshJWT) => {
     res.cookie('portal_rt', refreshJWT, {
         httpOnly: true,
         secure:   process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         maxAge:   30 * 24 * 60 * 60 * 1000,   // 30 দিন (ms)
         path:     '/api/portal',
     });
@@ -1902,7 +1905,7 @@ const logoutPortal = (req, res) => {
     res.clearCookie('portal_rt', {
         httpOnly: true,
         secure:   process.env.NODE_ENV === 'production',
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
         path:     '/api/portal',
     });
     return res.status(200).json({ success: true, message: 'লগআউট সফল।' });
