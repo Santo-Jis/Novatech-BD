@@ -110,6 +110,7 @@ const Profile          = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/wor
 const SalesHistory     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/SalesHistory'))
 const StockStatus      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/StockStatus'))
 const LedgerHistory    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/LedgerHistory'))
+const MonthlyLedger    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/MonthlyLedger'))
 const ExpenseForm      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/ExpenseForm'))
 const ExpenseHistory   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/ExpenseHistory'))
 const ReturnForm       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/ReturnForm'))
@@ -432,6 +433,7 @@ function AppWithPermissions() {
                 <Route path="sales-history"      element={<SalesHistory />} />
                 <Route path="stock-status"       element={<StockStatus />} />
                 <Route path="ledger-history"     element={<LedgerHistory />} />
+                <Route path="monthly-ledger"     element={<MonthlyLedger />} />
                 <Route path="expense"            element={<ExpenseForm />} />
                 <Route path="expense-history"    element={<ExpenseHistory />} />
                 <Route path="return-form"        element={<ReturnForm />} />
