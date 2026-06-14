@@ -13,9 +13,9 @@ const getMyRank = async (req, res) => {
         const month    = now.getMonth() + 1;
         const year     = now.getFullYear();
 
-        // এই SR-এর team বের করো
+        // এই SR-এর team বের করো (users.team_id দিয়ে — team_members টেবিল নেই)
         const teamRes = await query(
-            `SELECT tm.team_id FROM team_members tm WHERE tm.worker_id = $1 LIMIT 1`,
+            `SELECT team_id FROM users WHERE id = $1 AND team_id IS NOT NULL LIMIT 1`,
             [workerId]
         );
 
@@ -34,8 +34,7 @@ const getMyRank = async (req, res) => {
                     COUNT(DISTINCT st.id)                           AS total_invoices,
                     COUNT(DISTINCT v.id)                            AS total_visits,
                     COALESCE(u.monthly_target, 0)::NUMERIC          AS monthly_target
-                 FROM team_members tm
-                 JOIN users u  ON u.id = tm.worker_id
+                 FROM users u
                  LEFT JOIN sales_transactions st
                     ON st.worker_id = u.id
                     AND EXTRACT(MONTH FROM st.created_at) = $2
@@ -45,7 +44,7 @@ const getMyRank = async (req, res) => {
                     ON v.worker_id = u.id
                     AND EXTRACT(MONTH FROM v.created_at) = $2
                     AND EXTRACT(YEAR  FROM v.created_at) = $3
-                 WHERE tm.team_id = $1
+                 WHERE u.team_id = $1 AND u.role = 'worker'
                  GROUP BY u.id, u.name_bn, u.profile_photo, u.monthly_target
                  ORDER BY total_sales DESC`,
                 [teamId, month, year]
@@ -156,8 +155,7 @@ const getTeamLeaderboard = async (req, res) => {
                 COUNT(DISTINCT st.id)                            AS total_invoices,
                 COUNT(DISTINCT v.id)                             AS total_visits,
                 COUNT(DISTINCT CASE WHEN a.status = 'present' THEN a.date END) AS present_days
-             FROM team_members tm
-             JOIN users u ON u.id = tm.worker_id
+             FROM users u
              LEFT JOIN sales_transactions st
                 ON st.worker_id = u.id
                 AND EXTRACT(MONTH FROM st.created_at) = $2
@@ -171,7 +169,7 @@ const getTeamLeaderboard = async (req, res) => {
                 ON a.user_id = u.id
                 AND EXTRACT(MONTH FROM a.date) = $2
                 AND EXTRACT(YEAR  FROM a.date) = $3
-             WHERE tm.team_id = $1
+             WHERE u.team_id = $1 AND u.role = 'worker'
              GROUP BY u.id, u.name_bn, u.profile_photo, u.phone, u.monthly_target
              ORDER BY total_sales DESC`,
             [teamId, month, year]

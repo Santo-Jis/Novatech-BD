@@ -75,14 +75,13 @@ const getTeamProgress = async (req, res) => {
                 u.id, u.name_bn AS name,
                 COALESCE(u.monthly_invoice_target, 0)::INTEGER AS target,
                 COUNT(DISTINCT st.customer_id)::INTEGER         AS achieved
-             FROM team_members tm
-             JOIN users u ON u.id = tm.worker_id
+             FROM users u
              LEFT JOIN sales_transactions st
                 ON st.worker_id = u.id
                 AND EXTRACT(MONTH FROM st.created_at) = $2
                 AND EXTRACT(YEAR  FROM st.created_at) = $3
                 AND st.status = 'verified'
-             WHERE tm.team_id = $1
+             WHERE u.team_id = $1 AND u.role = 'worker'
              GROUP BY u.id, u.name_bn, u.monthly_invoice_target
              ORDER BY achieved DESC`,
             [teamId, month, year]

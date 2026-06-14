@@ -41,7 +41,7 @@ const getMyCustomerCoverage = async (req, res) => {
         const salesRes = await query(
             `SELECT
                 st.customer_id,
-                si.product_id::INTEGER AS product_id,
+                (si->>'product_id')::uuid AS product_id,
                 MAX(st.created_at)     AS last_sold_at,
                 COUNT(*)::INTEGER      AS times_sold
              FROM sales_transactions st,
@@ -136,7 +136,7 @@ const getVisitAlert = async (req, res) => {
 
         // এই দোকানে কোন products কখনো বিক্রি হয়েছে
         const soldRes = await query(
-            `SELECT DISTINCT (si->>'product_id')::INTEGER AS product_id
+            `SELECT DISTINCT (si->>'product_id')::uuid AS product_id
              FROM sales_transactions st,
                   jsonb_array_elements(st.items) AS si
              WHERE st.customer_id = $1 AND st.status = 'verified'`,
@@ -149,7 +149,7 @@ const getVisitAlert = async (req, res) => {
         // ৩০+ দিন আগে বিক্রি হয়েছে এমন products
         const staleRes = await query(
             `SELECT
-                (si->>'product_id')::INTEGER AS product_id,
+                (si->>'product_id')::uuid AS product_id,
                 MAX(st.created_at) AS last_sold_at
              FROM sales_transactions st,
                   jsonb_array_elements(st.items) AS si
@@ -197,8 +197,8 @@ const getTeamCoverageSummary = async (req, res) => {
         const custRes = await query(
             `SELECT DISTINCT ca.customer_id
              FROM customer_assignments ca
-             JOIN team_members tm ON tm.worker_id = ca.worker_id
-             WHERE tm.team_id = $1`,
+             JOIN users u ON u.id = ca.worker_id
+             WHERE u.team_id = $1 AND u.role = 'worker'`,
             [teamId]
         );
         const totalCustomers = custRes.rows.length;
@@ -218,7 +218,7 @@ const getTeamCoverageSummary = async (req, res) => {
                  FROM sales_transactions st,
                       jsonb_array_elements(st.items) AS si
                  WHERE st.customer_id = ANY($1::uuid[])
-                   AND (si->>'product_id')::INTEGER = $2
+                   AND (si->>'product_id')::uuid = $2
                    AND st.status = 'verified'`,
                 [customerIds, prod.id]
             );
