@@ -376,6 +376,13 @@ export default function WorkerDashboard() {
           <span className="text-3xl">📊</span>
           <span className="text-xs font-semibold text-gray-700">হিসাব দিন</span>
         </button>
+        <button
+          onClick={() => navigate('/worker/monthly-ledger')}
+          className="col-span-2 flex items-center justify-center gap-2 p-4 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow"
+        >
+          <span className="text-2xl">📋</span>
+          <span className="text-xs font-semibold text-gray-700">মাসিক লেজার (বিক্রয়, বেতন, উপস্থিতি, বাকি)</span>
+        </button>
       </div>
     </div>
   )
