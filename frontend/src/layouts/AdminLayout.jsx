@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
 import ErrorBoundary from '../components/ErrorBoundary'
-import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar } from 'react-icons/fi'
+import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag } from 'react-icons/fi'
 
 const navItems = [
   { path: '/admin/dashboard',               icon: <FiHome />,         label: 'ড্যাশবোর্ড' },
@@ -12,6 +12,7 @@ const navItems = [
   { path: '/admin/recruitment',             icon: <FiUserPlus />,     label: 'SR নিয়োগ' },
   { path: '/admin/pending',                 icon: <FiCheckSquare />,  label: 'অনুমোদন বাকি' },
   { path: '/admin/products',               icon: <FiPackage />,      label: 'পণ্য' },
+  { path: '/admin/promotions',              icon: <FiTag />,          label: 'অফার / প্রমোশন' },
   { path: '/admin/routes',                 icon: <FiMapPin />,       label: 'রুট ম্যানেজমেন্ট' },
   { path: '/admin/portal-returns',          icon: <FiRotateCcw />,    label: 'পোর্টাল রিটার্ন' },
   { path: '/admin/customer-order-requests', icon: <FiShoppingCart />, label: 'অর্ডার রিকোয়েস্ট' },
