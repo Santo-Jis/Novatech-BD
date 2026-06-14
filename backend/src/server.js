@@ -174,6 +174,7 @@ const noticeRoutes      = require('./routes/notice.routes');
 const recruitmentRoutes = require('./routes/recruitment.routes');
 const teamRoutes        = require('./routes/team.routes');
 const ledgerRoutes      = require('./routes/ledger.routes');
+const monthlyLedgerRoutes = require('./routes/monthlyLedger.routes'); // ✅ SR মাসিক লেজার (সারসংক্ষেপ/দৈনিক/উপস্থিতি/বেতন/বাকি)
 const salaryRoutes      = require('./routes/salary.routes');
 const locationRoutes    = require('./routes/location.routes');
 const portalRoutes              = require('./routes/customerPortal.routes');
@@ -213,6 +214,7 @@ app.use('/api/teams',      teamRoutes);
 app.use('/api/salary',     salaryRoutes);
 app.use('/api/location',   locationRoutes);
 app.use('/api/ledger',     ledgerRoutes);
+app.use('/api/monthly-ledger', monthlyLedgerRoutes); // ✅ SR মাসিক লেজার
 // /api/portal — উপরে loginLimiter সহ mount করা হয়েছে
 app.use('/api/customer-order-requests', customerOrderReqRoutes);
 app.use('/api/app',                     appRoutes);
