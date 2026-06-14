@@ -186,6 +186,12 @@ const settingsRoutes            = require('./routes/settings.routes');   // ✅ 
 const creditApprovalRoutes      = require('./routes/creditApproval.routes'); // ✅ credit approval
 const jisAiRoutes               = require('./routes/jisai.routes');           // ✅ JIS-AI WhatsApp integration
 const collectionRoutes          = require('./routes/collection.routes');       // ✅ collection (বাকি আদায়)
+const promotionRoutes           = require('./routes/promotion.routes');        // ← নতুন (Promotions)
+const deliveryRoutes            = require('./routes/delivery.routes');         // ← নতুন (Deliveries)
+const coverageRoutes            = require('./routes/coverage.routes');         // ← নতুন (Coverage)
+const leaderboardRoutes         = require('./routes/leaderboard.routes');      // ← নতুন (Leaderboard)
+const invoiceTargetRoutes       = require('./routes/invoiceTarget.routes');    // ← নতুন (Invoice Target)
+const batteryRoutes             = require('./routes/battery.routes');          // ← নতুন (Battery Alert)
 
 app.use('/api/auth',        loginLimiter, authRoutes);
 app.use('/api/portal',     loginLimiter, portalRoutes); // ✅ customer portal login-এও limiter
@@ -216,6 +222,12 @@ app.use('/api/settings',                settingsRoutes);       // ✅ public set
 app.use('/api/return',                  returnRoutes);
 app.use('/api/credit-approvals',        creditApprovalRoutes); // ✅ credit approval workflow
 app.use('/api/collections',             collectionRoutes);     // ✅ collection (বাকি আদায়)
+app.use('/api/promotions',              promotionRoutes);      // ← নতুন
+app.use('/api/deliveries',              deliveryRoutes);       // ← নতুন
+app.use('/api/coverage',                coverageRoutes);       // ← নতুন
+app.use('/api/leaderboard',             leaderboardRoutes);    // ← নতুন
+app.use('/api/invoice-target',          invoiceTargetRoutes);  // ← নতুন
+app.use('/api/battery',                 batteryRoutes);        // ← নতুন
 jisAiRoutes(app);                                              // ✅ JIS-AI WhatsApp integration
 
 // ============================================================
