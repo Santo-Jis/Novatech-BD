@@ -68,6 +68,7 @@ const PortalDeviceManager    = IS_CUSTOMER_APP ? null : lazy(() => import('./pag
 const AdminRoutes            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Admin Routes'))
 const AdminCustomerOrderRequests = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/CustomerOrderRequests'))
 const AdminLeaveManagement   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AdminLeaveManagement'))
+const AdminPromotions        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Promotions'))
 
 // ── Manager pages — Customer APK-এ bundle হবে না ─────────────
 const ManagerDashboard    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Dashboard'))
@@ -91,6 +92,7 @@ const ManagerCreditApprovals = IS_CUSTOMER_APP ? null : lazy(() => import('./pag
 const ManagerReports         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Reports'))
 const ManagerSalarySheet     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/SalarySheet'))
 const ManagerPortalReturns   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/PortalReturnRequests'))
+const ManagerCoverage        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Coverage'))
 
 // ── Worker pages — Customer APK-এ bundle হবে না ──────────────
 const WorkerDashboard  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/Dashboard'))
@@ -114,6 +116,9 @@ const ReturnForm       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/wor
 const ReturnHistory    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/ReturnHistory'))
 const MyReturnRequests = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/MyReturnRequests'))
 const MyStatement      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/MyStatement'))
+const ActiveOffers     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/ActiveOffers'))
+const DeliveryTasks    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/DeliveryTasks'))
+const Leaderboard      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/Leaderboard'))
 
 // ============================================================
 // Page Loading Spinner — Suspense fallback
@@ -211,6 +216,7 @@ const HomeRedirect = () => {
         import('./layouts/WorkerLayout')
         import('./pages/worker/Dashboard')
         import('./pages/worker/CustomerList')
+        import('./services/batteryMonitor').then(({ BatteryMonitor }) => BatteryMonitor.start())
         break
       default:
         break
@@ -367,6 +373,7 @@ function AppWithPermissions() {
                 <Route path="routes"            element={<AdminRoutes />} />
                 <Route path="customer-order-requests" element={<AdminCustomerOrderRequests />} />
                 <Route path="leave-management"  element={<AdminLeaveManagement />} />
+                <Route path="promotions"        element={<AdminPromotions />} />
               </Route>
 
               {/* ── MANAGER ROUTES ── */}
@@ -400,6 +407,7 @@ function AppWithPermissions() {
                 <Route path="reports"                    element={<ManagerReports />} />
                 <Route path="salary-sheet"               element={<ManagerSalarySheet />} />
                 <Route path="portal-returns"             element={<ManagerPortalReturns />} />
+                <Route path="coverage"                   element={<ManagerCoverage />} />
               </Route>
 
               {/* ── WORKER ROUTES ── */}
@@ -431,6 +439,9 @@ function AppWithPermissions() {
                 <Route path="my-return-requests" element={<MyReturnRequests />} />
                 <Route path="notices"            element={<NoticesView />} />
                 <Route path="statement"          element={<MyStatement />} />
+                <Route path="offers"             element={<ActiveOffers />} />
+                <Route path="deliveries"         element={<DeliveryTasks />} />
+                <Route path="leaderboard"        element={<Leaderboard />} />
               </Route>
             </>
           )}
