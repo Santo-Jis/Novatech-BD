@@ -12,8 +12,8 @@ const router  = express.Router()
 const GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/latest/download/app-release.apk'
 
 const APP_VERSION = {
-  versionCode: 90,
-  versionName: '1.0.90',
+  versionCode: 91,
+  versionName: '1.0.91',
   apkUrl: 'https://novatechbd-backend.onrender.com/api/app/download',
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
@@ -24,9 +24,9 @@ const APP_VERSION = {
 // GitHub Actions (build-customer-apk.yml) auto-update করবে
 // ─────────────────────────────────────────────────────────────
 // CUSTOMER_VERSION_CODE — এই comment টি রাখো, workflow grep করে এটা দিয়ে
-const CUSTOMER_VERSION_CODE = 100
-const CUSTOMER_VERSION_NAME = '1.0.100'
-const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/download/customer-v1.0.100/customer-release.apk'
+const CUSTOMER_VERSION_CODE = 101
+const CUSTOMER_VERSION_NAME = '1.0.101'
+const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/download/customer-v1.0.101/customer-release.apk'
 
 const CUSTOMER_APP_VERSION = {
   versionCode: CUSTOMER_VERSION_CODE,
