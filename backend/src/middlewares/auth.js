@@ -20,6 +20,19 @@ const { isUserBlocked } = require('../config/redis');
 //   একসাথে ডাকা হয়। middleware Redis blocklist চেক করে — instant block।
 //   Redis TTL = JWT_ACCESS_EXPIRES (default ১৫ মিনিট)।
 
+// ✅ SaaS Phase 2 (lite): req.user.tenantId এবং req.tenantId যোগ হলো।
+// auth / optionalAuth / enrichUserSalary — তিনটা export-ই অপরিবর্তিত,
+// তাই বিদ্যমান ৩৫+ route file কোনো পরিবর্তন ছাড়াই কাজ করবে।
+//
+// পুরোনো access token-এ tenantId নেই (এই আপডেটের আগে issued) —
+// decoded.tenantId undefined হলে DEFAULT_TENANT_ID ধরা হয়, তাই কেউ
+// instantly logged out হবে না। ১৫ মিনিটের মধ্যে refresh হয়ে নতুন
+// token-এ real tenantId চলে আসবে (auth.service.js verifyRefreshToken)।
+//
+// X-Tenant-Slug header / tenantResolver-এর কোনো dependency নেই —
+// তাই mount করার সাথে app বন্ধ হবে না।
+const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+
 const auth = async (req, res, next) => {
     try {
         // ১. Header থেকে token নাও
@@ -106,7 +119,11 @@ const auth = async (req, res, next) => {
             manager_id:    decoded.manager_id    || null,
             employee_code: decoded.employee_code || null,
             phone:         decoded.phone         || null,
+            tenantId:      decoded.tenantId      || DEFAULT_TENANT_ID, // ✅ SaaS
         };
+
+        // ✅ SaaS: controller-এ সরাসরি req.tenantId হিসেবেও পাওয়া যাবে
+        req.tenantId = req.user.tenantId;
 
         next();
 
@@ -149,6 +166,7 @@ const optionalAuth = (req, res, next) => {
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
             req.user = null;
+            req.tenantId = DEFAULT_TENANT_ID; // ✅ SaaS: single-tenant default
             return next();
         }
 
@@ -161,12 +179,15 @@ const optionalAuth = (req, res, next) => {
             status:     decoded.status,
             name_bn:    decoded.name_bn,
             manager_id: decoded.manager_id || null,
+            tenantId:   decoded.tenantId   || DEFAULT_TENANT_ID, // ✅ SaaS
         };
+        req.tenantId = req.user.tenantId; // ✅ SaaS
         next();
     } catch {
         req.user = null;
+        req.tenantId = DEFAULT_TENANT_ID; // ✅ SaaS
         next();
     }
 };
 
-module.exports = { auth, optionalAuth, enrichUserSalary };
+module.exports = { auth, optionalAuth, enrichUserSalary, DEFAULT_TENANT_ID };
