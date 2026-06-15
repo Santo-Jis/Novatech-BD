@@ -7,6 +7,13 @@ const { blockUserTokens, unblockUser } = require('../config/redis');
 // Auth Service — JWT Token ব্যবস্থাপনা
 // ============================================================
 
+// ✅ SaaS Phase 2 (lite): JWT payload-এ tenantId যোগ করা হলো।
+// Export/signature কিছুই বদলায়নি — শুধু payload-এ একটা নতুন field।
+// user.tenant_id না থাকলে (পুরোনো token, বা DB row-এ এখনো না থাকলে)
+// DEFAULT_TENANT_ID (migration-এর default tenant) fallback হবে —
+// তাই কোনো breaking change বা flag-day নেই।
+const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+
 // Access Token তৈরি (১৫ মিনিট)
 const generateAccessToken = (user) => {
     return jwt.sign(
@@ -19,6 +26,7 @@ const generateAccessToken = (user) => {
             manager_id:    user.manager_id    || null,
             employee_code: user.employee_code || null,
             phone:         user.phone         || null,
+            tenantId:      user.tenant_id     || DEFAULT_TENANT_ID, // ✅ SaaS
         },
         process.env.JWT_ACCESS_SECRET,
         { expiresIn: process.env.JWT_ACCESS_EXPIRES || '15m' }
@@ -72,7 +80,7 @@ const verifyRefreshToken = async (refreshToken) => {
 
     const userResult = await query(
         `SELECT id, role, name_bn, name_en, email, phone, 
-                status, manager_id, employee_code
+                status, manager_id, employee_code, tenant_id
          FROM users WHERE id = $1`,
         [decoded.userId]
     );
@@ -162,4 +170,5 @@ module.exports = {
     deleteAllUserSessions,
     cleanExpiredSessions,
     parseTtlSeconds,
+    DEFAULT_TENANT_ID, // ✅ SaaS: controller/job-এ tenant_id লাগলে এটাই fallback ব্যবহার করো
 };
