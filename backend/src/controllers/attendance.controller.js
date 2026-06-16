@@ -106,13 +106,15 @@ const checkIn = async (req, res) => {
         } else {
             // নতুন রেকর্ড
             await query(
-                `INSERT INTO attendance (user_id, date, check_in_time, check_in_selfie,
-                  check_in_location, status, late_minutes, salary_deduction, tenant_id) VALUES ($1, $2, $3, $4,
-                  ${hasLocation ? 'ST_SetSRID(ST_MakePoint($5, $6, $7), 4326)::geography' : 'NULL'},
-                  ${hasLocation ? '$7, $8, $9' : '$5, $6, $7'})`,
+                `INSERT INTO attendance
+                 (user_id, date, check_in_time, check_in_selfie,
+                  check_in_location, status, late_minutes, salary_deduction, tenant_id)
+                 VALUES ($1, $2, $3, $4,
+                  ${hasLocation ? 'ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography' : 'NULL'},
+                  ${hasLocation ? '$7, $8, $9, $10' : '$5, $6, $7, $8'})`,
                 hasLocation
-                    ? [userId, today, checkInTime, selfieUrl, lng, lat, status, lateMinutes, deduction]
-                    : [userId, today, checkInTime, selfieUrl,          status, lateMinutes, deduction]
+                    ? [userId, today, checkInTime, selfieUrl, lng, lat, status, lateMinutes, deduction, req.tenantId]
+                    : [userId, today, checkInTime, selfieUrl,          status, lateMinutes, deduction, req.tenantId]
             );
         }
 
