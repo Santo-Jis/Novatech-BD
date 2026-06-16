@@ -45,8 +45,10 @@ const submitExpense = async (req, res) => {
         // আজকে আগে জমা দেওয়া আছে কিনা চেক করো
         const existing = await query(
             `SELECT id, status FROM expense_reports
-              WHERE worker_id = $1 AND report_date = $2`,
-            [workerId, date]
+              WHERE worker_id = $1 AND report_date = $2
+             AND tenant_id = $3`,
+            [workerId, date,
+                req.tenantId]
         );
 
         // approved রিপোর্ট edit করা যাবে না
@@ -126,13 +128,11 @@ const submitExpense = async (req, res) => {
         } else {
             // INSERT — নতুন রিপোর্ট
             result = await query(
-                `INSERT INTO expense_reports
-                    (worker_id, report_date, transport_type, transport_cost,
-                     food_cost, misc_cost, misc_note, receipt_url)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+                `INSERT INTO expense_reports (worker_id, report_date, transport_type, transport_cost,
+                     food_cost, misc_cost, misc_note, receipt_url, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8, $9)
                  RETURNING *`,
                 [workerId, date, transport_type, tCost, fCost, mCost,
-                 misc_note || null, receipt_url || null]
+                 misc_note || null, receipt_url || null, req.tenantId]
             );
         }
 

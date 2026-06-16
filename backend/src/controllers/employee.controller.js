@@ -116,8 +116,9 @@ const getEmployee = async (req, res) => {
             `SELECT u.*, m.name_bn AS manager_name, m.employee_code AS manager_code
              FROM users u
              LEFT JOIN users m ON u.manager_id = m.id
-             WHERE u.id = $1`,
-            [req.params.id]
+             WHERE u.id = $1
+             AND u.tenant_id = $2`,
+            [req.params.id, req.tenantId]
         );
 
         if (result.rows.length === 0) {
@@ -217,12 +218,11 @@ const createEmployee = async (req, res) => {
                 permanent_address, current_address, district, thana,
                 skills, education, experience, emergency_contact,
                 profile_photo, basic_salary, manager_id,
-                password_hash, status, join_date
-             ) VALUES (
+                password_hash, status, join_date, tenant_id) VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
                 $11, $12, $13, $14, $15, $16, $17, $18, $19,
                 $20, $21, $22, $23, $24, 'pending', CURRENT_DATE
-             ) RETURNING id, name_bn, phone, role, status`,
+             , $25) RETURNING id, name_bn, phone, role, status`,
             [
                 role, name_bn, name_en, father_name || null, mother_name || null,
                 email || null, phone, phone2 || null,
@@ -239,7 +239,8 @@ const createEmployee = async (req, res) => {
                 profilePhotoUrl,
                 basic_salary || 0,
                 manager_id || req.user.manager_id || null,
-                passwordHash
+                passwordHash,
+                req.tenantId  // SaaS: tenant_id = $25
             ]
         );
 
@@ -339,14 +340,14 @@ const approveEmployee = async (req, res) => {
         await query(
             `UPDATE users 
              SET status = 'active', employee_code = $1, password_hash = $2, updated_at = NOW()
-             WHERE id = $3`,
-            [employeeCode, passwordHash, id]
+             WHERE id = $3
+             AND tenant_id = $4`,
+            [employeeCode, passwordHash, id, req.tenantId]
         );
 
         // Audit Log
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
-             VALUES ($1, 'APPROVE_EMPLOYEE', 'users', $2, $3)`,
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'APPROVE_EMPLOYEE', 'users', $2, $3, $4)`,
             [req.user.id, id, JSON.stringify({ employee_code: employeeCode, status: 'active' })]
         );
 
@@ -414,17 +415,17 @@ const rejectEmployee = async (req, res) => {
         }
 
         await query(
-            `UPDATE users SET status = 'archived', updated_at = NOW() WHERE id = $1`,
-            [id]
+            `UPDATE users SET status = 'archived', updated_at = NOW() WHERE id = $1
+             AND tenant_id = $2`,
+            [id, req.tenantId]
         );
 
         // ✅ FIX: archived হলে সব session + Redis blocklist — instant token revoke
         await deleteAllUserSessions(id);
 
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
-             VALUES ($1, 'REJECT_EMPLOYEE', 'users', $2, $3)`,
-            [req.user.id, id, JSON.stringify({ reason })]
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'REJECT_EMPLOYEE', 'users', $2, $3, $4)`,
+            [req.user.id, id, JSON.stringify({ reason }), req.tenantId]
         );
 
         return res.status(200).json({ success: true, message: 'কর্মচারীর আবেদন বাতিল করা হয়েছে।' });
@@ -464,8 +465,9 @@ const suspendEmployee = async (req, res) => {
             `UPDATE users 
              SET status = 'suspended', updated_at = NOW()
              WHERE id = $1 AND role != 'admin'
+             AND tenant_id = $2
              RETURNING name_bn`,
-            [id]
+            [id, req.tenantId]
         );
 
         if (result.rows.length === 0) {
@@ -476,8 +478,7 @@ const suspendEmployee = async (req, res) => {
         await deleteAllUserSessions(id);
 
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
-             VALUES ($1, 'SUSPEND_EMPLOYEE', 'users', $2, $3)`,
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'SUSPEND_EMPLOYEE', 'users', $2, $3, $4)`,
             [req.user.id, id, JSON.stringify({ reason, status: 'suspended' })]
         );
 
@@ -567,9 +568,8 @@ const editEmployee = async (req, res) => {
             );
 
             await query(
-                `INSERT INTO audit_logs (user_id, action, table_name, record_id, old_value, new_value)
-                 VALUES ($1, 'EDIT_EMPLOYEE', 'users', $2, $3, $4)`,
-                [req.user.id, id, JSON.stringify(currentData), JSON.stringify(changes)]
+                `INSERT INTO audit_logs (user_id, action, table_name, record_id, old_value, new_value, tenant_id) VALUES ($1, 'EDIT_EMPLOYEE', 'users', $2, $3, $4, $5)`,
+                [req.user.id, id, JSON.stringify(currentData), JSON.stringify(changes), req.tenantId]
             );
 
             // ✅ FIX #9: role বা manager_id পরিবর্তন হলে সব refresh token মুছে দাও।
@@ -787,8 +787,9 @@ const updateOwnProfile = async (req, res) => {
                 current_address   = COALESCE($4, current_address),
                 emergency_contact = COALESCE($5::text, emergency_contact),
                 updated_at        = NOW()
-             WHERE id = $6`,
-            [name_bn, name_en, phone, current_address, emergencyContactStr, userId]
+             WHERE id = $6
+             AND tenant_id = $7`,
+            [name_bn, name_en, phone, current_address, emergencyContactStr, userId, req.tenantId]
         );
 
         return res.status(200).json({
@@ -847,7 +848,8 @@ const broadcastEmail = async (req, res) => {
     const { subject, message } = req.body;
     if (!subject || !message) return res.status(400).json({ success: false, message: 'Subject ও message দিন।' });
 
-    const result = await query(`SELECT name_bn, email FROM users WHERE status = 'active' AND email IS NOT NULL AND email != ''`);
+    const result = await query(`SELECT name_bn, email FROM users WHERE status = 'active' AND email IS NOT NULL AND email != ''
+             AND tenant_id = $1`, [req.tenantId]);
     const employees = result.rows;
 
     if (employees.length === 0) return res.status(200).json({ success: false, message: 'কোনো email পাওয়া যায়নি।' });
@@ -888,7 +890,9 @@ const resetPassword = async (req, res) => {
     const { send_email } = req.body;
     const newPass = generateTempPassword();
     const hashed = await bcrypt.hash(newPass, 10);
-    const emp = await query(`UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2 RETURNING name_bn, email`, [hashed, id]);
+    const emp = await query(`UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2
+             AND tenant_id = $3
+             RETURNING name_bn, email`, [hashed, id, req.tenantId]);
     if (emp.rows.length === 0) return res.status(404).json({ success: false, message: 'কর্মচারী পাওয়া যায়নি।' });
     if (send_email && emp.rows[0].email) {
       const { sendEmail } = require('../services/email.service');
@@ -935,16 +939,16 @@ const reactivateEmployee = async (req, res) => {
             `UPDATE users
              SET status = 'active', employee_code = $1, password_hash = $2,
                  join_date = CURRENT_DATE, updated_at = NOW()
-             WHERE id = $3`,
-            [newCode, passwordHash, id]
+             WHERE id = $3
+             AND tenant_id = $4`,
+            [newCode, passwordHash, id, req.tenantId]
         );
 
         // ✅ FIX: reactivate হলে blocklist থেকে সরাও (আগে suspend ছিল)
         await deleteAllUserSessions(id, { reactivating: true });
 
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
-             VALUES ($1, 'REACTIVATE_EMPLOYEE', 'users', $2, $3)`,
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'REACTIVATE_EMPLOYEE', 'users', $2, $3, $4)`,
             [req.user.id, id, JSON.stringify({ employee_code: newCode, status: 'active' })]
         );
 

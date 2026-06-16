@@ -215,7 +215,7 @@ const updateAIConfig = async (req, res) => {
         }
 
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, new_value) VALUES ($1, 'UPDATE_AI_CONFIG', 'ai_config', $2)`,
+            `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'UPDATE_AI_CONFIG', 'ai_config', $2, $3)`,
             [req.user.id, JSON.stringify({ ...updates, api_key: api_key ? '***' : undefined })]
         );
 

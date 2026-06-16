@@ -9,8 +9,8 @@ const { query } = require('../config/db');
 const getRoutes = async (req, res) => {
     try {
         let conditions = ['r.is_active = true'];
-        let params     = [];
-        let paramCount = 0;
+        let params = [req.tenantId];
+    let paramCount = 1;
 
         // Manager শুধু নিজের রুট
         if (req.teamFilter) {
@@ -74,10 +74,9 @@ const createRoute = async (req, res) => {
             : req.user.id;
 
         const result = await query(
-            `INSERT INTO routes (name, manager_id, description)
-             VALUES ($1, $2, $3)
+            `INSERT INTO routes (name, manager_id, description, tenant_id) VALUES ($1, $2, $3, $4)
              RETURNING *`,
-            [name, managerId, description || null]
+            [name, managerId, description || null, req.tenantId]
         );
 
         return res.status(201).json({
@@ -109,8 +108,10 @@ const updateRoute = async (req, res) => {
                  status      = COALESCE($4, status),
                  updated_at  = NOW()
              WHERE id = $5
+             AND tenant_id = $6
              RETURNING *`,
-            [name, description, is_active, status, req.params.id]
+            [name, description, is_active, status, req.params.id,
+                req.tenantId]
         );
 
         if (result.rows.length === 0) {
@@ -195,11 +196,10 @@ const assignWorkerToRoute = async (req, res) => {
         }
 
         await query(
-            `INSERT INTO customer_assignments (worker_id, route_id, assigned_by)
-             VALUES ($1, $2, $3)
+            `INSERT INTO customer_assignments (worker_id, route_id, assigned_by, tenant_id) VALUES ($1, $2, $3, $4)
              ON CONFLICT (worker_id, route_id) DO UPDATE
              SET is_active = true, assigned_at = NOW()`,
-            [worker_id, routeId, req.user.id]
+            [worker_id, routeId, req.user.id, req.tenantId]
         );
 
         const customers = await query(
@@ -209,11 +209,10 @@ const assignWorkerToRoute = async (req, res) => {
 
         for (const customer of customers.rows) {
             await query(
-                `INSERT INTO customer_assignments (worker_id, customer_id, route_id, assigned_by)
-                 VALUES ($1, $2, $3, $4)
+                `INSERT INTO customer_assignments (worker_id, customer_id, route_id, assigned_by, tenant_id) VALUES ($1, $2, $3, $4, $5)
                  ON CONFLICT (worker_id, customer_id) DO UPDATE
                  SET is_active = true, assigned_at = NOW()`,
-                [worker_id, customer.id, routeId, req.user.id]
+                [worker_id, customer.id, routeId, req.user.id, req.tenantId]
             );
         }
 
@@ -313,8 +312,8 @@ const getRouteCustomers = async (req, res) => {
 const getLiveRouteStatus = async (req, res) => {
     try {
         let conditions = ['r.is_active = true'];
-        let params     = [];
-        let paramCount = 0;
+        let params = [req.tenantId];
+    let paramCount = 1;
 
         if (req.teamFilter) {
             paramCount++;
@@ -409,10 +408,9 @@ const requestRoute = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO route_requests (route_name, description, requested_by, status)
-             VALUES ($1, $2, $3, 'pending')
+            `INSERT INTO route_requests (route_name, description, requested_by, status, tenant_id) VALUES ($1, $2, $3, 'pending', $4)
              RETURNING *`,
-            [route_name.trim(), description?.trim() || null, req.user.id]
+            [route_name.trim(), description?.trim() || null, req.user.id, req.tenantId]
         );
 
         return res.status(201).json({

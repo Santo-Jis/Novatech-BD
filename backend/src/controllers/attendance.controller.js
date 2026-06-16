@@ -106,11 +106,9 @@ const checkIn = async (req, res) => {
         } else {
             // নতুন রেকর্ড
             await query(
-                `INSERT INTO attendance
-                 (user_id, date, check_in_time, check_in_selfie,
-                  check_in_location, status, late_minutes, salary_deduction)
-                 VALUES ($1, $2, $3, $4,
-                  ${hasLocation ? 'ST_SetSRID(ST_MakePoint($5, $6), 4326)::geography' : 'NULL'},
+                `INSERT INTO attendance (user_id, date, check_in_time, check_in_selfie,
+                  check_in_location, status, late_minutes, salary_deduction, tenant_id) VALUES ($1, $2, $3, $4,
+                  ${hasLocation ? 'ST_SetSRID(ST_MakePoint($5, $6, $7), 4326)::geography' : 'NULL'},
                   ${hasLocation ? '$7, $8, $9' : '$5, $6, $7'})`,
                 hasLocation
                     ? [userId, today, checkInTime, selfieUrl, lng, lat, status, lateMinutes, deduction]
@@ -275,8 +273,10 @@ const getMyAttendance = async (req, res) => {
              WHERE user_id = $1
                AND EXTRACT(YEAR  FROM date) = $2
                AND EXTRACT(MONTH FROM date) = $3
+             AND tenant_id = $4
              ORDER BY date DESC`,
-            [req.user.id, currentYear, currentMonth]
+            [req.user.id, currentYear, currentMonth,
+                req.tenantId]
         );
 
         // সারসংক্ষেপ
@@ -618,10 +618,9 @@ const applyLeave = async (req, res) => {
         `);
 
         const result = await query(
-            `INSERT INTO leave_requests (user_id, start_date, end_date, leave_type, reason)
-             VALUES ($1, $2, $3, $4, $5)
+            `INSERT INTO leave_requests (user_id, start_date, end_date, leave_type, reason, tenant_id) VALUES ($1, $2, $3, $4, $5, $6)
              RETURNING id, start_date, end_date, leave_type, reason, status, created_at`,
-            [userId, start_date, end_date, leave_type || 'casual', reason]
+            [userId, start_date, end_date, leave_type || 'casual', reason, req.tenantId]
         );
 
         return res.status(201).json({
@@ -770,11 +769,10 @@ const reviewLeaveRequest = async (req, res) => {
             for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
                 const dateStr = d.toISOString().split('T')[0];
                 await query(
-                    `INSERT INTO attendance (user_id, date, status, leave_approved)
-                     VALUES ($1, $2, 'leave', TRUE)
+                    `INSERT INTO attendance (user_id, date, status, leave_approved, tenant_id) VALUES ($1, $2, 'leave', TRUE, $3)
                      ON CONFLICT (user_id, date)
                      DO UPDATE SET status = 'leave', leave_approved = TRUE`,
-                    [leave.user_id, dateStr]
+                    [leave.user_id, dateStr, req.tenantId]
                 );
             }
         }
@@ -866,21 +864,18 @@ const correctAttendance = async (req, res) => {
         } else {
             // নতুন রেকর্ড তৈরি
             result = await query(
-                `INSERT INTO attendance
-                 (user_id, date, check_in_time, check_out_time, late_minutes, status, correction_note, corrected_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                `INSERT INTO attendance (user_id, date, check_in_time, check_out_time, late_minutes, status, correction_note, corrected_by, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
                  RETURNING id, check_in_time, check_out_time, status`,
                 [user_id, date, check_in_time || null, check_out_time || null,
-                 lateMinutes, status, note || null, req.user.id]
+                 lateMinutes, status, note || null, req.user.id, req.tenantId]
             );
         }
 
         // Audit log
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
-             VALUES ($1, 'ATTENDANCE_CORRECTION', 'attendance', $2, $3)`,
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'ATTENDANCE_CORRECTION', 'attendance', $2, $3, $4)`,
             [req.user.id, result.rows[0].id,
-             JSON.stringify({ user_id, date, check_in_time, check_out_time, note })]
+             JSON.stringify({ user_id, date, check_in_time, check_out_time, note }), req.tenantId]
         );
 
         return res.status(200).json({

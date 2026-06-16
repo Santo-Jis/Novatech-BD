@@ -54,8 +54,10 @@ const createOrderRequest = async (req, res) => {
         const pendingCheck = await query(
             `SELECT id FROM customer_order_requests
              WHERE customer_id = $1 AND status = 'pending'
+             AND tenant_id = $2
              LIMIT 1`,
-            [customer_id]
+            [customer_id,
+                req.tenantId]
         );
         const hasPendingOrder = pendingCheck.rows.length > 0;
 
@@ -102,10 +104,9 @@ const createOrderRequest = async (req, res) => {
         // Customer অর্ডারে reserved_stock বাড়ানো হয় না —
         // কারণ customer যত খুশি অর্ডার করতে পারবে, stock 24 ঘন্টায় বাড়ানো হয়
         const result = await query(
-            `INSERT INTO customer_order_requests (customer_id, items, note, status)
-             VALUES ($1, $2::jsonb, $3, 'pending')
+            `INSERT INTO customer_order_requests (customer_id, items, note, status, tenant_id) VALUES ($1, $2::jsonb, $3, 'pending', $4)
              RETURNING id, created_at`,
-            [customer_id, JSON.stringify(enrichedItems), note || null]
+            [customer_id, JSON.stringify(enrichedItems), note || null, req.tenantId]
         );
 
         const newRequest = result.rows[0];
@@ -481,9 +482,8 @@ const updateOrderRequest = async (req, res) => {
             if (notif) {
                 // customer_notifications টেবিলে ইন-অ্যাপ নোটিফিকেশন সেভ করো
                 await query(
-                    `INSERT INTO customer_notifications (customer_id, title, body, type)
-                     VALUES ($1, $2, $3, 'order_request')`,
-                    [request.customer_id, notif.title, notif.body]
+                    `INSERT INTO customer_notifications (customer_id, title, body, type, tenant_id) VALUES ($1, $2, $3, 'order_request', $4)`,
+                    [request.customer_id, notif.title, notif.body, req.tenantId]
                 ).catch(e => logger.error('[OrderRequest] Customer notif DB error:', e.message));
 
                 // Web Push — sendCustomerPush handles stale token cleanup automatically
@@ -648,10 +648,9 @@ const notifyAdminStockWarning = async (req, res) => {
 
         for (const adminId of adminIds) {
             await query(
-                `INSERT INTO notifications (user_id, title, body, type, reference_id)
-                 VALUES ($1, $2, $3, 'stock_warning', $4)
+                `INSERT INTO notifications (user_id, title, body, type, reference_id, tenant_id) VALUES ($1, $2, $3, 'stock_warning', $4, $5)
                  ON CONFLICT DO NOTHING`,
-                [adminId, title, body, id]
+                [adminId, title, body, id, req.tenantId]
             ).catch(() => {}); // notifications table না থাকলেও চলবে
         }
 
@@ -898,16 +897,13 @@ const createReturnRequest = async (req, res) => {
 
         // ── DB-তে সেভ ─────────────────────────────────────────
         const result = await query(
-            `INSERT INTO customer_return_requests
-                 (customer_id, invoice_number, type, items, total_return_value, note, status)
-             VALUES ($1, $2, $3, $4::jsonb, $5, $6, 'pending')
+            `INSERT INTO customer_return_requests (customer_id, invoice_number, type, items, total_return_value, note, status, tenant_id) VALUES ($1, $2, $3, $4::jsonb, $5, $6, 'pending', $7)
              RETURNING id, created_at`,
             [
                 customer_id, invoice_number.trim(), type,
                 JSON.stringify(sanitizedItems),
                 parseFloat(totalReturnValue.toFixed(2)),
-                note || null
-            ]
+                note || null, req.tenantId]
         );
         const newRequest = result.rows[0];
 

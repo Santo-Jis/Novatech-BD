@@ -193,6 +193,8 @@ const coverageRoutes            = require('./routes/coverage.routes');         /
 const leaderboardRoutes         = require('./routes/leaderboard.routes');      // ← নতুন (Leaderboard)
 const invoiceTargetRoutes       = require('./routes/invoiceTarget.routes');    // ← নতুন (Invoice Target)
 const batteryRoutes             = require('./routes/battery.routes');          // ← নতুন (Battery Alert)
+const onboardingRoutes          = require('./routes/onboarding.routes');       // ← নতুন (SaaS: company register)
+const superAdminRoutes          = require('./routes/superAdmin.routes');       // ← নতুন (SaaS: super admin panel)
 
 app.use('/api/auth',        loginLimiter, authRoutes);
 app.use('/api/portal',     loginLimiter, portalRoutes); // ✅ customer portal login-এও limiter
@@ -230,6 +232,8 @@ app.use('/api/coverage',                coverageRoutes);       // ← নতু�
 app.use('/api/leaderboard',             leaderboardRoutes);    // ← নতুন
 app.use('/api/invoice-target',          invoiceTargetRoutes);  // ← নতুন
 app.use('/api/battery',                 batteryRoutes);        // ← নতুন
+app.use('/api',          onboardingRoutes);   // ← নতুন (SaaS): POST /api/register, GET /api/register/check-slug/:slug
+app.use('/superadmin/api', superAdminRoutes); // ← নতুন (SaaS): X-Super-Admin-Key দিয়ে protected, /api ও tenant middleware-এর বাইরে
 jisAiRoutes(app);                                              // ✅ JIS-AI WhatsApp integration
 
 // ============================================================

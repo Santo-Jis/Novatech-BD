@@ -53,8 +53,7 @@ const updateSettings = async (req, res) => {
 
         // UPSERT — row না থাকলে insert, থাকলে update
         await query(
-            `INSERT INTO credit_settings (id, alert_threshold_pct, require_approval, updated_by, updated_at)
-             VALUES (1, $1, $2, $3, NOW())
+            `INSERT INTO credit_settings (id, alert_threshold_pct, require_approval, updated_by, updated_at, tenant_id) VALUES (1, $1, $2, $3, NOW(, $4))
              ON CONFLICT (id) DO UPDATE
                SET alert_threshold_pct = EXCLUDED.alert_threshold_pct,
                    require_approval    = EXCLUDED.require_approval,
@@ -63,8 +62,7 @@ const updateSettings = async (req, res) => {
             [
                 parseInt(alert_threshold_pct),
                 require_approval === true || require_approval === 'true',
-                req.user.id
-            ]
+                req.user.id, req.tenantId]
         );
 
         return res.status(200).json({
@@ -122,7 +120,8 @@ const requestApproval = async (req, res) => {
                ON ca.customer_id = c.id AND ca.is_active = true AND ca.worker_id = $2
              LEFT JOIN routes r ON c.route_id = r.id
              WHERE c.id = $1`,
-            [customer_id, req.user.id]
+            [customer_id, req.user.id,
+                req.tenantId]
         );
 
         if (custResult.rows.length === 0) {
@@ -137,7 +136,8 @@ const requestApproval = async (req, res) => {
              WHERE customer_id = $1
                AND worker_id   = $2
                AND status      = 'pending'
-               AND expires_at  > NOW()`,
+               AND expires_at  > NOW()
+             AND tenant_id = $3`,
             [customer_id, req.user.id]
         );
 
@@ -150,17 +150,14 @@ const requestApproval = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO credit_approval_requests
-               (customer_id, worker_id, manager_id, requested_amount, note, expires_at)
-             VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '24 hours')
+            `INSERT INTO credit_approval_requests (customer_id, worker_id, manager_id, requested_amount, note, expires_at, tenant_id) VALUES ($1, $2, $3, $4, $5, NOW(, $6) + INTERVAL '24 hours')
              RETURNING id, created_at`,
             [
                 customer_id,
                 req.user.id,
                 cust.manager_id || null,
                 parseFloat(requested_amount),
-                note || null
-            ]
+                note || null, req.tenantId]
         );
 
         return res.status(201).json({

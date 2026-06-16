@@ -27,8 +27,9 @@ const submitReturn = async (req, res) => {
 
         // কাস্টমার SR-এর কিনা যাচাই
         const custCheck = await query(
-            `SELECT id FROM customers WHERE id = $1 AND created_by = $2`,
-            [customer_id, srId]
+            `SELECT id FROM customers WHERE id = $1 AND created_by = $2
+             AND tenant_id = $3`,
+            [customer_id, srId, req.tenantId]
         );
         if (custCheck.rows.length === 0) {
             return res.status(403).json({
@@ -42,8 +43,9 @@ const submitReturn = async (req, res) => {
         if (sale_id) {
             const saleCheck = await query(
                 `SELECT id FROM sales_transactions
-                 WHERE id = $1 AND worker_id = $2 AND customer_id = $3`,
-                [sale_id, srId, customer_id]
+                 WHERE id = $1 AND worker_id = $2 AND customer_id = $3
+             AND tenant_id = $4`,
+                [sale_id, srId, customer_id, req.tenantId]
             );
             if (saleCheck.rows.length === 0) {
                 return res.status(403).json({
@@ -68,8 +70,9 @@ const submitReturn = async (req, res) => {
 
         const productsRes = await query(
             `SELECT id, name, price, vat, tax, unit FROM products
-             WHERE id = ANY($1) AND is_active = true`,
-            [productIds]
+             WHERE id = ANY($1) AND is_active = true
+             AND tenant_id = $2`,
+            [productIds, req.tenantId]
         );
         const productMap = {};
         productsRes.rows.forEach(p => { productMap[p.id] = p; });
@@ -109,10 +112,8 @@ const submitReturn = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO return_requests
-                (sr_id, customer_id, sale_id, type, items,
-                 reason, note, photos, total_value)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+            `INSERT INTO return_requests (sr_id, customer_id, sale_id, type, items,
+                 reason, note, photos, total_value, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, 0)
              RETURNING *`,
             [
                 srId, customer_id, sale_id || null, type,
@@ -263,8 +264,9 @@ const reviewReturn = async (req, res) => {
             `SELECT rr.*, u.manager_id
              FROM return_requests rr
              JOIN users u ON u.id = rr.sr_id
-             WHERE rr.id = $1`,
-            [id]
+             WHERE rr.id = $1
+             AND rr.tenant_id = $2`,
+            [id, req.tenantId]
         );
         if (existing.rows.length === 0)
             return res.status(404).json({ success: false, message: 'রিকোয়েস্ট পাওয়া যায়নি।' });
@@ -287,8 +289,10 @@ const reviewReturn = async (req, res) => {
                 reviewed_by = $2,
                 review_note = $3,
                 reviewed_at = NOW()
-             WHERE id = $4 RETURNING *`,
-            [status, reviewerId, review_note || null, id]
+             WHERE id = $4
+             AND tenant_id = $5
+             RETURNING *`,
+            [status, reviewerId, review_note || null, id, req.tenantId]
         );
 
         return res.json({
@@ -313,8 +317,9 @@ const completeReturn = async (req, res) => {
         const srId   = req.user.id;
 
         const existing = await query(
-            `SELECT * FROM return_requests WHERE id = $1 AND sr_id = $2`,
-            [id, srId]
+            `SELECT * FROM return_requests WHERE id = $1 AND sr_id = $2
+             AND tenant_id = $3`,
+            [id, srId, req.tenantId]
         );
         if (existing.rows.length === 0)
             return res.status(404).json({ success: false, message: 'রিকোয়েস্ট পাওয়া যায়নি।' });
@@ -337,8 +342,10 @@ const completeReturn = async (req, res) => {
                 `UPDATE return_requests SET
                     status       = 'completed',
                     completed_at = NOW()
-                 WHERE id = $1 RETURNING *`,
-                [id]
+                 WHERE id = $1
+             AND tenant_id = $2
+             RETURNING *`,
+                [id, req.tenantId]
             );
 
             for (const item of items) {
@@ -364,8 +371,9 @@ const completeReturn = async (req, res) => {
                     `UPDATE products
                      SET stock      = stock + $1,
                          updated_at = NOW()
-                     WHERE id = $2`,
-                    [qty, item.product_id]
+                     WHERE id = $2
+             AND tenant_id = $3`,
+                    [qty, item.product_id, req.tenantId]
                 );
             }
 
@@ -410,8 +418,9 @@ const getReturnReport = async (req, res) => {
              LEFT JOIN users rv  ON rv.id  = rr.reviewed_by
              WHERE EXTRACT(YEAR  FROM rr.created_at) = $1
                AND EXTRACT(MONTH FROM rr.created_at) = $2
+             AND rr.tenant_id = $3
              ORDER BY rr.created_at DESC`,
-            [y, m]
+            [y, m, req.tenantId]
         );
 
         const summary = {

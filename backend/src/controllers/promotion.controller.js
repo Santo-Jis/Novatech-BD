@@ -67,11 +67,10 @@ const createPromotion = async (req, res) => {
                 apply_to, product_ids, route_ids, customer_ids,
                 start_date, end_date,
                 max_uses, max_per_customer,
-                created_by
-             ) VALUES (
+                created_by, tenant_id) VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
                 $11,$12,$13,$14,$15,$16,$17,$18,$19
-             ) RETURNING *`,
+             , $20) RETURNING *`,
             [
                 name, description, type,
                 buy_quantity || null, free_quantity || null, free_product_id || null,
@@ -84,6 +83,7 @@ const createPromotion = async (req, res) => {
                 start_date, end_date,
                 max_uses || null, max_per_customer || null,
                 adminId,
+                req.tenantId  // SaaS: tenant_id = $20
             ]
         );
 
@@ -154,7 +154,9 @@ const updatePromotion = async (req, res) => {
 
 const deletePromotion = async (req, res) => {
     try {
-        await query(`UPDATE promotions SET is_active = false WHERE id = $1`, [req.params.id]);
+        await query(`UPDATE promotions SET is_active = false WHERE id = $1
+             AND tenant_id = $2`, [req.params.id,
+                req.tenantId]);
         return res.json({ success: true, message: 'Promotion বন্ধ করা হয়েছে।' });
     } catch (err) {
         logger.error('[Promotion] deletePromotion error:', err.message);

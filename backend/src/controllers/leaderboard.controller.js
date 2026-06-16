@@ -15,8 +15,10 @@ const getMyRank = async (req, res) => {
 
         // এই SR-এর team বের করো (users.team_id দিয়ে — team_members টেবিল নেই)
         const teamRes = await query(
-            `SELECT team_id FROM users WHERE id = $1 AND team_id IS NOT NULL LIMIT 1`,
-            [workerId]
+            `SELECT team_id FROM users WHERE id = $1 AND team_id IS NOT NULL
+             AND tenant_id = $2
+             LIMIT 1`,
+            [workerId, req.tenantId]
         );
 
         let leaderboard = [];
@@ -136,8 +138,10 @@ const getTeamLeaderboard = async (req, res) => {
         const year  = parseInt(req.query.year)  || now.getFullYear();
 
         const teamRes = await query(
-            `SELECT t.id FROM teams t WHERE t.manager_id = $1 LIMIT 1`,
-            [managerId]
+            `SELECT t.id FROM teams t WHERE t.manager_id = $1
+             AND t.tenant_id = $2
+             LIMIT 1`,
+            [managerId, req.tenantId]
         );
 
         if (!teamRes.rows.length) {

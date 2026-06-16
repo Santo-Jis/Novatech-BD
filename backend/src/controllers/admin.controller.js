@@ -179,8 +179,10 @@ const updateSettings = async (req, res) => {
             await query(
                 `UPDATE system_settings
                  SET value = $1, updated_by = $2, updated_at = NOW()
-                 WHERE key = $3`,
-                [value, req.user.id, setting.key]
+                 WHERE key = $3
+             AND tenant_id = $4`,
+                [value, req.user.id, setting.key,
+                req.tenantId]
             );
         }
 
@@ -191,9 +193,8 @@ const updateSettings = async (req, res) => {
         }));
 
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, new_value)
-             VALUES ($1, 'UPDATE_SETTINGS', 'system_settings', $2)`,
-            [req.user.id, JSON.stringify(safeSettings)]
+            `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'UPDATE_SETTINGS', 'system_settings', $2, $3)`,
+            [req.user.id, JSON.stringify(safeSettings), req.tenantId]
         );
 
         // SMS config cache বাতিল করো
@@ -393,8 +394,8 @@ const getAuditLogs = async (req, res) => {
         const offset = (page - 1) * limit;
 
         let conditions = [];
-        let params     = [];
-        let paramCount = 0;
+        let params = [req.tenantId];
+    let paramCount = 1;
 
         // নির্দিষ্ট action filter
         if (action) {

@@ -37,8 +37,10 @@ const reportBatteryLow = async (req, res) => {
             `SELECT u.name_bn, u.manager_id, m.name_bn as manager_name
              FROM users u
              LEFT JOIN users m ON m.id = u.manager_id
-             WHERE u.id = $1`,
-            [workerId]
+             WHERE u.id = $1
+             AND u.tenant_id = $2`,
+            [workerId,
+                req.tenantId]
         );
         if (!workerRes.rows.length) {
             return res.status(404).json({ success: false, message: 'user পাওয়া যায়নি।' });
@@ -55,9 +57,8 @@ const reportBatteryLow = async (req, res) => {
 
             // notifications table-এ save করো
             await query(
-                `INSERT INTO notifications (user_id, title, body, type, reference_id)
-                 VALUES ($1, $2, $3, 'battery_alert', $4)`,
-                [worker.manager_id, title, body, workerId]
+                `INSERT INTO notifications (user_id, title, body, type, reference_id, tenant_id) VALUES ($1, $2, $3, 'battery_alert', $4, $5)`,
+                [worker.manager_id, title, body, workerId, req.tenantId]
             );
         }
 

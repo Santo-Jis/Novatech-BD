@@ -21,8 +21,10 @@ const sendCreditReminder = async (req, res) => {
             SELECT id FROM credit_reminder_logs
             WHERE customer_id = $1
               AND sent_at::date = CURRENT_DATE
-            LIMIT 1
-        `, [customerId]);
+             AND tenant_id = $2
+             LIMIT 1
+        `, [customerId,
+                req.tenantId]);
 
         if (throttleRows.length > 0) {
             return res.status(429).json({
@@ -166,9 +168,8 @@ const sendCreditReminder = async (req, res) => {
 
         // ✅ Log reminder — throttle check পাস করার পরেই insert
         await query(`
-            INSERT INTO credit_reminder_logs (customer_id, sr_id, method, sent_at)
-            VALUES ($1, $2, 'email', NOW())
-        `, [customer.id, srId]);
+            INSERT INTO credit_reminder_logs (customer_id, sr_id, method, sent_at, tenant_id) VALUES ($1, $2, 'email', NOW(, $3))
+        `, [customer.id, srId, req.tenantId]);
 
         return res.json({
             success: true,

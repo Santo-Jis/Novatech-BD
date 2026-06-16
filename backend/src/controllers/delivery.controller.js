@@ -58,10 +58,9 @@ const assignDelivery = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO deliveries (order_id, customer_id, assigned_to, assigned_by, items, total_amount, notes)
-             VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+            `INSERT INTO deliveries (order_id, customer_id, assigned_to, assigned_by, items, total_amount, notes, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7, $8) RETURNING *`,
             [order_id || null, customer_id, assigned_to, assignedBy,
-             JSON.stringify(items || []), total_amount || 0, notes || null]
+             JSON.stringify(items || []), total_amount || 0, notes || null, req.tenantId]
         );
 
         const delivery = result.rows[0];
@@ -102,8 +101,10 @@ const getMyTasks = async (req, res) => {
              JOIN customers c ON c.id = d.customer_id
              WHERE d.assigned_to = $1
                AND d.status NOT IN ('delivered','failed')
+             AND d.tenant_id = $2
              ORDER BY d.created_at DESC`,
-            [workerId]
+            [workerId,
+                req.tenantId]
         );
         return res.json({ success: true, data: result.rows });
 

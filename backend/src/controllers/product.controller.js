@@ -71,8 +71,10 @@ const getProduct = async (req, res) => {
                         WHERE (item->>'product_id')::uuid = p.id
                           AND o.status IN ('pending', 'approved', 'processing')
                     ), 0)) AS available_stock
-             FROM products p WHERE id = $1`,
-            [req.params.id]
+             FROM products p WHERE id = $1
+             AND o.tenant_id = $2`,
+            [req.params.id,
+                req.tenantId]
         );
 
         if (result.rows.length === 0) {
@@ -109,12 +111,10 @@ const createProduct = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO products
-               (name, sku, price, stock, unit,
+            `INSERT INTO products (name, sku, price, stock, unit,
                 image_url, description,
                 discount, discount_type,
-                vat, tax)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                vat, tax, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 2)
              RETURNING *`,
             [
                 name, sku, price, stock || 0, unit || 'pcs',
@@ -130,10 +130,8 @@ const createProduct = async (req, res) => {
         // স্টক মুভমেন্ট লগ
         if (stock > 0) {
             await query(
-                `INSERT INTO stock_movements
-                 (product_id, movement_type, quantity, reference_type, note, created_by)
-                 VALUES ($1, 'in', $2, 'manual', 'প্রারম্ভিক স্টক', $3)`,
-                [result.rows[0].id, stock, req.user.id]
+                `INSERT INTO stock_movements (product_id, movement_type, quantity, reference_type, note, created_by, tenant_id) VALUES ($1, 'in', $2, 'manual', 'প্রারম্ভিক স্টক', $3, $4)`,
+                [result.rows[0].id, stock, req.user.id, req.tenantId]
             );
         }
 
@@ -249,10 +247,8 @@ const adjustStock = async (req, res) => {
         );
 
         await query(
-            `INSERT INTO stock_movements
-             (product_id, movement_type, quantity, reference_type, note, created_by)
-             VALUES ($1, $2, $3, 'manual', $4, $5)`,
-            [productId, movementType, Math.abs(quantity), note || 'ম্যানুয়াল এডজাস্টমেন্ট', req.user.id]
+            `INSERT INTO stock_movements (product_id, movement_type, quantity, reference_type, note, created_by, tenant_id) VALUES ($1, $2, $3, 'manual', $4, $5, $6)`,
+            [productId, movementType, Math.abs(quantity), note || 'ম্যানুয়াল এডজাস্টমেন্ট', req.user.id, req.tenantId]
         );
 
         return res.status(200).json({

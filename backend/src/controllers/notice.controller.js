@@ -20,9 +20,8 @@ const createNotice = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO notices (title, message, target_role, created_by, expires_at)
-             VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-            [title, message, target_role || 'all', req.user.id, expiresAt]
+            `INSERT INTO notices (title, message, target_role, created_by, expires_at, tenant_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [title, message, target_role || 'all', req.user.id, expiresAt, req.tenantId]
         );
 
         return res.status(201).json({ success: true, message: 'নোটিশ তৈরি হয়েছে।', data: result.rows[0] });
@@ -91,8 +90,10 @@ const getAllNotices = async (req, res) => {
 const deleteNotice = async (req, res) => {
     try {
         await query(
-            `UPDATE notices SET is_active = false WHERE id = $1 AND created_by = $2`,
-            [req.params.id, req.user.id]
+            `UPDATE notices SET is_active = false WHERE id = $1 AND created_by = $2
+             AND tenant_id = $3`,
+            [req.params.id, req.user.id,
+                req.tenantId]
         );
         return res.status(200).json({ success: true, message: 'নোটিশ মুছা হয়েছে।' });
     } catch (error) {

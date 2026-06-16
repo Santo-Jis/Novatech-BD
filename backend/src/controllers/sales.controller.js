@@ -103,21 +103,19 @@ const createVisit = async (req, res) => {
 
         // ভিজিট সেভ
         const result = await query(
-            `INSERT INTO visits
-             (worker_id, customer_id, route_id, will_sell,
+            `INSERT INTO visits (worker_id, customer_id, route_id, will_sell,
               no_sell_reason, closed_shop_photo,
-              worker_location, location_matched, location_distance)
-             VALUES ($1, $2, $3, $4, $5, $6,
+              worker_location, location_matched, location_distance, tenant_id) VALUES ($1, $2, $3, $4, $5, $6,
               ${hasLocation ? 'ST_SetSRID(ST_MakePoint($7, $8), 4326)::geography' : 'NULL'},
-              ${hasLocation ? '$9, $10' : '$7, $8'})
+              ${hasLocation ? '$9, $10, $11' : '$7, $8, $9'})
              RETURNING id`,
             hasLocation
                 ? [req.user.id, customer_id, route_id || null,
                    willSell, no_sell_reason || null,
-                   closedShopPhoto, rawLng, rawLat, locationMatched, distance]
+                   closedShopPhoto, rawLng, rawLat, locationMatched, distance, req.tenantId]
                 : [req.user.id, customer_id, route_id || null,
                    willSell, no_sell_reason || null,
-                   closedShopPhoto, locationMatched, distance]
+                   closedShopPhoto, locationMatched, distance, req.tenantId]
         );
 
         // লোকেশন warning (৫ মিটারের বাইরে)
@@ -174,8 +172,9 @@ const createSale = async (req, res) => {
             `SELECT id, invoice_number, total_amount, net_amount,
                     payment_method, credit_balance_used, credit_balance_added
              FROM sales_transactions
-             WHERE worker_id = $1 AND idempotency_key = $2`,
-            [req.user.id, idempotency_key ?? null]
+             WHERE worker_id = $1 AND idempotency_key = $2
+             AND tenant_id = $3`,
+            [req.user.id, idempotency_key ?? null, req.tenantId]
         );
         if (idempotency_key && existing.rows.length > 0) {
             const prev = existing.rows[0];
@@ -365,8 +364,9 @@ const createSale = async (req, res) => {
                     `SELECT current_credit, credit_limit
                      FROM customers
                      WHERE id = $1
-                     FOR UPDATE`,
-                    [customer_id]
+                     FOR UPDATE
+             AND tenant_id = $2`,
+                    [customer_id, req.tenantId]
                 );
 
                 if (lockedCustomer.rows.length === 0) {
@@ -404,8 +404,9 @@ const createSale = async (req, res) => {
                        AND worker_id = $2
                        AND DATE(requested_at) = $3
                        AND status = 'approved'
-                     FOR UPDATE SKIP LOCKED`,
-                    [requested_order_id, req.user.id, today]
+                     FOR UPDATE SKIP LOCKED
+             AND tenant_id = $4`,
+                    [requested_order_id, req.user.id, today, req.tenantId]
                 );
                 if (lockResult.rows.length === 0) {
                     throw Object.assign(
@@ -422,10 +423,11 @@ const createSale = async (req, res) => {
                      WHERE worker_id = $1
                        AND DATE(requested_at) = $2
                        AND status = 'approved'
-                     ORDER BY approved_at DESC
+             AND tenant_id = $3
+             ORDER BY approved_at DESC
                      LIMIT 1
                      FOR UPDATE SKIP LOCKED`,
-                    [req.user.id, today]
+                    [req.user.id, today, req.tenantId]
                 );
                 if (lockResult.rows.length === 0) {
                     throw Object.assign(
@@ -439,16 +441,14 @@ const createSale = async (req, res) => {
             const verifyToken = crypto.randomBytes(32).toString('hex'); // 64-char unique token
 
             const result = await client.query(
-                `INSERT INTO sales_transactions
-                 (worker_id, customer_id, visit_id, order_id,
+                `INSERT INTO sales_transactions (worker_id, customer_id, visit_id, order_id,
                   items, total_amount, discount_amount, net_amount,
                   payment_method, cash_received, credit_used,
                   replacement_items, replacement_value,
                   credit_balance_used, credit_balance_added,
                   invoice_number, otp_code, otp_expires_at,
                   verify_token,
-                  idempotency_key)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+                  idempotency_key, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20, $21)
                  RETURNING *`,
                 [
                     req.user.id, customer_id, visit_id || null, lockedOrderId,
@@ -459,7 +459,8 @@ const createSale = async (req, res) => {
                     creditBalanceUsed, creditBalanceAdded,
                     invoiceNumber, otp, otpExpiresAt,
                     verifyToken,
-                    idempotency_key || null
+                    idempotency_key || null,
+                    req.tenantId  // SaaS: tenant isolation
                 ]
             );
 
@@ -471,10 +472,8 @@ const createSale = async (req, res) => {
             // products টেবিলের stock কলাম আর স্পর্শ করা হচ্ছে না।
             for (const item of processedItems) {
                 await client.query(
-                    `INSERT INTO stock_movements
-                     (product_id, movement_type, quantity, reference_id, reference_type, created_by)
-                     VALUES ($1, 'out', $2, $3, 'sale', $4)`,
-                    [item.product_id, item.qty, result.rows[0].id, req.user.id]
+                    `INSERT INTO stock_movements (product_id, movement_type, quantity, reference_id, reference_type, created_by, tenant_id) VALUES ($1, 'out', $2, $3, 'sale', $4, $5)`,
+                    [item.product_id, item.qty, result.rows[0].id, req.user.id, req.tenantId]
                 );
 
                 // ─── Ledger: বিক্রয় OUT ───────────────────
@@ -495,14 +494,13 @@ const createSale = async (req, res) => {
             // রিপ্লেসমেন্ট স্টক ফেরত
             for (const item of processedReplacement) {
                 await client.query(
-                    `UPDATE products SET stock = stock + $1, updated_at = NOW() WHERE id = $2`,
-                    [item.qty, item.product_id]
+                    `UPDATE products SET stock = stock + $1, updated_at = NOW() WHERE id = $2
+             AND tenant_id = $3`,
+                    [item.qty, item.product_id, req.tenantId]
                 );
                 await client.query(
-                    `INSERT INTO stock_movements
-                     (product_id, movement_type, quantity, reference_id, reference_type, note, created_by)
-                     VALUES ($1, 'returned', $2, $3, 'sale', 'রিপ্লেসমেন্ট ফেরত', $4)`,
-                    [item.product_id, item.qty, result.rows[0].id, req.user.id]
+                    `INSERT INTO stock_movements (product_id, movement_type, quantity, reference_id, reference_type, note, created_by, tenant_id) VALUES ($1, 'returned', $2, $3, 'sale', 'রিপ্লেসমেন্ট ফেরত', $4, $5)`,
+                    [item.product_id, item.qty, result.rows[0].id, req.user.id, req.tenantId]
                 );
 
                 // ─── Ledger: রিপ্লেসমেন্ট ফেরত IN ────────
@@ -528,8 +526,9 @@ const createSale = async (req, res) => {
                     `UPDATE customers
                      SET credit_balance = GREATEST(0, credit_balance - $1) + $2,
                          updated_at = NOW()
-                     WHERE id = $3`,
-                    [creditBalanceUsed, creditBalanceAdded, customer_id]
+                     WHERE id = $3
+             AND tenant_id = $4`,
+                    [creditBalanceUsed, creditBalanceAdded, customer_id, req.tenantId]
                 );
             }
 
@@ -663,8 +662,9 @@ const sendInvoice = async (req, res) => {
             `SELECT st.*, c.shop_name, c.whatsapp, c.sms_phone, c.owner_name
              FROM sales_transactions st
              JOIN customers c ON st.customer_id = c.id
-             WHERE st.id = $1`,
-            [sale_id]
+             WHERE st.id = $1
+             AND st.tenant_id = $2`,
+            [sale_id, req.tenantId]
         );
 
         if (sale.rows.length === 0) {
@@ -728,8 +728,9 @@ const verifyOrderByLink = async (req, res) => {
                     st.created_at, c.shop_name, c.owner_name
              FROM sales_transactions st
              JOIN customers c ON c.id = st.customer_id
-             WHERE st.verify_token = $1`,
-            [token]
+             WHERE st.verify_token = $1
+             AND st.tenant_id = $2`,
+            [token, req.tenantId]
         );
 
         if (result.rows.length === 0) {
@@ -748,8 +749,9 @@ const verifyOrderByLink = async (req, res) => {
 
         // ✅ Verify
         await query(
-            `UPDATE sales_transactions SET otp_verified = true, verify_token_used = true WHERE id = $1`,
-            [sale.id]
+            `UPDATE sales_transactions SET otp_verified = true, verify_token_used = true WHERE id = $1
+             AND tenant_id = $2`,
+            [sale.id, req.tenantId]
         );
 
         logger.info(`✅ [VerifyLink] → ${sale.invoice_number} (${sale.shop_name})`);
@@ -914,8 +916,9 @@ const getMySales = async (req, res) => {
                  FROM visits
                  WHERE worker_id = $1
                    AND visit_date BETWEEN $2 AND $3
-                 GROUP BY visit_date`,
-                [req.user.id, from, to]
+             AND tenant_id = $4
+             GROUP BY visit_date`,
+                [req.user.id, from, to, req.tenantId]
             );
             visitResult.rows.forEach(row => {
                 visitsByDate[row.date] = {
@@ -928,8 +931,9 @@ const getMySales = async (req, res) => {
             const totalCustomersResult = await query(
                 `SELECT COUNT(*) AS total
                  FROM customer_assignments
-                 WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL`,
-                [req.user.id]
+                 WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL
+             AND tenant_id = $2`,
+                [req.user.id, req.tenantId]
             );
             const totalCustomers = parseInt(totalCustomersResult.rows[0]?.total || 0);
 
@@ -945,14 +949,16 @@ const getMySales = async (req, res) => {
                     COUNT(*)                                        AS total_visits,
                     COUNT(CASE WHEN will_sell = true THEN 1 END)   AS sold_visits
                  FROM visits
-                 WHERE worker_id = $1 AND visit_date = $2`,
-                [req.user.id, today]
+                 WHERE worker_id = $1 AND visit_date = $2
+             AND tenant_id = $3`,
+                [req.user.id, today, req.tenantId]
             );
             const totalCustomersResult = await query(
                 `SELECT COUNT(*) AS total
                  FROM customer_assignments
-                 WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL`,
-                [req.user.id]
+                 WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL
+             AND tenant_id = $2`,
+                [req.user.id, req.tenantId]
             );
             return res.status(200).json({
                 success: true,
@@ -996,8 +1002,9 @@ const getTodaySummary = async (req, res) => {
                 COALESCE(SUM(replacement_value), 0)         AS replacement_value,
                 COALESCE(SUM(credit_balance_used), 0)       AS credit_collected
              FROM sales_transactions
-             WHERE worker_id = $1 AND date = $2`,
-            [workerId, today]
+             WHERE worker_id = $1 AND date = $2
+             AND tenant_id = $3`,
+            [workerId, today, req.tenantId]
         );
 
         // ভিজিট সারসংক্ষেপ
@@ -1007,24 +1014,27 @@ const getTodaySummary = async (req, res) => {
                 COUNT(CASE WHEN will_sell = true THEN 1 END) AS sold_visits,
                 COUNT(CASE WHEN will_sell = false THEN 1 END) AS no_sell_visits
              FROM visits
-             WHERE worker_id = $1 AND visit_date = $2`,
-            [workerId, today]
+             WHERE worker_id = $1 AND visit_date = $2
+             AND tenant_id = $3`,
+            [workerId, today, req.tenantId]
         );
 
         // মোট কাস্টমার
         const totalCustomers = await query(
             `SELECT COUNT(*) AS total
              FROM customer_assignments
-             WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL`,
-            [workerId]
+             WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL
+             AND tenant_id = $2`,
+            [workerId, req.tenantId]
         );
 
         // আজকের অর্ডার
         const todayOrder = await query(
             `SELECT status, total_amount FROM orders
              WHERE worker_id = $1 AND DATE(requested_at) = $2
+             AND tenant_id = $3
              ORDER BY requested_at DESC LIMIT 1`,
-            [workerId, today]
+            [workerId, today, req.tenantId]
         );
 
         // বকেয়া
@@ -1037,8 +1047,9 @@ const getTodaySummary = async (req, res) => {
         const attendanceToday = await query(
             `SELECT check_in_time, check_out_time FROM attendance
              WHERE user_id = $1 AND date = $2
+             AND tenant_id = $3
              LIMIT 1`,
-            [workerId, today]
+            [workerId, today, req.tenantId]
         );
         const checkedIn = attendanceToday.rows.length > 0 && !!attendanceToday.rows[0].check_in_time;
 
@@ -1133,8 +1144,9 @@ const getSaleDetail = async (req, res) => {
              FROM sales_transactions st
              JOIN customers c ON st.customer_id = c.id
              JOIN users     u ON st.worker_id   = u.id
-             WHERE st.id = $1`,
-            [req.params.id]
+             WHERE st.id = $1
+             AND st.tenant_id = $2`,
+            [req.params.id, req.tenantId]
         );
 
         if (result.rows.length === 0) {
@@ -1202,8 +1214,9 @@ const skipOTPWithPhoto = async (req, res) => {
              SET otp_skipped    = true,
                  otp_skip_photo = $1,
                  updated_at     = NOW()
-             WHERE id = $2`,
-            [memoPhotoUrl, sale_id]
+             WHERE id = $2
+             AND tenant_id = $3`,
+            [memoPhotoUrl, sale_id, req.tenantId]
         );
 
         logger.info(`⚠️ OTP Skip — Sale ${sale_id} by Worker ${req.user.id}, Photo: ${memoPhotoUrl}`);
@@ -1261,9 +1274,10 @@ const getMyMonthlySales = async (req, res) => {
              ) v ON v.date = st.date
              WHERE st.worker_id = $1
                AND st.date BETWEEN $2 AND $3
+             AND st.tenant_id = $4
              GROUP BY st.date, v.total_visits, v.sold_visits
              ORDER BY st.date DESC`,
-            [workerId, from, to]
+            [workerId, from, to, req.tenantId]
         );
 
         // visit আছে কিন্তু sale নেই — এমন দিনও include করি
@@ -1279,17 +1293,19 @@ const getMyMonthlySales = async (req, res) => {
                    SELECT DISTINCT date FROM sales_transactions
                    WHERE worker_id = $1 AND date BETWEEN $2 AND $3
                )
+             AND tenant_id = $4
              GROUP BY visit_date
              ORDER BY visit_date DESC`,
-            [workerId, from, to]
+            [workerId, from, to, req.tenantId]
         );
 
         // মোট active customer count
         const custResult = await query(
             `SELECT COUNT(*) AS total
              FROM customer_assignments
-             WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL`,
-            [workerId]
+             WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL
+             AND tenant_id = $2`,
+            [workerId, req.tenantId]
         );
         const totalCustomers = parseInt(custResult.rows[0]?.total || 0);
 
@@ -1321,15 +1337,17 @@ const getMyMonthlySales = async (req, res) => {
                 COALESCE(SUM(replacement_value), 0)  AS replacement_value
              FROM sales_transactions
              WHERE worker_id = $1
-               AND date BETWEEN $2 AND $3`,
-            [workerId, from, to]
+               AND date BETWEEN $2 AND $3
+             AND tenant_id = $4`,
+            [workerId, from, to, req.tenantId]
         );
 
         // টার্গেট (যদি থাকে)
         const targetResult = await query(
             `SELECT monthly_target, target_visit_rate
-             FROM users WHERE id = $1`,
-            [workerId]
+             FROM users WHERE id = $1
+             AND tenant_id = $2`,
+            [workerId, req.tenantId]
         );
 
         return res.status(200).json({
@@ -1377,8 +1395,9 @@ const getMyVisitStats = async (req, res) => {
                 COUNT(CASE WHEN will_sell = false THEN 1 END) AS no_sell_visits
              FROM visits
              WHERE worker_id = $1
-               AND visit_date BETWEEN $2 AND $3`,
-            [workerId, from, to]
+               AND visit_date BETWEEN $2 AND $3
+             AND tenant_id = $4`,
+            [workerId, from, to, req.tenantId]
         );
 
         // দৈনিক ভিজিট
@@ -1391,17 +1410,19 @@ const getMyVisitStats = async (req, res) => {
              FROM visits
              WHERE worker_id = $1
                AND visit_date BETWEEN $2 AND $3
+             AND tenant_id = $4
              GROUP BY visit_date
              ORDER BY visit_date DESC`,
-            [workerId, from, to]
+            [workerId, from, to, req.tenantId]
         );
 
         // মোট কাস্টমার
         const custResult = await query(
             `SELECT COUNT(*) AS total
              FROM customer_assignments
-             WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL`,
-            [workerId]
+             WHERE worker_id = $1 AND is_active = true AND customer_id IS NOT NULL
+             AND tenant_id = $2`,
+            [workerId, req.tenantId]
         );
 
         const totalCustomers = parseInt(custResult.rows[0]?.total || 0);
@@ -1443,9 +1464,10 @@ const getVisitStatus = async (req, res) => {
              WHERE worker_id = $1
                AND customer_id = $2
                AND visit_date = $3
+             AND tenant_id = $4
              ORDER BY created_at DESC
              LIMIT 1`,
-            [workerId, customerId, today]
+            [workerId, customerId, today, req.tenantId]
         );
 
         const visited = result.rows.length > 0;

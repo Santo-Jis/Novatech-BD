@@ -20,8 +20,8 @@ const getCustomers = async (req, res) => {
         const offset = (page - 1) * limit;
 
         let conditions = ['c.is_active = true'];
-        let params     = [];
-        let paramCount = 0;
+        let params = [req.tenantId];
+    let paramCount = 1;
 
         // SR শুধু নিজের অ্যাসাইন করা কাস্টমার দেখবে
         if (req.user.role === 'worker') {
@@ -93,7 +93,8 @@ const getCustomers = async (req, res) => {
             orderBy = 'ca.visit_order ASC NULLS LAST, distance_meters ASC NULLS LAST';
         }
 
-        const whereClause = conditions.join(' AND ');
+        conditions.unshift(`tenant_id = $1`); // SaaS: tenant isolation
+    const whereClause = conditions.join(' AND ');
 
         paramCount++;
         params.push(limit);
@@ -190,8 +191,9 @@ const getCustomer = async (req, res) => {
              FROM customers c
              LEFT JOIN routes r ON c.route_id = r.id
              LEFT JOIN users  u ON c.created_by = u.id
-             WHERE c.id = $1`,
-            [req.params.id]
+             WHERE c.id = $1
+             AND c.tenant_id = $2`,
+            [req.params.id, req.tenantId]
         );
 
         if (result.rows.length === 0) {
@@ -206,8 +208,9 @@ const getCustomer = async (req, res) => {
                 return res.status(403).json({ success: false, message: 'এই কাস্টমার আপনার টিমে নেই।' });
             }
             const routeCheck = await query(
-                `SELECT id FROM routes WHERE id = $1 AND manager_id = $2`,
-                [customer.route_id, req.user.id]
+                `SELECT id FROM routes WHERE id = $1 AND manager_id = $2
+             AND tenant_id = $3`,
+                [customer.route_id, req.user.id, req.tenantId]
             );
             if (routeCheck.rows.length === 0) {
                 return res.status(403).json({ success: false, message: 'এই কাস্টমার আপনার টিমে নেই।' });
@@ -283,12 +286,10 @@ const createCustomer = async (req, res) => {
         let result;
         if (hasValidCoords) {
             result = await query(
-                `INSERT INTO customers
-                 (customer_code, shop_name, owner_name, shop_photo,
+                `INSERT INTO customers (customer_code, shop_name, owner_name, shop_photo,
                   business_type, whatsapp, sms_phone, email, route_id,
-                  credit_limit, location, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                  ST_SetSRID(ST_MakePoint($11, $12), 4326)::geography, $13)
+                  credit_limit, location, created_by, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                  ST_SetSRID(ST_MakePoint($11, $12, 3), 4326)::geography, $13)
                  RETURNING *`,
                 [
                     customerCode, shop_name, owner_name, shopPhotoUrl,
@@ -302,11 +303,9 @@ const createCustomer = async (req, res) => {
             );
         } else {
             result = await query(
-                `INSERT INTO customers
-                 (customer_code, shop_name, owner_name, shop_photo,
+                `INSERT INTO customers (customer_code, shop_name, owner_name, shop_photo,
                   business_type, whatsapp, sms_phone, email, route_id,
-                  credit_limit, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                  credit_limit, created_by, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 2)
                  RETURNING *`,
                 [
                     customerCode, shop_name, owner_name, shopPhotoUrl,
@@ -322,10 +321,8 @@ const createCustomer = async (req, res) => {
         // SR নিজেই তৈরি করলে তাকে অ্যাসাইন করো
         if (req.user.role === 'worker') {
             await query(
-                `INSERT INTO customer_assignments
-                 (worker_id, customer_id, route_id, assigned_by)
-                 VALUES ($1, $2, $3, $4)`,
-                [req.user.id, result.rows[0].id, route_id || null, req.user.id]
+                `INSERT INTO customer_assignments (worker_id, customer_id, route_id, assigned_by, tenant_id) VALUES ($1, $2, $3, $4, $5)`,
+                [req.user.id, result.rows[0].id, route_id || null, req.user.id, req.tenantId]
             );
         }
 
@@ -336,8 +333,9 @@ const createCustomer = async (req, res) => {
                 let workerInfo = null;
                 if (req.user.role === 'worker') {
                     const workerResult = await query(
-                        `SELECT name_bn, name_en, phone FROM users WHERE id = $1`,
-                        [req.user.id]
+                        `SELECT name_bn, name_en, phone FROM users WHERE id = $1
+             AND tenant_id = $2`,
+                        [req.user.id, req.tenantId]
                     );
                     workerInfo = workerResult.rows[0] || null;
                 }
@@ -432,14 +430,15 @@ const updateCustomer = async (req, res) => {
                     shop_photo    = COALESCE($8, shop_photo),
                     location      = ST_SetSRID(ST_MakePoint($9, $10), 4326)::geography,
                     updated_at    = NOW()
-                 WHERE id = $11`,
+                 WHERE id = $11
+             AND tenant_id = $12`,
                 [
                     shop_name, owner_name, business_type,
                     whatsapp, sms_phone, email || null,
                     route_id, shopPhotoUrl,
                     parsedLng, parsedLat,  // ST_MakePoint(lng, lat)
-                    id
-                ]
+                    id,
+                req.tenantId]
             );
         } else {
             await query(
@@ -453,12 +452,12 @@ const updateCustomer = async (req, res) => {
                     route_id      = COALESCE($7, route_id),
                     shop_photo    = COALESCE($8, shop_photo),
                     updated_at    = NOW()
-                 WHERE id = $9`,
+                 WHERE id = $9
+             AND tenant_id = $10`,
                 [
                     shop_name, owner_name, business_type,
                     whatsapp, sms_phone, email || null,
-                    route_id, shopPhotoUrl, id
-                ]
+                    route_id, shopPhotoUrl, id, req.tenantId]
             );
         }
 
@@ -485,8 +484,9 @@ const getCustomerHistory = async (req, res) => {
             const routeCheck = await query(
                 `SELECT c.id FROM customers c
                  JOIN routes r ON c.route_id = r.id
-                 WHERE c.id = $1 AND r.manager_id = $2`,
-                [id, req.user.id]
+                 WHERE c.id = $1 AND r.manager_id = $2
+             AND c.tenant_id = $3`,
+                [id, req.user.id, req.tenantId]
             );
             if (routeCheck.rows.length === 0) {
                 return res.status(403).json({ success: false, message: 'এই কাস্টমার আপনার টিমে নেই।' });
@@ -509,9 +509,10 @@ const getCustomerHistory = async (req, res) => {
              FROM sales_transactions st
              JOIN users u ON st.worker_id = u.id
              WHERE st.customer_id = $1
+             AND st.tenant_id = $2
              ORDER BY st.created_at DESC
              LIMIT 50`,
-            [id]
+            [id, req.tenantId]
         );
 
         // বাকি পরিশোধ ইতিহাস
@@ -520,8 +521,9 @@ const getCustomerHistory = async (req, res) => {
              FROM credit_payments cp
              JOIN users u ON cp.worker_id = u.id
              WHERE cp.customer_id = $1
+             AND cp.tenant_id = $2
              ORDER BY cp.created_at DESC`,
-            [id]
+            [id, req.tenantId]
         );
 
         // ভিজিট ইতিহাস
@@ -530,9 +532,10 @@ const getCustomerHistory = async (req, res) => {
              FROM visits v
              JOIN users u ON v.worker_id = u.id
              WHERE v.customer_id = $1
+             AND v.tenant_id = $2
              ORDER BY v.visit_time DESC
              LIMIT 30`,
-            [id]
+            [id, req.tenantId]
         );
 
         // কাস্টমারের বর্তমান তথ্য
@@ -577,8 +580,9 @@ const setCreditLimit = async (req, res) => {
             `UPDATE customers
              SET credit_limit = $1, updated_at = NOW()
              WHERE id = $2
+             AND tenant_id = $3
              RETURNING shop_name, credit_limit`,
-            [credit_limit, req.params.id]
+            [credit_limit, req.params.id, req.tenantId]
         );
 
         if (result.rows.length === 0) {
@@ -586,9 +590,8 @@ const setCreditLimit = async (req, res) => {
         }
 
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
-             VALUES ($1, 'SET_CREDIT_LIMIT', 'customers', $2, $3)`,
-            [req.user.id, req.params.id, JSON.stringify({ credit_limit })]
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'SET_CREDIT_LIMIT', 'customers', $2, $3, $4)`,
+            [req.user.id, req.params.id, JSON.stringify({ credit_limit }), req.tenantId]
         );
 
         return res.status(200).json({
@@ -648,8 +651,9 @@ const collectCredit = async (req, res) => {
             const routeCheck = await query(
                 `SELECT c.id FROM customers c
                  JOIN routes r ON c.route_id = r.id
-                 WHERE c.id = $1 AND r.manager_id = $2`,
-                [customerId, req.user.id]
+                 WHERE c.id = $1 AND r.manager_id = $2
+             AND c.tenant_id = $3`,
+                [customerId, req.user.id, req.tenantId]
             );
             if (routeCheck.rows.length === 0) {
                 return res.status(403).json({
@@ -688,10 +692,8 @@ const collectCredit = async (req, res) => {
 
             // INSERT — trigger অটো current_credit কমাবে
             await client.query(
-                `INSERT INTO credit_payments
-                 (customer_id, worker_id, amount, notes, idempotency_key)
-                 VALUES ($1, $2, $3, $4, $5)`,
-                [customerId, req.user.id, amount, notes || null, idempotency_key]
+                `INSERT INTO credit_payments (customer_id, worker_id, amount, notes, idempotency_key, tenant_id) VALUES ($1, $2, $3, $4, $5, $6)`,
+                [customerId, req.user.id, amount, notes || null, idempotency_key, req.tenantId]
             );
 
             remainingCredit = Math.max(0, currentCredit - parseFloat(amount));
@@ -739,8 +741,9 @@ const getMyCustomerCount = async (req, res) => {
              FROM customer_assignments
              WHERE worker_id = $1
                AND is_active = true
-               AND customer_id IS NOT NULL`,
-            [req.user.id]
+               AND customer_id IS NOT NULL
+             AND tenant_id = $2`,
+            [req.user.id, req.tenantId]
         );
 
         return res.status(200).json({
@@ -777,14 +780,16 @@ const requestCustomerEdit = async (req, res) => {
                     email = COALESCE($6, email),
                     route_id = COALESCE($7, route_id),
                     updated_at = NOW()
-                 WHERE id = $8`,
-                [shop_name, owner_name, business_type, whatsapp, sms_phone, email || null, route_id, id]
+                 WHERE id = $8
+             AND tenant_id = $9`,
+                [shop_name, owner_name, business_type, whatsapp, sms_phone, email || null, route_id, id, req.tenantId]
             );
             return res.status(200).json({ success: true, message: 'কাস্টমার আপডেট সফল।' });
         }
         const existingPending = await query(
-            `SELECT id FROM customer_edit_requests WHERE customer_id = $1 AND status = 'pending'`,
-            [id]
+            `SELECT id FROM customer_edit_requests WHERE customer_id = $1 AND status = 'pending'
+             AND tenant_id = $2`,
+            [id, req.tenantId]
         );
         if (existingPending.rows.length > 0) {
             return res.status(400).json({ success: false, message: 'আগের এডিট রিকোয়েস্ট এখনো অপেক্ষায় আছে।' });
@@ -807,11 +812,11 @@ const requestCustomerEdit = async (req, res) => {
             return res.status(400).json({ success: false, message: 'কোনো পরিবর্তন নেই।' });
         }
         const request = await query(
-            `INSERT INTO customer_edit_requests (customer_id, requested_by, new_data, previous_data, status)
-             VALUES ($1, $2, $3, $4, 'pending') RETURNING id`,
-            [id, req.user.id, JSON.stringify(newData), JSON.stringify(previousData)]
+            `INSERT INTO customer_edit_requests (customer_id, requested_by, new_data, previous_data, status, tenant_id) VALUES ($1, $2, $3, $4, 'pending', $5) RETURNING id`,
+            [id, req.user.id, JSON.stringify(newData), JSON.stringify(previousData), req.tenantId]
         );
-        await query(`UPDATE customers SET has_pending_edit = true WHERE id = $1`, [id]);
+        await query(`UPDATE customers SET has_pending_edit = true WHERE id = $1
+             AND tenant_id = $2`, [id, req.tenantId]);
         const updateFields = [];
         const updateParams = [];
         let paramCount = 0;
@@ -871,14 +876,17 @@ const getPendingCustomerEdits = async (req, res) => {
 const approveCustomerEdit = async (req, res) => {
     try {
         const { requestId } = req.params;
-        const reqData = await query(`SELECT * FROM customer_edit_requests WHERE id = $1 AND status = 'pending'`, [requestId]);
+        const reqData = await query(`SELECT * FROM customer_edit_requests WHERE id = $1 AND status = 'pending'
+             AND tenant_id = $2`, [requestId, req.tenantId]);
         if (reqData.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'রিকোয়েস্ট পাওয়া যায়নি।' });
         }
         const editReq = reqData.rows[0];
-        await query(`UPDATE customer_edit_requests SET status = 'approved', reviewed_by = $1, reviewed_at = NOW() WHERE id = $2`, [req.user.id, requestId]);
-        await query(`UPDATE customers SET has_pending_edit = false WHERE id = $1`, [editReq.customer_id]);
-        await query(`INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value) VALUES ($1, 'APPROVE_CUSTOMER_EDIT', 'customers', $2, $3)`, [req.user.id, editReq.customer_id, JSON.stringify(editReq.new_data)]);
+        await query(`UPDATE customer_edit_requests SET status = 'approved', reviewed_by = $1, reviewed_at = NOW() WHERE id = $2
+             AND tenant_id = $3`, [req.user.id, requestId, req.tenantId]);
+        await query(`UPDATE customers SET has_pending_edit = false WHERE id = $1
+             AND tenant_id = $2`, [editReq.customer_id, req.tenantId]);
+        await query(`INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'APPROVE_CUSTOMER_EDIT', 'customers', $2, $3, $4)`, [req.user.id, editReq.customer_id, JSON.stringify(editReq.new_data), req.tenantId]);
         return res.status(200).json({ success: true, message: 'কাস্টমার এডিট অনুমোদন সফল।' });
     } catch (error) {
         logger.error('❌ Approve Customer Edit Error:', error.message);
@@ -895,7 +903,8 @@ const rejectCustomerEdit = async (req, res) => {
     try {
         const { requestId } = req.params;
         const { reason } = req.body;
-        const reqData = await query(`SELECT * FROM customer_edit_requests WHERE id = $1 AND status = 'pending'`, [requestId]);
+        const reqData = await query(`SELECT * FROM customer_edit_requests WHERE id = $1 AND status = 'pending'
+             AND tenant_id = $2`, [requestId, req.tenantId]);
         if (reqData.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'রিকোয়েস্ট পাওয়া যায়নি।' });
         }
@@ -917,10 +926,13 @@ const rejectCustomerEdit = async (req, res) => {
             await query(`UPDATE customers SET ${rollbackFields.join(', ')}, updated_at = NOW() WHERE id = $${paramCount}`, rollbackParams);
         } else {
             // কোনো rollback field না থাকলেও updated_at রিফ্রেশ (query order consistent)
-            await query(`UPDATE customers SET updated_at = NOW() WHERE id = $1`, [editReq.customer_id]);
+            await query(`UPDATE customers SET updated_at = NOW() WHERE id = $1
+             AND tenant_id = $2`, [editReq.customer_id, req.tenantId]);
         }
-        await query(`UPDATE customer_edit_requests SET status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_note = $2 WHERE id = $3`, [req.user.id, reason || 'ম্যানেজার কর্তৃক বাতিল', requestId]);
-        await query(`UPDATE customers SET has_pending_edit = false WHERE id = $1`, [editReq.customer_id]);
+        await query(`UPDATE customer_edit_requests SET status = 'rejected', reviewed_by = $1, reviewed_at = NOW(), review_note = $2 WHERE id = $3
+             AND tenant_id = $4`, [req.user.id, reason || 'ম্যানেজার কর্তৃক বাতিল', requestId, req.tenantId]);
+        await query(`UPDATE customers SET has_pending_edit = false WHERE id = $1
+             AND tenant_id = $2`, [editReq.customer_id, req.tenantId]);
         return res.status(200).json({ success: true, message: 'এডিট বাতিল। আগের তথ্য পুনরুদ্ধার হয়েছে।', rollback: previousData });
     } catch (error) {
         logger.error('❌ Reject Customer Edit Error:', error.message);
@@ -1116,8 +1128,9 @@ const getMyPendingReturnRequests = async (req, res) => {
                    SELECT customer_id FROM customer_assignments
                    WHERE worker_id = $1 AND is_active = true
                )
+             AND crr.tenant_id = $2
              ORDER BY crr.reviewed_at DESC`,
-            [workerId]
+            [workerId, req.tenantId]
         );
 
         return res.json({
@@ -1146,8 +1159,9 @@ const getCustomerCreditAlert = async (req, res) => {
 
         const custResult = await query(
             `SELECT id, shop_name, owner_name, current_credit, credit_limit, credit_balance
-             FROM customers WHERE id = $1`,
-            [id]
+             FROM customers WHERE id = $1
+             AND tenant_id = $2`,
+            [id, req.tenantId]
         );
         if (custResult.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
@@ -1173,8 +1187,9 @@ const getCustomerCreditAlert = async (req, res) => {
              FROM sales_transactions st
              JOIN users u ON st.worker_id = u.id
              WHERE st.customer_id = $1 AND st.payment_method = 'credit' AND st.credit_used > 0
+             AND st.tenant_id = $2
              ORDER BY st.created_at DESC LIMIT 20`,
-            [id]
+            [id, req.tenantId]
         );
 
         return res.status(200).json({

@@ -71,8 +71,9 @@ const resolveCreditLimitRequest = async (req, res) => {
             `SELECT clr.*, c.id AS cust_id, c.shop_name, c.credit_limit
              FROM credit_limit_requests clr
              JOIN customers c ON c.id = clr.customer_id
-             WHERE clr.id = $1 AND clr.status = 'pending'`,
-            [id]
+             WHERE clr.id = $1 AND clr.status = 'pending'
+             AND clr.tenant_id = $2`,
+            [id, req.tenantId]
         );
         if (reqResult.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'আবেদন পাওয়া যায়নি বা ইতোমধ্যে প্রক্রিয়া হয়েছে।' });
@@ -85,15 +86,17 @@ const resolveCreditLimitRequest = async (req, res) => {
             `UPDATE credit_limit_requests
              SET status = $1, admin_note = $2, resolved_at = NOW(),
                  approved_amount = $3
-             WHERE id = $4`,
-            [status, admin_note || null, finalAmount, id]
+             WHERE id = $4
+             AND tenant_id = $5`,
+            [status, admin_note || null, finalAmount, id, req.tenantId]
         );
 
         // Approved হলে customer এর credit_limit বাড়াও
         if (status === 'approved') {
             await query(
-                `UPDATE customers SET credit_limit = $1 WHERE id = $2`,
-                [finalAmount, request.cust_id]
+                `UPDATE customers SET credit_limit = $1 WHERE id = $2
+             AND tenant_id = $3`,
+                [finalAmount, request.cust_id, req.tenantId]
             );
         }
 
@@ -195,8 +198,9 @@ const resolveComplaint = async (req, res) => {
             `SELECT cc.*, c.id AS cust_id, c.shop_name
              FROM customer_complaints cc
              JOIN customers c ON c.id = cc.customer_id
-             WHERE cc.id = $1`,
-            [id]
+             WHERE cc.id = $1
+             AND cc.tenant_id = $2`,
+            [id, req.tenantId]
         );
         if (complaintResult.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'অভিযোগ পাওয়া যায়নি।' });
@@ -208,8 +212,9 @@ const resolveComplaint = async (req, res) => {
              SET status = $1,
                  admin_reply = $2,
                  resolved_at = CASE WHEN $1 = 'resolved' THEN NOW() ELSE resolved_at END
-             WHERE id = $3`,
-            [status, admin_reply || null, id]
+             WHERE id = $3
+             AND tenant_id = $4`,
+            [status, admin_reply || null, id, req.tenantId]
         );
 
         // কাস্টমারকে notification পাঠাও

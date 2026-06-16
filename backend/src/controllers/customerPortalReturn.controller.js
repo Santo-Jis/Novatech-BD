@@ -186,8 +186,9 @@ const getPortalReturnRequestDetail = async (req, res) => {
              JOIN customers c     ON c.id  = crr.customer_id
              LEFT JOIN users rv   ON rv.id = crr.reviewed_by
              LEFT JOIN users cb   ON cb.id = crr.completed_by
-             WHERE crr.id = $1`,
-            [id]
+             WHERE crr.id = $1
+             AND crr.tenant_id = $2`,
+            [id, req.tenantId]
         );
 
         if (rows.length === 0) {
@@ -198,8 +199,10 @@ const getPortalReturnRequestDetail = async (req, res) => {
             `SELECT invoice_number, net_amount, created_at, payment_method, payment_status
              FROM sales_transactions
              WHERE invoice_number = $1 AND customer_id = $2
+             AND tenant_id = $3
              LIMIT 1`,
-            [rows[0].invoice_number, rows[0].customer_id]
+            [rows[0].invoice_number, rows[0].customer_id,
+                req.tenantId]
         );
 
         return res.json({
@@ -231,8 +234,9 @@ const reviewPortalReturnRequest = async (req, res) => {
             `SELECT crr.*, c.owner_name, c.shop_name
              FROM customer_return_requests crr
              JOIN customers c ON c.id = crr.customer_id
-             WHERE crr.id = $1`,
-            [id]
+             WHERE crr.id = $1
+             AND crr.tenant_id = $2`,
+            [id, req.tenantId]
         );
         if (existing.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'রিকোয়েস্ট পাওয়া যায়নি।' });
@@ -252,8 +256,10 @@ const reviewPortalReturnRequest = async (req, res) => {
                 admin_note  = $2,
                 reviewed_by = $3,
                 reviewed_at = NOW()
-             WHERE id = $4 RETURNING *`,
-            [status, admin_note || null, reviewerId, id]
+             WHERE id = $4
+             AND tenant_id = $5
+             RETURNING *`,
+            [status, admin_note || null, reviewerId, id, req.tenantId]
         );
 
         // Push notification
@@ -290,8 +296,9 @@ const completePortalReturnRequest = async (req, res) => {
         const completedById = req.user.id;
 
         const existing = await query(
-            `SELECT * FROM customer_return_requests WHERE id = $1`,
-            [id]
+            `SELECT * FROM customer_return_requests WHERE id = $1
+             AND tenant_id = $2`,
+            [id, req.tenantId]
         );
         if (existing.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'রিকোয়েস্ট পাওয়া যায়নি।' });
@@ -306,8 +313,10 @@ const completePortalReturnRequest = async (req, res) => {
                 status       = 'completed',
                 completed_at = NOW(),
                 completed_by = $1
-             WHERE id = $2 RETURNING *`,
-            [completedById, id]
+             WHERE id = $2
+             AND tenant_id = $3
+             RETURNING *`,
+            [completedById, id, req.tenantId]
         );
 
         try {
@@ -358,8 +367,9 @@ const bulkReviewPortalReturnRequests = async (req, res) => {
                 reviewed_at = NOW()
              WHERE id = ANY($4)
                AND status = 'pending'
+             AND tenant_id = $5
              RETURNING id, customer_id, invoice_number, status`,
-            [status, admin_note || null, reviewerId, ids]
+            [status, admin_note || null, reviewerId, ids, req.tenantId]
         );
 
         const updated = result.rows;

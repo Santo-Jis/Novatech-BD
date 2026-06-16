@@ -90,8 +90,8 @@ const getCreditReport = async (req, res) => {
         const { route_id, export: exportType } = req.query;
 
         let conditions = ['c.is_active = true', 'c.current_credit > 0'];
-        let params     = [];
-        let paramCount = 0;
+        let params = [req.tenantId];
+    let paramCount = 1;
 
         if (req.teamFilter) {
             paramCount++;

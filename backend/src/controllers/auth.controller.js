@@ -59,8 +59,9 @@ const login = async (req, res) => {
              FROM users
              WHERE email = $1 
                 OR phone = $1 
-                OR employee_code = $1`,
-            [identifier.trim()]
+                OR employee_code = $1
+             AND tenant_id = $2`,
+            [identifier.trim(), req.tenantId]
         );
 
         // ইউজার না পেলে
@@ -254,8 +255,9 @@ const me = async (req, res) => {
                     join_date, status,
                     created_at
              FROM users
-             WHERE id = $1`,
-            [req.user.id]
+             WHERE id = $1
+             AND tenant_id = $2`,
+            [req.user.id, req.tenantId]
         );
 
         if (result.rows.length === 0) {
@@ -378,8 +380,9 @@ const forgotPassword = async (req, res) => {
 
         // ইউজার আছে কিনা দেখো
         const result = await query(
-            `SELECT id, name_bn, email, status FROM users WHERE email = $1`,
-            [email.trim().toLowerCase()]
+            `SELECT id, name_bn, email, status FROM users WHERE email = $1
+             AND tenant_id = $2`,
+            [email.trim().toLowerCase(), req.tenantId]
         );
 
         // ✅ SECURITY: email enumeration বন্ধ।
@@ -450,7 +453,8 @@ const verifyOtp = async (req, res) => {
             return res.status(400).json({ success: false, message: 'ইমেইল ও OTP দিন।' });
         }
 
-        const userResult = await query(`SELECT id FROM users WHERE email = $1`, [email.trim().toLowerCase()]);
+        const userResult = await query(`SELECT id FROM users WHERE email = $1
+             AND tenant_id = $2`, [email.trim().toLowerCase(), req.tenantId]);
         // ✅ SECURITY: email enumeration বন্ধ — user না থাকলেও generic error
         if (userResult.rows.length === 0) {
             return res.status(400).json({ success: false, message: 'OTP ভুল অথবা মেয়াদ শেষ।' });
@@ -506,7 +510,8 @@ const resetPasswordWithOtp = async (req, res) => {
             return res.status(400).json({ success: false, message: 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।' });
         }
 
-        const userResult = await query(`SELECT id FROM users WHERE email = $1`, [email.trim().toLowerCase()]);
+        const userResult = await query(`SELECT id FROM users WHERE email = $1
+             AND tenant_id = $2`, [email.trim().toLowerCase(), req.tenantId]);
         // ✅ SECURITY: email enumeration বন্ধ — user না থাকলেও generic error
         if (userResult.rows.length === 0) {
             return res.status(400).json({ success: false, message: 'রিসেট টোকেন অবৈধ বা মেয়াদ শেষ।' });
@@ -525,7 +530,9 @@ const resetPasswordWithOtp = async (req, res) => {
 
         // নতুন পাসওয়ার্ড সেভ
         const newHash = await bcrypt.hash(new_password, 10); // 12→10: Render free CPU-তে 4x দ্রুত
-        await query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`, [newHash, userId]);
+        await query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2
+             AND tenant_id = $3`, [newHash, userId,
+                req.tenantId]);
 
         // OTP রেকর্ড মুছে ফেলো
         await query(`DELETE FROM password_reset_otps WHERE user_id = $1`, [userId]);
@@ -596,8 +603,9 @@ const checkEmailType = async (req, res) => {
             `SELECT id, role, name_bn, status
              FROM users
              WHERE email = $1
-               AND status NOT IN ('archived', 'suspended')`,
-            [cleanEmail]
+               AND status NOT IN ('archived', 'suspended')
+             AND tenant_id = $2`,
+            [cleanEmail, req.tenantId]
         );
 
         if (workerResult.rows.length > 0) {
@@ -623,8 +631,9 @@ const checkEmailType = async (req, res) => {
         const customerResult = await query(
             `SELECT id, shop_name, owner_name, customer_code
              FROM customers
-             WHERE email = $1 AND is_active = true`,
-            [cleanEmail]
+             WHERE email = $1 AND is_active = true
+             AND tenant_id = $2`,
+            [cleanEmail, req.tenantId]
         );
 
         if (customerResult.rows.length > 0) {
@@ -685,8 +694,9 @@ const mySensitiveInfo = async (req, res) => {
         const result = await query(
             `SELECT basic_salary, outstanding_dues, manager_id, nid
              FROM users
-             WHERE id = $1`,
-            [req.user.id]
+             WHERE id = $1
+             AND tenant_id = $2`,
+            [req.user.id, req.tenantId]
         );
 
         if (result.rows.length === 0) {
@@ -738,8 +748,9 @@ const customerLogin = async (req, res) => {
             `SELECT id, shop_name, owner_name, customer_code,
                     whatsapp, sms_phone, email, is_active
              FROM customers
-             WHERE customer_code = $1`,
-            [cleanCode]
+             WHERE customer_code = $1
+             AND tenant_id = $2`,
+            [cleanCode, req.tenantId]
         );
 
         // কাস্টমার না পেলে — generic error (code enumeration বন্ধ)

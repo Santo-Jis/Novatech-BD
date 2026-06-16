@@ -158,8 +158,9 @@ const getWorkerSalaryDetail = async (req, res) => {
         // Worker info
         const workerRes = await query(
             `SELECT id, name_bn, employee_code, basic_salary, outstanding_dues, phone
-             FROM users WHERE id = $1`,
-            [workerId]
+             FROM users WHERE id = $1
+             AND tenant_id = $2`,
+            [workerId, req.tenantId]
         );
         if (!workerRes.rows.length) {
             return res.status(404).json({ success: false, message: 'কর্মী পাওয়া যায়নি।' });
@@ -174,8 +175,9 @@ const getWorkerSalaryDetail = async (req, res) => {
              WHERE user_id = $1
                AND EXTRACT(YEAR  FROM date) = $2
                AND EXTRACT(MONTH FROM date) = $3
+             AND tenant_id = $4
              ORDER BY date ASC`,
-            [workerId, currentYear, currentMonth]
+            [workerId, currentYear, currentMonth, req.tenantId]
         );
 
         // কমিশন বিবরণ
@@ -197,8 +199,9 @@ const getWorkerSalaryDetail = async (req, res) => {
              LEFT JOIN users approver ON sp.approved_by = approver.id
              WHERE sp.worker_id = $1
                AND sp.month = $2
-               AND sp.year  = $3`,
-            [workerId, currentMonth, currentYear]
+               AND sp.year  = $3
+             AND sp.tenant_id = $4`,
+            [workerId, currentMonth, currentYear, req.tenantId]
         );
 
         // হিসাব
@@ -286,8 +289,9 @@ const paySalary = async (req, res) => {
         // ইতিমধ্যে পরিশোধ হয়েছে কিনা
         const existing = await query(
             `SELECT id FROM salary_payments
-             WHERE worker_id = $1 AND month = $2 AND year = $3`,
-            [worker_id, parseInt(month), parseInt(year)]
+             WHERE worker_id = $1 AND month = $2 AND year = $3
+             AND tenant_id = $4`,
+            [worker_id, parseInt(month), parseInt(year), req.tenantId]
         );
         if (existing.rows.length > 0) {
             return res.status(400).json({
@@ -298,8 +302,9 @@ const paySalary = async (req, res) => {
 
         // Worker ও হিসাব
         const workerRes = await query(
-            `SELECT name_bn, basic_salary, outstanding_dues FROM users WHERE id = $1`,
-            [worker_id]
+            `SELECT name_bn, basic_salary, outstanding_dues FROM users WHERE id = $1
+             AND tenant_id = $2`,
+            [worker_id, req.tenantId]
         );
         if (!workerRes.rows.length) {
             return res.status(404).json({ success: false, message: 'কর্মী পাওয়া যায়নি।' });
@@ -312,8 +317,9 @@ const paySalary = async (req, res) => {
              FROM attendance
              WHERE user_id = $1
                AND EXTRACT(YEAR  FROM date) = $2
-               AND EXTRACT(MONTH FROM date) = $3`,
-            [worker_id, parseInt(year), parseInt(month)]
+               AND EXTRACT(MONTH FROM date) = $3
+             AND tenant_id = $4`,
+            [worker_id, parseInt(year), parseInt(month), req.tenantId]
         );
 
         // কমিশন
@@ -344,12 +350,10 @@ const paySalary = async (req, res) => {
         await withTransaction(async (client) => {
             // salary_payments এ রেকর্ড সংরক্ষণ
             await client.query(
-                `INSERT INTO salary_payments
-                    (worker_id, month, year, basic_salary, sales_commission,
+                `INSERT INTO salary_payments (worker_id, month, year, basic_salary, sales_commission,
                      attendance_bonus, total_commission, attendance_deduction,
                      outstanding_dues_deducted, net_payable, payment_method,
-                     payment_reference, note, approved_by, paid_at, status)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),'paid')`,
+                     payment_reference, note, approved_by, paid_at, status, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(, 5),'paid')`,
                 [
                     worker_id, parseInt(month), parseInt(year),
                     basic, salesComm, attBonus, totalComm,
@@ -376,15 +380,15 @@ const paySalary = async (req, res) => {
                 await client.query(
                     `UPDATE users
                      SET outstanding_dues = GREATEST(0, outstanding_dues - $1)
-                     WHERE id = $2`,
-                    [dues, worker_id]
+                     WHERE id = $2
+             AND tenant_id = $3`,
+                    [dues, worker_id, req.tenantId]
                 );
             }
 
             // Audit log
             await client.query(
-                `INSERT INTO audit_logs (user_id, action, table_name, new_value)
-                 VALUES ($1, 'PAY_SALARY', 'salary_payments', $2)`,
+                `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'PAY_SALARY', 'salary_payments', $2, $3)`,
                 [req.user.id, JSON.stringify({
                     worker_id, month, year,
                     basic, salesComm, attBonus, attDed, dues,
@@ -425,9 +429,10 @@ const getMySalaryHistory = async (req, res) => {
              FROM salary_payments sp
              LEFT JOIN users approver ON sp.approved_by = approver.id
              WHERE sp.worker_id = $1
+             AND sp.tenant_id = $2
              ORDER BY sp.year DESC, sp.month DESC
              LIMIT 24`,
-            [req.user.id]
+            [req.user.id, req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });
@@ -449,8 +454,9 @@ const cancelSalaryPayment = async (req, res) => {
         const { id } = req.params;
 
         const payRes = await query(
-            `SELECT * FROM salary_payments WHERE id = $1`,
-            [id]
+            `SELECT * FROM salary_payments WHERE id = $1
+             AND tenant_id = $2`,
+            [id, req.tenantId]
         );
         if (!payRes.rows.length) {
             return res.status(404).json({ success: false, message: 'রেকর্ড পাওয়া যায়নি।' });
@@ -470,7 +476,8 @@ const cancelSalaryPayment = async (req, res) => {
 
         await withTransaction(async (client) => {
             // salary_payments মুছুন
-            await client.query(`DELETE FROM salary_payments WHERE id = $1`, [id]);
+            await client.query(`DELETE FROM salary_payments WHERE id = $1
+             AND tenant_id = $2`, [id, req.tenantId]);
 
             // commission unpaid করুন
             await client.query(
@@ -489,14 +496,14 @@ const cancelSalaryPayment = async (req, res) => {
                 await client.query(
                     `UPDATE users
                      SET outstanding_dues = outstanding_dues + $1
-                     WHERE id = $2`,
-                    [pay.outstanding_dues_deducted, pay.worker_id]
+                     WHERE id = $2
+             AND tenant_id = $3`,
+                    [pay.outstanding_dues_deducted, pay.worker_id, req.tenantId]
                 );
             }
 
             await client.query(
-                `INSERT INTO audit_logs (user_id, action, table_name, new_value)
-                 VALUES ($1, 'CANCEL_SALARY', 'salary_payments', $2)`,
+                `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'CANCEL_SALARY', 'salary_payments', $2, $3)`,
                 [req.user.id, JSON.stringify({ payment_id: id, worker_id: pay.worker_id, month: pay.month, year: pay.year })]
             );
         });

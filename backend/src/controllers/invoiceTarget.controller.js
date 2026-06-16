@@ -15,8 +15,9 @@ const getMyProgress = async (req, res) => {
 
         // target বের করো
         const targetRes = await query(
-            `SELECT COALESCE(monthly_invoice_target, 0) AS target FROM users WHERE id = $1`,
-            [workerId]
+            `SELECT COALESCE(monthly_invoice_target, 0) AS target FROM users WHERE id = $1
+             AND tenant_id = $2`,
+            [workerId, req.tenantId]
         );
         const target = parseInt(targetRes.rows[0]?.target || 0);
 
@@ -27,8 +28,9 @@ const getMyProgress = async (req, res) => {
              WHERE worker_id = $1
                AND EXTRACT(MONTH FROM created_at) = $2
                AND EXTRACT(YEAR  FROM created_at) = $3
-               AND status = 'verified'`,
-            [workerId, month, year]
+               AND status = 'verified'
+             AND tenant_id = $4`,
+            [workerId, month, year, req.tenantId]
         );
         const achieved = parseInt(progressRes.rows[0]?.achieved || 0);
 
@@ -62,8 +64,10 @@ const getTeamProgress = async (req, res) => {
         const year  = parseInt(req.query.year)  || now.getFullYear();
 
         const teamRes = await query(
-            `SELECT t.id FROM teams t WHERE t.manager_id = $1 LIMIT 1`,
-            [managerId]
+            `SELECT t.id FROM teams t WHERE t.manager_id = $1
+             AND t.tenant_id = $2
+             LIMIT 1`,
+            [managerId, req.tenantId]
         );
         if (!teamRes.rows.length) {
             return res.json({ success: true, data: [] });
@@ -115,8 +119,9 @@ const setTarget = async (req, res) => {
         }
 
         await query(
-            `UPDATE users SET monthly_invoice_target = $1 WHERE id = $2`,
-            [parseInt(target), worker_id]
+            `UPDATE users SET monthly_invoice_target = $1 WHERE id = $2
+             AND tenant_id = $3`,
+            [parseInt(target), worker_id, req.tenantId]
         );
 
         return res.json({ success: true, message: 'Invoice target সেট হয়েছে।' });

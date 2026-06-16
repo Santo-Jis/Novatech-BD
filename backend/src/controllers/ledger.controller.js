@@ -9,11 +9,9 @@ const { query, withTransaction } = require('../config/db');
 
 const addLedgerEntry = async (clientOrNull, entry) => {
     const sql = `
-        INSERT INTO sr_stock_ledger
-          (worker_id, product_id, product_name,
+        INSERT INTO sr_stock_ledger (worker_id, product_id, product_name,
            txn_type, direction, qty,
-           reference_id, reference_type, note, created_by)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+           reference_id, reference_type, note, created_by, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, 1)
     `;
     const params = [
         entry.worker_id,                  // UUID
@@ -81,8 +79,10 @@ const getMyStock = async (req, res) => {
                  WHERE o.worker_id = $1::uuid
                    AND (item->>'product_id')::uuid = ANY($2::uuid[])
                    AND o.status = 'approved'
-                 ORDER BY (item->>'product_id')::uuid, o.approved_at DESC`,
-                [workerId, productIds]
+             AND o.tenant_id = $3
+             ORDER BY (item->>'product_id')::uuid, o.approved_at DESC`,
+                [workerId, productIds,
+                req.tenantId]
             );
             bulkPriceRes.rows.forEach(r => {
                 priceMap[r.product_id] = parseFloat(r.price || 0);

@@ -260,17 +260,15 @@ const updateSettings = async (req, res) => {
         // নতুন স্ল্যাব যোগ করো
         for (const slab of slabs) {
             await query(
-                `INSERT INTO commission_settings (slab_min, slab_max, rate, effective_from, is_active)
-                 VALUES ($1, $2, $3, CURRENT_DATE, true)`,
-                [slab.slab_min, slab.slab_max || null, slab.rate]
+                `INSERT INTO commission_settings (slab_min, slab_max, rate, effective_from, is_active, tenant_id) VALUES ($1, $2, $3, CURRENT_DATE, true, $4)`,
+                [slab.slab_min, slab.slab_max || null, slab.rate, req.tenantId]
             );
         }
 
         // Audit log
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, new_value)
-             VALUES ($1, 'UPDATE_COMMISSION_SETTINGS', 'commission_settings', $2)`,
-            [req.user.id, JSON.stringify(slabs)]
+            `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'UPDATE_COMMISSION_SETTINGS', 'commission_settings', $2, $3)`,
+            [req.user.id, JSON.stringify(slabs), req.tenantId]
         );
 
         return res.status(200).json({
@@ -375,8 +373,7 @@ const payCommission = async (req, res) => {
 
         // Audit log
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, new_value)
-             VALUES ($1, 'PAY_COMMISSION', 'commission', $2)`,
+            `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'PAY_COMMISSION', 'commission', $2, $3)`,
             [req.user.id, JSON.stringify({
                 worker_id, month, year,
                 total_amount: totalAmount,
@@ -477,14 +474,16 @@ const getLiveCommission = async (req, res) => {
                 paid_at
              FROM commission
              WHERE user_id = $1 AND date = $2 AND type = 'daily'`,
-            [workerId, today]
+            [workerId, today,
+                req.tenantId]
         );
 
         // আজকের বিক্রয় সংখ্যা
         const saleCountRes = await query(
             `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS total
              FROM sales_transactions
-             WHERE worker_id = $1 AND date = $2`,
+             WHERE worker_id = $1 AND date = $2
+             AND tenant_id = $3`,
             [workerId, today]
         );
 

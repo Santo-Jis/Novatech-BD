@@ -77,8 +77,9 @@ const createSettlement = async (req, res) => {
         const ordersResult = await query(
             `SELECT id FROM orders
              WHERE worker_id = $1 AND DATE(approved_at) = $2 AND status = 'approved'
+             AND tenant_id = $3
              ORDER BY approved_at DESC LIMIT 1`,
-            [workerId, today]
+            [workerId, today, req.tenantId]
         );
 
         // ✅ FIX: taken_qty এখন orders থেকে নয়, ledger balance থেকে।
@@ -117,8 +118,9 @@ const createSettlement = async (req, res) => {
              WHERE o.worker_id = $1::uuid
                AND (item->>'product_id')::uuid = ANY($2::uuid[])
                AND o.status = 'approved'
+             AND o.tenant_id = $3
              ORDER BY (item->>'product_id')::uuid, o.approved_at DESC`,
-            [workerId, emptyGuard]
+            [workerId, emptyGuard, req.tenantId]
         );
         const priceMap = {};
         priceRes.rows.forEach(r => { priceMap[String(r.product_id)] = r; });
@@ -132,8 +134,9 @@ const createSettlement = async (req, res) => {
                 COALESCE(SUM(replacement_value), 0)   AS replacement_value,
                 COALESCE(SUM(credit_balance_used), 0) AS old_credit_collected
              FROM sales_transactions
-             WHERE worker_id = $1 AND date = $2`,
-            [workerId, today]
+             WHERE worker_id = $1 AND date = $2
+             AND tenant_id = $3`,
+            [workerId, today, req.tenantId]
         );
 
         const sales      = salesData.rows[0];
@@ -149,8 +152,10 @@ const createSettlement = async (req, res) => {
                   jsonb_array_elements(COALESCE(items, '[]'::jsonb)) AS item
              WHERE worker_id = $1 AND date = $2
                AND (item->>'product_id') = ANY($3)
+             AND tenant_id = $4
              GROUP BY (item->>'product_id')`,
-            [workerId, today, allProductIds.length > 0 ? allProductIds : ['__none__']]
+            [workerId, today, allProductIds.length > 0 ? allProductIds : ['__none__'],
+                req.tenantId]
         );
 
         const replacedBulkRes = await query(
@@ -243,14 +248,12 @@ const createSettlement = async (req, res) => {
         // এখন সবকিছু একটি withTransaction()-এ, যেকোনো failure-এ সব rollback হবে।
         const result = await withTransaction(async (client) => {
             const insertResult = await client.query(
-                `INSERT INTO daily_settlements
-                 (worker_id, order_id, settlement_date,
+                `INSERT INTO daily_settlements (worker_id, order_id, settlement_date,
                   items_taken, total_sales_amount,
                   cash_collected, cash_difference,
                   credit_given,
                   old_credit_collected, replacement_value,
-                  shortage_qty_value, shortage_note, mismatch_explanation)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                  shortage_qty_value, shortage_note, mismatch_explanation, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 4)
                  RETURNING id`,
                 [
                     workerId,
@@ -383,8 +386,9 @@ const getMySettlements = async (req, res) => {
              WHERE ds.worker_id = $1
                AND EXTRACT(YEAR  FROM ds.settlement_date) = $2
                AND EXTRACT(MONTH FROM ds.settlement_date) = $3
+             AND ds.tenant_id = $4
              ORDER BY ds.settlement_date DESC`,
-            [req.user.id, currentYear, currentMonth]
+            [req.user.id, currentYear, currentMonth, req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });
@@ -403,8 +407,8 @@ const getMySettlements = async (req, res) => {
 const getPendingSettlements = async (req, res) => {
     try {
         let conditions = ["ds.status = 'pending'"];
-        let params     = [];
-        let paramCount = 0;
+        let params = [req.tenantId];
+    let paramCount = 1;
 
         if (req.user.role !== 'admin') {
             paramCount++;
@@ -473,15 +477,17 @@ const approveSettlement = async (req, res) => {
                      manager_note = $2,
                      approved_at  = NOW(),
                      updated_at   = NOW()
-                 WHERE id = $3`,
-                [req.user.id, note || null, id]
+                 WHERE id = $3
+             AND tenant_id = $4`,
+                [req.user.id, note || null, id, req.tenantId]
             );
 
             await client.query(
                 `UPDATE attendance
                  SET settlement_approved = true, updated_at = NOW()
-                 WHERE user_id = $1 AND date = $2`,
-                [s.worker_id, s.settlement_date]
+                 WHERE user_id = $1 AND date = $2
+             AND tenant_id = $3`,
+                [s.worker_id, s.settlement_date, req.tenantId]
             );
 
             // ✅ FIX: নগদ ঘাটতি + পণ্য ঘাটতি — দুটোই outstanding_dues-এ যোগ করো
@@ -494,35 +500,30 @@ const approveSettlement = async (req, res) => {
                      SET outstanding_dues = outstanding_dues + $1,
                          cash_dues        = COALESCE(cash_dues, 0) + $2,
                          updated_at       = NOW()
-                     WHERE id = $3`,
-                    [totalShortfall, cashShortfall, s.worker_id]
+                     WHERE id = $3
+             AND tenant_id = $4`,
+                    [totalShortfall, cashShortfall, s.worker_id, req.tenantId]
                 );
 
                 // নগদ ঘাটতি audit trail
                 if (cashShortfall > 0) {
                     await client.query(
-                        `INSERT INTO dues_ledger
-                         (worker_id, settlement_id, due_type, amount, note, created_by)
-                         VALUES ($1, $2, 'cash_mismatch', $3, $4, $5)`,
+                        `INSERT INTO dues_ledger (worker_id, settlement_id, due_type, amount, note, created_by, tenant_id) VALUES ($1, $2, 'cash_mismatch', $3, $4, $5, $6)`,
                         [
                             s.worker_id, id, cashShortfall,
                             `নগদ ঘাটতি: সিস্টেম ৳${systemCash.toFixed(0)} — SR জমা ৳${srCash.toFixed(0)}`,
-                            req.user.id
-                        ]
+                            req.user.id, req.tenantId]
                     );
                 }
 
                 // পণ্য ঘাটতি audit trail
                 if (productShortage > 0) {
                     await client.query(
-                        `INSERT INTO dues_ledger
-                         (worker_id, settlement_id, due_type, amount, note, created_by)
-                         VALUES ($1, $2, 'product_shortage', $3, $4, $5)`,
+                        `INSERT INTO dues_ledger (worker_id, settlement_id, due_type, amount, note, created_by, tenant_id) VALUES ($1, $2, 'product_shortage', $3, $4, $5, $6)`,
                         [
                             s.worker_id, id, productShortage,
                             `পণ্য ঘাটতি ৳${productShortage.toFixed(0)} — অনুমোদন সময় রেকর্ড`,
-                            req.user.id
-                        ]
+                            req.user.id, req.tenantId]
                     );
                 }
             }
@@ -599,8 +600,9 @@ const disputeSettlement = async (req, res) => {
                      manager_note       = $2,
                      shortage_qty_value = $3,
                      updated_at         = NOW()
-                 WHERE id = $4`,
-                [req.user.id, note || null, finalShortage, id]
+                 WHERE id = $4
+             AND tenant_id = $5`,
+                [req.user.id, note || null, finalShortage, id, req.tenantId]
             );
 
             // মোট বকেয়া outstanding_dues এ যোগ
@@ -610,28 +612,25 @@ const disputeSettlement = async (req, res) => {
                      SET outstanding_dues = outstanding_dues + $1,
                          cash_dues        = COALESCE(cash_dues, 0) + $2,
                          updated_at       = NOW()
-                     WHERE id = $3`,
-                    [totalDues, cashShortfall, s.worker_id]
+                     WHERE id = $3
+             AND tenant_id = $4`,
+                    [totalDues, cashShortfall, s.worker_id, req.tenantId]
                 );
             }
 
             // পণ্য ঘাটতি ledger
             if (finalShortage > 0) {
                 await client.query(
-                    `INSERT INTO dues_ledger
-                     (worker_id, settlement_id, due_type, amount, note, created_by)
-                     VALUES ($1, $2, 'product_shortage', $3, $4, $5)`,
-                    [s.worker_id, id, finalShortage, `পণ্য ঘাটতি — Manager নিশ্চিত`, req.user.id]
+                    `INSERT INTO dues_ledger (worker_id, settlement_id, due_type, amount, note, created_by, tenant_id) VALUES ($1, $2, 'product_shortage', $3, $4, $5, $6)`,
+                    [s.worker_id, id, finalShortage, `পণ্য ঘাটতি — Manager নিশ্চিত`, req.user.id, req.tenantId]
                 );
             }
 
             // নগদ ঘাটতি ledger
             if (cashShortfall > 0) {
                 await client.query(
-                    `INSERT INTO dues_ledger
-                     (worker_id, settlement_id, due_type, amount, note, created_by)
-                     VALUES ($1, $2, 'cash_mismatch', $3, $4, $5)`,
-                    [s.worker_id, id, cashShortfall, `নগদ ঘাটতি ৳${cashShortfall} — dispute`, req.user.id]
+                    `INSERT INTO dues_ledger (worker_id, settlement_id, due_type, amount, note, created_by, tenant_id) VALUES ($1, $2, 'cash_mismatch', $3, $4, $5, $6)`,
+                    [s.worker_id, id, cashShortfall, `নগদ ঘাটতি ৳${cashShortfall} — dispute`, req.user.id, req.tenantId]
                 );
             }
         });
@@ -704,16 +703,13 @@ const payShortage = async (req, res) => {
         await withTransaction(async (client) => {
             // ১. পরিশোধ রেকর্ড করো
             await client.query(
-                `INSERT INTO shortage_payments
-                 (worker_id, settlement_id, amount, payment_method, note, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                `INSERT INTO shortage_payments (worker_id, settlement_id, amount, payment_method, note, created_by, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
                 [
                     workerId,
                     id, amount,
                     payment_method || 'cash_paid',
                     note || null,
-                    req.user.id
-                ]
+                    req.user.id, req.tenantId]
             );
 
             // ✅ FIX: ২. outstanding_dues থেকে পরিশোধ করা amount বাদ দাও
@@ -721,8 +717,9 @@ const payShortage = async (req, res) => {
                 `UPDATE users
                  SET outstanding_dues = GREATEST(0, outstanding_dues - $1),
                      updated_at       = NOW()
-                 WHERE id = $2`,
-                [parseFloat(amount), workerId]
+                 WHERE id = $2
+             AND tenant_id = $3`,
+                [parseFloat(amount), workerId, req.tenantId]
             );
 
             // ৩. বাকি dues চেক করো (update-এর পরে)
@@ -745,14 +742,16 @@ const payShortage = async (req, res) => {
                 await client.query(
                     `UPDATE daily_settlements
                      SET status = 'approved', approved_at = NOW(), updated_at = NOW()
-                     WHERE id = $1`,
-                    [id]
+                     WHERE id = $1
+             AND tenant_id = $2`,
+                    [id, req.tenantId]
                 );
                 await client.query(
                     `UPDATE attendance
                      SET settlement_approved = true, updated_at = NOW()
-                     WHERE user_id = $1 AND date = $2`,
-                    [workerId, settlementDate]
+                     WHERE user_id = $1 AND date = $2
+             AND tenant_id = $3`,
+                    [workerId, settlementDate, req.tenantId]
                 );
             }
         });
@@ -851,8 +850,9 @@ const getSettlementDetail = async (req, res) => {
              FROM daily_settlements ds
              JOIN users u  ON ds.worker_id  = u.id
              LEFT JOIN users m ON ds.manager_id = m.id
-             WHERE ds.id = $1`,
-            [req.params.id]
+             WHERE ds.id = $1
+             AND ds.tenant_id = $2`,
+            [req.params.id, req.tenantId]
         );
 
         if (result.rows.length === 0) {
@@ -881,8 +881,9 @@ const getSettlementDetail = async (req, res) => {
              FROM shortage_payments sp
              JOIN users u ON sp.created_by = u.id
              WHERE sp.settlement_id = $1
+             AND sp.tenant_id = $2
              ORDER BY sp.created_at ASC`,
-            [req.params.id]
+            [req.params.id, req.tenantId]
         );
 
         return res.status(200).json({
@@ -913,8 +914,9 @@ const getTodayPreview = async (req, res) => {
         const ordersResult2 = await query(
             `SELECT id, items FROM orders
              WHERE worker_id = $1 AND DATE(requested_at) = $2 AND status = 'approved'
+             AND tenant_id = $3
              ORDER BY requested_at ASC`,
-            [workerId, today]
+            [workerId, today, req.tenantId]
         );
 
         // সব অর্ডারের items মার্জ করো
@@ -942,8 +944,9 @@ const getTodayPreview = async (req, res) => {
              FROM sales_transactions,
                   jsonb_array_elements(COALESCE(items, '[]'::jsonb)) AS item
              WHERE worker_id = $1 AND date = $2
+             AND tenant_id = $3
              GROUP BY item->>'product_id'`,
-            [workerId, today]
+            [workerId, today, req.tenantId]
         );
 
         // একটা query-তে সব পণ্যের replacement_qty
@@ -953,8 +956,9 @@ const getTodayPreview = async (req, res) => {
              FROM sales_transactions,
                   jsonb_array_elements(COALESCE(replacement_items, '[]'::jsonb)) AS item
              WHERE worker_id = $1 AND date = $2
+             AND tenant_id = $3
              GROUP BY item->>'product_id'`,
-            [workerId, today]
+            [workerId, today, req.tenantId]
         );
 
         const soldMap = {};

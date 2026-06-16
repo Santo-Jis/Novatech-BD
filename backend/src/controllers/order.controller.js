@@ -42,8 +42,9 @@ const createOrder = async (req, res) => {
             `SELECT COUNT(*) AS count FROM orders
              WHERE worker_id = $1
                AND DATE(requested_at) = $2
-               AND status NOT IN ('rejected', 'cancelled')`,
-            [workerId, today]
+               AND status NOT IN ('rejected', 'cancelled')
+             AND tenant_id = $3`,
+            [workerId, today, req.tenantId]
         );
 
         const todayCount = parseInt(existing.rows[0].count);
@@ -65,8 +66,9 @@ const createOrder = async (req, res) => {
         const productsRes  = await query(
             `SELECT id, name, price, stock, reserved_stock, vat, tax
              FROM products
-             WHERE id = ANY($1) AND is_active = true`,
-            [productIds]
+             WHERE id = ANY($1) AND is_active = true
+             AND tenant_id = $2`,
+            [productIds, req.tenantId]
         );
         const productMap = {};
         productsRes.rows.forEach(p => { productMap[p.id] = p; });
@@ -120,10 +122,9 @@ const createOrder = async (req, res) => {
         await withTransaction(async (client) => {
             // অর্ডার সেভ
             const result = await client.query(
-                `INSERT INTO orders (worker_id, items, total_amount, note)
-                 VALUES ($1, $2, $3, $4)
+                `INSERT INTO orders (worker_id, items, total_amount, note, tenant_id) VALUES ($1, $2, $3, $4, $5)
                  RETURNING id`,
-                [workerId, JSON.stringify(orderItems), totalAmount, note || null]
+                [workerId, JSON.stringify(orderItems), totalAmount, note || null, req.tenantId]
             );
 
             orderId = result.rows[0].id;
@@ -133,8 +134,9 @@ const createOrder = async (req, res) => {
                 await client.query(
                     `UPDATE products
                      SET reserved_stock = COALESCE(reserved_stock, 0) + $1, updated_at = NOW()
-                     WHERE id = $2`,
-                    [item.requested_qty, item.product_id]
+                     WHERE id = $2
+             AND tenant_id = $3`,
+                    [item.requested_qty, item.product_id, req.tenantId]
                 );
             }
         });
@@ -174,8 +176,9 @@ const createOrder = async (req, res) => {
             if (req.user.manager_id) {
                 const managerResult = await query(
                     `SELECT email, name_bn FROM users
-                     WHERE id = $1 AND email IS NOT NULL AND email != ''`,
-                    [req.user.manager_id]
+                     WHERE id = $1 AND email IS NOT NULL AND email != ''
+             AND tenant_id = $2`,
+                    [req.user.manager_id, req.tenantId]
                 );
                 if (managerResult.rows.length > 0) {
                     managerEmail = managerResult.rows[0].email;
@@ -230,9 +233,10 @@ const getMyOrders = async (req, res) => {
              FROM orders o
              LEFT JOIN users m ON o.manager_id = m.id
              WHERE o.worker_id = $1
+             AND o.tenant_id = $2
              ORDER BY o.requested_at DESC
              LIMIT 30`,
-            [req.user.id]
+            [req.user.id, req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });
@@ -257,8 +261,9 @@ const getTodayOrder = async (req, res) => {
             `SELECT * FROM orders
              WHERE worker_id = $1
                AND DATE(requested_at) = $2
+             AND tenant_id = $3
              ORDER BY requested_at DESC`,
-            [req.user.id, today]
+            [req.user.id, today, req.tenantId]
         );
 
         // rejected ও cancelled বাদে কতটি অর্ডার দেওয়া হয়েছে
@@ -267,8 +272,9 @@ const getTodayOrder = async (req, res) => {
             `SELECT COUNT(*) AS count FROM orders
              WHERE worker_id = $1
                AND DATE(requested_at) = $2
-               AND status NOT IN ('rejected', 'cancelled')`,
-            [req.user.id, today]
+               AND status NOT IN ('rejected', 'cancelled')
+             AND tenant_id = $3`,
+            [req.user.id, today, req.tenantId]
         );
 
         const usedCount     = parseInt(countResult.rows[0].count);
@@ -299,8 +305,8 @@ const getTodayOrder = async (req, res) => {
 const getPendingOrders = async (req, res) => {
     try {
         let conditions = ["o.status = 'pending'"];
-        let params     = [];
-        let paramCount = 0;
+        let params = [req.tenantId];
+    let paramCount = 1;
 
         // Manager শুধু নিজের টিমের অর্ডার
         if (req.user.role !== 'admin') {
@@ -341,8 +347,9 @@ const approveOrder = async (req, res) => {
             `SELECT o.*
              FROM orders o
              JOIN users w ON o.worker_id = w.id
-             WHERE o.id = $1 AND o.status = 'pending'`,
-            [id]
+             WHERE o.id = $1 AND o.status = 'pending'
+             AND o.tenant_id = $2`,
+            [id, req.tenantId]
         );
 
         if (order.rows.length === 0) {
@@ -431,8 +438,9 @@ const approveOrder = async (req, res) => {
                      SET stock          = GREATEST(0, stock - $1),
                          reserved_stock = GREATEST(0, COALESCE(reserved_stock, 0) - $2),
                          updated_at     = NOW()
-                     WHERE id = $3`,
-                    [item.approved_qty, origQty, item.product_id]
+                     WHERE id = $3
+             AND tenant_id = $4`,
+                    [item.approved_qty, origQty, item.product_id, req.tenantId]
                 );
             }
 
@@ -445,8 +453,9 @@ const approveOrder = async (req, res) => {
                      total_amount = $3,
                      approved_at  = NOW(),
                      updated_at   = NOW()
-                 WHERE id = $4`,
-                [req.user.id, JSON.stringify(safeItems), totalAmount, id]
+                 WHERE id = $4
+             AND tenant_id = $5`,
+                [req.user.id, JSON.stringify(safeItems), totalAmount, id, req.tenantId]
             );
 
             // ─── Ledger: প্রতিটি পণ্য IN হিসেবে রেকর্ড ─────
@@ -538,8 +547,9 @@ const rejectOrder = async (req, res) => {
             await query(
                 `UPDATE products
                  SET reserved_stock = GREATEST(0, reserved_stock - $1), updated_at = NOW()
-                 WHERE id = $2`,
-                [item.requested_qty, item.product_id]
+                 WHERE id = $2
+             AND tenant_id = $3`,
+                [item.requested_qty, item.product_id, req.tenantId]
             );
         }
 
@@ -547,8 +557,9 @@ const rejectOrder = async (req, res) => {
             `UPDATE orders
              SET status = 'rejected', reject_reason = $1,
                  manager_id = $2, updated_at = NOW()
-             WHERE id = $3`,
-            [reason || null, req.user.id, id]
+             WHERE id = $3
+             AND tenant_id = $4`,
+            [reason || null, req.user.id, id, req.tenantId]
         );
 
         // SR কে নোটিফিকেশন
@@ -614,10 +625,11 @@ const getStockStatus = async (req, res) => {
                 )                                               AS price
              FROM sr_stock_ledger l
              WHERE l.worker_id = $1::uuid
+             AND o.tenant_id = $2
              GROUP BY l.product_id, l.product_name
              HAVING SUM(l.qty * l.direction) > 0
              ORDER BY l.product_name`,
-            [workerId]
+            [workerId, req.tenantId]
         );
 
         if (ledgerResult.rows.length === 0) {
@@ -690,8 +702,9 @@ const cancelOrder = async (req, res) => {
         // শুধু নিজের pending অর্ডার cancel করা যাবে
         const order = await query(
             `SELECT * FROM orders
-             WHERE id = $1 AND worker_id = $2 AND status = 'pending'`,
-            [id, workerId]
+             WHERE id = $1 AND worker_id = $2 AND status = 'pending'
+             AND tenant_id = $3`,
+            [id, workerId, req.tenantId]
         );
 
         if (order.rows.length === 0) {
@@ -711,8 +724,9 @@ const cancelOrder = async (req, res) => {
                     `UPDATE products
                      SET reserved_stock = GREATEST(0, COALESCE(reserved_stock, 0) - $1),
                          updated_at     = NOW()
-                     WHERE id = $2`,
-                    [item.requested_qty || item.approved_qty || 0, item.product_id]
+                     WHERE id = $2
+             AND tenant_id = $3`,
+                    [item.requested_qty || item.approved_qty || 0, item.product_id, req.tenantId]
                 );
             }
 
@@ -720,8 +734,9 @@ const cancelOrder = async (req, res) => {
             await client.query(
                 `UPDATE orders
                  SET status = 'cancelled', updated_at = NOW()
-                 WHERE id = $1`,
-                [id]
+                 WHERE id = $1
+             AND tenant_id = $2`,
+                [id, req.tenantId]
             );
         });
 

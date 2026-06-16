@@ -26,9 +26,10 @@ const getTeams = async (req, res) => {
             FROM teams t
             LEFT JOIN users m  ON m.id = t.manager_id
             LEFT JOIN users sr ON sr.team_id = t.id
-            GROUP BY t.id, m.id
+             AND t.tenant_id = $1
+             GROUP BY t.id, m.id
             ORDER BY t.is_active DESC, t.name
-        `);
+        `, [req.tenantId]);
 
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
@@ -56,7 +57,7 @@ const getTeam = async (req, res) => {
             FROM teams t
             LEFT JOIN users m ON m.id = t.manager_id
             WHERE t.id = $1
-        `, [id]);
+             AND t.tenant_id = $2`, [id, req.tenantId]);
 
         if (teamResult.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'টিম পাওয়া যায়নি।' });
@@ -70,8 +71,9 @@ const getTeam = async (req, res) => {
                 profile_photo, basic_salary
             FROM users
             WHERE team_id = $1 AND role = 'worker'
-            ORDER BY name_bn
-        `, [id]);
+             AND tenant_id = $2
+             ORDER BY name_bn
+        `, [id, req.tenantId]);
 
         return res.status(200).json({
             success: true,
@@ -113,15 +115,13 @@ const createTeam = async (req, res) => {
         }
 
         const result = await query(`
-            INSERT INTO teams (name, manager_id, monthly_target, description, created_by)
-            VALUES ($1, $2, $3, $4, $5)
+            INSERT INTO teams (name, manager_id, monthly_target, description, created_by, tenant_id) VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING *
-        `, [name.trim(), manager_id || null, monthly_target, description || null, req.user.id]);
+        `, [name.trim(), manager_id || null, monthly_target, description || null, req.user.id, req.tenantId]);
 
         // Audit log
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, new_value)
-             VALUES ($1, 'CREATE_TEAM', 'teams', $2)`,
+            `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'CREATE_TEAM', 'teams', $2, $3)`,
             [req.user.id, JSON.stringify({ name, manager_id, monthly_target })]
         );
 
@@ -180,15 +180,15 @@ const updateTeam = async (req, res) => {
                 description    = COALESCE($4, description),
                 is_active      = COALESCE($5, is_active)
             WHERE id = $6
-            RETURNING *
+             AND tenant_id = $7
+             RETURNING *
         `, [
             name?.trim() || null,
             newManagerId,
             monthly_target !== undefined ? monthly_target : null,
             description !== undefined ? description : null,
             is_active !== undefined ? is_active : null,
-            id
-        ]);
+            id, req.tenantId]);
 
         // ম্যানেজার বদলালে — এই টিমের সব SR-এর manager_id অটো আপডেট
         if (managerChanged) {
@@ -196,15 +196,14 @@ const updateTeam = async (req, res) => {
                 UPDATE users
                 SET manager_id = $1
                 WHERE team_id = $2 AND role = 'worker'
-            `, [newManagerId, id]);
+             AND tenant_id = $3`, [newManagerId, id, req.tenantId]);
 
             logger.info(`✅ Team manager changed → updated all SR manager_id in team ${id}`);
         }
 
         // Audit log
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
-             VALUES ($1, 'UPDATE_TEAM', 'teams', $2, $3)`,
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'UPDATE_TEAM', 'teams', $2, $3, $4)`,
             [req.user.id, id, JSON.stringify({
                 ...req.body,
                 manager_changed: managerChanged,
@@ -242,17 +241,17 @@ const setTeamTarget = async (req, res) => {
         const result = await query(`
             UPDATE teams SET monthly_target = $1
             WHERE id = $2
-            RETURNING id, name, monthly_target
-        `, [monthly_target, id]);
+             AND tenant_id = $3
+             RETURNING id, name, monthly_target
+        `, [monthly_target, id, req.tenantId]);
 
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'টিম পাওয়া যায়নি।' });
         }
 
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
-             VALUES ($1, 'SET_TEAM_TARGET', 'teams', $2, $3)`,
-            [req.user.id, id, JSON.stringify({ monthly_target })]
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'SET_TEAM_TARGET', 'teams', $2, $3, $4)`,
+            [req.user.id, id, JSON.stringify({ monthly_target }), req.tenantId]
         );
 
         return res.status(200).json({
@@ -293,7 +292,7 @@ const assignSRToTeam = async (req, res) => {
             UPDATE users
             SET team_id = $1, manager_id = $2
             WHERE id = ANY($3::uuid[]) AND role = 'worker'
-        `, [id, team.manager_id, sr_ids]);
+             AND tenant_id = $4`, [id, team.manager_id, sr_ids, req.tenantId]);
 
         return res.status(200).json({
             success: true,
@@ -319,7 +318,7 @@ const getMyTeam = async (req, res) => {
             FROM teams t
             LEFT JOIN users m ON m.id = t.manager_id
             WHERE t.manager_id = $1 AND t.is_active = true
-        `, [managerId]);
+             AND t.tenant_id = $2`, [managerId, req.tenantId]);
 
         if (teamResult.rows.length === 0) {
             return res.status(200).json({
@@ -337,8 +336,9 @@ const getMyTeam = async (req, res) => {
                 profile_photo, basic_salary, outstanding_dues
             FROM users
             WHERE team_id = $1 AND role = 'worker'
-            ORDER BY name_bn
-        `, [team.id]);
+             AND tenant_id = $2
+             ORDER BY name_bn
+        `, [team.id, req.tenantId]);
 
         return res.status(200).json({
             success: true,
@@ -370,7 +370,7 @@ const setSRTarget = async (req, res) => {
             FROM users u
             JOIN teams t ON t.id = u.team_id
             WHERE u.id = $1 AND u.role = 'worker' AND t.manager_id = $2
-        `, [srId, managerId]);
+             AND u.tenant_id = $3`, [srId, managerId, req.tenantId]);
 
         if (srCheck.rows.length === 0) {
             return res.status(403).json({
@@ -382,13 +382,13 @@ const setSRTarget = async (req, res) => {
         const result = await query(`
             UPDATE users SET monthly_target = $1
             WHERE id = $2
-            RETURNING id, name_bn, employee_code, monthly_target
-        `, [monthly_target, srId]);
+             AND tenant_id = $3
+             RETURNING id, name_bn, employee_code, monthly_target
+        `, [monthly_target, srId, req.tenantId]);
 
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
-             VALUES ($1, 'SET_SR_TARGET', 'users', $2, $3)`,
-            [managerId, srId, JSON.stringify({ monthly_target })]
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'SET_SR_TARGET', 'users', $2, $3, $4)`,
+            [managerId, srId, JSON.stringify({ monthly_target }), req.tenantId]
         );
 
         return res.status(200).json({
@@ -459,7 +459,7 @@ const removeSRFromTeam = async (req, res) => {
         const srCheck = await query(`
             SELECT id, name_bn FROM users
             WHERE id = $1 AND role = 'worker' AND team_id = $2
-        `, [srId, id]);
+             AND tenant_id = $3`, [srId, id, req.tenantId]);
 
         if (srCheck.rows.length === 0) {
             return res.status(404).json({
@@ -472,12 +472,11 @@ const removeSRFromTeam = async (req, res) => {
         await query(`
             UPDATE users SET team_id = NULL, manager_id = NULL
             WHERE id = $1
-        `, [srId]);
+             AND tenant_id = $2`, [srId, req.tenantId]);
 
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
-             VALUES ($1, 'REMOVE_SR_FROM_TEAM', 'users', $2, $3)`,
-            [req.user.id, srId, JSON.stringify({ removed_from_team: id })]
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'REMOVE_SR_FROM_TEAM', 'users', $2, $3, $4)`,
+            [req.user.id, srId, JSON.stringify({ removed_from_team: id }), req.tenantId]
         );
 
         return res.status(200).json({
@@ -506,8 +505,9 @@ const moveSRToTeam = async (req, res) => {
 
         // SR আছে কিনা চেক
         const srCheck = await query(
-            `SELECT id, name_bn, team_id FROM users WHERE id = $1 AND role = 'worker'`,
-            [srId]
+            `SELECT id, name_bn, team_id FROM users WHERE id = $1 AND role = 'worker'
+             AND tenant_id = $2`,
+            [srId, req.tenantId]
         );
         if (srCheck.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'SR পাওয়া যায়নি।' });
@@ -515,8 +515,9 @@ const moveSRToTeam = async (req, res) => {
 
         // নতুন টিম আছে কিনা চেক ও ম্যানেজার আনো
         const teamCheck = await query(
-            `SELECT id, manager_id FROM teams WHERE id = $1 AND is_active = true`,
-            [team_id]
+            `SELECT id, manager_id FROM teams WHERE id = $1 AND is_active = true
+             AND tenant_id = $2`,
+            [team_id, req.tenantId]
         );
         if (teamCheck.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'টিম পাওয়া যায়নি।' });
@@ -528,11 +529,10 @@ const moveSRToTeam = async (req, res) => {
         await query(`
             UPDATE users SET team_id = $1, manager_id = $2
             WHERE id = $3
-        `, [newTeam.id, newTeam.manager_id, srId]);
+             AND tenant_id = $4`, [newTeam.id, newTeam.manager_id, srId, req.tenantId]);
 
         await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value)
-             VALUES ($1, 'MOVE_SR_TO_TEAM', 'users', $2, $3)`,
+            `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'MOVE_SR_TO_TEAM', 'users', $2, $3, $4)`,
             [req.user.id, srId, JSON.stringify({ from_team: oldTeamId, to_team: team_id })]
         );
 

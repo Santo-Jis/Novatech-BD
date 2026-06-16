@@ -94,8 +94,9 @@ const getTeamLocations = async (req, res) => {
                  FROM users
                  WHERE manager_id = $1
                    AND role = 'worker'
-                   AND status = 'active'`,
-                [currentUserId]
+                   AND status = 'active'
+             AND tenant_id = $2`,
+                [currentUserId, req.tenantId]
             );
             authorizedWorkerIds = new Set(result.rows.map(r => String(r.id)));
         }
@@ -151,8 +152,9 @@ const getGpsTrail = async (req, res) => {
         if (role !== 'admin') {
             const authCheck = await query(
                 `SELECT id FROM users
-                 WHERE id = $1 AND manager_id = $2 AND role = 'worker'`,
-                [workerId, currentUserId]
+                 WHERE id = $1 AND manager_id = $2 AND role = 'worker'
+             AND tenant_id = $3`,
+                [workerId, currentUserId, req.tenantId]
             );
             if (authCheck.rows.length === 0) {
                 return res.status(403).json({ success: false, message: 'এই SR আপনার team-এ নেই।' });
@@ -161,8 +163,9 @@ const getGpsTrail = async (req, res) => {
 
         // ── SR-এর নাম ও info আনো ──
         const workerInfo = await query(
-            `SELECT name_bn, employee_code FROM users WHERE id = $1`,
-            [workerId]
+            `SELECT name_bn, employee_code FROM users WHERE id = $1
+             AND tenant_id = $2`,
+            [workerId, req.tenantId]
         );
         if (workerInfo.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'SR পাওয়া যায়নি।' });

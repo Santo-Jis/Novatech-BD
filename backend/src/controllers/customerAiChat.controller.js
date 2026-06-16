@@ -54,8 +54,9 @@ const customerAiChat = async (req, res) => {
         const customerId = req.portalUser.customer_id;
 
         const customerResult = await query(
-            `SELECT shop_name, owner_name, customer_code FROM customers WHERE id = $1`,
-            [customerId]
+            `SELECT shop_name, owner_name, customer_code FROM customers WHERE id = $1
+             AND tenant_id = $2`,
+            [customerId, req.tenantId]
         );
         if (customerResult.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Customer তথ্য পাওয়া যায়নি।' });

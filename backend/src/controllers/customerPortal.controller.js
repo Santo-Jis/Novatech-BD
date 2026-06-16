@@ -116,11 +116,9 @@ const sendPortalLink = async (req, res) => {
         // ✅ NEW: Permanent link — customer_code ব্যবহার, কোনো expiry নেই
         // portal_tokens টেবিলে bound_email সংরক্ষণের জন্য একটি row রাখা হয়
         await query(
-            `INSERT INTO customer_portal_tokens
-                (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email)
-             VALUES ($1, $2, $3, NOW() + INTERVAL '10 years', 1, NULL, NULL, NULL)
+            `INSERT INTO customer_portal_tokens (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email, tenant_id) VALUES ($1, $2, $3, NOW(, $4) + INTERVAL '10 years', 1, NULL, NULL, NULL)
              ON CONFLICT (customer_id) DO NOTHING`,
-            [customerId, generatePortalToken(), generateRedirectId()]
+            [customerId, generatePortalToken(), generateRedirectId(), req.tenantId]
         );
 
         const frontendUrl = process.env.FRONTEND_URL || 'https://novatech-bd-kqrn.vercel.app';
@@ -180,8 +178,10 @@ const resolveLink = async (req, res) => {
              JOIN customers c ON cpt.customer_id = c.id
              WHERE cpt.redirect_id = $1
                AND cpt.expires_at > NOW()
-               AND c.is_active = true`,
-            [redirect_id]
+               AND c.is_active = true
+             AND cpt.tenant_id = $2`,
+            [redirect_id,
+                req.tenantId]
         );
 
         if (result.rows.length === 0) {
@@ -531,14 +531,12 @@ const googleAuth = async (req, res) => {
         const deviceLabel = guessDeviceLabel(userAgent);
 
         await query(
-            `INSERT INTO customer_portal_devices
-                (customer_id, device_hash, google_email, device_label)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO customer_portal_devices (customer_id, device_hash, google_email, device_label, tenant_id) VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (customer_id, device_hash) DO UPDATE SET
                 last_used_at = NOW(),
                 is_active    = true,
                 device_label = EXCLUDED.device_label`,
-            [customerData.cid, hashedDevice, email.toLowerCase(), deviceLabel]
+            [customerData.cid, hashedDevice, email.toLowerCase(), deviceLabel, req.tenantId]
         );
 
         // ── প্রথমবার login → email lock + google_email সেট ───
@@ -1253,24 +1251,20 @@ const submitCreditLimitRequest = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO credit_limit_requests
-                 (customer_id, current_limit, requested_amount, reason, status)
-             VALUES ($1, $2, $3, $4, 'pending')
+            `INSERT INTO credit_limit_requests (customer_id, current_limit, requested_amount, reason, status, tenant_id) VALUES ($1, $2, $3, $4, 'pending', $5)
              RETURNING id, created_at`,
-            [customer_id, cust.credit_limit, amount, reason?.trim() || null]
+            [customer_id, cust.credit_limit, amount, reason?.trim() || null, req.tenantId]
         );
 
         // Manager/Admin notification
         const { sendCustomerNotification } = require('./customerNotification.controller');
         // Admin-level DB notification (internal log)
         await query(
-            `INSERT INTO customer_notifications (customer_id, title, body, type)
-             VALUES ($1, $2, $3, 'credit_request')`,
+            `INSERT INTO customer_notifications (customer_id, title, body, type, tenant_id) VALUES ($1, $2, $3, 'credit_request', $4)`,
             [
                 customer_id,
                 '📋 ক্রেডিট লিমিট আবেদন জমা হয়েছে',
-                `আপনার ৳${amount.toLocaleString()} ক্রেডিট লিমিট বৃদ্ধির আবেদন জমা হয়েছে। Manager অনুমোদন দিলে আপনাকে জানানো হবে।`
-            ]
+                `আপনার ৳${amount.toLocaleString()} ক্রেডিট লিমিট বৃদ্ধির আবেদন জমা হয়েছে। Manager অনুমোদন দিলে আপনাকে জানানো হবে।`, req.tenantId]
         );
 
         return res.status(201).json({
@@ -1335,22 +1329,18 @@ const submitComplaint = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO customer_complaints
-                 (customer_id, type, subject, description, status)
-             VALUES ($1, $2, $3, $4, 'open')
+            `INSERT INTO customer_complaints (customer_id, type, subject, description, status, tenant_id) VALUES ($1, $2, $3, $4, 'open', $5)
              RETURNING id, created_at`,
-            [customer_id, type || 'complaint', subject.trim(), description.trim()]
+            [customer_id, type || 'complaint', subject.trim(), description.trim(), req.tenantId]
         );
 
         // কাস্টমারকে confirmation notification পাঠাও
         await query(
-            `INSERT INTO customer_notifications (customer_id, title, body, type)
-             VALUES ($1, $2, $3, 'complaint')`,
+            `INSERT INTO customer_notifications (customer_id, title, body, type, tenant_id) VALUES ($1, $2, $3, 'complaint', $4)`,
             [
                 customer_id,
                 '✅ আপনার অভিযোগ গ্রহণ হয়েছে',
-                `"${subject.trim()}" — আমরা শীঘ্রই আপনার সাথে যোগাযোগ করব।`
-            ]
+                `"${subject.trim()}" — আমরা শীঘ্রই আপনার সাথে যোগাযোগ করব।`, req.tenantId]
         );
 
         return res.status(201).json({
@@ -1720,19 +1710,16 @@ const directGoogleAuth = async (req, res) => {
 
         // ── Device whitelist-এ add / update ─────────────────
         await query(
-            `INSERT INTO customer_portal_devices (customer_id, device_hash, google_email, device_label)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO customer_portal_devices (customer_id, device_hash, google_email, device_label, tenant_id) VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (customer_id, device_hash) DO UPDATE SET
                 last_used_at = NOW(), is_active = true, device_label = EXCLUDED.device_label`,
-            [customer.id, hashedDevice, email.toLowerCase(), deviceLabel]
+            [customer.id, hashedDevice, email.toLowerCase(), deviceLabel, req.tenantId]
         );
 
         // ── portal_tokens row তৈরি বা আপডেট ────────────────
         if (isFirstLogin) {
             await query(
-                `INSERT INTO customer_portal_tokens
-                    (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email)
-                 VALUES ($1, $2, $3, NOW() + INTERVAL '10 years', 1, $4, NOW(), $4)
+                `INSERT INTO customer_portal_tokens (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email, tenant_id) VALUES ($1, $2, $3, NOW(, $4) + INTERVAL '10 years', 1, $4, NOW(), $4)
                  ON CONFLICT (customer_id) DO UPDATE SET
                     bound_email  = $4,
                     google_email = $4,

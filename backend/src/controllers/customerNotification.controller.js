@@ -39,8 +39,10 @@ const sendFallbackEmail = async (customerId, { title, body, type }) => {
     if (!emailEnabled || !transporter) return;
     try {
         const { rows } = await query(
-            `SELECT email, owner_name, shop_name FROM customers WHERE id = $1 AND email IS NOT NULL AND email != ''`,
-            [customerId]
+            `SELECT email, owner_name, shop_name FROM customers WHERE id = $1 AND email IS NOT NULL AND email != ''
+             AND tenant_id = $2`,
+            [customerId,
+                req.tenantId]
         );
         if (!rows.length) return; // email নেই — skip
 
@@ -239,9 +241,8 @@ const sendCustomerNotificationFull = async (customerId, { title, body, type = 'g
     try {
         // ১. In-App notification (সবসময়)
         await query(`
-            INSERT INTO customer_notifications (customer_id, title, body, type)
-            VALUES ($1, $2, $3, $4)
-        `, [customerId, title, body, type]);
+            INSERT INTO customer_notifications (customer_id, title, body, type, tenant_id) VALUES ($1, $2, $3, $4, $5)
+        `, [customerId, title, body, type, req.tenantId]);
 
         // ২. Web Push চেষ্টা করো
         const { rows } = await query(

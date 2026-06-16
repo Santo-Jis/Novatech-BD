@@ -61,8 +61,9 @@ const createCollection = async (req, res) => {
         const custResult = await query(
             `SELECT c.id, c.shop_name, c.current_credit
              FROM customers c
-             WHERE c.id = $1`,
-            [customer_id]
+             WHERE c.id = $1
+             AND c.tenant_id = $2`,
+            [customer_id, req.tenantId]
         );
         if (custResult.rows.length === 0)
             return res.status(404).json({ message: 'কাস্টমার পাওয়া যায়নি' });
@@ -79,8 +80,9 @@ const createCollection = async (req, res) => {
                  WHERE customer_id = $1
                    AND worker_id   = $2
                    AND is_active   = true
-                 LIMIT 1`,
-                [customer_id, sr_id]
+             AND tenant_id = $3
+             LIMIT 1`,
+                [customer_id, sr_id, req.tenantId]
             );
             if (assignCheck.rows.length === 0)
                 return res.status(403).json({ message: 'এই কাস্টমারে আপনার অ্যাক্সেস নেই' });
@@ -113,13 +115,11 @@ const createCollection = async (req, res) => {
 
         // ── Insert collection record ──────────────────────────
         const insertResult = await query(
-            `INSERT INTO collections
-               (sr_id, customer_id, amount, payment_mode,
+            `INSERT INTO collections (sr_id, customer_id, amount, payment_mode,
                 cheque_bank, cheque_no, cheque_date,
                 receipt_photo_url, note, latitude, longitude,
-                status, created_at)
-             VALUES
-               ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', NOW())
+                status, created_at, tenant_id) VALUES
+               ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', NOW(, 2))
              RETURNING *`,
             [
                 sr_id,
@@ -167,8 +167,9 @@ const getMyCollections = async (req, res) => {
              JOIN customers   c ON c.id = col.customer_id
              WHERE col.sr_id = $1
                AND col.created_at::date = $2
+             AND col.tenant_id = $3
              ORDER BY col.created_at DESC`,
-            [sr_id, date]
+            [sr_id, date, req.tenantId]
         );
 
         // সারাংশ
@@ -209,9 +210,10 @@ const getCustomerCollections = async (req, res) => {
              FROM collections col
              JOIN employees   e ON e.id = col.sr_id
              WHERE col.customer_id = $1
+             AND col.tenant_id = $4
              ORDER BY col.created_at DESC
              LIMIT $2 OFFSET $3`,
-            [customerId, limit, offset]
+            [customerId, limit, offset, req.tenantId]
         );
 
         return res.json({ data: result.rows });
@@ -237,8 +239,9 @@ const verifyCollection = async (req, res) => {
 
         // ── Collection আছে কিনা চেক ──────────────────────────
         const colResult = await query(
-            `SELECT * FROM collections WHERE id = $1 AND status = 'submitted'`,
-            [id]
+            `SELECT * FROM collections WHERE id = $1 AND status = 'submitted'
+             AND tenant_id = $2`,
+            [id, req.tenantId]
         );
         if (colResult.rows.length === 0)
             return res.status(404).json({ message: 'Collection পাওয়া যায়নি বা submitted নয়' });
@@ -270,8 +273,9 @@ const verifyCollection = async (req, res) => {
                 `UPDATE customers
                  SET current_credit = GREATEST(0, current_credit - $1),
                      updated_at     = NOW()
-                 WHERE id = $2`,
-                [parseFloat(col.amount), col.customer_id]
+                 WHERE id = $2
+             AND tenant_id = $3`,
+                [parseFloat(col.amount), col.customer_id, req.tenantId]
             );
         });
 
@@ -328,8 +332,9 @@ const getSettlementCollectionSummary = async (req, res) => {
              JOIN customers c ON c.id = col.customer_id
              WHERE col.sr_id = $1
                AND col.created_at::date = $2
-               AND col.status IN ('pending', 'submitted')`,
-            [sr_id, today]
+               AND col.status IN ('pending', 'submitted')
+             AND col.tenant_id = $3`,
+            [sr_id, today, req.tenantId]
         );
 
         return res.json({ data: result.rows[0] });

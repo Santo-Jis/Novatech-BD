@@ -123,10 +123,11 @@ const getTopProducts = async (req, res) => {
              JOIN products p ON si.product_id = p.id
              JOIN sales_transactions st ON si.sale_id = st.id
              WHERE st.date BETWEEN $1 AND $2
+             AND si.tenant_id = $4
              GROUP BY p.id, p.name, p.sku
              ORDER BY total_revenue DESC
              LIMIT $3`,
-            [fromDate, toDate, limit]
+            [fromDate, toDate, limit, req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });
@@ -160,10 +161,11 @@ const getTopShops = async (req, res) => {
                AND st.date BETWEEN $1 AND $2
              LEFT JOIN routes r ON c.route_id = r.id
              WHERE c.is_active = true
+             AND c.tenant_id = $4
              GROUP BY c.id, c.shop_name, c.owner_name, r.name, c.current_credit
              ORDER BY total_purchase DESC
              LIMIT $3`,
-            [fromDate, toDate, limit]
+            [fromDate, toDate, limit, req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });
