@@ -24,9 +24,7 @@ import { portalTokenStore } from '../utils/portalTokenStore'
 
 export function usePortalAuth(defaultTab = 'summary') {
   const [searchParams] = useSearchParams()
-
-  // ?c=customer_code — permanent link, কখনো expire হয় না
-  const customerCodeFromURL = searchParams.get('c')
+  const customerCodeFromURL = searchParams.get('c')  // SR link-এ থাকে, প্রথমবার login এ
 
   const [phase,       setPhase]       = useState('loading')
   const portalJWTRef  = useRef(null)   // stale closure এড়াতে (React state mirror)
@@ -464,7 +462,6 @@ export function usePortalAuth(defaultTab = 'summary') {
 
   // ── Logout ───────────────────────────────────────────────────
   // ✅ memory clear + backend HttpOnly cookie মুছে দেয়
-  // customer_code localStorage-এ থাকে — পরের বার login screen সরাসরি আসে
   const handleLogout = async () => {
     portalTokenStore.clear()
     portalJWTRef.current = null
@@ -499,12 +496,15 @@ export function usePortalAuth(defaultTab = 'summary') {
       }
 
       const deviceId     = await getDeviceFingerprint()
-      const customerCode = getCustomerCode()
-      if (!customerCode) throw new Error('Customer code পাওয়া যায়নি। SR-এর লিংক থেকে প্রবেশ করুন।')
+      const customerCode = getCustomerCode()  // প্রথমবার SR link থেকে save হওয়া code
 
       const data = await portalFetch('/portal/direct-auth', {
         method: 'POST',
-        body:   JSON.stringify({ google_token: access_token, customer_code: customerCode, device_id: deviceId }),
+        body:   JSON.stringify({
+          google_token:  access_token,
+          device_id:     deviceId,
+          ...(customerCode ? { customer_code: customerCode } : {}),  // optional
+        }),
       })
 
       // ✅ access token  → memory (15 মিনিট)
@@ -541,16 +541,12 @@ export function usePortalAuth(defaultTab = 'summary') {
         .filter(k => k.startsWith('portal_jwt_'))
         .forEach(k => localStorage.removeItem(k))
 
+      // ✅ SR link-এ customer_code থাকলে save করো (প্রথমবার login এর জন্য)
       if (customerCodeFromURL) setCustomerCode(customerCodeFromURL)
 
-      const customerCode = customerCodeFromURL || getCustomerCode()
-      if (!customerCode) {
-        setError('লিংক পাওয়া যায়নি।')
-        setPhase('invalid')
-        return
-      }
-
-      // HttpOnly cookie দিয়ে silent re-auth
+      // HttpOnly cookie দিয়ে silent re-auth চেষ্টা করো
+      // সফল হলে → dashboard, ব্যর্থ হলে → Google login screen
+      // ❌ আগের মতো invalid phase নেই — customer_code ছাড়াও login screen দেখাবে
       try {
         const data = await portalFetch('/portal/refresh', { method: 'POST' })
         const { portal_jwt, expires_in = 900 } = data.data
@@ -559,7 +555,7 @@ export function usePortalAuth(defaultTab = 'summary') {
         setPortalJWT(portal_jwt)
         await loadDashboard()
       } catch {
-        // Cookie নেই বা মেয়াদোত্তীর্ণ → Google login
+        // Cookie নেই বা মেয়াদোত্তীর্ণ → Google login screen
         setPhase('welcome')
       }
     }
