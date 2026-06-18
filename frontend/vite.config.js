@@ -2,38 +2,22 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// ========================================================
-// Vite Config - NovaTechBD
-// ========================================================
-
-// VITE_APP_BASE=./ শুধু Capacitor APK build-এর সময় set করো।
-// Vercel / web deploy-এ base '/' হওয়া দরকার, নইলে lazy chunk
-// URL ভুলভাবে resolve হয় → "$ is not defined" error।
 const base = process.env.VITE_APP_BASE || '/'
 
 export default defineConfig({
-  base, // Vercel: '/'  |  Capacitor APK: './'
+  base,
 
   plugins: [
     react(),
     VitePWA({
-      strategies:    'injectManifest',
-      srcDir:        'src',
-      filename:      'sw.js',
-      registerType:  'autoUpdate',
+      strategies:     'injectManifest',
+      srcDir:         'src',
+      filename:       'sw.js',
+      registerType:   'autoUpdate',
       injectRegister: 'auto',
-      manifest:      false,
-
-      devOptions: {
-        enabled: true,
-        type:    'module',
-      },
-
+      manifest:       false,
+      devOptions: { enabled: true, type: 'module' },
       injectManifest: {
-        // ✅ FIX: আগে **/*.js দিয়ে সব JS pre-cache হত (app open-এ সব chunk download)।
-        //   এখন শুধু app shell (HTML, CSS, icons) pre-cache।
-        //   JS chunks (role-admin, role-worker, etc.) প্রথমবার navigate করলে
-        //   লোড হবে এবং SW runtime cache-এ থাকবে — পরে instant।
         globPatterns: ['**/*.{css,html,ico,png,svg,woff2}'],
         globIgnores:  ['**/role-*.js', '**/vendor-*.js'],
         maximumFileSizeToCacheInBytes: 5242880,
@@ -43,61 +27,49 @@ export default defineConfig({
 
   server: {
     port: 3000,
-    proxy: {
-      '/api': {
-        target:      'http://localhost:5000',
-        changeOrigin: true,
-      },
-    },
+    proxy: { '/api': { target: 'http://localhost:5000', changeOrigin: true } },
   },
 
   build: {
+    // ✅ FIX: chunk warning threshold বাড়ানো হয়েছে
+    // recharts (410 kB) + firebase (379 kB) এর জন্য 500 kB যথেষ্ট না
+    chunkSizeWarningLimit: 600,
+
     rollupOptions: {
       output: {
-        // ✅ FIX: Object → Function syntax।
-        //
-        // আগে: ৭২টা lazy page → ৭২টা আলাদা chunk → Worker Dashboard,
-        //       Customer List প্রতিটা navigate-এ আলাদা আলাদা loader।
-        //
-        // এখন: Role অনুযায়ী group করা হয়েছে।
-        //   role-worker  → Worker-এর সব ২০ পেইজ + WorkerLayout একসাথে
-        //   role-admin   → Admin-এর সব পেইজ + AdminLayout একসাথে
-        //   role-manager → Manager-এর সব পেইজ + ManagerLayout একসাথে
-        //   role-customer→ Customer-এর সব পেইজ + CustomerLayout একসাথে
-        //
-        // ফলাফল: প্রথমবার Worker Dashboard-এ গেলে role-worker chunk লোড হবে।
-        //         তারপর Customer List, Sales Form, Settlement — সব instant।
-        //         কোনো loader দেখাবে না।
         manualChunks(id) {
           // ── Vendor: core React ───────────────────────────────────
           if (
             id.includes('/node_modules/react/') ||
             id.includes('/node_modules/react-dom/') ||
             id.includes('/node_modules/react-router')
-          ) {
-            return 'vendor-react'
-          }
+          ) return 'vendor-react'
 
-          // ── Vendor: Firebase (বড় library, আলাদা chunk) ──────────
+          // ── Vendor: Firebase — modular SDK আলাদা রাখো ──────────
           if (
-            id.includes('/node_modules/firebase') ||
-            id.includes('/node_modules/@firebase')
+            id.includes('/node_modules/firebase/') ||
+            id.includes('/node_modules/@firebase/')
           ) {
-            return 'vendor-firebase'
+            // ✅ FIX: Firebase modular packages আলাদা করো
+            // auth, firestore, messaging — যার যার chunk
+            if (id.includes('/auth'))        return 'vendor-firebase-auth'
+            if (id.includes('/messaging'))   return 'vendor-firebase-msg'
+            if (id.includes('/firestore'))   return 'vendor-firebase-store'
+            return 'vendor-firebase-core'
           }
 
-          // ── Vendor: Charts ───────────────────────────────────────
+          // ── Vendor: Charts — recharts ────────────────────────────
           if (id.includes('/node_modules/recharts')) {
+            // ✅ FIX: recharts internal modules আলাদা করো
+            if (id.includes('/victory-') || id.includes('d3-')) return 'vendor-charts-d3'
             return 'vendor-charts'
           }
 
-          // ── Vendor: Map (leaflet ভারী, আলাদা chunk) ─────────────
+          // ── Vendor: Map ──────────────────────────────────────────
           if (
             id.includes('/node_modules/leaflet') ||
             id.includes('/node_modules/react-leaflet')
-          ) {
-            return 'vendor-map'
-          }
+          ) return 'vendor-map'
 
           // ── Vendor: UI utilities ─────────────────────────────────
           if (
@@ -106,62 +78,41 @@ export default defineConfig({
             id.includes('/node_modules/react-hook-form') ||
             id.includes('/node_modules/clsx') ||
             id.includes('/node_modules/date-fns')
-          ) {
-            return 'vendor-ui'
-          }
+          ) return 'vendor-ui'
 
-          // ── Shared app core (store, api, hooks, firebase) ────────
-          // এগুলো multiple role-এ import হয়।
-          // আলাদা chunk-এ রাখলে duplication হবে না।
+          // ── Shared app core ──────────────────────────────────────
           if (
             id.includes('/src/store/') ||
             id.includes('/src/api/') ||
             id.includes('/src/firebase/') ||
             id.includes('/src/hooks/')
-          ) {
-            return 'app-core'
-          }
+          ) return 'app-core'
 
           // ── Shared components ────────────────────────────────────
-          if (id.includes('/src/components/')) {
-            return 'app-components'
-          }
+          if (id.includes('/src/components/')) return 'app-components'
 
-          // ── Role-based page chunks ───────────────────────────────
+          // ── Role-based chunks ────────────────────────────────────
           if (
             id.includes('/src/pages/admin/') ||
             id.includes('/src/layouts/AdminLayout')
-          ) {
-            return 'role-admin'
-          }
+          ) return 'role-admin'
 
           if (
             id.includes('/src/pages/manager/') ||
             id.includes('/src/layouts/ManagerLayout')
-          ) {
-            return 'role-manager'
-          }
+          ) return 'role-manager'
 
           if (
             id.includes('/src/pages/worker/') ||
             id.includes('/src/layouts/WorkerLayout')
-          ) {
-            return 'role-worker'
-          }
+          ) return 'role-worker'
 
           if (
             id.includes('/src/pages/customer/') ||
             id.includes('/src/layouts/CustomerLayout')
-          ) {
-            return 'role-customer'
-          }
+          ) return 'role-customer'
 
-          if (id.includes('/src/pages/shared/')) {
-            return 'role-shared'
-          }
-
-          // বাকি সব (Login, LandingPage, SRApplicationForm, etc.)
-          // Vite নিজেই ঠিক করবে — auto-split
+          if (id.includes('/src/pages/shared/')) return 'role-shared'
         },
       },
     },
