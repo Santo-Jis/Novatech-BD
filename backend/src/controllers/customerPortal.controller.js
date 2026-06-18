@@ -116,9 +116,11 @@ const sendPortalLink = async (req, res) => {
         // ✅ NEW: Permanent link — customer_code ব্যবহার, কোনো expiry নেই
         // portal_tokens টেবিলে bound_email সংরক্ষণের জন্য একটি row রাখা হয়
         await query(
-            `INSERT INTO customer_portal_tokens (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email, tenant_id) VALUES ($1, $2, $3, NOW(, $4) + INTERVAL '10 years', 1, NULL, NULL, NULL)
+            `INSERT INTO customer_portal_tokens
+                (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email)
+             VALUES ($1, $2, $3, NOW() + INTERVAL '10 years', 1, NULL, NULL, NULL)
              ON CONFLICT (customer_id) DO NOTHING`,
-            [customerId, generatePortalToken(), generateRedirectId(), req.tenantId]
+            [customerId, generatePortalToken(), generateRedirectId()]
         );
 
         const frontendUrl = process.env.FRONTEND_URL || 'https://novatech-bd-kqrn.vercel.app';
@@ -178,10 +180,8 @@ const resolveLink = async (req, res) => {
              JOIN customers c ON cpt.customer_id = c.id
              WHERE cpt.redirect_id = $1
                AND cpt.expires_at > NOW()
-               AND c.is_active = true
-             AND cpt.tenant_id = $2`,
-            [redirect_id,
-                req.tenantId]
+               AND c.is_active = true`,
+            [redirect_id]
         );
 
         if (result.rows.length === 0) {
@@ -531,12 +531,14 @@ const googleAuth = async (req, res) => {
         const deviceLabel = guessDeviceLabel(userAgent);
 
         await query(
-            `INSERT INTO customer_portal_devices (customer_id, device_hash, google_email, device_label, tenant_id) VALUES ($1, $2, $3, $4, $5)
+            `INSERT INTO customer_portal_devices
+                (customer_id, device_hash, google_email, device_label)
+             VALUES ($1, $2, $3, $4)
              ON CONFLICT (customer_id, device_hash) DO UPDATE SET
                 last_used_at = NOW(),
                 is_active    = true,
                 device_label = EXCLUDED.device_label`,
-            [customerData.cid, hashedDevice, email.toLowerCase(), deviceLabel, req.tenantId]
+            [customerData.cid, hashedDevice, email.toLowerCase(), deviceLabel]
         );
 
         // ── প্রথমবার login → email lock + google_email সেট ───
@@ -1251,20 +1253,24 @@ const submitCreditLimitRequest = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO credit_limit_requests (customer_id, current_limit, requested_amount, reason, status, tenant_id) VALUES ($1, $2, $3, $4, 'pending', $5)
+            `INSERT INTO credit_limit_requests
+                 (customer_id, current_limit, requested_amount, reason, status)
+             VALUES ($1, $2, $3, $4, 'pending')
              RETURNING id, created_at`,
-            [customer_id, cust.credit_limit, amount, reason?.trim() || null, req.tenantId]
+            [customer_id, cust.credit_limit, amount, reason?.trim() || null]
         );
 
         // Manager/Admin notification
         const { sendCustomerNotification } = require('./customerNotification.controller');
         // Admin-level DB notification (internal log)
         await query(
-            `INSERT INTO customer_notifications (customer_id, title, body, type, tenant_id) VALUES ($1, $2, $3, 'credit_request', $4)`,
+            `INSERT INTO customer_notifications (customer_id, title, body, type)
+             VALUES ($1, $2, $3, 'credit_request')`,
             [
                 customer_id,
                 '📋 ক্রেডিট লিমিট আবেদন জমা হয়েছে',
-                `আপনার ৳${amount.toLocaleString()} ক্রেডিট লিমিট বৃদ্ধির আবেদন জমা হয়েছে। Manager অনুমোদন দিলে আপনাকে জানানো হবে।`, req.tenantId]
+                `আপনার ৳${amount.toLocaleString()} ক্রেডিট লিমিট বৃদ্ধির আবেদন জমা হয়েছে। Manager অনুমোদন দিলে আপনাকে জানানো হবে।`
+            ]
         );
 
         return res.status(201).json({
@@ -1329,18 +1335,22 @@ const submitComplaint = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO customer_complaints (customer_id, type, subject, description, status, tenant_id) VALUES ($1, $2, $3, $4, 'open', $5)
+            `INSERT INTO customer_complaints
+                 (customer_id, type, subject, description, status)
+             VALUES ($1, $2, $3, $4, 'open')
              RETURNING id, created_at`,
-            [customer_id, type || 'complaint', subject.trim(), description.trim(), req.tenantId]
+            [customer_id, type || 'complaint', subject.trim(), description.trim()]
         );
 
         // কাস্টমারকে confirmation notification পাঠাও
         await query(
-            `INSERT INTO customer_notifications (customer_id, title, body, type, tenant_id) VALUES ($1, $2, $3, 'complaint', $4)`,
+            `INSERT INTO customer_notifications (customer_id, title, body, type)
+             VALUES ($1, $2, $3, 'complaint')`,
             [
                 customer_id,
                 '✅ আপনার অভিযোগ গ্রহণ হয়েছে',
-                `"${subject.trim()}" — আমরা শীঘ্রই আপনার সাথে যোগাযোগ করব।`, req.tenantId]
+                `"${subject.trim()}" — আমরা শীঘ্রই আপনার সাথে যোগাযোগ করব।`
+            ]
         );
 
         return res.status(201).json({
@@ -1634,28 +1644,16 @@ const getCustomerStatement = async (req, res) => {
 // ============================================================
 const directGoogleAuth = async (req, res) => {
     try {
-        const { google_token, customer_code, device_id } = req.body;
+        // ✅ HYBRID:
+        //   প্রথমবার  → SR link-এ ?c=customer_code থাকে → email auto-save হয়
+        //   পরের বার  → customer_code ছাড়াই Gmail দিয়ে সরাসরি login
+        const { google_token, device_id, customer_code } = req.body;
 
-        if (!google_token || !customer_code || !device_id) {
-            return res.status(400).json({ success: false, message: 'সব তথ্য পাঠান: google_token, customer_code, device_id।' });
+        if (!google_token || !device_id) {
+            return res.status(400).json({ success: false, message: 'google_token এবং device_id পাঠান।' });
         }
 
-        // customer_code দিয়ে customer খোঁজো
-        const customerResult = await query(
-            `SELECT id, shop_name, owner_name, customer_code, email, whatsapp,
-                    current_credit, credit_limit, credit_balance
-             FROM customers
-             WHERE customer_code = $1 AND is_active = true`,
-            [customer_code]
-        );
-
-        if (customerResult.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
-        }
-
-        const customer = customerResult.rows[0];
-
-        // ── Google token যাচাই ──────────────────────────────
+        // ── ১. আগে Google token যাচাই করো ───────────────────
         let googleUser;
         try {
             const [userinfoRes, tokeninfoRes] = await Promise.all([
@@ -1684,42 +1682,94 @@ const directGoogleAuth = async (req, res) => {
         }
 
         const { email, name, picture } = googleUser;
+        let customer;
+
+        if (customer_code) {
+            // ── ২A. প্রথমবার: customer_code দিয়ে customer খোঁজো ──
+            const result = await query(
+                `SELECT id, shop_name, owner_name, customer_code, email, whatsapp,
+                        current_credit, credit_limit, credit_balance
+                 FROM customers
+                 WHERE customer_code = $1 AND is_active = true`,
+                [customer_code]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
+            }
+
+            customer = result.rows[0];
+
+            // Email lock চেক — আগে অন্য Gmail দিয়ে login থাকলে block
+            if (customer.email && customer.email.toLowerCase() !== email.toLowerCase()) {
+                return res.status(403).json({
+                    success: false,
+                    message: `এই পোর্টালে অন্য Gmail (${customer.email}) দিয়ে আগে login করা আছে।`,
+                    error_code: 'EMAIL_LOCKED',
+                });
+            }
+
+            // ✅ প্রথমবার হলে Gmail auto-save করো
+            if (!customer.email) {
+                await query(
+                    'UPDATE customers SET email = $1, updated_at = NOW() WHERE id = $2',
+                    [email.toLowerCase(), customer.id]
+                );
+                customer.email = email.toLowerCase();
+            }
+        } else {
+            // ── ২B. পরের বার: Gmail দিয়ে customer খোঁজো ────────
+            const result = await query(
+                `SELECT c.id, c.shop_name, c.owner_name, c.customer_code, c.email, c.whatsapp,
+                        c.current_credit, c.credit_limit, c.credit_balance
+                 FROM customers c
+                 LEFT JOIN customer_portal_tokens cpt ON cpt.customer_id = c.id
+                 WHERE (LOWER(c.email) = LOWER($1) OR LOWER(cpt.bound_email) = LOWER($1))
+                   AND c.is_active = true
+                 LIMIT 1`,
+                [email]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: `এই Gmail (${email}) দিয়ে কোনো কাস্টমার নেই। SR-এর পাঠানো লিংক থেকে প্রথমবার প্রবেশ করুন।`,
+                });
+            }
+
+            customer = result.rows[0];
+        }
+
         const userAgent    = req.headers['user-agent'] || '';
         const hashedDevice = hashDeviceId(`${device_id}::${userAgent}`);
         const deviceLabel  = guessDeviceLabel(userAgent);
 
-        // ── portal_tokens row আছে কিনা চেক (bound_email দেখতে) ──
+        // ── portal_tokens row আছে কিনা চেক ──────────────────
         const tokenResult = await query(
             'SELECT bound_email, token_version FROM customer_portal_tokens WHERE customer_id = $1',
             [customer.id]
         );
 
-        const existingRow   = tokenResult.rows[0];
-        const boundEmail    = existingRow?.bound_email;
-        const tokenVersion  = existingRow?.token_version || 1;
-        const isFirstLogin  = !boundEmail;
-
-        // ── Email lock চেক ───────────────────────────────────
-        if (boundEmail && email.toLowerCase() !== boundEmail.toLowerCase()) {
-            return res.status(403).json({
-                success: false,
-                message: `এই পোর্টালে অন্য Gmail (${boundEmail}) দিয়ে আগে login করা আছে।`,
-                error_code: 'EMAIL_LOCKED',
-            });
-        }
+        const existingRow  = tokenResult.rows[0];
+        const boundEmail   = existingRow?.bound_email;
+        const tokenVersion = existingRow?.token_version || 1;
+        const isFirstLogin = !boundEmail;
 
         // ── Device whitelist-এ add / update ─────────────────
         await query(
-            `INSERT INTO customer_portal_devices (customer_id, device_hash, google_email, device_label, tenant_id) VALUES ($1, $2, $3, $4, $5)
+            `INSERT INTO customer_portal_devices (customer_id, device_hash, google_email, device_label)
+             VALUES ($1, $2, $3, $4)
              ON CONFLICT (customer_id, device_hash) DO UPDATE SET
                 last_used_at = NOW(), is_active = true, device_label = EXCLUDED.device_label`,
-            [customer.id, hashedDevice, email.toLowerCase(), deviceLabel, req.tenantId]
+            [customer.id, hashedDevice, email.toLowerCase(), deviceLabel]
         );
 
         // ── portal_tokens row তৈরি বা আপডেট ────────────────
         if (isFirstLogin) {
             await query(
-                `INSERT INTO customer_portal_tokens (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email, tenant_id) VALUES ($1, $2, $3, NOW(, $4) + INTERVAL '10 years', 1, $4, NOW(), $4)
+                `INSERT INTO customer_portal_tokens
+                    (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email)
+                 VALUES ($1, $2, $3, NOW() + INTERVAL '10 years', 1, $4, NOW(), $4)
                  ON CONFLICT (customer_id) DO UPDATE SET
                     bound_email  = $4,
                     google_email = $4,
