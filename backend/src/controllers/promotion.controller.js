@@ -131,8 +131,9 @@ const updatePromotion = async (req, res) => {
         }
 
         params.push(id);
+        params.push(req.tenantId);
         const result = await query(
-            `UPDATE promotions SET ${sets.join(', ')} WHERE id = $${idx} RETURNING *`,
+            `UPDATE promotions SET ${sets.join(', ')} WHERE id = $${idx} AND tenant_id = $${idx+1} RETURNING *`,
             params
         );
 

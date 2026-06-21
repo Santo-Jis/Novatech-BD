@@ -380,7 +380,7 @@ const payCommission = async (req, res) => {
                 payment_reference: ref,
                 entries_count: unpaid.rows.length,
                 note: note || null
-            })]
+            }), req.tenantId]
         );
 
         // Worker কে notification
@@ -484,7 +484,7 @@ const getLiveCommission = async (req, res) => {
              FROM sales_transactions
              WHERE worker_id = $1 AND date = $2
              AND tenant_id = $3`,
-            [workerId, today]
+            [workerId, today, req.tenantId]
         );
 
         // commission slab info — SR জানবে পরের slab কত দূরে

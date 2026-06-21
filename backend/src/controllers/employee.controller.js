@@ -348,7 +348,7 @@ const approveEmployee = async (req, res) => {
         // Audit Log
         await query(
             `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'APPROVE_EMPLOYEE', 'users', $2, $3, $4)`,
-            [req.user.id, id, JSON.stringify({ employee_code: employeeCode, status: 'active' })]
+            [req.user.id, id, JSON.stringify({ employee_code: employeeCode, status: 'active' }), req.tenantId]
         );
 
         // SMS পাঠাও
@@ -479,7 +479,7 @@ const suspendEmployee = async (req, res) => {
 
         await query(
             `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'SUSPEND_EMPLOYEE', 'users', $2, $3, $4)`,
-            [req.user.id, id, JSON.stringify({ reason, status: 'suspended' })]
+            [req.user.id, id, JSON.stringify({ reason, status: 'suspended' }), req.tenantId]
         );
 
         return res.status(200).json({
@@ -562,9 +562,10 @@ const editEmployee = async (req, res) => {
                 .map((key, i) => `${key} = $${i + 2}`)
                 .join(', ');
 
+            const updateParams = [id, ...Object.values(changes), req.tenantId];
             await query(
-                `UPDATE users SET ${setClause}, updated_at = NOW() WHERE id = $1`,
-                [id, ...Object.values(changes)]
+                `UPDATE users SET ${setClause}, updated_at = NOW() WHERE id = $1 AND tenant_id = $${updateParams.length}`,
+                updateParams
             );
 
             await query(
@@ -603,9 +604,10 @@ const editEmployee = async (req, res) => {
                 .map((key, i) => `${key} = $${i + 2}`)
                 .join(', ');
 
+            const updateParams = [id, ...Object.values(changes), req.tenantId];
             await query(
-                `UPDATE users SET ${setClause}, updated_at = NOW() WHERE id = $1`,
-                [id, ...Object.values(changes)]
+                `UPDATE users SET ${setClause}, updated_at = NOW() WHERE id = $1 AND tenant_id = $${updateParams.length}`,
+                updateParams
             );
 
             return res.status(200).json({
@@ -698,9 +700,10 @@ const rejectEdit = async (req, res) => {
                 .map((key, i) => `${key} = $${i + 2}`)
                 .join(', ');
 
+            const updateParams = [audit.user_id, ...Object.values(previousValues), req.tenantId];
             await query(
-                `UPDATE users SET ${setClause}, updated_at = NOW() WHERE id = $1`,
-                [audit.user_id, ...Object.values(previousValues)]
+                `UPDATE users SET ${setClause}, updated_at = NOW() WHERE id = $1 AND tenant_id = $${updateParams.length}`,
+                updateParams
             );
         }
 
@@ -949,7 +952,7 @@ const reactivateEmployee = async (req, res) => {
 
         await query(
             `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'REACTIVATE_EMPLOYEE', 'users', $2, $3, $4)`,
-            [req.user.id, id, JSON.stringify({ employee_code: newCode, status: 'active' })]
+            [req.user.id, id, JSON.stringify({ employee_code: newCode, status: 'active' }), req.tenantId]
         );
 
         // Email পাঠাও

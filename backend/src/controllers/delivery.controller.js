@@ -125,9 +125,9 @@ const startDelivery = async (req, res) => {
 
         const result = await query(
             `UPDATE deliveries SET status='in_transit', started_at=NOW()
-             WHERE id=$1 AND assigned_to=$2 AND status='pending'
+             WHERE id=$1 AND assigned_to=$2 AND status='pending' AND tenant_id=$3
              RETURNING *`,
-            [id, workerId]
+            [id, workerId, req.tenantId]
         );
 
         if (!result.rows.length) {
@@ -166,9 +166,9 @@ const arriveDelivery = async (req, res) => {
                  delivery_location=ST_SetSRID(ST_MakePoint($3,$4),4326),
                  delivery_photo=$5,
                  confirm_otp=$6, confirm_otp_expires=$7
-             WHERE id=$1 AND assigned_to=$2 AND status='in_transit'
+             WHERE id=$1 AND assigned_to=$2 AND status='in_transit' AND tenant_id=$8
              RETURNING *`,
-            [id, workerId, longitude, latitude, photo_url || null, otp, otpExpires]
+            [id, workerId, longitude, latitude, photo_url || null, otp, otpExpires, req.tenantId]
         );
 
         if (!result.rows.length) {
@@ -218,8 +218,8 @@ const completeDelivery = async (req, res) => {
                  SET status='delivered', delivered_at=NOW(),
                      customer_confirmed=true,
                      delivery_photo=COALESCE($2, delivery_photo)
-                 WHERE id=$1`,
-                [id, photo_url || null]
+                 WHERE id=$1 AND tenant_id=$3`,
+                [id, photo_url || null, req.tenantId]
             );
         });
 
@@ -254,9 +254,9 @@ const failDelivery = async (req, res) => {
         const result = await query(
             `UPDATE deliveries
              SET status='failed', failure_reason=$2, reschedule_date=$3
-             WHERE id=$1 AND assigned_to=$4
+             WHERE id=$1 AND assigned_to=$4 AND tenant_id=$5
              RETURNING *`,
-            [id, reason || null, reschedule_date || null, workerId]
+            [id, reason || null, reschedule_date || null, workerId, req.tenantId]
         );
 
         if (!result.rows.length) {

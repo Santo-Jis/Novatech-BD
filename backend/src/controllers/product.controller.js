@@ -114,7 +114,7 @@ const createProduct = async (req, res) => {
             `INSERT INTO products (name, sku, price, stock, unit,
                 image_url, description,
                 discount, discount_type,
-                vat, tax, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 2)
+                vat, tax, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              RETURNING *`,
             [
                 name, sku, price, stock || 0, unit || 'pcs',
@@ -123,7 +123,8 @@ const createProduct = async (req, res) => {
                 discount     || 0,
                 discount_type || 'flat',
                 vat          || 0,
-                tax          || 0
+                tax          || 0,
+                req.tenantId  // $12 tenant_id
             ]
         );
 
@@ -178,7 +179,7 @@ const updateProduct = async (req, res) => {
                 vat           = COALESCE($10, vat),
                 tax           = COALESCE($11, tax),
                 updated_at    = NOW()
-             WHERE id = $12
+             WHERE id = $12 AND tenant_id = $13
              RETURNING *`,
             [
                 name        ?? null,
@@ -192,7 +193,8 @@ const updateProduct = async (req, res) => {
                 discount_type ?? null,
                 vat         ?? null,
                 tax         ?? null,
-                req.params.id
+                req.params.id,
+                req.tenantId   // $13 tenant_id
             ]
         );
 

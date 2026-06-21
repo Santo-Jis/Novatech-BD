@@ -168,7 +168,7 @@ const sendCreditReminder = async (req, res) => {
 
         // ✅ Log reminder — throttle check পাস করার পরেই insert
         await query(`
-            INSERT INTO credit_reminder_logs (customer_id, sr_id, method, sent_at, tenant_id) VALUES ($1, $2, 'email', NOW(, $3))
+            INSERT INTO credit_reminder_logs (customer_id, sr_id, method, sent_at, tenant_id) VALUES ($1, $2, 'email', NOW(), $3)
         `, [customer.id, srId, req.tenantId]);
 
         return res.json({
