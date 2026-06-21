@@ -122,7 +122,7 @@ const createTeam = async (req, res) => {
         // Audit log
         await query(
             `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'CREATE_TEAM', 'teams', $2, $3)`,
-            [req.user.id, JSON.stringify({ name, manager_id, monthly_target })]
+            [req.user.id, JSON.stringify({ name, manager_id, monthly_target }), req.tenantId]
         );
 
         return res.status(201).json({
@@ -209,7 +209,7 @@ const updateTeam = async (req, res) => {
                 manager_changed: managerChanged,
                 old_manager_id: oldManagerId,
                 new_manager_id: newManagerId
-            })]
+            }), req.tenantId]
         );
 
         return res.status(200).json({
@@ -533,7 +533,7 @@ const moveSRToTeam = async (req, res) => {
 
         await query(
             `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'MOVE_SR_TO_TEAM', 'users', $2, $3, $4)`,
-            [req.user.id, srId, JSON.stringify({ from_team: oldTeamId, to_team: team_id })]
+            [req.user.id, srId, JSON.stringify({ from_team: oldTeamId, to_team: team_id }), req.tenantId]
         );
 
         return res.status(200).json({

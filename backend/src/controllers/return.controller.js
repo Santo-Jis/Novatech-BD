@@ -113,14 +113,15 @@ const submitReturn = async (req, res) => {
 
         const result = await query(
             `INSERT INTO return_requests (sr_id, customer_id, sale_id, type, items,
-                 reason, note, photos, total_value, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9, 0)
+                 reason, note, photos, total_value, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
              RETURNING *`,
             [
                 srId, customer_id, sale_id || null, type,
                 JSON.stringify(processedItems),
                 reason, note || null,
                 JSON.stringify(photos),
-                totalValue
+                totalValue,
+                req.tenantId  // $10 tenant_id
             ]
         );
 

@@ -1,5 +1,6 @@
 const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
+const { DEFAULT_TENANT_ID } = require('../middlewares/auth');
 
 // ============================================================
 // SR STOCK LEDGER
@@ -11,7 +12,7 @@ const addLedgerEntry = async (clientOrNull, entry) => {
     const sql = `
         INSERT INTO sr_stock_ledger (worker_id, product_id, product_name,
            txn_type, direction, qty,
-           reference_id, reference_type, note, created_by, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10, 1)
+           reference_id, reference_type, note, created_by, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
     `;
     const params = [
         entry.worker_id,                  // UUID
@@ -23,7 +24,8 @@ const addLedgerEntry = async (clientOrNull, entry) => {
         entry.reference_id   || null,     // UUID (orders, settlements, etc. এর reference)
         entry.reference_type || null,
         entry.note           || null,
-        entry.created_by     || null,     // UUID
+        entry.created_by     || null,     // UUID,
+        entry.tenantId || DEFAULT_TENANT_ID  // $11 tenant_id
     ];
 
     if (clientOrNull) {
@@ -228,6 +230,7 @@ const adjustStock = async (req, res) => {
             reference_type: 'manual',
             note:          note || 'Admin সংশোধন',
             created_by:    req.user.id,   // UUID
+            tenantId:      req.tenantId,
         });
 
         return res.status(200).json({ success: true, message: 'স্টক সংশোধন হয়েছে।' });

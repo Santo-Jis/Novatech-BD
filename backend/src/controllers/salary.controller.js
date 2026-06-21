@@ -353,13 +353,13 @@ const paySalary = async (req, res) => {
                 `INSERT INTO salary_payments (worker_id, month, year, basic_salary, sales_commission,
                      attendance_bonus, total_commission, attendance_deduction,
                      outstanding_dues_deducted, net_payable, payment_method,
-                     payment_reference, note, approved_by, paid_at, status, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(, 5),'paid')`,
+                     payment_reference, note, approved_by, paid_at, status, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW(),'paid',$15)`,
                 [
                     worker_id, parseInt(month), parseInt(year),
                     basic, salesComm, attBonus, totalComm,
                     attDed, dues, netPayable,
                     payment_method, ref,
-                    note || null, req.user.id
+                    note || null, req.user.id, req.tenantId  // $15 tenant_id
                 ]
             );
 
@@ -395,7 +395,7 @@ const paySalary = async (req, res) => {
                     net_payable: netPayable,
                     payment_reference: ref,
                     payment_method
-                })]
+                }), req.tenantId]
             );
         });
 
@@ -504,7 +504,7 @@ const cancelSalaryPayment = async (req, res) => {
 
             await client.query(
                 `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'CANCEL_SALARY', 'salary_payments', $2, $3)`,
-                [req.user.id, JSON.stringify({ payment_id: id, worker_id: pay.worker_id, month: pay.month, year: pay.year })]
+                [req.user.id, JSON.stringify({ payment_id: id, worker_id: pay.worker_id, month: pay.month, year: pay.year }), req.tenantId]
             );
         });
 

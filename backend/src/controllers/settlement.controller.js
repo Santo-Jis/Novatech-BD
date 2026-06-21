@@ -253,7 +253,7 @@ const createSettlement = async (req, res) => {
                   cash_collected, cash_difference,
                   credit_given,
                   old_credit_collected, replacement_value,
-                  shortage_qty_value, shortage_note, mismatch_explanation, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 4)
+                  shortage_qty_value, shortage_note, mismatch_explanation, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
                  RETURNING id`,
                 [
                     workerId,
@@ -268,7 +268,8 @@ const createSettlement = async (req, res) => {
                     sales.replacement_value,
                     totalShortageValue,
                     shortage_note || null,
-                    mismatch_explanation?.trim() || null
+                    mismatch_explanation?.trim() || null,
+                    req.tenantId  // $14 tenant_id
                 ]
             );
 

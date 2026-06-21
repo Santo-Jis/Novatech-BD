@@ -147,9 +147,12 @@ const deleteRoute = async (req, res) => {
             params.push(req.user.id);
         }
 
+        params.push(req.tenantId);
+        const tenantParamIdx = params.length;
+
         const result = await query(
             `UPDATE routes SET is_active = false, updated_at = NOW()
-             WHERE id = $1${whereExtra}
+             WHERE id = $1${whereExtra} AND tenant_id = $${tenantParamIdx}
              RETURNING id`,
             params
         );
