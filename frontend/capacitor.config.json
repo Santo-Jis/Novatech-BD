@@ -1,5 +1,5 @@
 {
-  "appId": "com.novatech.bd",
+  "appId": "com.zovorix.app",
   "appName": "ZovoriX",
   "webDir": "dist",
   "server": {
@@ -8,8 +8,8 @@
   "plugins": {
     "GoogleAuth": {
       "scopes": ["profile", "email"],
-      "serverClientId": "1098950143887-0s1htavj6dh6p6vkrqumt62ljtce3qo2.apps.googleusercontent.com",
-      "androidClientId": "754818100492-c19csm90ldogkb7l9bobl24pbpqvbet9.apps.googleusercontent.com",
+      "serverClientId": "578352842284-taOk3taqrkv7h82nnqnvhl8n2j13kjOn.apps.googleusercontent.com",
+      "androidClientId": "PENDING_AFTER_ANDROID_APP_ADDED",
       "forceCodeForRefreshToken": false
     },
     "PushNotifications": {
