@@ -112,6 +112,7 @@ jobs:
           # Customer APK-এর আলাদা identity
           config['appId']   = 'com.zovorix.customer'
           config['appName'] = 'ZovoriX Customer'
+          config['plugins']['GoogleAuth']['androidClientId'] = '578352842284-7bqh3k04dgpv27f7roqpkgeig7fpjjn9.apps.googleusercontent.com'
 
           with open('capacitor.config.json', 'w') as f:
               json.dump(config, f, indent=2, ensure_ascii=False)
@@ -119,6 +120,7 @@ jobs:
           print(f"✅ capacitor.config.json patched:")
           print(f"   appId   → {config['appId']}")
           print(f"   appName → {config['appName']}")
+          print(f"   androidClientId → {config['plugins']['GoogleAuth']['androidClientId']}")
           PYEOF
 
       # ── Patch index.html (Google Fonts non-blocking) ──────────
