@@ -1,0 +1,998 @@
+name: Build Android Release APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      # ── Print Debug SHA-1 ──────────────────────────────────────
+      - name: Print Debug Keystore SHA-1
+        continue-on-error: true
+        run: |
+          mkdir -p ~/.android
+          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 --decode > ~/.android/debug.keystore
+          keytool -list -v \
+            -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey \
+            -storepass android \
+            -keypass android \
+            2>/dev/null | grep "SHA1:"
+          echo "✅ Debug SHA-1 printed above"
+
+      # ══════════════════════════════════════════════════════════
+      # ── Version Bump (Main + Customer একসাথে) ─────────────────
+      # দুটো আলাদা commit-এর বদলে একটাই commit — race condition নেই।
+      # ══════════════════════════════════════════════════════════
+      - name: Update version automatically (Main + Customer)
+        id: version
+        run: |
+          # ── Main versionCode ──
+          MAIN_CURRENT=$(grep -oP 'versionCode:\s*\K[0-9]+' backend/src/routes/app.routes.js | head -1)
+          MAIN_CODE=$((MAIN_CURRENT + 1))
+          MAIN_NAME="1.0.${MAIN_CODE}"
+
+          sed -i "s/versionCode: [0-9]*,/versionCode: $MAIN_CODE,/" backend/src/routes/app.routes.js
+          sed -i "s/versionName: '[^']*'/versionName: '$MAIN_NAME'/" backend/src/routes/app.routes.js
+          sed -i "s/NovaTech-BD-v[0-9.]*\.apk/NovaTech-BD-v${MAIN_NAME}.apk/g" backend/src/routes/app.routes.js
+          sed -i "s/CURRENT_VERSION_CODE = [0-9]*/CURRENT_VERSION_CODE = $MAIN_CODE/" frontend/src/hooks/useAppUpdate.js
+
+          # ── Customer versionCode ──
+          CUST_CURRENT=$(grep -oP 'CUSTOMER_VERSION_CODE = \K[0-9]+' backend/src/routes/app.routes.js | head -1)
+          CUST_CODE=$((CUST_CURRENT + 1))
+          CUST_NAME="1.0.${CUST_CODE}"
+
+          sed -i "s/CUSTOMER_VERSION_CODE = [0-9]*/CUSTOMER_VERSION_CODE = $CUST_CODE/" backend/src/routes/app.routes.js
+          sed -i "s/CUSTOMER_VERSION_NAME = '[^']*'/CUSTOMER_VERSION_NAME = '$CUST_NAME'/" backend/src/routes/app.routes.js
+          sed -i "s|releases/download/customer-v[0-9.]*/customer-release.apk|releases/download/customer-v${CUST_NAME}/customer-release.apk|g" backend/src/routes/app.routes.js
+          sed -i "s/CURRENT_CUSTOMER_VERSION_CODE = [0-9]*/CURRENT_CUSTOMER_VERSION_CODE = $CUST_CODE/" frontend/src/hooks/useAppUpdate.js
+
+          echo "main_version_name=$MAIN_NAME" >> $GITHUB_OUTPUT
+          echo "cust_version_name=$CUST_NAME" >> $GITHUB_OUTPUT
+
+          echo "✅ Main: $MAIN_NAME (code: $MAIN_CODE, আগে: $MAIN_CURRENT)"
+          echo "✅ Customer: $CUST_NAME (code: $CUST_CODE, আগে: $CUST_CURRENT)"
+
+      # ── Commit version bump (একটাই commit) ────────────────────
+      - name: Commit version bump (Main + Customer)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add backend/src/routes/app.routes.js frontend/src/hooks/useAppUpdate.js
+          git diff --staged --quiet || git commit -m "chore: bump versions → Main ${{ steps.version.outputs.main_version_name }}, Customer ${{ steps.version.outputs.cust_version_name }} [skip ci]"
+          git pull --rebase origin main
+          git push
+          echo "✅ Version committed and pushed"
+
+      # ── Frontend Dependencies (একবারই install) ────────────────
+      - name: Install all frontend dependencies
+        working-directory: frontend
+        run: |
+          npm install
+          npm install --legacy-peer-deps \
+            @capacitor/core \
+            @capacitor/cli \
+            @capacitor/android \
+            @capacitor/push-notifications
+
+      # ── index.html Patch (দুই build-এ shared — একবারই করতে হবে)
+      - name: Patch index.html for Android (Google Fonts non-blocking)
+        working-directory: frontend
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          with open('index.html', 'r') as f:
+              content = f.read()
+
+          # ইতোমধ্যে non-blocking আছে কিনা চেক করো
+          already_patched = bool(re.search(
+              r'fonts\.googleapis\.com[^>]*media=["\']print["\']',
+              content,
+              flags=re.DOTALL
+          ))
+
+          if already_patched:
+              print("✅ Google Fonts ইতোমধ্যে non-blocking আছে (skip)")
+          else:
+              before = content
+              content = re.sub(
+                  r'(<link\s+[^>]*fonts\.googleapis\.com[^>]*?)\s+rel="stylesheet"(\s*/?>)',
+                  lambda m: m.group(1) + " rel=\"stylesheet\" media=\"print\" onload=\"this.media='all'\"" + m.group(2),
+                  content,
+                  flags=re.DOTALL
+              )
+
+              if content != before:
+                  print("✅ Google Fonts non-blocking করা হয়েছে (blank screen fix)")
+                  with open('index.html', 'w') as f:
+                      f.write(content)
+              else:
+                  print("⚠️ Pattern match হয়নি — Google Fonts link manually চেক করুন")
+          PYEOF
+
+
+      # ╔══════════════════════════════════════════════════════════╗
+      # ║                   MAIN APK BUILD                        ║
+      # ╚══════════════════════════════════════════════════════════╝
+
+      - name: "[Main] Create .env file"
+        working-directory: frontend
+        run: |
+          echo "VITE_API_URL=${{ secrets.VITE_API_URL }}" > .env
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" >> .env
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env
+          echo "VITE_FIREBASE_DATABASE_URL=${{ secrets.VITE_FIREBASE_DATABASE_URL }}" >> .env
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env
+          echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env
+          echo "VITE_FIREBASE_VAPID_KEY=${{ secrets.VITE_FIREBASE_VAPID_KEY }}" >> .env
+          echo "VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}" >> .env
+
+      - name: "[Main] Build React app (production)"
+        working-directory: frontend
+        run: npm run build
+
+      - name: "[Main] Remove Service Worker from APK build"
+        working-directory: frontend
+        run: |
+          python3 << 'PYEOF'
+          import re, os
+
+          removed = []
+          for sw_file in ['dist/sw.js', 'dist/registerSW.js']:
+              if os.path.exists(sw_file):
+                  os.remove(sw_file)
+                  removed.append(sw_file)
+
+          with open('dist/index.html', 'r') as f:
+              content = f.read()
+
+          before = content
+          content = re.sub(r'\s*<script[^>]*?registerSW\.js[^>]*?></script>', '', content)
+          content = re.sub(
+              r'\s*<script>\s*(?:if\s*\()?["\']serviceWorker["\'][^<]*?</script>',
+              '', content, flags=re.DOTALL
+          )
+
+          if content != before:
+              print("✅ SW registration script removed from dist/index.html")
+
+          with open('dist/index.html', 'w') as f:
+              f.write(content)
+
+          if removed:
+              print(f"✅ Removed: {', '.join(removed)}")
+          else:
+              print("ℹ️ SW files already absent")
+
+          print("✅ Service Worker disabled for Main APK")
+          PYEOF
+
+      - name: "[Main] Remove Eruda CDN from APK build"
+        working-directory: frontend
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          with open('dist/index.html', 'r') as f:
+              content = f.read()
+
+          before = content
+          content = re.sub(r'\s*<script[^>]*cdn\.jsdelivr\.net[^>]*></script>', '', content)
+          content = re.sub(
+              r'\s*<script>\s*window\.addEventListener\([\'"]load[\s\S]*?__hideEruda[\s\S]*?</script>',
+              '', content, count=1
+          )
+
+          if content != before:
+              print("✅ Eruda CDN removed — error catcher intact")
+          else:
+              print("ℹ️ Eruda already absent")
+
+          with open('dist/index.html', 'w') as f:
+              f.write(content)
+          PYEOF
+
+      - name: "[Main] Add Android & Sync"
+        working-directory: frontend
+        run: |
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+
+      - name: "[Main] Add all required permissions to AndroidManifest"
+        working-directory: frontend/android/app/src/main
+        run: |
+          python3 << 'PYEOF'
+          with open('AndroidManifest.xml', 'r') as f:
+              content = f.read()
+
+          permissions = [
+              '<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>',
+              '<uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>',
+              '<uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>',
+              '<uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>',
+              '<uses-permission android:name="android.permission.CAMERA"/>',
+              '<uses-permission android:name="android.permission.INTERNET"/>',
+              '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>',
+              '<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>',
+              '<uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28"/>',
+              '<uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>',
+              '<uses-permission android:name="android.permission.VIBRATE"/>',
+          ]
+
+          import re
+          added = []
+          for perm in permissions:
+              name_match = re.search(r'android:name="([^"]+)"', perm)
+              perm_name = name_match.group(1) if name_match else ''
+              if perm_name not in content:
+                  content = content.replace('<application', perm + '\n    <application', 1)
+                  added.append(perm_name.split('.')[-1])
+
+          with open('AndroidManifest.xml', 'w') as f:
+              f.write(content)
+
+          if added:
+              print(f'✅ Added permissions: {", ".join(added)}')
+          else:
+              print('✅ All permissions already exist')
+          PYEOF
+
+      - name: "[Main] Set NovaTech BD App Icon from repo"
+        working-directory: frontend/android/app/src/main
+        run: |
+          pip install Pillow --break-system-packages -q
+          python3 << 'PYEOF'
+          from PIL import Image
+          import os, subprocess
+
+          result = subprocess.run(
+              ['git', 'rev-parse', '--show-toplevel'],
+              capture_output=True, text=True
+          )
+          repo_root = result.stdout.strip()
+
+          possible_paths = [
+              f"{repo_root}/frontend/assets/app-icon.png",
+              f"{repo_root}/frontend/assets/app-icon.jpg",
+              f"{repo_root}/frontend/assets/icon.png",
+              f"{repo_root}/frontend/assets/icon.jpg",
+              f"{repo_root}/app-icon.png",
+              f"{repo_root}/app-icon.jpg",
+          ]
+
+          if os.path.exists(f"{repo_root}/frontend/assets"):
+              print(f"Assets folder contents: {os.listdir(f'{repo_root}/frontend/assets')}")
+
+          icon_path = None
+          for p in possible_paths:
+              if os.path.exists(p):
+                  icon_path = p
+                  print(f"✅ Found icon at: {p}")
+                  break
+
+          if not icon_path:
+              print(f"❌ Icon not found! Searched: {possible_paths}")
+              exit(1)
+
+          img = Image.open(icon_path).convert("RGBA")
+
+          sizes = {
+              "res/mipmap-mdpi/ic_launcher.png": 48,
+              "res/mipmap-hdpi/ic_launcher.png": 72,
+              "res/mipmap-xhdpi/ic_launcher.png": 96,
+              "res/mipmap-xxhdpi/ic_launcher.png": 144,
+              "res/mipmap-xxxhdpi/ic_launcher.png": 192,
+              "res/mipmap-mdpi/ic_launcher_round.png": 48,
+              "res/mipmap-hdpi/ic_launcher_round.png": 72,
+              "res/mipmap-xhdpi/ic_launcher_round.png": 96,
+              "res/mipmap-xxhdpi/ic_launcher_round.png": 144,
+              "res/mipmap-xxxhdpi/ic_launcher_round.png": 192,
+          }
+
+          for path, size in sizes.items():
+              os.makedirs(os.path.dirname(path), exist_ok=True)
+              resized = img.resize((size, size), Image.LANCZOS)
+              resized.save(path, "PNG")
+              print(f"✅ {path} ({size}x{size})")
+
+          print("✅ App icon set from repo image!")
+          PYEOF
+
+      - name: "[Main] Remove adaptive icon XMLs to force PNG usage"
+        working-directory: frontend/android/app/src/main
+        run: |
+          rm -rf res/mipmap-anydpi-v26 2>/dev/null || true
+          find res -name "ic_launcher.xml" -delete 2>/dev/null || true
+          find res -name "ic_launcher_round.xml" -delete 2>/dev/null || true
+          find res -name "ic_launcher_foreground.xml" -delete 2>/dev/null || true
+          find res -name "ic_launcher_background.xml" -delete 2>/dev/null || true
+          echo "✅ Adaptive XMLs removed"
+
+      - name: "[Main] Write google-services.json"
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          echo "$GOOGLE_SERVICES_JSON" > frontend/android/app/google-services.json
+          python3 -c "import json; json.load(open('frontend/android/app/google-services.json'))" \
+            && echo "✅ google-services.json valid" \
+            || (echo "❌ Invalid JSON" && exit 1)
+
+      - name: "[Main] Verify google-services plugin in build.gradle"
+        working-directory: frontend/android
+        run: |
+          if ! grep -q "google-services" app/build.gradle; then
+            sed -i "/apply plugin: 'com.android.application'/a apply plugin: 'com.google.gms.google-services'" app/build.gradle
+          fi
+          if ! grep -q "google-services" build.gradle; then
+            sed -i "s/classpath 'com.android.tools.build:gradle/classpath 'com.google.gms:google-services:4.4.0'\n        classpath 'com.android.tools.build:gradle/" build.gradle
+          fi
+          echo "✅ build.gradle verified"
+
+      - name: "[Main] Create ProGuard rules"
+        working-directory: frontend/android/app
+        run: |
+          cat > proguard-rules.pro << 'EOF'
+          # ── Capacitor Core ──────────────────────────────────────
+          -keep class com.getcapacitor.** { *; }
+          -keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+
+          # ── Firebase ────────────────────────────────────────────
+          -keep class com.google.firebase.** { *; }
+          -keep class com.google.android.gms.** { *; }
+          -dontwarn com.google.firebase.**
+          -dontwarn com.google.android.gms.**
+
+          # ── Google Auth ─────────────────────────────────────────
+          -keep class com.codetrixstudio.capacitor.GoogleAuth.** { *; }
+
+          # ── WebView / JavaScript Bridge ─────────────────────────
+          -keepclassmembers class * {
+              @android.webkit.JavascriptInterface <methods>;
+          }
+
+          # ── Generic Android ─────────────────────────────────────
+          -keepattributes *Annotation*
+          -keepattributes SourceFile,LineNumberTable
+          -keep public class * extends java.lang.Exception
+
+          # ── OkHttp / Retrofit ────────────────────────────────────
+          -dontwarn okhttp3.**
+          -dontwarn okio.**
+          EOF
+          echo "✅ ProGuard rules created"
+
+      - name: "[Main] Enable ProGuard & minify in release buildType"
+        working-directory: frontend/android/app
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          def patch_inside_release(content, find, replace=None, append_after=None):
+              lines = content.split('\n')
+              result = []
+              depth = 0
+              in_release = False
+              entry_depth = None
+
+              for line in lines:
+                  opens = line.count('{')
+                  closes = line.count('}')
+
+                  if not in_release and re.search(r'^\s*release\s*\{', line):
+                      in_release = True
+                      entry_depth = depth
+
+                  extra = None
+                  if in_release:
+                      if replace is not None and find in line:
+                          line = line.replace(find, replace, 1)
+                      elif append_after is not None and find in line:
+                          extra = append_after
+
+                  depth += opens - closes
+
+                  if in_release and depth <= entry_depth:
+                      in_release = False
+
+                  result.append(line)
+                  if extra:
+                      result.append(extra)
+
+              return '\n'.join(result)
+
+          with open("build.gradle", "r") as f:
+              content = f.read()
+
+          content = patch_inside_release(content, find='minifyEnabled false', replace='minifyEnabled true')
+
+          if "proguardFiles" not in content:
+              content = patch_inside_release(
+                  content,
+                  find='minifyEnabled true',
+                  append_after="            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'"
+              )
+
+          with open("build.gradle", "w") as f:
+              f.write(content)
+
+          print("✅ ProGuard enabled in release buildType")
+          PYEOF
+
+      - name: "[Main] Setup Release Keystore"
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > frontend/android/app/release.keystore
+          echo "✅ Keystore decoded"
+
+      - name: "[Main] Print Release Keystore SHA-1"
+        run: |
+          keytool -list -v \
+            -keystore frontend/android/app/release.keystore \
+            -alias ${{ secrets.KEY_ALIAS }} \
+            -storepass ${{ secrets.STORE_PASSWORD }} \
+            2>/dev/null | grep "SHA1:"
+          echo "✅ Release SHA-1 printed above"
+
+      - name: "[Main] Add signing config to build.gradle"
+        working-directory: frontend/android/app
+        env:
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+        run: |
+          python3 << 'PYEOF'
+          import os, re
+
+          key_alias      = os.environ["KEY_ALIAS"]
+          key_password   = os.environ["KEY_PASSWORD"]
+          store_password = os.environ["STORE_PASSWORD"]
+
+          with open("build.gradle", "r") as f:
+              content = f.read()
+
+          signing_block = f"""
+              signingConfigs {{
+                  release {{
+                      storeFile file("release.keystore")
+                      storePassword "{store_password}"
+                      keyAlias "{key_alias}"
+                      keyPassword "{key_password}"
+                  }}
+              }}
+          """
+
+          if "signingConfigs" not in content:
+              content = re.sub(r'(android\s*\{)', r'\1' + signing_block, content, count=1)
+
+          if "signingConfig signingConfigs.release" not in content:
+              lines = content.split('\n')
+              result = []
+              depth = 0
+              in_release = False
+              entry_depth = None
+              inserted = False
+
+              for line in lines:
+                  opens = line.count('{')
+                  closes = line.count('}')
+                  if not in_release and re.search(r'^\s*release\s*\{', line):
+                      in_release = True
+                      entry_depth = depth
+                  extra = None
+                  if in_release and not inserted and 'minifyEnabled true' in line:
+                      extra = '            signingConfig signingConfigs.release'
+                      inserted = True
+                  depth += opens - closes
+                  if in_release and depth <= entry_depth:
+                      in_release = False
+                  result.append(line)
+                  if extra:
+                      result.append(extra)
+
+              content = '\n'.join(result)
+
+          with open("build.gradle", "w") as f:
+              f.write(content)
+
+          print("✅ Signing config added")
+          PYEOF
+
+      - name: "[Main] Build Release APK"
+        working-directory: frontend/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          echo "✅ Main Release APK built"
+
+      - name: "[Main] Confirm APK exists"
+        run: |
+          APK_PATH="frontend/android/app/build/outputs/apk/release/app-release.apk"
+          if [ -f "$APK_PATH" ]; then
+            echo "✅ APK found: $(du -sh $APK_PATH)"
+          else
+            echo "❌ APK not found!" && exit 1
+          fi
+
+      - name: "[Main] Create GitHub Release"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.main_version_name }}
+          name: NovaTech BD v${{ steps.version.outputs.main_version_name }}
+          body: |
+            ## NovaTech BD App Update
+            **Version:** ${{ steps.version.outputs.main_version_name }}
+            **Build Type:** Release (ProGuard + Signed)
+          files: frontend/android/app/build/outputs/apk/release/app-release.apk
+
+      - name: "[Main] Upload APK artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: NovaTech-BD-v${{ steps.version.outputs.main_version_name }}-release
+          path: frontend/android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 30
+
+
+      # ╔══════════════════════════════════════════════════════════╗
+      # ║                 CUSTOMER APK BUILD                      ║
+      # ╚══════════════════════════════════════════════════════════╝
+
+      - name: "[Customer] Create .env file (customer mode)"
+        working-directory: frontend
+        run: |
+          echo "VITE_APP_MODE=customer" > .env
+          echo "VITE_API_URL=${{ secrets.VITE_API_URL }}" >> .env
+          echo "VITE_FIREBASE_API_KEY=${{ secrets.VITE_FIREBASE_API_KEY }}" >> .env
+          echo "VITE_FIREBASE_AUTH_DOMAIN=${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" >> .env
+          echo "VITE_FIREBASE_PROJECT_ID=${{ secrets.VITE_FIREBASE_PROJECT_ID }}" >> .env
+          echo "VITE_FIREBASE_DATABASE_URL=${{ secrets.VITE_FIREBASE_DATABASE_URL }}" >> .env
+          echo "VITE_FIREBASE_STORAGE_BUCKET=${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}" >> .env
+          echo "VITE_FIREBASE_MESSAGING_SENDER_ID=${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}" >> .env
+          echo "VITE_FIREBASE_APP_ID=${{ secrets.VITE_FIREBASE_APP_ID }}" >> .env
+          echo "VITE_FIREBASE_VAPID_KEY=${{ secrets.VITE_FIREBASE_VAPID_KEY }}" >> .env
+          echo "VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}" >> .env
+          echo "✅ .env created with VITE_APP_MODE=customer"
+
+      - name: "[Customer] Patch capacitor.config.json"
+        working-directory: frontend
+        run: |
+          python3 << 'PYEOF'
+          import json
+
+          with open('capacitor.config.json', 'r') as f:
+              config = json.load(f)
+
+          config['appId']   = 'com.zovorix.customer'
+          config['appName'] = 'ZovoriX Customer'
+
+          with open('capacitor.config.json', 'w') as f:
+              json.dump(config, f, indent=2, ensure_ascii=False)
+
+          print(f"✅ capacitor.config.json patched:")
+          print(f"   appId   → {config['appId']}")
+          print(f"   appName → {config['appName']}")
+          PYEOF
+
+      - name: "[Customer] Build React app (customer mode)"
+        working-directory: frontend
+        run: |
+          npm run build
+          echo "✅ Customer React build complete"
+          echo "Bundle size:"
+          du -sh dist/
+
+      - name: "[Customer] Remove Service Worker from APK build"
+        working-directory: frontend
+        run: |
+          python3 << 'PYEOF'
+          import re, os
+
+          removed = []
+          for sw_file in ['dist/sw.js', 'dist/registerSW.js']:
+              if os.path.exists(sw_file):
+                  os.remove(sw_file)
+                  removed.append(sw_file)
+
+          with open('dist/index.html', 'r') as f:
+              content = f.read()
+
+          before = content
+          content = re.sub(r'\s*<script[^>]*?registerSW\.js[^>]*?></script>', '', content)
+          content = re.sub(
+              r'\s*<script>\s*(?:if\s*\()?["\']serviceWorker["\'][^<]*?</script>',
+              '', content, flags=re.DOTALL
+          )
+
+          if content != before:
+              print("✅ SW registration script removed")
+
+          with open('dist/index.html', 'w') as f:
+              f.write(content)
+
+          if removed:
+              print(f"✅ Removed: {', '.join(removed)}")
+
+          print("✅ Service Worker disabled for Customer APK")
+          PYEOF
+
+      - name: "[Customer] Remove Eruda CDN from APK build"
+        working-directory: frontend
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          with open('dist/index.html', 'r') as f:
+              content = f.read()
+
+          before = content
+          content = re.sub(r'\s*<script[^>]*cdn\.jsdelivr\.net[^>]*></script>', '', content)
+          content = re.sub(
+              r'\s*<script>\s*window\.addEventListener\([\'"]load[\s\S]*?__hideEruda[\s\S]*?</script>',
+              '', content, count=1
+          )
+
+          if content != before:
+              print("✅ Eruda removed")
+          else:
+              print("ℹ️ Eruda already absent")
+
+          with open('dist/index.html', 'w') as f:
+              f.write(content)
+          PYEOF
+
+      # android folder মুছে fresh start — customer appId আলাদা তাই নতুন করে বানাতে হবে
+      - name: "[Customer] Add Android & Sync (fresh)"
+        working-directory: frontend
+        run: |
+          rm -rf android
+          npx cap add android
+          npx cap sync android
+          echo "✅ Capacitor synced (Customer)"
+
+      - name: "[Customer] Add permissions to AndroidManifest"
+        working-directory: frontend/android/app/src/main
+        run: |
+          python3 << 'PYEOF'
+          with open('AndroidManifest.xml', 'r') as f:
+              content = f.read()
+
+          # Customer APK-এর জন্য সীমিত permissions (GPS, Camera, Storage নেই)
+          permissions = [
+              '<uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>',
+              '<uses-permission android:name="android.permission.INTERNET"/>',
+              '<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>',
+              '<uses-permission android:name="android.permission.VIBRATE"/>',
+          ]
+
+          import re
+          added = []
+          for perm in permissions:
+              name_match = re.search(r'android:name="([^"]+)"', perm)
+              perm_name = name_match.group(1) if name_match else ''
+              if perm_name not in content:
+                  content = content.replace('<application', perm + '\n    <application', 1)
+                  added.append(perm_name.split('.')[-1])
+
+          with open('AndroidManifest.xml', 'w') as f:
+              f.write(content)
+
+          if added:
+              print(f'✅ Added permissions: {", ".join(added)}')
+          else:
+              print('✅ All permissions already exist')
+          PYEOF
+
+      - name: "[Customer] Set Customer App Icon"
+        working-directory: frontend/android/app/src/main
+        run: |
+          python3 << 'PYEOF'
+          from PIL import Image
+          import os, subprocess
+
+          result = subprocess.run(
+              ['git', 'rev-parse', '--show-toplevel'],
+              capture_output=True, text=True
+          )
+          repo_root = result.stdout.strip()
+
+          # customer-icon.png থাকলে সেটা, না থাকলে app-icon.png (fallback)
+          possible_paths = [
+              f"{repo_root}/frontend/assets/customer-icon.png",
+              f"{repo_root}/frontend/assets/customer-icon.jpg",
+              f"{repo_root}/frontend/assets/app-icon.png",
+              f"{repo_root}/frontend/assets/app-icon.jpg",
+              f"{repo_root}/frontend/assets/icon.png",
+          ]
+
+          icon_path = None
+          for p in possible_paths:
+              if os.path.exists(p):
+                  icon_path = p
+                  print(f"✅ Icon found: {p}")
+                  break
+
+          if not icon_path:
+              print(f"❌ Icon not found!")
+              exit(1)
+
+          img = Image.open(icon_path).convert("RGBA")
+
+          sizes = {
+              "res/mipmap-mdpi/ic_launcher.png": 48,
+              "res/mipmap-hdpi/ic_launcher.png": 72,
+              "res/mipmap-xhdpi/ic_launcher.png": 96,
+              "res/mipmap-xxhdpi/ic_launcher.png": 144,
+              "res/mipmap-xxxhdpi/ic_launcher.png": 192,
+              "res/mipmap-mdpi/ic_launcher_round.png": 48,
+              "res/mipmap-hdpi/ic_launcher_round.png": 72,
+              "res/mipmap-xhdpi/ic_launcher_round.png": 96,
+              "res/mipmap-xxhdpi/ic_launcher_round.png": 144,
+              "res/mipmap-xxxhdpi/ic_launcher_round.png": 192,
+          }
+
+          for path, size in sizes.items():
+              os.makedirs(os.path.dirname(path), exist_ok=True)
+              resized = img.resize((size, size), Image.LANCZOS)
+              resized.save(path, "PNG")
+
+          print("✅ Customer App icon set!")
+          PYEOF
+
+      - name: "[Customer] Remove adaptive icon XMLs"
+        working-directory: frontend/android/app/src/main
+        run: |
+          rm -rf res/mipmap-anydpi-v26 2>/dev/null || true
+          find res -name "ic_launcher.xml" -delete 2>/dev/null || true
+          find res -name "ic_launcher_round.xml" -delete 2>/dev/null || true
+          find res -name "ic_launcher_foreground.xml" -delete 2>/dev/null || true
+          find res -name "ic_launcher_background.xml" -delete 2>/dev/null || true
+          echo "✅ Adaptive XMLs removed"
+
+      - name: "[Customer] Write google-services.json"
+        env:
+          # CUSTOMER_GOOGLE_SERVICES_JSON আলাদা secret থাকলে সেটা ব্যবহার হবে।
+          # না থাকলে main GOOGLE_SERVICES_JSON ব্যবহার হবে — কিন্তু তখন
+          # Firebase-এ com.novatech.customer package register থাকতে হবে।
+          GOOGLE_SERVICES_JSON: ${{ secrets.CUSTOMER_GOOGLE_SERVICES_JSON || secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          echo "$GOOGLE_SERVICES_JSON" > frontend/android/app/google-services.json
+          python3 -c "import json; json.load(open('frontend/android/app/google-services.json'))" \
+            && echo "✅ google-services.json valid" \
+            || (echo "❌ Invalid JSON" && exit 1)
+
+      - name: "[Customer] Verify google-services plugin in build.gradle"
+        working-directory: frontend/android
+        run: |
+          if ! grep -q "google-services" app/build.gradle; then
+            sed -i "/apply plugin: 'com.android.application'/a apply plugin: 'com.google.gms.google-services'" app/build.gradle
+          fi
+          if ! grep -q "google-services" build.gradle; then
+            sed -i "s/classpath 'com.android.tools.build:gradle/classpath 'com.google.gms:google-services:4.4.0'\n        classpath 'com.android.tools.build:gradle/" build.gradle
+          fi
+          echo "✅ build.gradle verified"
+
+      - name: "[Customer] Create ProGuard rules"
+        working-directory: frontend/android/app
+        run: |
+          cat > proguard-rules.pro << 'EOF'
+          -keep class com.getcapacitor.** { *; }
+          -keep @com.getcapacitor.annotation.CapacitorPlugin class * { *; }
+          -keep class com.google.firebase.** { *; }
+          -keep class com.google.android.gms.** { *; }
+          -dontwarn com.google.firebase.**
+          -dontwarn com.google.android.gms.**
+          -keep class com.codetrixstudio.capacitor.GoogleAuth.** { *; }
+          -keepclassmembers class * {
+              @android.webkit.JavascriptInterface <methods>;
+          }
+          -keepattributes *Annotation*
+          -keepattributes SourceFile,LineNumberTable
+          -keep public class * extends java.lang.Exception
+          -dontwarn okhttp3.**
+          -dontwarn okio.**
+          EOF
+          echo "✅ ProGuard rules created"
+
+      - name: "[Customer] Enable ProGuard & minify in release buildType"
+        working-directory: frontend/android/app
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          def patch_inside_release(content, find, replace=None, append_after=None):
+              lines = content.split('\n')
+              result = []
+              depth = 0
+              in_release = False
+              entry_depth = None
+
+              for line in lines:
+                  opens = line.count('{')
+                  closes = line.count('}')
+
+                  if not in_release and re.search(r'^\s*release\s*\{', line):
+                      in_release = True
+                      entry_depth = depth
+
+                  extra = None
+                  if in_release:
+                      if replace is not None and find in line:
+                          line = line.replace(find, replace, 1)
+                      elif append_after is not None and find in line:
+                          extra = append_after
+
+                  depth += opens - closes
+
+                  if in_release and depth <= entry_depth:
+                      in_release = False
+
+                  result.append(line)
+                  if extra:
+                      result.append(extra)
+
+              return '\n'.join(result)
+
+          with open("build.gradle", "r") as f:
+              content = f.read()
+
+          content = patch_inside_release(content, find='minifyEnabled false', replace='minifyEnabled true')
+
+          if "proguardFiles" not in content:
+              content = patch_inside_release(
+                  content,
+                  find='minifyEnabled true',
+                  append_after="            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'"
+              )
+
+          with open("build.gradle", "w") as f:
+              f.write(content)
+
+          print("✅ ProGuard enabled")
+          PYEOF
+
+      - name: "[Customer] Setup Release Keystore"
+        env:
+          # আলাদা Customer keystore থাকলে CUSTOMER_KEYSTORE_BASE64, না থাকলে main keystore
+          KEYSTORE_BASE64: ${{ secrets.CUSTOMER_KEYSTORE_BASE64 || secrets.KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > frontend/android/app/release.keystore
+          echo "✅ Keystore decoded"
+
+      - name: "[Customer] Print Release Keystore SHA-1"
+        run: |
+          keytool -list -v \
+            -keystore frontend/android/app/release.keystore \
+            -alias ${{ secrets.CUSTOMER_KEY_ALIAS || secrets.KEY_ALIAS }} \
+            -storepass ${{ secrets.CUSTOMER_STORE_PASSWORD || secrets.STORE_PASSWORD }} \
+            2>/dev/null | grep "SHA1:"
+          echo "✅ Release SHA-1 printed above"
+
+      - name: "[Customer] Add signing config to build.gradle"
+        working-directory: frontend/android/app
+        env:
+          KEY_ALIAS:      ${{ secrets.CUSTOMER_KEY_ALIAS      || secrets.KEY_ALIAS }}
+          KEY_PASSWORD:   ${{ secrets.CUSTOMER_KEY_PASSWORD   || secrets.KEY_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.CUSTOMER_STORE_PASSWORD || secrets.STORE_PASSWORD }}
+        run: |
+          python3 << 'PYEOF'
+          import os, re
+
+          key_alias      = os.environ["KEY_ALIAS"]
+          key_password   = os.environ["KEY_PASSWORD"]
+          store_password = os.environ["STORE_PASSWORD"]
+
+          with open("build.gradle", "r") as f:
+              content = f.read()
+
+          signing_block = f"""
+              signingConfigs {{
+                  release {{
+                      storeFile file("release.keystore")
+                      storePassword "{store_password}"
+                      keyAlias "{key_alias}"
+                      keyPassword "{key_password}"
+                  }}
+              }}
+          """
+
+          if "signingConfigs" not in content:
+              content = re.sub(r'(android\s*\{)', r'\1' + signing_block, content, count=1)
+
+          if "signingConfig signingConfigs.release" not in content:
+              lines = content.split('\n')
+              result = []
+              depth = 0
+              in_release = False
+              entry_depth = None
+              inserted = False
+
+              for line in lines:
+                  opens = line.count('{')
+                  closes = line.count('}')
+                  if not in_release and re.search(r'^\s*release\s*\{', line):
+                      in_release = True
+                      entry_depth = depth
+                  extra = None
+                  if in_release and not inserted and 'minifyEnabled true' in line:
+                      extra = '            signingConfig signingConfigs.release'
+                      inserted = True
+                  depth += opens - closes
+                  if in_release and depth <= entry_depth:
+                      in_release = False
+                  result.append(line)
+                  if extra:
+                      result.append(extra)
+
+              content = '\n'.join(result)
+
+          with open("build.gradle", "w") as f:
+              f.write(content)
+
+          print("✅ Signing config added")
+          PYEOF
+
+      - name: "[Customer] Build Customer Release APK"
+        working-directory: frontend/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon
+          echo "✅ Customer Release APK built"
+
+      - name: "[Customer] Rename APK to customer-release.apk"
+        run: |
+          APK_SRC="frontend/android/app/build/outputs/apk/release/app-release.apk"
+          APK_DST="frontend/android/app/build/outputs/apk/release/customer-release.apk"
+          mv "$APK_SRC" "$APK_DST"
+          echo "✅ APK renamed: $(du -sh $APK_DST)"
+
+      - name: "[Customer] Create GitHub Release"
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: customer-v${{ steps.version.outputs.cust_version_name }}
+          name: ZovoriX Customer v${{ steps.version.outputs.cust_version_name }}
+          body: |
+            ## ZovoriX Customer App Update
+            **Version:** ${{ steps.version.outputs.cust_version_name }}
+            **Build Type:** Release (ProGuard + Signed)
+
+            ### এই APK-এ কী আছে
+            - Customer Dashboard
+            - Order tracking
+            - Invoice & Payment history
+            - AI Chat
+            - Push Notifications
+
+            > ⚠️ এটি শুধু Customer-দের জন্য। Staff APK আলাদা।
+          files: frontend/android/app/build/outputs/apk/release/customer-release.apk
+
+      - name: "[Customer] Upload Customer APK artifact"
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZovoriX-Customer-v${{ steps.version.outputs.cust_version_name }}-release
+          path: frontend/android/app/build/outputs/apk/release/customer-release.apk
+          retention-days: 30
