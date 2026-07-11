@@ -86,7 +86,7 @@ const sendPushToTokens = async (tokens, { title, body, type, data = {} }) => {
       android: {
         notification: {
           sound:       'default',
-          channelId:   'novatech_default',
+          channelId:   'zovorix_default',
           priority:    'high',
         },
       },

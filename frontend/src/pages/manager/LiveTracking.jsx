@@ -81,7 +81,7 @@ export default function LiveTracking() {
         mapInstance.current = new window.google.maps.Map(mapRef.current, {
             center: { lat: 23.8103, lng: 90.4125 },
             zoom: 12,
-            mapId: 'NOVATECH_MAP',
+            mapId: 'ZOVORIX_MAP',
             mapTypeControl: false,
             fullscreenControl: false,
             streetViewControl: false,

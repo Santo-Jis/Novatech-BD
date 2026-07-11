@@ -253,7 +253,7 @@ const buildSystemPrompt = (customerInfo) => {
         year: 'numeric', month: 'long', day: 'numeric'
     });
 
-    return `তুমি NovaTech BD-র Customer Support AI।
+    return `তুমি ZovoriX-র Customer Support AI।
 তুমি "${customerInfo.shop_name}" (${customerInfo.owner_name})-এর ব্যক্তিগত সহকারী।
 
 আজকের তারিখ: ${today}

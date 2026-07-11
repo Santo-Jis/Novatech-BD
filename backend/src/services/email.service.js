@@ -3,7 +3,7 @@ const { query } = require('../config/db');
 // nodemailer বাদ — Render SMTP block করে, তাই Brevo HTTP API ব্যবহার করা হচ্ছে
 
 // ============================================================
-// Email Service — NovaTechBD Management System
+// Email Service — ZovoriX Management System
 // ============================================================
 // Nodemailer দিয়ে Email পাঠানো (Gmail SMTP / Custom SMTP)
 // OTP ও Invoice দুটোই Email-এ পাঠানো যাবে
@@ -36,7 +36,7 @@ const getEmailConfig = async () => {
             port:    parseInt(raw.email_port || process.env.EMAIL_PORT || '587'),
             user:    raw.email_user    || process.env.EMAIL_USER    || '',
             pass:    raw.email_pass    || process.env.EMAIL_PASS    || '',
-            from:    raw.email_from    || process.env.EMAIL_FROM    || 'NovaTech BD <noreply@novatechbd.com>',
+            from:    raw.email_from    || process.env.EMAIL_FROM    || 'ZovoriX <noreply@novatechbd.com>',
             enabled: raw.email_enabled !== 'false',
         };
     } catch {
@@ -46,7 +46,7 @@ const getEmailConfig = async () => {
             port:    parseInt(process.env.EMAIL_PORT || '587'),
             user:    process.env.EMAIL_USER    || '',
             pass:    process.env.EMAIL_PASS    || '',
-            from:    process.env.EMAIL_FROM    || 'NovaTech BD <noreply@novatechbd.com>',
+            from:    process.env.EMAIL_FROM    || 'ZovoriX <noreply@novatechbd.com>',
             enabled: process.env.EMAIL_ENABLED !== 'false',
         };
     }
@@ -86,7 +86,7 @@ const sendEmail = async (to, subject, html, text = '') => {
                 'api-key': config.pass
             },
             body: JSON.stringify({
-                sender:      { name: 'NovaTech BD', email: config.user },
+                sender:      { name: 'ZovoriX', email: config.user },
                 to:          [{ email: to }],
                 subject,
                 htmlContent: html,
@@ -114,11 +114,11 @@ const sendEmail = async (to, subject, html, text = '') => {
 // ============================================================
 
 const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToken = null) => {
-    const FRONTEND_URL = process.env.FRONTEND_URL || 'https://novatech.com';
+    const FRONTEND_URL = process.env.FRONTEND_URL || 'https://zovorix.com';
     const verifyLink   = verifyToken ? `${FRONTEND_URL}/verify/${verifyToken}` : null;
     const subject      = verifyLink
-        ? `NovaTech BD — অর্ডার নিশ্চিত করুন | ${shopName}`
-        : `NovaTechBD - OTP কোড: ${otp}`;
+        ? `ZovoriX — অর্ডার নিশ্চিত করুন | ${shopName}`
+        : `ZovoriX - OTP কোড: ${otp}`;
 
     const html = `<!DOCTYPE html>
 <html lang="bn">
@@ -130,7 +130,7 @@ const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToke
        style="background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.1);">
   <tr>
     <td style="background:linear-gradient(135deg,#1a73e8,#0d47a1);padding:28px;text-align:center;">
-      <h1 style="color:#fff;margin:0;font-size:22px;">NovaTech BD</h1>
+      <h1 style="color:#fff;margin:0;font-size:22px;">ZovoriX</h1>
       <p style="color:#bbdefb;margin:4px 0 0;font-size:12px;">Management System</p>
     </td>
   </tr>
@@ -173,7 +173,7 @@ const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToke
   </tr>
   <tr>
     <td style="background:#f8f9fa;padding:15px;text-align:center;border-top:1px solid #e0e0e0;">
-      <p style="color:#999;font-size:11px;margin:0;">NovaTech BD (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+      <p style="color:#999;font-size:11px;margin:0;">ZovoriX (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
     </td>
   </tr>
 </table>
@@ -183,8 +183,8 @@ const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToke
 </html>`;
 
     const text = verifyLink
-        ? `NovaTechBD — অর্ডার নিশ্চিত করুন\nদোকান: ${shopName}\nলিংক: ${verifyLink}\nমেয়াদ: ${expiryMinutes} মিনিট`
-        : `NovaTechBD OTP\nদোকান: ${shopName}\nOTP: ${otp}\nমেয়াদ: ${expiryMinutes} মিনিট\nএই কোড কাউকে দেবেন না।`;
+        ? `ZovoriX — অর্ডার নিশ্চিত করুন\nদোকান: ${shopName}\nলিংক: ${verifyLink}\nমেয়াদ: ${expiryMinutes} মিনিট`
+        : `ZovoriX OTP\nদোকান: ${shopName}\nOTP: ${otp}\nমেয়াদ: ${expiryMinutes} মিনিট\nএই কোড কাউকে দেবেন না।`;
     return sendEmail(email, subject, html, text);
 };
 
@@ -193,7 +193,7 @@ const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToke
 // ============================================================
 
 const sendInvoiceEmail = async (email, sale, customer, worker, items) => {
-    const subject = `NovaTechBD Invoice - ${sale.invoice_number} | ${customer.shop_name}`;
+    const subject = `ZovoriX Invoice - ${sale.invoice_number} | ${customer.shop_name}`;
 
     const paymentLabels = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
 
@@ -227,7 +227,7 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items) => {
     <td style="background:linear-gradient(135deg,#1a73e8,#0d47a1);padding:25px 35px;">
       <table width="100%"><tr>
         <td>
-          <h1 style="color:#fff;margin:0;font-size:20px;">NovaTech BD</h1>
+          <h1 style="color:#fff;margin:0;font-size:20px;">ZovoriX</h1>
           <p style="color:#bbdefb;margin:3px 0 0;font-size:11px;">জানকি সিংহ রোড, বরিশাল সদর – ১২০০</p>
         </td>
         <td style="text-align:right;">
@@ -313,7 +313,7 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items) => {
   </tr>
   <tr>
     <td style="background:#f8f9fa;padding:12px 35px;text-align:center;border-top:1px solid #e0e0e0;">
-      <p style="color:#999;font-size:11px;margin:0;">NovaTech BD (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+      <p style="color:#999;font-size:11px;margin:0;">ZovoriX (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
     </td>
   </tr>
 </table>
@@ -322,7 +322,7 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items) => {
 </body>
 </html>`;
 
-    const text = `NovaTechBD Invoice\nদোকান: ${customer.shop_name}\nInvoice: ${sale.invoice_number}\nমোট: ৳${sale.net_amount}\nপেমেন্ট: ${paymentLabels[sale.payment_method] || sale.payment_method}\nধন্যবাদ।`;
+    const text = `ZovoriX Invoice\nদোকান: ${customer.shop_name}\nInvoice: ${sale.invoice_number}\nমোট: ৳${sale.net_amount}\nপেমেন্ট: ${paymentLabels[sale.payment_method] || sale.payment_method}\nধন্যবাদ।`;
     return sendEmail(email, subject, html, text);
 };
 
@@ -331,11 +331,11 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items) => {
 // ============================================================
 
 const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, customer, worker, items) => {
-    const FRONTEND_URL = process.env.FRONTEND_URL || 'https://novatech.com';
+    const FRONTEND_URL = process.env.FRONTEND_URL || 'https://zovorix.com';
     const verifyLink   = sale?.verify_token ? `${FRONTEND_URL}/verify/${sale.verify_token}` : null;
     const subject      = verifyLink
-        ? `NovaTech BD — অর্ডার নিশ্চিত করুন | Invoice ${sale.invoice_number}`
-        : `NovaTechBD - OTP: ${otp} | Invoice ${sale.invoice_number}`;
+        ? `ZovoriX — অর্ডার নিশ্চিত করুন | Invoice ${sale.invoice_number}`
+        : `ZovoriX - OTP: ${otp} | Invoice ${sale.invoice_number}`;
 
     const paymentLabels = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
 
@@ -370,7 +370,7 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
     <td style="background:linear-gradient(135deg,#1a73e8,#0d47a1);padding:25px 35px;">
       <table width="100%"><tr>
         <td>
-          <h1 style="color:#fff;margin:0;font-size:20px;">NovaTech BD</h1>
+          <h1 style="color:#fff;margin:0;font-size:20px;">ZovoriX</h1>
           <p style="color:#bbdefb;margin:3px 0 0;font-size:11px;">জানকি সিংহ রোড, বরিশাল সদর – ১২০০</p>
         </td>
         <td style="text-align:right;">
@@ -485,7 +485,7 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
   </tr>
   <tr>
     <td style="background:#f8f9fa;padding:12px 35px;text-align:center;border-top:1px solid #e0e0e0;">
-      <p style="color:#999;font-size:11px;margin:0;">NovaTech BD (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+      <p style="color:#999;font-size:11px;margin:0;">ZovoriX (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
     </td>
   </tr>
 
@@ -496,8 +496,8 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
 </html>`;
 
     const text = verifyLink
-        ? `NovaTechBD — অর্ডার নিশ্চিত করুন\nInvoice: ${sale.invoice_number}\nদোকান: ${customer.shop_name}\nমোট: ৳${sale.net_amount}\nলিংক: ${verifyLink}\nমেয়াদ: ${expiryMinutes} মিনিট`
-        : `NovaTechBD - OTP: ${otp} (মেয়াদ: ${expiryMinutes} মিনিট)\nInvoice: ${sale.invoice_number}\nদোকান: ${customer.shop_name}\nমোট: ৳${sale.net_amount}\nএই কোড কাউকে দেবেন না।`;
+        ? `ZovoriX — অর্ডার নিশ্চিত করুন\nInvoice: ${sale.invoice_number}\nদোকান: ${customer.shop_name}\nমোট: ৳${sale.net_amount}\nলিংক: ${verifyLink}\nমেয়াদ: ${expiryMinutes} মিনিট`
+        : `ZovoriX - OTP: ${otp} (মেয়াদ: ${expiryMinutes} মিনিট)\nInvoice: ${sale.invoice_number}\nদোকান: ${customer.shop_name}\nমোট: ৳${sale.net_amount}\nএই কোড কাউকে দেবেন না।`;
     return sendEmail(email, subject, html, text);
 };
 
@@ -551,7 +551,7 @@ const sendOrderNotificationEmail = async (toEmails, orderData) => {
       <table width="100%"><tr>
         <td>
           <h1 style="color:#fff;margin:0;font-size:20px;">📦 নতুন অর্ডার</h1>
-          <p style="color:#ffccbc;margin:5px 0 0;font-size:12px;">NovaTech BD — অর্ডার নোটিফিকেশন</p>
+          <p style="color:#ffccbc;margin:5px 0 0;font-size:12px;">ZovoriX — অর্ডার নোটিফিকেশন</p>
         </td>
         <td style="text-align:right;">
           <p style="color:#ffccbc;margin:0;font-size:11px;">অর্ডার আইডি</p>
@@ -646,7 +646,7 @@ const sendOrderNotificationEmail = async (toEmails, orderData) => {
   </tr>
   <tr>
     <td style="background:#f8f9fa;padding:12px 35px;text-align:center;border-top:1px solid #e0e0e0;">
-      <p style="color:#999;font-size:11px;margin:0;">NovaTech BD (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+      <p style="color:#999;font-size:11px;margin:0;">ZovoriX (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
     </td>
   </tr>
 
@@ -674,7 +674,7 @@ const sendOrderNotificationEmail = async (toEmails, orderData) => {
 // ============================================================
 
 const sendWelcomeEmail = async (email, customer, worker) => {
-    const subject = `🎉 স্বাগতম NovaTech BD পরিবারে! | ${customer.shop_name}`;
+    const subject = `🎉 স্বাগতম ZovoriX পরিবারে! | ${customer.shop_name}`;
 
     const html = `<!DOCTYPE html>
 <html lang="bn">
@@ -688,7 +688,7 @@ const sendWelcomeEmail = async (email, customer, worker) => {
   <!-- Header -->
   <tr>
     <td style="background:linear-gradient(135deg,#1a73e8,#0d47a1);padding:30px 35px;text-align:center;">
-      <h1 style="color:#fff;margin:0;font-size:26px;letter-spacing:1px;">NovaTech BD</h1>
+      <h1 style="color:#fff;margin:0;font-size:26px;letter-spacing:1px;">ZovoriX</h1>
       <p style="color:#bbdefb;margin:6px 0 0;font-size:13px;">Management System</p>
     </td>
   </tr>
@@ -697,7 +697,7 @@ const sendWelcomeEmail = async (email, customer, worker) => {
   <tr>
     <td style="background:#e8f5e9;padding:20px 35px;text-align:center;border-bottom:2px solid #c8e6c9;">
       <p style="margin:0;font-size:28px;">🎉</p>
-      <h2 style="color:#2e7d32;font-size:20px;margin:8px 0 4px;">স্বাগতম NovaTech BD পরিবারে!</h2>
+      <h2 style="color:#2e7d32;font-size:20px;margin:8px 0 4px;">স্বাগতম ZovoriX পরিবারে!</h2>
       <p style="color:#388e3c;font-size:13px;margin:0;">আপনার নিবন্ধন সফলভাবে সম্পন্ন হয়েছে।</p>
     </td>
   </tr>
@@ -819,7 +819,7 @@ const sendWelcomeEmail = async (email, customer, worker) => {
   </tr>
   <tr>
     <td style="background:#f8f9fa;padding:14px 35px;text-align:center;border-top:1px solid #e0e0e0;">
-      <p style="color:#999;font-size:11px;margin:0;">NovaTech BD (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+      <p style="color:#999;font-size:11px;margin:0;">ZovoriX (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
       <p style="color:#bbb;font-size:10px;margin:4px 0 0;">এই Email স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে। সরাসরি রিপ্লাই করবেন না।</p>
     </td>
   </tr>
@@ -830,7 +830,7 @@ const sendWelcomeEmail = async (email, customer, worker) => {
 </body>
 </html>`;
 
-    const text = `স্বাগতম NovaTech BD পরিবারে!\nদোকান: ${customer.shop_name}\nমালিক: ${customer.owner_name}\nকাস্টমার কোড: ${customer.customer_code}\nধন্যবাদ আমাদের সাথে থাকার জন্য।`;
+    const text = `স্বাগতম ZovoriX পরিবারে!\nদোকান: ${customer.shop_name}\nমালিক: ${customer.owner_name}\nকাস্টমার কোড: ${customer.customer_code}\nধন্যবাদ আমাদের সাথে থাকার জন্য।`;
 
     return sendEmail(email, subject, html, text);
 };
@@ -841,7 +841,7 @@ const sendWelcomeEmail = async (email, customer, worker) => {
 // ============================================================
 
 const sendSRApplicationOTPEmail = async (email, otp, applicantName, expiryMinutes = 10) => {
-    const subject = `NovaTech BD — SR আবেদন যাচাই কোড: ${otp}`;
+    const subject = `ZovoriX — SR আবেদন যাচাই কোড: ${otp}`;
 
     const html = `<!DOCTYPE html>
 <html lang="bn">
@@ -862,7 +862,7 @@ const sendSRApplicationOTPEmail = async (email, otp, applicantName, expiryMinute
       <table width="100%" cellpadding="0" cellspacing="0"><tr>
         <td style="text-align:center;">
           <div style="display:inline-block;background:rgba(255,255,255,.15);border-radius:50%;width:56px;height:56px;line-height:56px;font-size:26px;margin-bottom:12px;">🏢</div>
-          <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;letter-spacing:.5px;">NovaTech BD</h1>
+          <h1 style="color:#ffffff;margin:0;font-size:24px;font-weight:700;letter-spacing:.5px;">ZovoriX</h1>
           <p style="color:#90caf9;margin:6px 0 0;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;">Management System</p>
         </td>
       </tr></table>
@@ -950,7 +950,7 @@ const sendSRApplicationOTPEmail = async (email, otp, applicantName, expiryMinute
             <p style="color:#e65100;font-size:12.5px;font-weight:700;margin:0 0 4px;">⚠️ সতর্কতা</p>
             <p style="color:#6d4c41;font-size:12px;margin:0;line-height:1.6;">
               এই কোডটি <strong>কাউকে শেয়ার করবেন না</strong> — ফোন, মেসেজ বা অন্য কোনো মাধ্যমে।
-              NovaTech BD কর্তৃপক্ষ কখনো আপনার কাছে OTP চাইবে না।
+              ZovoriX কর্তৃপক্ষ কখনো আপনার কাছে OTP চাইবে না।
             </p>
           </td>
         </tr>
@@ -965,7 +965,7 @@ const sendSRApplicationOTPEmail = async (email, otp, applicantName, expiryMinute
   <!-- ══ FOOTER ══ -->
   <tr>
     <td style="background:#f4f6f9;border-top:1px solid #e0e0e0;padding:18px 40px;text-align:center;">
-      <p style="color:#78909c;font-size:11.5px;margin:0 0 4px;font-weight:600;">NovaTech BD (Ltd.)</p>
+      <p style="color:#78909c;font-size:11.5px;margin:0 0 4px;font-weight:600;">ZovoriX (Ltd.)</p>
       <p style="color:#b0bec5;font-size:10.5px;margin:0;">inf.novatechbd@gmail.com &nbsp;|&nbsp; বরিশাল সদর – ১২০০</p>
       <p style="color:#cfd8dc;font-size:10px;margin:6px 0 0;">এই ইমেইলটি স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে। সরাসরি রিপ্লাই করবেন না।</p>
     </td>
@@ -977,7 +977,7 @@ const sendSRApplicationOTPEmail = async (email, otp, applicantName, expiryMinute
 </body>
 </html>`;
 
-    const text = `NovaTech BD — SR নিয়োগ আবেদন যাচাই\nআবেদনকারী: ${applicantName || 'আবেদনকারী'}\nOTP কোড: ${otp}\nমেয়াদ: ${expiryMinutes} মিনিট\nএই কোড কাউকে দেবেন না।`;
+    const text = `ZovoriX — SR নিয়োগ আবেদন যাচাই\nআবেদনকারী: ${applicantName || 'আবেদনকারী'}\nOTP কোড: ${otp}\nমেয়াদ: ${expiryMinutes} মিনিট\nএই কোড কাউকে দেবেন না।`;
     return sendEmail(email, subject, html, text);
 };
 
@@ -988,7 +988,7 @@ const sendSRApplicationOTPEmail = async (email, otp, applicantName, expiryMinute
 const sendSRApplicationConfirmEmail = async (email, applicantData) => {
     const { name, application_id, phone, district, created_at } = applicantData;
 
-    const subject = `✅ আবেদন সফল হয়েছে — ${application_id} | NovaTech BD`;
+    const subject = `✅ আবেদন সফল হয়েছে — ${application_id} | ZovoriX`;
 
     const dateStr = new Date(created_at || Date.now()).toLocaleString('bn-BD', {
         timeZone: 'Asia/Dhaka',
@@ -1013,7 +1013,7 @@ const sendSRApplicationConfirmEmail = async (email, applicantData) => {
     <td style="background:linear-gradient(135deg,#1b5e20 0%,#2e7d32 100%);padding:32px 40px;text-align:center;">
       <div style="font-size:40px;margin-bottom:10px;">✅</div>
       <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;">আবেদন সফলভাবে জমা হয়েছে!</h1>
-      <p style="color:#a5d6a7;margin:6px 0 0;font-size:12px;letter-spacing:1px;">NovaTech BD — SR নিয়োগ বিভাগ</p>
+      <p style="color:#a5d6a7;margin:6px 0 0;font-size:12px;letter-spacing:1px;">ZovoriX — SR নিয়োগ বিভাগ</p>
     </td>
   </tr>
 
@@ -1131,7 +1131,7 @@ const sendSRApplicationConfirmEmail = async (email, applicantData) => {
   <!-- FOOTER -->
   <tr>
     <td style="background:#f4f6f9;border-top:1px solid #e0e0e0;padding:18px 40px;text-align:center;">
-      <p style="color:#78909c;font-size:11.5px;margin:0 0 4px;font-weight:600;">NovaTech BD (Ltd.)</p>
+      <p style="color:#78909c;font-size:11.5px;margin:0 0 4px;font-weight:600;">ZovoriX (Ltd.)</p>
       <p style="color:#b0bec5;font-size:10.5px;margin:0;">inf.novatechbd@gmail.com &nbsp;|&nbsp; বরিশাল সদর – ১২০০</p>
       <p style="color:#cfd8dc;font-size:10px;margin:6px 0 0;">এই ইমেইলটি স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে। সরাসরি রিপ্লাই করবেন না।</p>
     </td>
@@ -1179,7 +1179,7 @@ const sendSRApplicationAdminNotifyEmail = async (toEmails, applicantData) => {
     <td style="background:linear-gradient(135deg,#1a237e 0%,#283593 100%);padding:28px 40px;">
       <table width="100%" cellpadding="0" cellspacing="0"><tr>
         <td>
-          <p style="color:#9fa8da;font-size:11px;margin:0 0 4px;letter-spacing:1px;text-transform:uppercase;">NovaTech BD — নিয়োগ বিভাগ</p>
+          <p style="color:#9fa8da;font-size:11px;margin:0 0 4px;letter-spacing:1px;text-transform:uppercase;">ZovoriX — নিয়োগ বিভাগ</p>
           <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">📋 নতুন SR আবেদন এসেছে</h1>
         </td>
         <td style="text-align:right;white-space:nowrap;">
@@ -1252,7 +1252,7 @@ const sendSRApplicationAdminNotifyEmail = async (toEmails, applicantData) => {
   <!-- FOOTER -->
   <tr>
     <td style="background:#f4f6f9;border-top:1px solid #e0e0e0;padding:18px 40px;text-align:center;">
-      <p style="color:#78909c;font-size:11.5px;margin:0 0 4px;font-weight:600;">NovaTech BD (Ltd.) — Admin Panel</p>
+      <p style="color:#78909c;font-size:11.5px;margin:0 0 4px;font-weight:600;">ZovoriX (Ltd.) — Admin Panel</p>
       <p style="color:#cfd8dc;font-size:10px;margin:4px 0 0;">এই ইমেইলটি স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে।</p>
     </td>
   </tr>

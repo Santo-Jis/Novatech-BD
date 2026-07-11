@@ -1,7 +1,7 @@
 const logger = require('../config/logger');
 // ============================================================
 // Role-Based Access Control Middleware
-// NovaTechBD Management System
+// ZovoriX Management System
 // ============================================================
 
 // ============================================================

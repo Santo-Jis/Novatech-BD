@@ -19,7 +19,7 @@ import { initMessaging, VAPID_KEY } from './config'
 // Platform detect: window.Capacitor?.isNativePlatform()
 // ============================================================
 
-const FCM_TOKEN_KEY = 'novatech_fcm_token'
+const FCM_TOKEN_KEY = 'zovorix_fcm_token'
 const IS_NATIVE     = () => window?.Capacitor?.isNativePlatform?.() === true
 
 // ── Helpers (উভয় platform-এ একই) ──────────────────────────

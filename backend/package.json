@@ -1,7 +1,7 @@
 {
-  "name": "novatechbd-backend",
+  "name": "zovorix-backend",
   "version": "1.0.0",
-  "description": "NovaTechBD Management System - Backend API",
+  "description": "ZovoriX Management System - Backend API",
   "type": "commonjs",
   "main": "src/server.js",
   "scripts": {

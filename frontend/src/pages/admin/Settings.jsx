@@ -390,7 +390,7 @@ export default function AdminSettings() {
               />
               <p className="mt-1 text-xs text-gray-400">এনক্রিপ্ট করে সংরক্ষণ হয়।</p>
             </div>
-            <Input label="Sender ID / SID" placeholder="NovaTechBD"
+            <Input label="Sender ID / SID" placeholder="ZovoriX"
               value={settings.sms_sender_id || ''} onChange={e => set('sms_sender_id', e.target.value)}
               hint="SSL Wireless-এ অনুমোদিত SID" />
             <div>
@@ -585,7 +585,7 @@ export default function AdminSettings() {
             <label className="block text-sm font-medium text-gray-700 mb-1.5">বিল SMS টেমপ্লেট</label>
             <textarea rows={5}
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-primary font-mono resize-none"
-              value={settings.sms_bill_template || 'NovaTEch BD\nদোকান: {shop}\nপণ্য: {product} x {qty} পিস\nডিসকাউন্ট: {disc}%\nমোট: {total}\n{otp_line}'}
+              value={settings.sms_bill_template || 'ZovoriX\nদোকান: {shop}\nপণ্য: {product} x {qty} পিস\nডিসকাউন্ট: {disc}%\nমোট: {total}\n{otp_line}'}
               onChange={e => set('sms_bill_template', e.target.value)}
             />
           </div>
@@ -593,7 +593,7 @@ export default function AdminSettings() {
             <label className="block text-sm font-medium text-gray-700 mb-1.5">লেট অ্যালার্ট বার্তা</label>
             <textarea rows={2}
               className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-primary resize-none"
-              value={settings.sms_late_template || 'NovaTEch BD: আপনি এই মাসে ৩ বার দেরিতে উপস্থিত হয়েছেন।'}
+              value={settings.sms_late_template || 'ZovoriX: আপনি এই মাসে ৩ বার দেরিতে উপস্থিত হয়েছেন।'}
               onChange={e => set('sms_late_template', e.target.value)}
             />
           </div>

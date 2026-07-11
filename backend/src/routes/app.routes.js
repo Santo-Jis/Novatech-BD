@@ -9,12 +9,12 @@ const router  = express.Router()
 // MAIN APK (Staff) version
 // GitHub Actions (build-apk.yml) auto-update করবে
 // ─────────────────────────────────────────────────────────────
-const GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/latest/download/app-release.apk'
+const GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/latest/download/app-release.apk'
 
 const APP_VERSION = {
   versionCode: 129,
   versionName: '1.0.129',
-  apkUrl: 'https://novatechbd-backend.onrender.com/api/app/download',
+  apkUrl: 'https://zovorix-backend.onrender.com/api/app/download',
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
 }
@@ -26,12 +26,12 @@ const APP_VERSION = {
 // CUSTOMER_VERSION_CODE — এই comment টি রাখো, workflow grep করে এটা দিয়ে
 const CUSTOMER_VERSION_CODE = 141
 const CUSTOMER_VERSION_NAME = '1.0.141'
-const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/download/customer-v1.0.141/customer-release.apk'
+const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/download/customer-v1.0.141/customer-release.apk'
 
 const CUSTOMER_APP_VERSION = {
   versionCode: CUSTOMER_VERSION_CODE,
   versionName: CUSTOMER_VERSION_NAME,
-  apkUrl: 'https://novatechbd-backend.onrender.com/api/app/customer-download',
+  apkUrl: 'https://zovorix-backend.onrender.com/api/app/customer-download',
   forceUpdate: false,
   changelog: 'Customer App প্রথম সংস্করণ।',
 }
@@ -83,7 +83,7 @@ router.get('/version', (req, res) => {
 
 // GET /api/app/download
 router.get('/download', (req, res) => {
-  const fileName = `NovaTech-BD-v${APP_VERSION.versionName}.apk`
+  const fileName = `ZovoriX-v${APP_VERSION.versionName}.apk`
   streamApkFromGitHub(GITHUB_APK_URL, fileName, res)
 })
 
@@ -98,7 +98,7 @@ router.get('/customer-version', (req, res) => {
 
 // GET /api/app/customer-download
 router.get('/customer-download', (req, res) => {
-  const fileName = `NovaTech-Customer-v${CUSTOMER_APP_VERSION.versionName}.apk`
+  const fileName = `ZovoriX-Customer-v${CUSTOMER_APP_VERSION.versionName}.apk`
   streamApkFromGitHub(CUSTOMER_GITHUB_APK_URL, fileName, res)
 })
 

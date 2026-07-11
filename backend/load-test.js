@@ -1,6 +1,6 @@
 /**
  * ============================================================
- * Novatech-BD — Load Test
+ * ZovoriX — Load Test
  * Termux এ চালানো যাবে (শুধু Node.js লাগবে)
  * ============================================================
  *
@@ -20,7 +20,7 @@
  *   Supabase SQL Editor-এ:
  *   UPDATE customer_portal_tokens
  *   SET bound_device_id = '003969ffd38e01145439b34cb31c72d6f80ed85e5dec26be10035fcc457c47cf',
- *       bound_email     = 'loadtest@novatech.test',
+ *       bound_email     = 'loadtest@zovorix.test',
  *       token_version   = 1,
  *       expires_at      = NOW() + INTERVAL '30 days'
  *   WHERE customer_id = '<test_customer_id>';
@@ -36,7 +36,7 @@ const https = require('https');
 const http  = require('http');
 
 // ─── Config ────────────────────────────────────────────────
-const BASE_URL = process.env.BASE_URL || 'https://novatechbd-backend.onrender.com';
+const BASE_URL = process.env.BASE_URL || 'https://zovorix-backend.onrender.com';
 
 // Customer Portal Load Test Config
 const TEST_CUSTOMER_ID    = process.env.TEST_CUSTOMER_ID    || '68734e30-df31-4337-a5cf-a7b813bb415a';
@@ -47,7 +47,7 @@ const JWT_PORTAL_SECRET   = process.env.JWT_PORTAL_SECRET;
 function makePortalJWT(customerId) {
     if (!JWT_PORTAL_SECRET) return null;
     return jwt.sign(
-        { customer_id: customerId, email: 'loadtest@novatech.test',
+        { customer_id: customerId, email: 'loadtest@zovorix.test',
           google_name: 'Load Test', type: 'customer_portal', token_version: 1 },
         JWT_PORTAL_SECRET,
         { expiresIn: '1h', algorithm: 'HS256' }
@@ -384,7 +384,7 @@ async function customerFlow(customerId) {
 // ============================================================
 async function main() {
     console.log('═══════════════════════════════════════════════');
-    console.log('   🚀 Novatech-BD Load Test শুরু হচ্ছে');
+    console.log('   🚀 ZovoriX Load Test শুরু হচ্ছে');
     console.log(`   🌐 Server: ${BASE_URL}`);
     console.log('═══════════════════════════════════════════════');
 

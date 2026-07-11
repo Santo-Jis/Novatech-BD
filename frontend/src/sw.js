@@ -1,6 +1,6 @@
 // frontend/src/sw.js
 // ============================================================
-// NovaTechBD — Combined Service Worker
+// ZovoriX — Combined Service Worker
 // ১. Workbox (PWA precache) — vite-plugin-pwa inject করবে
 // ২. Firebase Background Push — app বন্ধ থাকলেও notification
 // ============================================================
@@ -66,7 +66,7 @@ function setupMessaging() {
       console.log('[SW] Background push received:', payload)
       const { title, body } = payload.notification || {}
       const data = payload.data || {}
-      self.registration.showNotification(title || 'NovaTech BD', {
+      self.registration.showNotification(title || 'ZovoriX', {
         body:     body || 'নতুন আপডেট এসেছে',
         icon:     '/icon-192.png',
         badge:    '/badge-72.png',

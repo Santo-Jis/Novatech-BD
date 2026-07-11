@@ -18,7 +18,7 @@ const { sendCustomerNotification } = require('../controllers/customerNotificatio
 // ============================================================
 const buildReminderEmail = (customer, portalLink) => {
     const credit = parseFloat(customer.current_credit || 0).toLocaleString('bn-BD');
-    const subject = `⚠️ বাকি পরিশোধের অনুরোধ — ${customer.shop_name} | NovaTech BD`;
+    const subject = `⚠️ বাকি পরিশোধের অনুরোধ — ${customer.shop_name} | ZovoriX`;
 
     const html = `<!DOCTYPE html>
 <html lang="bn">
@@ -32,7 +32,7 @@ const buildReminderEmail = (customer, portalLink) => {
   <!-- Header -->
   <tr>
     <td style="background:linear-gradient(135deg,#e53935,#b71c1c);padding:28px 35px;text-align:center;">
-      <h1 style="color:#fff;margin:0;font-size:22px;">NovaTech BD</h1>
+      <h1 style="color:#fff;margin:0;font-size:22px;">ZovoriX</h1>
       <p style="color:#ffcdd2;margin:5px 0 0;font-size:12px;">বাকি পরিশোধের অনুরোধ</p>
     </td>
   </tr>
@@ -119,7 +119,7 @@ const buildReminderEmail = (customer, portalLink) => {
   <!-- Footer -->
   <tr>
     <td style="background:#f8f9fa;padding:14px 35px;text-align:center;border-top:1px solid #e0e0e0;">
-      <p style="color:#999;font-size:11px;margin:0;">NovaTech BD (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+      <p style="color:#999;font-size:11px;margin:0;">ZovoriX (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
       <p style="color:#bbb;font-size:10px;margin:4px 0 0;">এই Email স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে।</p>
     </td>
   </tr>
@@ -129,7 +129,7 @@ const buildReminderEmail = (customer, portalLink) => {
 </body>
 </html>`;
 
-    const text = `NovaTech BD — বাকি Reminder\nদোকান: ${customer.shop_name}\nবর্তমান বাকি: ৳${credit}\nঅনুগ্রহ করে দ্রুত পরিশোধ করুন।`;
+    const text = `ZovoriX — বাকি Reminder\nদোকান: ${customer.shop_name}\nবর্তমান বাকি: ৳${credit}\nঅনুগ্রহ করে দ্রুত পরিশোধ করুন।`;
     return { subject, html, text };
 };
 
@@ -162,7 +162,7 @@ const runCreditReminderJob = async () => {
 
         logger.info(`📋 ${customers.length} জন কাস্টমারের বাকি আছে`);
 
-        const FRONTEND_URL = process.env.FRONTEND_URL || 'https://novatech-bd-kqrn.vercel.app';
+        const FRONTEND_URL = process.env.FRONTEND_URL || 'https://zovorix-kqrn.vercel.app';
         let emailSent = 0, pushSent = 0;
 
         for (const customer of customers) {

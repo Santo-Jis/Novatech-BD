@@ -75,7 +75,7 @@ const sendCreditReminder = async (req, res) => {
         const credit = parseFloat(customer.current_credit).toLocaleString('bn-BD');
 
         // ── Email ────────────────────────────────────────────
-        const subject = `⚠️ বাকি পরিশোধের অনুরোধ — ${customer.shop_name} | NovaTech BD`;
+        const subject = `⚠️ বাকি পরিশোধের অনুরোধ — ${customer.shop_name} | ZovoriX`;
 
         const html = `<!DOCTYPE html>
 <html lang="bn">
@@ -87,7 +87,7 @@ const sendCreditReminder = async (req, res) => {
        style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.12);">
   <tr>
     <td style="background:linear-gradient(135deg,#e53935,#b71c1c);padding:28px 35px;text-align:center;">
-      <h1 style="color:#fff;margin:0;font-size:22px;">NovaTech BD</h1>
+      <h1 style="color:#fff;margin:0;font-size:22px;">ZovoriX</h1>
       <p style="color:#ffcdd2;margin:5px 0 0;font-size:12px;">বাকি পরিশোধের অনুরোধ</p>
     </td>
   </tr>
@@ -132,7 +132,7 @@ const sendCreditReminder = async (req, res) => {
   </tr>
   <tr>
     <td style="background:#f8f9fa;padding:14px 35px;text-align:center;border-top:1px solid #e0e0e0;">
-      <p style="color:#999;font-size:11px;margin:0;">NovaTech BD (Ltd.) | inf.novatechbd@gmail.com</p>
+      <p style="color:#999;font-size:11px;margin:0;">ZovoriX (Ltd.) | inf.novatechbd@gmail.com</p>
     </td>
   </tr>
 </table>
@@ -143,7 +143,7 @@ const sendCreditReminder = async (req, res) => {
 
         const emailResult = await sendEmail(
             customer.email, subject, html,
-            `NovaTech BD — বাকি Reminder\nদোকান: ${customer.shop_name}\nবাকি: ৳${credit}`
+            `ZovoriX — বাকি Reminder\nদোকান: ${customer.shop_name}\nবাকি: ৳${credit}`
         );
 
         // ── Push to SR's Manager ─────────────────────────────

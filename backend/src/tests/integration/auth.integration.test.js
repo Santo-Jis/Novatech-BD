@@ -51,7 +51,7 @@ describe('POST /api/auth/login', () => {
 
     test('অজানা email — 401', async () => {
         const res = await publicPost('/api/auth/login', {
-            identifier: 'nobody@novatech.bd',
+            identifier: 'nobody@zovorix.bd',
             password:   'AnyPassword1',
         });
         expectError(res, 401);

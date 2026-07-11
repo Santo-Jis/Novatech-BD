@@ -1,11 +1,11 @@
 {
-  "name": "NovaTech BD",
-  "short_name": "NovaTech",
-  "description": "NovaTech BD Management System",
+  "name": "ZovoriX",
+  "short_name": "ZovoriX",
+  "description": "ZovoriX Management System",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1e3a8a",
-  "theme_color": "#1e3a8a",
+  "background_color": "#0F1B2E",
+  "theme_color": "#0F1B2E",
   "orientation": "portrait",
   "icons": [
     {

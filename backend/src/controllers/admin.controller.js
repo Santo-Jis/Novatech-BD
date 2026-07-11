@@ -302,7 +302,7 @@ const testSmsGateway = async (req, res) => {
             default:
                 result = await smsService.sendSMS(
                     phone,
-                    `NovaTechBD\nটেস্ট SMS সফল!\nSMS গেটওয়ে সঠিকভাবে কাজ করছে।\nসময়: ${new Date().toLocaleTimeString('bn-BD')}`,
+                    `ZovoriX\nটেস্ট SMS সফল!\nSMS গেটওয়ে সঠিকভাবে কাজ করছে।\nসময়: ${new Date().toLocaleTimeString('bn-BD')}`,
                     meta
                 );
         }

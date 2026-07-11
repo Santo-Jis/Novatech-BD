@@ -67,7 +67,7 @@ const sendFallbackEmail = async (customerId, { title, body, type }) => {
                         </p>
                         <div style="background:#f1f5f9;border-radius:8px;padding:12px 16px">
                             <p style="color:#6b7280;font-size:12px;margin:0">
-                                NovaTech BD • স্বয়ংক্রিয় বার্তা — উত্তর দেওয়ার দরকার নেই
+                                ZovoriX • স্বয়ংক্রিয় বার্তা — উত্তর দেওয়ার দরকার নেই
                             </p>
                         </div>
                     </div>

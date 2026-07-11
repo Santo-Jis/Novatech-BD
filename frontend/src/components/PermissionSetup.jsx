@@ -8,7 +8,7 @@ import { useAuthStore } from '../store/auth.store'
 // Native app-এর মতো popup করে permission চায়
 // ============================================================
 
-const STORAGE_KEY = 'novatech_permissions_asked'
+const STORAGE_KEY = 'zovorix_permissions_asked'
 
 // ✅ Native App (Android/iOS) detection
 const isNative = () => !!(window?.Capacitor?.isNativePlatform?.())
@@ -313,7 +313,7 @@ export default function PermissionSetup({ onDone }) {
                 অ্যাপ ব্যবহারের অনুমতি
               </h2>
               <p className="text-sm text-gray-500 text-center mt-1.5 leading-relaxed">
-                NovaTech BD সঠিকভাবে কাজ করতে কিছু অনুমতি দরকার।
+                ZovoriX সঠিকভাবে কাজ করতে কিছু অনুমতি দরকার।
                 আপনার তথ্য সম্পূর্ণ সুরক্ষিত।
               </p>
             </div>

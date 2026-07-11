@@ -442,7 +442,7 @@ describeIf('POST /api/customers/verify-email/send — Email OTP (Real DB)', () =
     test('valid email → OTP পাঠানো, 200', async () => {
         const res = await authPost(
             '/api/customers/verify-email/send',
-            { email: 'integration-test@novatech.test' },
+            { email: 'integration-test@zovorix.test' },
             'admin'
         );
         expectSuccess(res);
@@ -477,7 +477,7 @@ describeIf('POST /api/customers/verify-email/confirm — OTP Confirm (Real DB)',
     test('OTP না পাঠিয়ে confirm করলে 400', async () => {
         const res = await authPost(
             '/api/customers/verify-email/confirm',
-            { email: 'nootp@novatech.test', otp: '000000' },
+            { email: 'nootp@zovorix.test', otp: '000000' },
             'admin'
         );
         expectError(res, 400);
@@ -496,13 +496,13 @@ describeIf('POST /api/customers/verify-email/confirm — OTP Confirm (Real DB)',
         // আগে OTP পাঠাই
         await authPost(
             '/api/customers/verify-email/send',
-            { email: 'wrongotp@novatech.test' },
+            { email: 'wrongotp@zovorix.test' },
             'admin'
         );
         // ভুল OTP দিয়ে confirm
         const res = await authPost(
             '/api/customers/verify-email/confirm',
-            { email: 'wrongotp@novatech.test', otp: '000000' },
+            { email: 'wrongotp@zovorix.test', otp: '000000' },
             'admin'
         );
         expectError(res, 400);

@@ -1,6 +1,6 @@
 /**
  * jest.config.js
- * NovaTechBD Backend Test Configuration
+ * ZovoriX Backend Test Configuration
  *
  * দুটো আলাদা project:
  *   unit        — DB ছাড়া, mock দিয়ে, সবসময় দ্রুত চলে

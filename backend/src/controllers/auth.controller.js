@@ -413,7 +413,7 @@ const forgotPassword = async (req, res) => {
         const { sendEmail } = require('../services/email.service');
         const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden">
           <div style="background:#1e3a8a;padding:20px;text-align:center">
-            <h2 style="color:white;margin:0">NovaTech BD</h2>
+            <h2 style="color:white;margin:0">ZovoriX</h2>
           </div>
           <div style="padding:24px">
             <p>আস্সালামু আলাইকুম <strong>${user.name_bn}</strong>,</p>
@@ -423,14 +423,14 @@ const forgotPassword = async (req, res) => {
             </div>
             <p style="color:#e74c3c;font-size:13px">⚠️ এই কোডটি <strong>১০ মিনিট</strong> পর্যন্ত কার্যকর। কাউকে শেয়ার করবেন না।</p>
             <div style="text-align:center;margin:20px 0">
-              <a href="https://novatech-bd-kqrn.vercel.app" style="background:#1e3a8a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">🚀 অ্যাপে যান</a>
+              <a href="https://zovorix-kqrn.vercel.app" style="background:#1e3a8a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">🚀 অ্যাপে যান</a>
             </div>
-            <p style="font-size:13px;color:#666;text-align:center"><a href="https://novatech-bd-kqrn.vercel.app" style="color:#1e3a8a">https://novatech-bd-kqrn.vercel.app</a></p>
-            <p>ধন্যবাদ,<br><strong>NovaTech BD টিম</strong></p>
+            <p style="font-size:13px;color:#666;text-align:center"><a href="https://zovorix-kqrn.vercel.app" style="color:#1e3a8a">https://zovorix-kqrn.vercel.app</a></p>
+            <p>ধন্যবাদ,<br><strong>ZovoriX টিম</strong></p>
           </div>
         </div>`;
 
-        await sendEmail(user.email, 'NovaTech BD - পাসওয়ার্ড রিসেট OTP 🔑', html);
+        await sendEmail(user.email, 'ZovoriX - পাসওয়ার্ড রিসেট OTP 🔑', html);
 
         return res.status(200).json({ success: true, message: 'OTP আপনার ইমেইলে পাঠানো হয়েছে।' });
 

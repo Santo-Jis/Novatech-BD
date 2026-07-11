@@ -12,7 +12,7 @@ export default function WelcomeView({ tokenInfo, error, loggingIn, onLogin }) {
         </div>
 
         <h1 style={{ color: 'white', fontSize: 26, fontWeight: 800, margin: '0 0 6px', textAlign: 'center', fontFamily: "'Hind Siliguri', sans-serif" }}>
-          NovaTech BD
+          ZovoriX
         </h1>
         <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, margin: '0 0 32px', letterSpacing: 1 }}>
           কাস্টমার পোর্টাল
@@ -113,7 +113,7 @@ export default function WelcomeView({ tokenInfo, error, loggingIn, onLogin }) {
 
 
       <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: 11, padding: '16px', letterSpacing: 0.5 }}>
-        © {new Date().getFullYear()} NovaTech BD Ltd.
+        © {new Date().getFullYear()} ZovoriX Ltd.
       </p>
     </div>
   )

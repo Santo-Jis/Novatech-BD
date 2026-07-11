@@ -5,7 +5,7 @@ import { getMessaging, isSupported } from 'firebase/messaging'
 
 // ============================================================
 // Firebase Configuration
-// NovaTechBD Management System
+// ZovoriX Management System
 // Realtime নোটিফিকেশন + FCM Push Notification
 // ============================================================
 

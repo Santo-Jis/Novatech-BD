@@ -68,9 +68,9 @@ const getCanvasFingerprint = () => {
     ctx.fillStyle    = '#f60'
     ctx.fillRect(0, 0, 200, 50)
     ctx.fillStyle    = '#069'
-    ctx.fillText('NovaTech Portal 🔐', 2, 15)
+    ctx.fillText('ZovoriX Portal 🔐', 2, 15)
     ctx.fillStyle    = 'rgba(102,204,0,0.8)'
-    ctx.fillText('NovaTech Portal 🔐', 4, 25)
+    ctx.fillText('ZovoriX Portal 🔐', 4, 25)
 
     return canvas.toDataURL().slice(-80) // শেষ ৮০ char — pixel hash
   } catch {

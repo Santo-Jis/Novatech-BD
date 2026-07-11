@@ -1,11 +1,36 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiLogIn, FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSettings } from 'react-icons/fi'
+import { FiLogIn, FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSettings, FiArrowRight } from 'react-icons/fi'
+import logo from '../assets/zovorix-logo.png'
 
 // ============================================================
-// Landing Page — NovaTechBD
+// Landing Page — ZovoriX
 // লগইন না করা ব্যবহারকারীদের জন্য পাবলিক পেজ
+// ডিজাইন সিস্টেম: cream base / deep-navy primary / bronze accent (সীমিত ব্যবহার)
 // ============================================================
+
+const T = {
+  bgBase:    '#FAF8F3',
+  bgSurface: '#FFFFFF',
+  bgAlt:     '#F3F1EA',
+  bgSunken:  '#EFEDE4',
+  primary900:'#0F1B2E',
+  primary700:'#16253D',
+  primary500:'#2C4870',
+  primary300:'#6B85A8',
+  primary100:'#DCE3EC',
+  accent600: '#9C6B2E',
+  accent300: '#C99B5A',
+  accent100: '#F3E6D0',
+  textPrimary:  '#1F2937',
+  textSecondary:'#5B6472',
+  textMuted:    '#8B8F98',
+  borderDefault:'#E4E1D8',
+  borderStrong: '#D0CCC0',
+  fontHead: "'Source Serif 4','Noto Sans Bengali',Georgia,serif",
+  fontBody: "'IBM Plex Sans','Noto Sans Bengali',Arial,sans-serif",
+  fontMono: "'IBM Plex Mono',monospace",
+}
 
 export default function LandingPage() {
   const navigate = useNavigate()
@@ -24,18 +49,24 @@ export default function LandingPage() {
   }, [])
 
   const features = [
-    { icon: <FiShoppingBag />, title: 'বিক্রয় ব্যবস্থাপনা', desc: 'অর্ডার, ইনভয়েস ও পেমেন্ট সব এক জায়গায়' },
-    { icon: <FiUsers />,       title: 'টিম ম্যানেজমেন্ট',  desc: 'কর্মীদের অ্যাটেন্ডেন্স ও পারফরম্যান্স ট্র্যাকিং' },
-    { icon: <FiBarChart2 />,   title: 'রিয়েল-টাইম রিপোর্ট', desc: 'ব্যবসার সামগ্রিক চিত্র একনজরে দেখুন' },
-    { icon: <FiShield />,      title: 'নিরাপদ প্ল্যাটফর্ম', desc: 'এনক্রিপ্টেড ডেটা ও সুরক্ষিত অ্যাক্সেস' },
+    { icon: <FiShoppingBag />, title: 'বিক্রয় ব্যবস্থাপনা',  desc: 'অর্ডার, ইনভয়েস ও পেমেন্ট সব এক জায়গায়' },
+    { icon: <FiUsers />,       title: 'টিম ম্যানেজমেন্ট',    desc: 'কর্মীদের অ্যাটেন্ডেন্স ও পারফরম্যান্স ট্র্যাকিং' },
+    { icon: <FiBarChart2 />,   title: 'রিয়েল-টাইম রিপোর্ট',  desc: 'ব্যবসার সামগ্রিক চিত্র একনজরে দেখুন' },
+    { icon: <FiShield />,      title: 'নিরাপদ প্ল্যাটফর্ম',   desc: 'এনক্রিপ্টেড ডেটা ও সুরক্ষিত অ্যাক্সেস' },
+  ]
+
+  const roles = [
+    { label: 'SR লগইন',      role: 'sr',      icon: '👤', desc: 'Sales Representative' },
+    { label: 'Manager লগইন', role: 'manager', icon: '📊', desc: 'ম্যানেজার / সুপারভাইজার' },
+    { label: 'Admin লগইন',   role: 'admin',   icon: '⚙️', desc: 'অ্যাডমিন প্যানেল' },
   ]
 
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #030712 0%, #0a0f1a 50%, #051a0e 100%)',
-      fontFamily: "'Hind Siliguri', Arial, sans-serif",
-      color: '#f1f5f9',
+      background: T.bgBase,
+      fontFamily: T.fontBody,
+      color: T.textPrimary,
       overflowX: 'hidden',
     }}>
       {/* Navbar */}
@@ -43,9 +74,9 @@ export default function LandingPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '16px 24px',
-        borderBottom: '1px solid rgba(30,58,138,0.2)',
-        background: 'rgba(3,7,18,0.8)',
+        padding: '14px 24px',
+        borderBottom: `1px solid ${T.borderDefault}`,
+        background: 'rgba(255,255,255,0.92)',
         backdropFilter: 'blur(12px)',
         position: 'sticky',
         top: 0,
@@ -53,13 +84,17 @@ export default function LandingPage() {
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
-            width: '36px', height: '36px',
-            background: 'linear-gradient(135deg, #1e3a8a, #065f46)',
+            width: '34px', height: '34px',
             borderRadius: '8px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '18px',
-          }}>🏢</div>
-          <span style={{ fontWeight: 700, fontSize: '17px', color: '#f1f5f9' }}>NovaTech BD</span>
+            overflow: 'hidden',
+            flexShrink: 0,
+            border: `1px solid ${T.borderDefault}`,
+          }}>
+            <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+          <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em' }}>
+            ZovoriX
+          </span>
         </div>
 
         {/* Navbar right — রিটেইলার + ম্যানেজমেন্ট */}
@@ -69,20 +104,23 @@ export default function LandingPage() {
           <button
             onClick={() => navigate('/customer-login')}
             style={{
-              padding: '8px 16px',
-              background: 'linear-gradient(135deg, #065f46, #047857)',
-              border: '1px solid rgba(6,95,70,0.5)',
+              padding: '9px 18px',
+              background: 'transparent',
+              border: `1px solid ${T.primary700}`,
               borderRadius: '8px',
-              color: '#f1f5f9',
+              color: T.primary700,
               fontSize: '13px',
               fontWeight: 600,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              fontFamily: "'Hind Siliguri', Arial, sans-serif",
+              fontFamily: T.fontBody,
               whiteSpace: 'nowrap',
+              transition: 'background 0.15s, color 0.15s',
             }}
+            onMouseEnter={e => { e.currentTarget.style.background = T.primary700; e.currentTarget.style.color = '#fff' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = T.primary700 }}
           >
             <FiShoppingBag style={{ fontSize: '14px' }} /> রিটেইলার লগইন
           </button>
@@ -92,20 +130,18 @@ export default function LandingPage() {
             <button
               onClick={() => setMgmtOpen(p => !p)}
               style={{
-                padding: '8px 16px',
-                background: mgmtOpen
-                  ? 'linear-gradient(135deg, #1e3a8a, #162d6e)'
-                  : 'rgba(30,58,138,0.15)',
-                border: '1px solid rgba(30,58,138,0.5)',
+                padding: '9px 18px',
+                background: T.primary700,
+                border: `1px solid ${T.primary700}`,
                 borderRadius: '8px',
-                color: '#f1f5f9',
+                color: '#fff',
                 fontSize: '13px',
                 fontWeight: 600,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
-                fontFamily: "'Hind Siliguri', Arial, sans-serif",
+                fontFamily: T.fontBody,
                 transition: 'background 0.2s',
                 whiteSpace: 'nowrap',
               }}
@@ -125,13 +161,12 @@ export default function LandingPage() {
                 position: 'absolute',
                 top: 'calc(100% + 8px)',
                 right: 0,
-                minWidth: '200px',
-                background: 'rgba(10,15,26,0.97)',
-                border: '1px solid rgba(30,58,138,0.4)',
-                borderRadius: '12px',
+                minWidth: '210px',
+                background: T.bgSurface,
+                border: `1px solid ${T.borderDefault}`,
+                borderRadius: '10px',
                 overflow: 'hidden',
-                boxShadow: '0 16px 40px rgba(0,0,0,0.6)',
-                backdropFilter: 'blur(20px)',
+                boxShadow: '0 16px 40px rgba(15,27,46,0.18)',
                 zIndex: 200,
                 animation: 'fadeSlideDown 0.15s ease-out',
               }}>
@@ -140,21 +175,18 @@ export default function LandingPage() {
                 {/* Header */}
                 <div style={{
                   padding: '10px 16px 8px',
-                  borderBottom: '1px solid rgba(30,58,138,0.2)',
-                  color: 'rgba(148,163,184,0.6)',
+                  borderBottom: `1px solid ${T.borderDefault}`,
+                  color: T.textMuted,
                   fontSize: '11px',
                   fontWeight: 600,
                   letterSpacing: '0.05em',
                   textTransform: 'uppercase',
+                  fontFamily: T.fontMono,
                 }}>
                   ম্যানেজমেন্ট পোর্টাল
                 </div>
 
-                {[
-                  { label: 'SR লগইন',      role: 'sr',      icon: '👤', desc: 'Sales Representative' },
-                  { label: 'Manager লগইন', role: 'manager', icon: '📊', desc: 'ম্যানেজার / সুপারভাইজার' },
-                  { label: 'Admin লগইন',   role: 'admin',   icon: '⚙️', desc: 'অ্যাডমিন প্যানেল' },
-                ].map((item) => (
+                {roles.map((item) => (
                   <button
                     key={item.role}
                     onClick={() => {
@@ -163,34 +195,34 @@ export default function LandingPage() {
                     }}
                     style={{
                       width: '100%',
-                      padding: '12px 16px',
+                      padding: '11px 16px',
                       background: 'transparent',
                       border: 'none',
-                      borderBottom: '1px solid rgba(30,58,138,0.1)',
-                      color: '#f1f5f9',
+                      borderBottom: `1px solid ${T.borderDefault}`,
+                      color: T.textPrimary,
                       fontSize: '13px',
                       fontWeight: 600,
                       cursor: 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '12px',
-                      fontFamily: "'Hind Siliguri', Arial, sans-serif",
+                      fontFamily: T.fontBody,
                       textAlign: 'left',
                       transition: 'background 0.15s',
                     }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(30,58,138,0.2)'}
+                    onMouseEnter={e => e.currentTarget.style.background = T.bgAlt}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                   >
                     <span style={{
-                      width: '34px', height: '34px',
-                      background: 'rgba(30,58,138,0.25)',
-                      borderRadius: '8px',
+                      width: '32px', height: '32px',
+                      background: T.primary100,
+                      borderRadius: '7px',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '16px', flexShrink: 0,
+                      fontSize: '15px', flexShrink: 0,
                     }}>{item.icon}</span>
                     <div>
-                      <div style={{ fontSize: '13px', fontWeight: 700 }}>{item.label}</div>
-                      <div style={{ fontSize: '11px', color: 'rgba(148,163,184,0.6)', marginTop: '1px' }}>{item.desc}</div>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: T.primary700 }}>{item.label}</div>
+                      <div style={{ fontSize: '11px', color: T.textMuted, marginTop: '1px' }}>{item.desc}</div>
                     </div>
                   </button>
                 ))}
@@ -203,48 +235,53 @@ export default function LandingPage() {
       {/* Hero */}
       <section style={{
         textAlign: 'center',
-        padding: '72px 24px 48px',
+        padding: '76px 24px 56px',
+        position: 'relative',
       }}>
         <div style={{
           display: 'inline-flex',
           alignItems: 'center',
           gap: '8px',
           padding: '6px 14px',
-          background: 'rgba(30,58,138,0.15)',
-          border: '1px solid rgba(30,58,138,0.3)',
+          background: T.bgSurface,
+          border: `1px solid ${T.borderDefault}`,
           borderRadius: '20px',
-          fontSize: '12px',
-          color: 'rgba(148,163,184,0.8)',
-          marginBottom: '24px',
+          fontSize: '11px',
+          fontFamily: T.fontMono,
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+          color: T.textMuted,
+          marginBottom: '28px',
         }}>
-          ✨ আধুনিক ব্যবসা ব্যবস্থাপনা সফটওয়্যার
+          আধুনিক ব্যবসা ব্যবস্থাপনা সফটওয়্যার
         </div>
 
         <h1 style={{
-          fontSize: 'clamp(28px, 6vw, 48px)',
-          fontWeight: 800,
-          lineHeight: 1.2,
-          margin: '0 auto 16px',
-          maxWidth: '600px',
-          background: 'linear-gradient(135deg, #f1f5f9, rgba(148,163,184,0.7))',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
+          fontFamily: T.fontHead,
+          fontSize: 'clamp(30px, 6vw, 50px)',
+          fontWeight: 600,
+          lineHeight: 1.25,
+          margin: '0 auto 8px',
+          maxWidth: '620px',
+          color: T.primary700,
         }}>
-          আপনার ব্যবসাকে <br />
-          <span style={{
-            background: 'linear-gradient(135deg, #3b82f6, #10b981)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-          }}>স্মার্ট করে তুলুন</span>
+          আপনার ব্যবসাকে<br />
+          <span style={{ position: 'relative', display: 'inline-block' }}>
+            <span style={{ color: T.accent600 }}>স্মার্ট করে তুলুন</span>
+            <svg
+              viewBox="0 0 220 14" preserveAspectRatio="none"
+              style={{ position: 'absolute', left: 0, bottom: '-8px', width: '100%', height: '12px' }}
+            >
+              <path d="M2 11 L218 3" stroke={T.accent300} strokeWidth="4" strokeLinecap="round" fill="none" />
+            </svg>
+          </span>
         </h1>
 
         <p style={{
-          color: 'rgba(148,163,184,0.7)',
-          fontSize: '15px',
+          color: T.textSecondary,
+          fontSize: '16px',
           maxWidth: '480px',
-          margin: '0 auto 36px',
+          margin: '28px auto 36px',
           lineHeight: 1.7,
         }}>
           বিক্রয়, কর্মী ও কাস্টমার — সব কিছু একটি প্ল্যাটফর্মে পরিচালনা করুন।
@@ -252,114 +289,116 @@ export default function LandingPage() {
         </p>
 
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          {/* রিটেইলার শপ লগইন — প্রধান CTA */}
-          <button
-            onClick={() => navigate('/customer-login')}
-            style={{
-              padding: '13px 28px',
-              background: 'linear-gradient(135deg, #065f46, #047857)',
-              border: 'none',
-              borderRadius: '10px',
-              color: '#f1f5f9',
-              fontSize: '15px',
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontFamily: "'Hind Siliguri', Arial, sans-serif",
-              boxShadow: '0 8px 24px rgba(6,95,70,0.35)',
-            }}
-          >
-            <FiShoppingBag /> রিটেইলার শপ লগইন
-          </button>
-          {/* ম্যানেজমেন্ট লগইন */}
+          {/* ম্যানেজমেন্ট লগইন — প্রধান CTA */}
           <button
             onClick={() => navigate('/login')}
             style={{
-              padding: '13px 28px',
-              background: 'linear-gradient(135deg, #1e3a8a, #162d6e)',
-              border: '1px solid rgba(30,58,138,0.5)',
-              borderRadius: '10px',
-              color: '#f1f5f9',
+              padding: '13px 26px',
+              background: T.primary700,
+              border: 'none',
+              borderRadius: '9px',
+              color: '#fff',
               fontSize: '15px',
-              fontWeight: 700,
+              fontWeight: 600,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              fontFamily: "'Hind Siliguri', Arial, sans-serif",
-              boxShadow: '0 8px 24px rgba(30,58,138,0.3)',
+              fontFamily: T.fontBody,
+              boxShadow: '0 10px 24px rgba(15,27,46,0.22)',
             }}
           >
             <FiLogIn /> ম্যানেজমেন্ট লগইন
           </button>
+          {/* রিটেইলার শপ লগইন */}
           <button
-            onClick={() => navigate('/apply/sr')}
+            onClick={() => navigate('/customer-login')}
             style={{
-              padding: '13px 28px',
+              padding: '13px 26px',
               background: 'transparent',
-              border: '1px solid rgba(30,58,138,0.4)',
-              borderRadius: '10px',
-              color: 'rgba(148,163,184,0.9)',
+              border: `1px solid ${T.primary700}`,
+              borderRadius: '9px',
+              color: T.primary700,
               fontSize: '15px',
               fontWeight: 600,
               cursor: 'pointer',
-              fontFamily: "'Hind Siliguri', Arial, sans-serif",
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontFamily: T.fontBody,
             }}
           >
-            SR আবেদন করুন
+            <FiShoppingBag /> রিটেইলার শপ লগইন
+          </button>
+          <button
+            onClick={() => navigate('/apply/sr')}
+            style={{
+              padding: '13px 22px',
+              background: 'transparent',
+              border: 'none',
+              color: T.textSecondary,
+              fontSize: '15px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              fontFamily: T.fontBody,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+            }}
+          >
+            SR আবেদন করুন <FiArrowRight style={{ fontSize: '14px' }} />
           </button>
         </div>
       </section>
 
       {/* Features */}
       <section style={{
-        padding: '48px 24px 72px',
-        maxWidth: '900px',
+        padding: '48px 24px 80px',
+        maxWidth: '960px',
         margin: '0 auto',
       }}>
         <h2 style={{
           textAlign: 'center',
-          fontSize: '20px',
-          fontWeight: 700,
-          color: 'rgba(148,163,184,0.8)',
-          marginBottom: '32px',
+          fontFamily: T.fontHead,
+          fontSize: '24px',
+          fontWeight: 600,
+          color: T.primary700,
+          marginBottom: '36px',
         }}>
-          কেন NovaTech BD?
+          কেন ZovoriX?
         </h2>
 
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '16px',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+          gap: '18px',
         }}>
           {features.map((f, i) => (
             <div key={i} style={{
-              background: 'rgba(15,23,42,0.6)',
-              border: '1px solid rgba(30,58,138,0.2)',
-              borderRadius: '14px',
-              padding: '22px 18px',
+              background: T.bgSurface,
+              border: `1px solid ${T.borderDefault}`,
+              borderRadius: '12px',
+              padding: '26px 20px',
               textAlign: 'center',
-              transition: 'border-color 0.2s',
+              transition: 'border-color 0.2s, transform 0.2s',
             }}
-              onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(30,58,138,0.5)'}
-              onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(30,58,138,0.2)'}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = T.primary300; e.currentTarget.style.transform = 'translateY(-2px)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = T.borderDefault; e.currentTarget.style.transform = 'translateY(0)' }}
             >
               <div style={{
-                width: '44px', height: '44px',
-                background: 'rgba(30,58,138,0.2)',
+                width: '46px', height: '46px',
+                background: T.primary100,
                 borderRadius: '10px',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '20px', color: '#60a5fa',
-                margin: '0 auto 12px',
+                fontSize: '20px', color: T.primary700,
+                margin: '0 auto 14px',
               }}>
                 {f.icon}
               </div>
-              <h3 style={{ fontSize: '14px', fontWeight: 700, color: '#f1f5f9', marginBottom: '6px' }}>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, color: T.textPrimary, marginBottom: '6px', fontFamily: T.fontBody }}>
                 {f.title}
               </h3>
-              <p style={{ fontSize: '12px', color: 'rgba(148,163,184,0.6)', lineHeight: 1.5, margin: 0 }}>
+              <p style={{ fontSize: '13px', color: T.textSecondary, lineHeight: 1.6, margin: 0 }}>
                 {f.desc}
               </p>
             </div>
@@ -369,13 +408,29 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer style={{
-        textAlign: 'center',
-        padding: '20px',
-        borderTop: '1px solid rgba(30,58,138,0.15)',
-        color: 'rgba(100,116,139,0.5)',
-        fontSize: '12px',
+        background: T.primary900,
+        color: T.primary100,
+        padding: '28px 24px',
       }}>
-        © {new Date().getFullYear()} NovaTech BD. সর্বস্বত্ব সংরক্ষিত।
+        <div style={{
+          maxWidth: '960px',
+          margin: '0 auto',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '28px', height: '28px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
+              <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+            <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '16px', color: '#fff' }}>ZovoriX</span>
+          </div>
+          <div style={{ fontSize: '12px', textAlign: 'center' }}>
+            © {new Date().getFullYear()} ZovoriX. সর্বস্বত্ব সংরক্ষিত।
+          </div>
+        </div>
       </footer>
     </div>
   )

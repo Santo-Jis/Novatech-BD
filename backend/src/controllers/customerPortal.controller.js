@@ -123,7 +123,7 @@ const sendPortalLink = async (req, res) => {
             [customerId, generatePortalToken(), generateRedirectId()]
         );
 
-        const frontendUrl = process.env.FRONTEND_URL || 'https://novatech-bd-kqrn.vercel.app';
+        const frontendUrl = process.env.FRONTEND_URL || 'https://zovorix-kqrn.vercel.app';
 
         // ✅ NEW: ?c=customer_code — permanent, কখনো expire হয় না
         const portalLink = `${frontendUrl}/customer-login?c=${cust.customer_code}`;
@@ -135,7 +135,7 @@ const sendPortalLink = async (req, res) => {
             `আপনার *${cust.shop_name}* এর সকল ক্রয় তথ্য, বাকি ও পেমেন্ট ইতিহাস দেখতে নিচের লিংকে ক্লিক করুন:\n\n` +
             `🔗 ${portalLink}\n\n` +
             `👆 প্রথমবার Google দিয়ে লগইন করুন — পরে সরাসরি ঢুকতে পারবেন!\n\n` +
-            `_NovaTech BD_`
+            `_ZovoriX_`
         );
 
         const whatsappUrl = `https://wa.me/${phone}?text=${message}`;
@@ -1500,7 +1500,7 @@ const getCustomerStatement = async (req, res) => {
         const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-BD', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
         // ── Header ──────────────────────────────────────────
-        doc.fontSize(18).font('Helvetica-Bold').text('NovaTech BD (Ltd.)', { align: 'center' });
+        doc.fontSize(18).font('Helvetica-Bold').text('ZovoriX (Ltd.)', { align: 'center' });
         doc.fontSize(9).font('Helvetica').fillColor('#555')
            .text('Janaki Singha Road, Barisal — 1200 | inf.novatechbd@gmail.com', { align: 'center' });
         doc.moveDown(0.5);
@@ -1621,7 +1621,7 @@ const getCustomerStatement = async (req, res) => {
         doc.moveDown(0.3);
         doc.fontSize(8).font('Helvetica').fillColor('#999')
            .text('This is a system-generated statement. For queries, contact your SR.', { align: 'center' })
-           .text('NovaTech BD (Ltd.) — Barisal, Bangladesh', { align: 'center' });
+           .text('ZovoriX (Ltd.) — Barisal, Bangladesh', { align: 'center' });
 
         doc.end();
 

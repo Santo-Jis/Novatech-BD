@@ -1,6 +1,6 @@
 const logger = require('../config/logger');
 // ============================================================
-// Novatech-BD — JIS-AI WhatsApp Integration Patch (v2)
+// ZovoriX — JIS-AI WhatsApp Integration Patch (v2)
 // File: backend/src/routes/jisai.routes.js
 //
 // নতুন endpoints:

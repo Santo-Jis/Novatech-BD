@@ -3,7 +3,7 @@ const logger    = require('../config/logger');
 
 // ============================================================
 // requireCheckin Middleware
-// NovaTechBD Management System
+// ZovoriX Management System
 // ============================================================
 // Worker-কে অর্ডার / বিক্রয় / লোকেশন আপডেট করতে হলে
 // আগে আজকের চেক-ইন করতে হবে।

@@ -12,7 +12,7 @@ const exportSalesExcel = async (res, data, from, to) => {
     const ws = wb.addWorksheet('বিক্রয় রিপোর্ট');
 
     ws.mergeCells('A1:I1');
-    ws.getCell('A1').value     = `NovaTech BD — বিক্রয় রিপোর্ট (${from} থেকে ${to})`;
+    ws.getCell('A1').value     = `ZovoriX — বিক্রয় রিপোর্ট (${from} থেকে ${to})`;
     ws.getCell('A1').font      = { bold: true, size: 14 };
     ws.getCell('A1').alignment = { horizontal: 'center' };
 
@@ -45,7 +45,7 @@ const exportAttendanceExcel = async (res, data, year, month) => {
     const ws = wb.addWorksheet('হাজিরা রিপোর্ট');
 
     ws.mergeCells('A1:H1');
-    ws.getCell('A1').value     = `NovaTech BD — হাজিরা রিপোর্ট (${year}-${String(month).padStart(2, '0')})`;
+    ws.getCell('A1').value     = `ZovoriX — হাজিরা রিপোর্ট (${year}-${String(month).padStart(2, '0')})`;
     ws.getCell('A1').font      = { bold: true, size: 14 };
     ws.getCell('A1').alignment = { horizontal: 'center' };
 
@@ -76,7 +76,7 @@ const exportCommissionExcel = async (res, data, year, month) => {
     const ws = wb.addWorksheet('কমিশন রিপোর্ট');
 
     ws.mergeCells('A1:G1');
-    ws.getCell('A1').value     = `NovaTech BD — কমিশন রিপোর্ট (${year}-${String(month).padStart(2, '0')})`;
+    ws.getCell('A1').value     = `ZovoriX — কমিশন রিপোর্ট (${year}-${String(month).padStart(2, '0')})`;
     ws.getCell('A1').font      = { bold: true, size: 14 };
     ws.getCell('A1').alignment = { horizontal: 'center' };
 
@@ -108,7 +108,7 @@ const exportCreditExcel = async (res, data, totalOutstanding) => {
     const ws = wb.addWorksheet('ক্রেডিট রিপোর্ট');
 
     ws.mergeCells('A1:G1');
-    ws.getCell('A1').value     = `NovaTech BD — ক্রেডিট রিকভারি রিপোর্ট`;
+    ws.getCell('A1').value     = `ZovoriX — ক্রেডিট রিকভারি রিপোর্ট`;
     ws.getCell('A1').font      = { bold: true, size: 14 };
     ws.getCell('A1').alignment = { horizontal: 'center' };
 
@@ -153,7 +153,7 @@ const exportSalesPDF = async (res, data, from, to) => {
     });
 
     doc.fontSize(16).font('Helvetica-Bold')
-       .text('NovaTech BD (Ltd.) — বিক্রয় রিপোর্ট', { align: 'center' });
+       .text('ZovoriX (Ltd.) — বিক্রয় রিপোর্ট', { align: 'center' });
     doc.fontSize(10).font('Helvetica')
        .text(`${from} থেকে ${to} | মোট: ${data.length} টি invoice`, { align: 'center' });
     doc.moveDown();

@@ -1,6 +1,6 @@
 /**
  * ============================================================
- * Novatech-BD — Salary, Customer, Attendance Load Test
+ * ZovoriX — Salary, Customer, Attendance Load Test
  * ============================================================
  *
  * বিদ্যমান load-test.js এর সাথে মিলিয়ে চালানো যাবে।
@@ -13,7 +13,7 @@
  *   TEST_MANAGER_EMAIL / TEST_MANAGER_PASSWORD
  *   TEST_CUSTOMER_ID   (optional — specific customer test)
  *   TEST_WORKER_ID     (optional — specific worker salary test)
- *   BASE_URL           (default: https://novatechbd-backend.onrender.com)
+ *   BASE_URL           (default: https://zovorix-backend.onrender.com)
  *
  * চালানো:
  *   node load-test-priority.js
@@ -23,7 +23,7 @@
 const https = require('https');
 const http  = require('http');
 
-const BASE_URL = process.env.BASE_URL || 'https://novatechbd-backend.onrender.com';
+const BASE_URL = process.env.BASE_URL || 'https://zovorix-backend.onrender.com';
 
 const USERS = {
     admin:   { identifier: process.env.TEST_ADMIN_EMAIL,   password: process.env.TEST_ADMIN_PASSWORD },
@@ -372,7 +372,7 @@ async function salaryStressFlow() {
 // ============================================================
 async function main() {
     console.log('═══════════════════════════════════════════════════════');
-    console.log('   🚀 Novatech-BD Priority Load Test (Salary/Customer/Attendance)');
+    console.log('   🚀 ZovoriX Priority Load Test (Salary/Customer/Attendance)');
     console.log(`   🌐 Server: ${BASE_URL}`);
     console.log('═══════════════════════════════════════════════════════');
 

@@ -47,7 +47,7 @@ export default function AdminLayout() {
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 bg-primary dark:bg-slate-800 flex flex-col transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-16 flex items-center justify-between px-4 border-b border-white/10">
           <div>
-            <p className="text-white font-bold text-sm leading-tight">NovaTech BD</p>
+            <p className="text-white font-bold text-sm leading-tight">ZovoriX</p>
             <p className="text-white/50 text-xs">Admin Panel</p>
           </div>
           <button onClick={() => setSidebarOpen(false)} className="text-white p-1">
@@ -79,7 +79,7 @@ export default function AdminLayout() {
           <button onClick={() => setSidebarOpen(true)} className="text-white p-1">
             <FiMenu className="text-xl" />
           </button>
-          <span className="text-white font-bold text-sm">NovaTech BD</span>
+          <span className="text-white font-bold text-sm">ZovoriX</span>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={toggleDarkMode} className="text-white/80 hover:text-white text-lg">

@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "🚀 Novatech-BD — Customer APK Deploy"
+echo "🚀 ZovoriX — Customer APK Deploy"
 echo "======================================"
 
 git add .

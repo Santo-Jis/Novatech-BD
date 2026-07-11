@@ -1,6 +1,6 @@
 // ============================================================
 // Firebase Cloud Messaging Service Worker
-// NovaTechBD — Background Push Notification Handler
+// ZovoriX — Background Push Notification Handler
 // এই ফাইলটি /public/ ফোল্ডারে রাখতে হবে
 // ============================================================
 
@@ -54,7 +54,7 @@ function showNotification(payload) {
     vibrate:  [200, 100, 200],
   }
 
-  self.registration.showNotification(title || 'NovaTech BD', options)
+  self.registration.showNotification(title || 'ZovoriX', options)
 }
 
 // ── Notification click handler ───────────────────────────────

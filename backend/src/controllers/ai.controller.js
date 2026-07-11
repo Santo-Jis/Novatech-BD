@@ -298,7 +298,7 @@ const aiChat = async (req, res) => {
             query(`SELECT COALESCE(SUM(current_credit),0) AS total_due FROM customers WHERE is_active = true`)
         ]);
 
-        const systemPrompt = `তুমি NovaTech BD কোম্পানির AI ম্যানেজার। বাংলায় উত্তর দাও।
+        const systemPrompt = `তুমি ZovoriX কোম্পানির AI ম্যানেজার। বাংলায় উত্তর দাও।
 
 আজকের তথ্য (${today}):
 - বিক্রয়: ৳${parseInt(salesCtx.rows[0].today_sales).toLocaleString()} (${salesCtx.rows[0].invoices}টি invoice)

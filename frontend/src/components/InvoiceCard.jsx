@@ -37,7 +37,7 @@ export default function InvoiceCard({ sale, customer, worker, onShare, onDownloa
 
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', position:'relative' }}>
           <div>
-            <p style={{ color:'#fff', fontWeight:800, fontSize:'1.15rem', letterSpacing:'-0.3px' }}>NovaTech BD</p>
+            <p style={{ color:'#fff', fontWeight:800, fontSize:'1.15rem', letterSpacing:'-0.3px' }}>ZovoriX</p>
             <p style={{ color:'rgba(255,255,255,0.55)', fontSize:'0.72rem', marginTop:2 }}>জানকি সিংহ রোড, বরিশাল</p>
           </div>
           <div style={{ textAlign:'right' }}>
@@ -235,7 +235,7 @@ export default function InvoiceCard({ sale, customer, worker, onShare, onDownloa
           আমাদের সাথে যুক্ত থাকার জন্য ধন্যবাদ 
         </p>
         <p style={{ color:'rgba(255,255,255,0.25)', fontSize:'0.62rem', marginTop:3 }}>
-          NovaTech BD (Ltd.) • বরিশাল
+          ZovoriX (Ltd.) • বরিশাল
         </p>
       </div>
     </div>

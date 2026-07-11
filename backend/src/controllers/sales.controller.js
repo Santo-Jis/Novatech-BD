@@ -628,7 +628,7 @@ const createSale = async (req, res) => {
                 discount_amount:      discountAmount,
                 credit_balance_used:  creditBalanceUsed,
                 credit_balance_added: creditBalanceAdded,
-                verify_link:       `${process.env.FRONTEND_URL || 'https://novatech.com'}/verify/${saleResult.verify_token}`,
+                verify_link:       `${process.env.FRONTEND_URL || 'https://zovorix.com'}/verify/${saleResult.verify_token}`,
                 whatsapp_link:     `https://wa.me/${(() => { const r = cust.whatsapp?.replace(/\D/g, '') || ''; return r.startsWith('880') ? r : '880' + r.replace(/^0/, ''); })()}?text=${encodeURIComponent(waLink)}`
             }
         });
@@ -780,7 +780,7 @@ const buildVerifyPage = (status, data) => {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>NovaTech BD — অর্ডার যাচাই</title>
+<title>ZovoriX — অর্ডার যাচাই</title>
 <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700;800&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -802,7 +802,7 @@ body{font-family:'Hind Siliguri','Segoe UI',sans-serif;background:linear-gradien
 </head>
 <body>
 <div class="card">
-  <div class="hdr"><h3>NovaTech BD</h3><p>জানকি সিংহ রোড, বরিশাল</p></div>
+  <div class="hdr"><h3>ZovoriX</h3><p>জানকি সিংহ রোড, বরিশাল</p></div>
   <div class="body">
     <div class="ico">${c.icon}</div>
     <p class="ttl">${c.title}</p>
@@ -816,7 +816,7 @@ body{font-family:'Hind Siliguri','Segoe UI',sans-serif;background:linear-gradien
     </div>
     <p class="amt">৳${parseFloat(data.net_amount).toLocaleString()}</p>` : ''}
   </div>
-  <div class="ftr">NovaTech BD (Ltd.) — এই পেজটি স্বয়ংক্রিয়ভাবে তৈরি হয়েছে</div>
+  <div class="ftr">ZovoriX (Ltd.) — এই পেজটি স্বয়ংক্রিয়ভাবে তৈরি হয়েছে</div>
 </div>
 </body></html>`;
 };

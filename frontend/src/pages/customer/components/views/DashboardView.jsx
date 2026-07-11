@@ -921,7 +921,7 @@ export default function DashboardView({
         </div>
 
         <p style={{ textAlign:'center', fontSize:10, color:'#c4cbd6', marginTop:24, lineHeight:1.7 }}>
-          NovaTech BD • কাস্টমার পোর্টাল<br/>
+          ZovoriX • কাস্টমার পোর্টাল<br/>
           <span style={{ fontSize:9 }}>তথ্য সংক্রান্ত সমস্যায় আপনার SR-এর সাথে যোগাযোগ করুন।</span>
         </p>
       </div>

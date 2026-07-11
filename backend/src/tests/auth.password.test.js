@@ -37,7 +37,7 @@ describe('validatePasswordStrength — পাসওয়ার্ড নীত�
     describe('গ্রহণযোগ্য পাসওয়ার্ড', () => {
 
         test('uppercase + lowercase + number — valid', () => {
-            expect(validatePasswordStrength('Novatech1').valid).toBe(true);
+            expect(validatePasswordStrength('Zovorix1').valid).toBe(true);
         });
 
         test('লম্বা শক্তিশালী পাসওয়ার্ড', () => {

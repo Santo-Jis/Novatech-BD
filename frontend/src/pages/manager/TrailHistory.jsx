@@ -67,7 +67,7 @@ export default function TrailHistory() {
         mapInstance.current = new window.google.maps.Map(mapRef.current, {
             center:             { lat: 23.8103, lng: 90.4125 },
             zoom:               12,
-            mapId:              'NOVATECH_TRAIL',
+            mapId:              'ZOVORIX_TRAIL',
             mapTypeControl:     false,
             fullscreenControl:  false,
             streetViewControl:  false,

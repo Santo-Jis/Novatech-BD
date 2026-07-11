@@ -6,7 +6,7 @@ const { decrypt } = require('../config/encryption');
 // ============================================================
 // AI Service — Multi-Provider Integration
 // Supports: OpenRouter, Anthropic, OpenAI, Google Gemini
-// NovaTechBD Management System
+// ZovoriX Management System
 // ============================================================
 
 const PROVIDERS = {
@@ -17,8 +17,8 @@ const PROVIDERS = {
         authHeader:  'Authorization',
         authValue:   (key) => `Bearer ${key}`,
         extraHeaders: {
-            'HTTP-Referer': 'https://novatech-bd.vercel.app',
-            'X-Title':      'NovaTech BD'
+            'HTTP-Referer': 'https://zovorix.vercel.app',
+            'X-Title':      'ZovoriX'
         }
     },
     anthropic: {
@@ -217,7 +217,7 @@ const collectDailyData = async (managerId = null) => {
 const generateManagerInsight = async (managerId, managerName) => {
     try {
         const data = await collectDailyData(managerId);
-        const prompt = `তুমি NovaTech BD কোম্পানির একজন AI Business Analyst।\nনিচের ডাটা বিশ্লেষণ করে ${managerName} ম্যানেজারের জন্য একটি সংক্ষিপ্ত বাংলা রিপোর্ট তৈরি করো।\n\nতারিখ: ${data.date}\nহাজিরা:\n${JSON.stringify(data.attendance, null, 2)}\nআজকের বিক্রয়:\n${JSON.stringify(data.sales, null, 2)}\nগত ৭ দিনের ট্রেন্ড:\n${JSON.stringify(data.trend, null, 2)}\nউচ্চ ক্রেডিট ঝুঁকি:\n${JSON.stringify(data.high_credit, null, 2)}\n\nনিচের JSON ফরম্যাটে উত্তর দাও (অন্য কিছু লিখবে না):\n{\n  "summary": "সংক্ষিপ্ত সারসংক্ষেপ (২-৩ বাক্য)",\n  "alerts": [{"type": "warning/critical/info", "title": "শিরোনাম", "message": "বিস্তারিত"}],\n  "recommendations": ["সুপারিশ ১", "সুপারিশ ২"]\n}`;
+        const prompt = `তুমি ZovoriX কোম্পানির একজন AI Business Analyst।\nনিচের ডাটা বিশ্লেষণ করে ${managerName} ম্যানেজারের জন্য একটি সংক্ষিপ্ত বাংলা রিপোর্ট তৈরি করো।\n\nতারিখ: ${data.date}\nহাজিরা:\n${JSON.stringify(data.attendance, null, 2)}\nআজকের বিক্রয়:\n${JSON.stringify(data.sales, null, 2)}\nগত ৭ দিনের ট্রেন্ড:\n${JSON.stringify(data.trend, null, 2)}\nউচ্চ ক্রেডিট ঝুঁকি:\n${JSON.stringify(data.high_credit, null, 2)}\n\nনিচের JSON ফরম্যাটে উত্তর দাও (অন্য কিছু লিখবে না):\n{\n  "summary": "সংক্ষিপ্ত সারসংক্ষেপ (২-৩ বাক্য)",\n  "alerts": [{"type": "warning/critical/info", "title": "শিরোনাম", "message": "বিস্তারিত"}],\n  "recommendations": ["সুপারিশ ১", "সুপারিশ ২"]\n}`;
         const response = await callAI(prompt, 'daily');
         return JSON.parse(response.replace(/```json|```/g, '').trim());
     } catch (error) {
@@ -230,7 +230,7 @@ const generateAdminInsight = async () => {
     try {
         const data = await collectDailyData(null);
         const kpi  = await query(`SELECT COUNT(DISTINCT st.worker_id) AS active_sellers, SUM(st.total_amount) AS total_sales, SUM(st.credit_used) AS total_credit, COUNT(a.id) FILTER (WHERE a.status = 'late') AS late_count FROM sales_transactions st LEFT JOIN attendance a ON a.user_id = st.worker_id AND a.date = CURRENT_DATE WHERE st.date = CURRENT_DATE`);
-        const prompt = `তুমি NovaTech BD কোম্পানির AI Business Analyst।\nনিচের কোম্পানির সামগ্রিক ডাটা বিশ্লেষণ করে Admin এর জন্য রিপোর্ট তৈরি করো।\n\nতারিখ: ${data.date}\nKPI:\n${JSON.stringify(kpi.rows[0], null, 2)}\nবিক্রয় (SR ভিত্তিক):\n${JSON.stringify(data.sales, null, 2)}\nক্রেডিট ঝুঁকি:\n${JSON.stringify(data.high_credit, null, 2)}\n\nনিচের JSON ফরম্যাটে উত্তর দাও:\n{\n  "summary": "কোম্পানির সামগ্রিক অবস্থা (৩-৪ বাক্য)",\n  "kpi_highlights": ["মূল পয়েন্ট ১", "মূল পয়েন্ট ২"],\n  "alerts": [{"type": "warning/critical/info", "title": "শিরোনাম", "message": "বিস্তারিত"}],\n  "recommendations": ["সুপারিশ ১", "সুপারিশ ২"]\n}`;
+        const prompt = `তুমি ZovoriX কোম্পানির AI Business Analyst।\nনিচের কোম্পানির সামগ্রিক ডাটা বিশ্লেষণ করে Admin এর জন্য রিপোর্ট তৈরি করো।\n\nতারিখ: ${data.date}\nKPI:\n${JSON.stringify(kpi.rows[0], null, 2)}\nবিক্রয় (SR ভিত্তিক):\n${JSON.stringify(data.sales, null, 2)}\nক্রেডিট ঝুঁকি:\n${JSON.stringify(data.high_credit, null, 2)}\n\nনিচের JSON ফরম্যাটে উত্তর দাও:\n{\n  "summary": "কোম্পানির সামগ্রিক অবস্থা (৩-৪ বাক্য)",\n  "kpi_highlights": ["মূল পয়েন্ট ১", "মূল পয়েন্ট ২"],\n  "alerts": [{"type": "warning/critical/info", "title": "শিরোনাম", "message": "বিস্তারিত"}],\n  "recommendations": ["সুপারিশ ১", "সুপারিশ ২"]\n}`;
         const response = await callAI(prompt, 'daily');
         return JSON.parse(response.replace(/```json|```/g, '').trim());
     } catch (error) {

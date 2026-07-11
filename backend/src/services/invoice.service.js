@@ -7,7 +7,7 @@ const { sendOTPEmail, sendOTPWithInvoiceEmail, sendInvoiceEmail } = require('./e
 
 // ─── WhatsApp Verify Link via Baileys ──────────────────────
 const BAILEYS_URL = process.env.BAILEYS_URL   || 'http://localhost:3001';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://novatech.com';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'https://zovorix.com';
 const API_SECRET  = process.env.API_SECRET    || 'change-this-secret';
 
 const formatPhoneForWA = (phone) => {
@@ -26,7 +26,7 @@ const sendVerifyLinkWhatsApp = async (phone, verifyToken, shopName, invoiceNumbe
     const link = `${FRONTEND_URL}/verify/${verifyToken}`;
 
     const message =
-        `🛒 *NovaTech BD — অর্ডার যাচাই করুন*\n` +
+        `🛒 *ZovoriX — অর্ডার যাচাই করুন*\n` +
         `━━━━━━━━━━━━━━━━\n` +
         `🏪 দোকান: *${shopName}*\n` +
         `🧾 Invoice: *${invoiceNumber}*\n` +
@@ -37,7 +37,7 @@ const sendVerifyLinkWhatsApp = async (phone, verifyToken, shopName, invoiceNumbe
         `\n` +
         `⏱️ মেয়াদ: ${expiryMinutes} মিনিট\n` +
         `━━━━━━━━━━━━━━━━\n` +
-        `_NovaTech BD (Ltd.)_`;
+        `_ZovoriX (Ltd.)_`;
 
     try {
         const res = await axios.post(
@@ -196,7 +196,7 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
 
             // ── Header ──
             doc.fontSize(14).font('Helvetica-Bold')
-               .text('NovaTech BD (Ltd.)', { align: 'center' });
+               .text('ZovoriX (Ltd.)', { align: 'center' });
             doc.fontSize(8).font('Helvetica')
                .text('জানকি সিংহ রোড, বরিশাল সদর – ১২০০', { align: 'center' })
                .text('inf.novatechbd@gmail.com', { align: 'center' });
@@ -304,7 +304,7 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
             doc.moveDown(0.3);
             doc.fontSize(8).font('Helvetica')
                .text('আমাদের সাথে কেনাকাটার জন্য ধন্যবাদ', { align: 'center' })
-               .text('NovaTech BD (Ltd.)', { align: 'center' });
+               .text('ZovoriX (Ltd.)', { align: 'center' });
 
             doc.end();
 
@@ -330,7 +330,7 @@ const getInvoiceWhatsAppMessage = (sale, customer, worker, items) => {
 
     const paymentLabels = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
 
-    return `🧾 *NovaTech BD Invoice*
+    return `🧾 *ZovoriX Invoice*
 ━━━━━━━━━━━━━━━━━━
 📋 Invoice: *${sale.invoice_number}*
 📅 তারিখ: ${new Date().toLocaleDateString('bn-BD')}
@@ -343,7 +343,7 @@ ${itemsList}${replacementList}
 💳 পেমেন্ট: ${paymentLabels[sale.payment_method]}
 ✅ পরিশোধযোগ্য: *৳${sale.net_amount}*
 ━━━━━━━━━━━━━━━━━━
-_NovaTech BD (Ltd.) | বরিশাল_`;
+_ZovoriX (Ltd.) | বরিশাল_`;
 };
 
 module.exports = {

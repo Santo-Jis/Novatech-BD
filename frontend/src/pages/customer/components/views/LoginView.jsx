@@ -41,7 +41,7 @@ export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {
           textAlign: 'center',
           fontFamily: "'Hind Siliguri', sans-serif",
         }}>
-          NovaTech BD
+          ZovoriX
         </h1>
         <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12, margin: '0 0 28px', letterSpacing: 1 }}>
           কাস্টমার পোর্টাল
@@ -198,7 +198,7 @@ export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {
         padding: '16px',
         letterSpacing: 0.5,
       }}>
-        © {new Date().getFullYear()} NovaTech BD Ltd.
+        © {new Date().getFullYear()} ZovoriX Ltd.
       </p>
     </div>
   )

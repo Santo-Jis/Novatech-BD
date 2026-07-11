@@ -3,7 +3,7 @@
 // IndexedDB দিয়ে offline এ যা করা হয়, পরে sync হয়
 // ============================================================
 
-const DB_NAME = 'novatech_offline'
+const DB_NAME = 'zovorix_offline'
 const DB_VERSION = 1
 const STORE_QUEUE = 'queue'
 const STORE_CACHE = 'cache'

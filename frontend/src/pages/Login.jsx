@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import { FiUser, FiLock, FiEye, FiEyeOff, FiLogIn } from 'react-icons/fi'
 
 // ============================================================
-// Login Page — NovaTechBD
+// Login Page — ZovoriX
 // ============================================================
 
 export default function Login() {
@@ -111,7 +111,7 @@ export default function Login() {
             🏢
           </div>
           <h1 style={{ color: '#f1f5f9', fontSize: '22px', fontWeight: 700, margin: 0 }}>
-            NovaTech BD
+            ZovoriX
           </h1>
           <p style={{ color: 'rgba(148,163,184,0.7)', fontSize: '13px', marginTop: '4px' }}>
             আপনার অ্যাকাউন্টে লগইন করুন

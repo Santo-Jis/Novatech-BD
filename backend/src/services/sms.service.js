@@ -5,7 +5,7 @@ const { decrypt } = require('../config/encryption');
 
 // ============================================================
 // SMS Service — Multi-Provider Adapter
-// NovaTechBD Management System
+// ZovoriX Management System
 // ============================================================
 // Supported providers:
 //   softbarta     → sms.softbarta.com (Android phone gateway)  ← DEFAULT
@@ -253,17 +253,17 @@ const sendSMS = async (phone, message, meta = {}) => {
 // ============================================================
 
 const sendOTP = async (phone, otp, shopName, meta = {}) => {
-    const msg = `NovaTechBD\nদোকান: ${shopName}\nOTP: ${otp}\nমেয়াদ: ১০ মিনিট\nএই কোড কাউকে দেবেন না।`;
+    const msg = `ZovoriX\nদোকান: ${shopName}\nOTP: ${otp}\nমেয়াদ: ১০ মিনিট\nএই কোড কাউকে দেবেন না।`;
     return sendSMS(phone, msg, { type: 'otp', ...meta });
 };
 
 const sendInvoice = async (phone, invoiceNumber, totalAmount, shopName, meta = {}) => {
-    const msg = `NovaTechBD Invoice\nদোকান: ${shopName}\nInvoice: ${invoiceNumber}\nমোট: ৳${totalAmount.toLocaleString('bn-BD')}\nধন্যবাদ।`;
+    const msg = `ZovoriX Invoice\nদোকান: ${shopName}\nInvoice: ${invoiceNumber}\nমোট: ৳${totalAmount.toLocaleString('bn-BD')}\nধন্যবাদ।`;
     return sendSMS(phone, msg, { type: 'invoice', ...meta });
 };
 
 const sendLoginCredentials = async (phone, employeeCode, password, name, meta = {}) => {
-    const msg = `NovaTechBD\nস্বাগতম ${name}!\nID: ${employeeCode}\nPassword: ${password}\nপ্রথম লগইনে পাসওয়ার্ড পরিবর্তন করুন।`;
+    const msg = `ZovoriX\nস্বাগতম ${name}!\nID: ${employeeCode}\nPassword: ${password}\nপ্রথম লগইনে পাসওয়ার্ড পরিবর্তন করুন।`;
     return sendSMS(phone, msg, { type: 'login', ...meta });
 };
 
@@ -273,11 +273,11 @@ const getWhatsAppInvoiceLink = (phone, invoiceNumber, totalAmount, shopName, ite
         .map(i => `• ${i.name}: ${i.qty} × ৳${i.price} = ৳${i.subtotal}`)
         .join('\n');
     const message =
-        `🧾 *NovaTech BD Invoice*\n━━━━━━━━━━━━━━━━━━\n` +
+        `🧾 *ZovoriX Invoice*\n━━━━━━━━━━━━━━━━━━\n` +
         `🏪 দোকান: *${shopName}*\n📋 Invoice: *${invoiceNumber}*\n` +
         `━━━━━━━━━━━━━━━━━━\n${itemsList}\n━━━━━━━━━━━━━━━━━━\n` +
         `💰 মোট: *৳${totalAmount.toLocaleString('bn-BD')}*\n━━━━━━━━━━━━━━━━━━\n` +
-        `_NovaTech BD (Ltd.)_\n_জানকি সিংহ রোড, বরিশাল_`;
+        `_ZovoriX (Ltd.)_\n_জানকি সিংহ রোড, বরিশাল_`;
     return `https://wa.me/${fp}?text=${encodeURIComponent(message)}`;
 };
 

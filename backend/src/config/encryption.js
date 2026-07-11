@@ -143,7 +143,7 @@ const generateToken = (bytes = 32) => {
 
 const testEncryption = () => {
     try {
-        const testText    = 'NovaTechBD_Test_2026';
+        const testText    = 'ZovoriX_Test_2026';
         const encrypted   = encrypt(testText);
         const decrypted   = decrypt(encrypted);
 

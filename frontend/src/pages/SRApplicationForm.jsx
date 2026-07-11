@@ -688,7 +688,7 @@ export default function SRApplicationForm() {
               <span className="text-white font-bold text-sm">NT</span>
             </div>
             <div>
-              <h1 className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight">NovaTech BD</h1>
+              <h1 className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight">ZovoriX</h1>
               <p className="text-[11px] text-gray-500">ইমেইল যাচাই</p>
             </div>
             <div className="ml-auto">
@@ -730,7 +730,7 @@ export default function SRApplicationForm() {
             <span className="text-white font-bold text-sm">NT</span>
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight truncate">NovaTech BD</h1>
+            <h1 className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight truncate">ZovoriX</h1>
             <p className="text-[11px] text-gray-500 dark:text-gray-400">SR নিয়োগ আবেদন ফর্ম</p>
           </div>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full text-[11px] font-bold flex-shrink-0">
@@ -749,7 +749,7 @@ export default function SRApplicationForm() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             <div className="bg-white/10 rounded-xl p-2.5">
               <p className="text-red-200 text-[10px] mb-0.5">কোম্পানি</p>
-              <p className="font-bold text-[13px]">NovaTech BD</p>
+              <p className="font-bold text-[13px]">ZovoriX</p>
             </div>
             <div className="bg-white/10 rounded-xl p-2.5">
               <p className="text-red-200 text-[10px] mb-0.5">কর্মএলাকা</p>

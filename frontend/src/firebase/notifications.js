@@ -8,7 +8,7 @@ import toast from 'react-hot-toast'
 
 // ============================================================
 // Firebase Realtime Notification System
-// NovaTechBD Management System
+// ZovoriX Management System
 // ============================================================
 
 export function useFirebaseNotifications() {

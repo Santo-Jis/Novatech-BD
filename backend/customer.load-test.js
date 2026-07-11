@@ -7,12 +7,12 @@
  * Node.js শুধু লাগবে (jest নয়), তাই Termux-এও চলবে।
  *
  * Environment setup:
- *   export BASE_URL="https://novatechbd-backend.onrender.com"
- *   export TEST_ADMIN_EMAIL="admin@novatech.bd"
+ *   export BASE_URL="https://zovorix-backend.onrender.com"
+ *   export TEST_ADMIN_EMAIL="admin@zovorix.bd"
  *   export TEST_ADMIN_PASSWORD="AdminPass1"
- *   export TEST_MANAGER_EMAIL="manager@novatech.bd"
+ *   export TEST_MANAGER_EMAIL="manager@zovorix.bd"
  *   export TEST_MANAGER_PASSWORD="ManagerPass1"
- *   export TEST_WORKER_EMAIL="worker@novatech.bd"
+ *   export TEST_WORKER_EMAIL="worker@zovorix.bd"
  *   export TEST_WORKER_PASSWORD="WorkerPass1"
  *   export TEST_CUSTOMER_ID="<uuid>"
  *   export TEST_ROUTE_ID="<uuid>"
@@ -254,9 +254,9 @@ async function loadCustomerByRoute() {
 // Scenario 9: POST /api/customers/verify-email/send — OTP throughput
 async function loadEmailOTP() {
     const emails = [
-        `loadtest1@novatech.test`,
-        `loadtest2@novatech.test`,
-        `loadtest3@novatech.test`,
+        `loadtest1@zovorix.test`,
+        `loadtest2@zovorix.test`,
+        `loadtest3@zovorix.test`,
     ];
     const email = emails[Math.floor(Math.random() * emails.length)];
     const res = await httpRequest(
@@ -382,7 +382,7 @@ function pad(n) {
 
 async function main() {
     console.log('════════════════════════════════════════════════════════════');
-    console.log('🚀 NOVATECH-BD  Customer Module Load Test');
+    console.log('🚀 ZOVORIX  Customer Module Load Test');
     console.log(`   Target      : ${BASE_URL}`);
     console.log(`   Concurrency : ${CONCURRENCY} requests`);
     console.log(`   Duration    : ${DURATION_SEC}s (time-based scenarios)`);

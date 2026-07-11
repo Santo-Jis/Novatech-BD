@@ -17,7 +17,7 @@ export default function AIChat() {
   const { user }         = useAuthStore()
   const [messages, setMessages] = useState([{
     role: 'assistant',
-    content: `আস্সালামু আলাইকুম ${user?.name_bn}! আমি NovaTech BD এর AI ম্যানেজার। ব্যবসার যেকোনো প্রশ্ন করুন।`
+    content: `আস্সালামু আলাইকুম ${user?.name_bn}! আমি ZovoriX এর AI ম্যানেজার। ব্যবসার যেকোনো প্রশ্ন করুন।`
   }])
   const [input,    setInput]    = useState('')
   const [loading,  setLoading]  = useState(false)

@@ -31,14 +31,14 @@ app.use(cookieParser());   // HttpOnly cookie পড়ার জন্য
 // Render-এ FRONTEND_URL env variable সেট করুন।
 //
 // একাধিক URL: comma দিয়ে আলাদা করুন
-//   https://novatech-bd-eta.vercel.app,https://localhost:3000
+//   https://zovorix-eta.vercel.app,https://localhost:3000
 //
 // Wildcard (*) সাপোর্ট — Vercel preview URL-এর জন্য:
 //   https://*.vercel.app         → সব vercel subdomain
-//   https://novatech-bd*.vercel.app → শুধু novatech-bd prefix
+//   https://zovorix*.vercel.app → শুধু zovorix prefix
 //
 // Render → Environment → FRONTEND_URL তে সেট করুন:
-//   https://novatech-bd-eta.vercel.app,https://novatech-bd*.vercel.app
+//   https://zovorix-eta.vercel.app,https://zovorix*.vercel.app
 
 const RAW_ORIGINS = (process.env.FRONTEND_URL || 'http://localhost:3000')
     .split(',')
@@ -243,7 +243,7 @@ jisAiRoutes(app);                                              // ✅ JIS-AI Wha
 app.get('/api/health', (req, res) => {
     res.json({
         success: true,
-        message: 'NovaTechBD API চালু আছে ✅',
+        message: 'ZovoriX API চালু আছে ✅',
         timestamp: new Date().toISOString(),
         environment: process.env.NODE_ENV
     });
@@ -354,7 +354,7 @@ if (process.env.NODE_ENV !== 'test') {
     app.listen(PORT, "0.0.0.0", () => {
         logger.info('');
         logger.info('╔════════════════════════════════════════╗');
-        logger.info('║     NovaTechBD Management System       ║');
+        logger.info('║     ZovoriX Management System       ║');
         logger.info('║     Backend API Server                 ║');
         logger.info(`║     Port: ${PORT}                          ║`);
         logger.info(`║     Mode: ${process.env.NODE_ENV}               ║`);

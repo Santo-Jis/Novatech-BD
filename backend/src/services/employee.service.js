@@ -53,7 +53,7 @@ const uploadToCloudinary = async (fileBuffer, folder, filename, mimetype = 'imag
         const formData = new FormData();
         formData.append('file',           dataUri);
         formData.append('upload_preset',  uploadPreset);
-        formData.append('folder',         `novatech/${folder}`);
+        formData.append('folder',         `zovorix/${folder}`);
         formData.append('public_id',      filename);
 
         const response = await axios.post(
@@ -169,7 +169,7 @@ const generateEmployeePDF = async (employee) => {
             // ── Header ──
             doc.fontSize(18)
                .font('Helvetica-Bold')
-               .text('NovaTech BD (Ltd.)', { align: 'center' });
+               .text('ZovoriX (Ltd.)', { align: 'center' });
 
             doc.fontSize(10)
                .font('Helvetica')
@@ -265,7 +265,7 @@ const generateEmployeePDF = async (employee) => {
             doc.fontSize(9)
                .font('Helvetica')
                .text(
-                   `Generated: ${new Date().toLocaleString('en-BD')} | NovaTech BD (Ltd.)`,
+                   `Generated: ${new Date().toLocaleString('en-BD')} | ZovoriX (Ltd.)`,
                    { align: 'center', color: 'grey' }
                );
 

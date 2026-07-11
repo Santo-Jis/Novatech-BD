@@ -1,4 +1,4 @@
-# NovaTechBD Management System
+# ZovoriX Management System
 
 React + Node.js + PostgreSQL (Supabase) ভিত্তিক সেলস ম্যানেজমেন্ট সিস্টেম।
 

@@ -126,7 +126,7 @@ export default function AdminEmployees() {
 </head>
 <body>
 <div class="header">
-  <h1>NovaTech BD (Ltd.)</h1>
+  <h1>ZovoriX (Ltd.)</h1>
   <p>জানকি সিংহ রোড, বরিশাল সদর, বরিশাল – ১২০০</p>
   <p>inf.novatechbd@gmail.com | +880 1309 540 282</p>
 </div>
@@ -193,7 +193,7 @@ ${emergency_contact?.name ? `
 </div>` : ''}
 
 <div class="footer">
-  Generated: ${new Date().toLocaleString('bn-BD')} | NovaTech BD (Ltd.)
+  Generated: ${new Date().toLocaleString('bn-BD')} | ZovoriX (Ltd.)
 </div>
 </body>
 </html>`
