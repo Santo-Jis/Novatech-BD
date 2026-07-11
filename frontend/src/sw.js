@@ -43,13 +43,13 @@ self.addEventListener('fetch', (event) => {
 // এখন 'install' event-এ Firebase compat scripts load করা হয়।
 // ============================================================
 const FIREBASE_CONFIG = {
-  apiKey:            'AIzaSyAHdK7zelJcBFc8fOFSgH8G_6jEjZdNoSI',
-  authDomain:        'novatech-bd-10421.firebaseapp.com',
-  databaseURL:       'https://novatech-bd-10421-default-rtdb.firebaseio.com',
-  projectId:         'novatech-bd-10421',
-  storageBucket:     'novatech-bd-10421.firebasestorage.app',
-  messagingSenderId: '1098950143887',
-  appId:             '1:1098950143887:web:bb7014007540c878b165fa',
+  apiKey:            'AIzaSyAYfLiYtbcpX9R9TqhcrEkeghwIw-az-r0',
+  authDomain:        'zovorix.firebaseapp.com',
+  databaseURL:       'https://zovorix-default-rtdb.asia-southeast1.firebasedatabase.app',
+  projectId:         'zovorix',
+  storageBucket:     'zovorix.firebasestorage.app',
+  messagingSenderId: '578352842284',
+  appId:             '1:578352842284:web:56f515a2ea35fe8ae6b389',
 }
 
 // ── Firebase Messaging setup ─────────────────────────────────
