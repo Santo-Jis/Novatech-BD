@@ -88,6 +88,8 @@ export default function LandingPage() {
         position: 'sticky',
         top: 0,
         zIndex: 100,
+        flexWrap: 'wrap',
+        rowGap: '10px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{
@@ -102,6 +104,26 @@ export default function LandingPage() {
           <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em' }}>
             ZovoriX
           </span>
+        </div>
+
+        {/* Navbar center — About / Contact লিংক */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
+          <button
+            onClick={() => navigate('/about')}
+            style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+            onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+          >
+            আমাদের সম্পর্কে
+          </button>
+          <button
+            onClick={() => navigate('/contact')}
+            style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+            onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+          >
+            যোগাযোগ
+          </button>
         </div>
 
         {/* Navbar right — রিটেইলার + ম্যানেজমেন্ট */}
@@ -583,12 +605,6 @@ export default function LandingPage() {
                 লগইন
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <button onClick={() => navigate('/about')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  আমাদের সম্পর্কে
-                </button>
-                <button onClick={() => navigate('/contact')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  যোগাযোগ করুন
-                </button>
                 <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   ম্যানেজমেন্ট লগইন
                 </button>

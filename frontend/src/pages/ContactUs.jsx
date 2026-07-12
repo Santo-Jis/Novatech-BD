@@ -94,12 +94,31 @@ export default function ContactUs() {
         padding: '14px 24px', borderBottom: `1px solid ${T.borderDefault}`,
         background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(12px)',
         position: 'sticky', top: 0, zIndex: 100,
+        flexWrap: 'wrap', rowGap: '10px',
       }}>
         <div onClick={() => navigate('/landing')} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
           <div style={{ width: '34px', height: '34px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0, border: `1px solid ${T.borderDefault}` }}>
             <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em' }}>ZovoriX</span>
+        </div>
+
+        {/* Navbar center — About / Contact লিংক */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
+          <button
+            onClick={() => navigate('/about')}
+            style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+            onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+          >
+            আমাদের সম্পর্কে
+          </button>
+          <button
+            onClick={() => navigate('/contact')}
+            style={{ background: 'none', border: 'none', padding: 0, color: T.primary700, fontSize: '13.5px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody }}
+          >
+            যোগাযোগ
+          </button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -378,7 +397,7 @@ export default function ContactUs() {
             <div>
               <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>লিংক</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <button onClick={() => navigate('/about')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>আমাদের সম্পর্কে</button>
+                <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>ম্যানেজমেন্ট লগইন</button>
                 <button onClick={() => navigate('/customer-login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>রিটেইলার শপ লগইন</button>
                 <button onClick={() => navigate('/apply/sr')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>SR আবেদন করুন</button>
               </div>

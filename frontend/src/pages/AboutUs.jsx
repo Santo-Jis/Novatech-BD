@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  FiLogIn, FiShoppingBag, FiSettings, FiChevronDown, FiArrowRight,
-  FiPhone, FiMail, FiMessageCircle, FiUserPlus, FiTarget, FiEye,
+  FiShoppingBag, FiSettings, FiChevronDown, FiArrowRight,
+  FiPhone, FiMail, FiMessageCircle, FiTarget, FiEye,
   FiUsers, FiShield, FiTrendingUp, FiMapPin,
 } from 'react-icons/fi'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
@@ -77,6 +77,7 @@ export default function AboutUs() {
         padding: '14px 24px', borderBottom: `1px solid ${T.borderDefault}`,
         background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(12px)',
         position: 'sticky', top: 0, zIndex: 100,
+        flexWrap: 'wrap', rowGap: '10px',
       }}>
         <div
           onClick={() => navigate('/landing')}
@@ -88,6 +89,24 @@ export default function AboutUs() {
           <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em' }}>
             ZovoriX
           </span>
+        </div>
+
+        {/* Navbar center — About / Contact লিংক */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
+          <button
+            onClick={() => navigate('/about')}
+            style={{ background: 'none', border: 'none', padding: 0, color: T.primary700, fontSize: '13.5px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody }}
+          >
+            আমাদের সম্পর্কে
+          </button>
+          <button
+            onClick={() => navigate('/contact')}
+            style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+            onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+          >
+            যোগাযোগ
+          </button>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -313,32 +332,12 @@ export default function AboutUs() {
       <section style={{ padding: '0 24px 80px', textAlign: 'center' }}>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
           <button
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/contact')}
             style={{
               padding: '13px 26px', background: T.primary700, border: 'none', borderRadius: '9px',
               color: '#fff', fontSize: '15px', fontWeight: 600, cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: '8px', fontFamily: T.fontBody,
               boxShadow: '0 10px 24px rgba(15,27,46,0.22)',
-            }}
-          >
-            <FiLogIn /> ম্যানেজমেন্ট লগইন
-          </button>
-          <button
-            onClick={() => navigate('/apply/sr')}
-            style={{
-              padding: '13px 26px', background: 'transparent', border: `1px solid ${T.primary700}`,
-              borderRadius: '9px', color: T.primary700, fontSize: '15px', fontWeight: 600,
-              cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontFamily: T.fontBody,
-            }}
-          >
-            <FiUserPlus /> SR আবেদন করুন
-          </button>
-          <button
-            onClick={() => navigate('/contact')}
-            style={{
-              padding: '13px 22px', background: 'transparent', border: 'none', color: T.textSecondary,
-              fontSize: '15px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody,
-              display: 'flex', alignItems: 'center', gap: '6px',
             }}
           >
             যোগাযোগ করুন <FiArrowRight style={{ fontSize: '14px' }} />
@@ -399,7 +398,7 @@ export default function AboutUs() {
             <div>
               <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>লিংক</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <button onClick={() => navigate('/contact')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>যোগাযোগ করুন</button>
+                <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>ম্যানেজমেন্ট লগইন</button>
                 <button onClick={() => navigate('/customer-login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>রিটেইলার শপ লগইন</button>
                 <button onClick={() => navigate('/apply/sr')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>SR আবেদন করুন</button>
               </div>
