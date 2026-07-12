@@ -55,7 +55,6 @@ jobs:
 
           sed -i "s/versionCode: [0-9]*,/versionCode: $MAIN_CODE,/" backend/src/routes/app.routes.js
           sed -i "s/versionName: '[^']*'/versionName: '$MAIN_NAME'/" backend/src/routes/app.routes.js
-          sed -i "s/NovaTech-BD-v[0-9.]*\.apk/NovaTech-BD-v${MAIN_NAME}.apk/g" backend/src/routes/app.routes.js
           sed -i "s/CURRENT_VERSION_CODE = [0-9]*/CURRENT_VERSION_CODE = $MAIN_CODE/" frontend/src/hooks/useAppUpdate.js
 
           # ── Customer versionCode ──
@@ -262,7 +261,7 @@ jobs:
               print('✅ All permissions already exist')
           PYEOF
 
-      - name: "[Main] Set NovaTech BD App Icon from repo"
+      - name: "[Main] Set ZovoriX App Icon from repo"
         working-directory: frontend/android/app/src/main
         run: |
           pip install Pillow --break-system-packages -q
@@ -543,9 +542,9 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.version.outputs.main_version_name }}
-          name: NovaTech BD v${{ steps.version.outputs.main_version_name }}
+          name: ZovoriX v${{ steps.version.outputs.main_version_name }}
           body: |
-            ## NovaTech BD App Update
+            ## ZovoriX App Update
             **Version:** ${{ steps.version.outputs.main_version_name }}
             **Build Type:** Release (ProGuard + Signed)
           files: frontend/android/app/build/outputs/apk/release/app-release.apk
@@ -553,7 +552,7 @@ jobs:
       - name: "[Main] Upload APK artifact"
         uses: actions/upload-artifact@v4
         with:
-          name: NovaTech-BD-v${{ steps.version.outputs.main_version_name }}-release
+          name: ZovoriX-v${{ steps.version.outputs.main_version_name }}-release
           path: frontend/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 30
 
