@@ -38,6 +38,8 @@ const CustomerAIChat = lazy(() => import('./pages/customer/CustomerAIChat'))
 // Auth / Public
 const Login     = lazy(() => import('./pages/Login'))
 const LandingPage = lazy(() => import('./pages/LandingPage'))
+const AboutUs   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/AboutUs'))
+const ContactUs = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/ContactUs'))
 
 // SR Application — Customer APK-এ নেই
 const SRApplicationForm = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/SRApplicationForm'))
@@ -314,6 +316,14 @@ function AppWithPermissions() {
           {/* SR Application — Customer APK-এ নেই */}
           {!IS_CUSTOMER_APP && (
             <Route path="/apply/sr" element={<SRApplicationForm />} />
+          )}
+
+          {/* About Us / Contact Us — Customer APK-এ নেই, শুধু মূল ল্যান্ডিং সাইটে */}
+          {!IS_CUSTOMER_APP && (
+            <>
+              <Route path="/about"   element={<AboutUs />} />
+              <Route path="/contact" element={<ContactUs />} />
+            </>
           )}
 
           {/* ── CUSTOMER ROUTES (দুই APK-এই থাকবে) ── */}
