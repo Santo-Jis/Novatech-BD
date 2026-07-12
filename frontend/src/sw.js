@@ -6,10 +6,34 @@
 // ============================================================
 
 // ── Workbox manifest (vite-plugin-pwa এটা inject করবে) ─────
-// ✅ FIX: এখন শুধু app shell (HTML, CSS, icons) pre-cached।
+// ✅ FIX: CSS/icons/fonts precache হয়, কিন্তু HTML আর precache হয় না
+//   (vite.config.js এর globPatterns থেকে html বাদ দেওয়া হয়েছে)।
 //   JS chunks আলাদাভাবে runtime cache-এ যাবে (নিচের fetch handler)।
 import { precacheAndRoute } from 'workbox-precaching'
+import { registerRoute } from 'workbox-routing'
+import { NetworkFirst } from 'workbox-strategies'
+import { clientsClaim } from 'workbox-core'
+
 precacheAndRoute(self.__WB_MANIFEST)
+
+// ✅ FIX: নতুন SW install হওয়ার সাথে সাথেই activate + সব খোলা ট্যাব control করো।
+// আগে শুধু client message পাঠালে skipWaiting হতো — সেটা না হলে
+// ইউজার সবসময় পুরনো (stale) SW-এর কাছে আটকে থাকত, ফলে পুরনো loading page দেখাত।
+self.skipWaiting()
+clientsClaim()
+
+// ✅ FIX: HTML (loading page সহ পুরো app shell) সবসময় Network First-এ যাবে।
+// আগে workbox precache HTML-কে cache-first serve করত, তাই deploy হওয়া নতুন
+// index.html কখনো দেখা যেত না — শুধু একদম প্রথমবার (SW install হওয়ার আগে) দেখা যেত।
+// এখন: network থেকে সবসময় নতুন HTML আনার চেষ্টা হবে, অফলাইন থাকলে বা ৩ সেকেন্ডে
+// রেসপন্স না এলে cache থেকে fallback হবে (অফলাইন সাপোর্টও বজায় থাকবে)।
+registerRoute(
+  ({ request }) => request.mode === 'navigate',
+  new NetworkFirst({
+    cacheName: 'html-cache-v1',
+    networkTimeoutSeconds: 3,
+  })
+)
 
 // ── Runtime caching for JS role chunks ─────────────────────
 // ✅ FIX: role-worker.js, role-admin.js ইত্যাদি প্রথমবার navigate করলে
