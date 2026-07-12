@@ -3,10 +3,36 @@ import { useNavigate, Link } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import toast from 'react-hot-toast'
 import { FiUser, FiLock, FiEye, FiEyeOff, FiLogIn } from 'react-icons/fi'
+import logo from '../assets/zovorix-logo.png'
 
 // ============================================================
 // Login Page — ZovoriX
+// ডিজাইন সিস্টেম: Deep Navy / Bronze-Gold Accent / Warm Cream
 // ============================================================
+
+const COLORS = {
+  bgBase:      '#FAF8F3',
+  bgSurface:   '#FFFFFF',
+  bgAlt:       '#F3F1EA',
+  primary900:  '#0F1B2E',
+  primary700:  '#16253D',
+  primary500:  '#2C4870',
+  primary300:  '#6B85A8',
+  primary100:  '#DCE3EC',
+  accent600:   '#9C6B2E',
+  accent300:   '#C99B5A',
+  accent100:   '#F3E6D0',
+  textPrimary:   '#1F2937',
+  textSecondary: '#5B6472',
+  textMuted:     '#8B8F98',
+  borderDefault: '#E4E1D8',
+  borderStrong:  '#D0CCC0',
+  error:    '#B3452C',
+  errorBg:  '#F5E4DF',
+}
+
+const FONT_HEAD = "'Source Serif 4','Noto Sans Bengali',Georgia,serif"
+const FONT_BODY = "'IBM Plex Sans','Noto Sans Bengali','Hind Siliguri',Arial,sans-serif"
 
 export default function Login() {
   const navigate            = useNavigate()
@@ -15,8 +41,9 @@ export default function Login() {
   const [identifier, setIdentifier] = useState('')
   const [password,   setPassword]   = useState('')
   const [showPass,   setShowPass]   = useState(false)
+  const [focusField, setFocusField] = useState(null)
 
-  // ইতিমধ্যে লগইন থাকলে সঠিক ডেশবোর্ডে যাও
+  // ইতিমধ্যে লগইন থাকলে সঠিক ড্যাশবোর্ডে যাও
   useEffect(() => {
     if (!user) return
     switch (user.role) {
@@ -47,89 +74,109 @@ export default function Login() {
     }
   }
 
+  const inputStyle = (field) => ({
+    width: '100%',
+    padding: '13px 14px 13px 40px',
+    background: COLORS.bgBase,
+    border: `1px solid ${focusField === field ? COLORS.primary700 : COLORS.borderDefault}`,
+    borderRadius: '8px',
+    color: COLORS.textPrimary,
+    fontSize: '15px',
+    outline: 'none',
+    boxSizing: 'border-box',
+    fontFamily: FONT_BODY,
+    transition: 'border-color 0.15s',
+  })
+
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #030712 0%, #0a0f1a 40%, #051a0e 100%)',
+      background: COLORS.bgBase,
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '16px',
-      fontFamily: "'Hind Siliguri', Arial, sans-serif",
+      padding: '20px',
+      fontFamily: FONT_BODY,
     }}>
-      {/* Animated background dots */}
+      {/* সূক্ষ্ম ব্যাকগ্রাউন্ড টেক্সচার */}
       <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-        {[...Array(6)].map((_, i) => (
-          <div key={i} style={{
-            position: 'absolute',
-            width: `${80 + i * 40}px`,
-            height: `${80 + i * 40}px`,
-            borderRadius: '50%',
-            background: i % 2 === 0
-              ? 'rgba(30,58,138,0.08)'
-              : 'rgba(6,95,70,0.08)',
-            top:  `${10 + i * 15}%`,
-            left: `${5 + i * 16}%`,
-            animation: `float${i % 3} ${6 + i}s ease-in-out infinite`,
-          }} />
-        ))}
-        <style>{`
-          @keyframes float0 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-20px)} }
-          @keyframes float1 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(15px)} }
-          @keyframes float2 { 0%,100%{transform:translateY(0) translateX(0)} 50%{transform:translateY(-10px) translateX(10px)} }
-        `}</style>
+        <div style={{
+          position: 'absolute', top: '-10%', right: '-8%',
+          width: '380px', height: '380px', borderRadius: '50%',
+          background: `radial-gradient(circle, ${COLORS.primary100} 0%, transparent 70%)`,
+          opacity: 0.6,
+        }} />
+        <div style={{
+          position: 'absolute', bottom: '-12%', left: '-10%',
+          width: '340px', height: '340px', borderRadius: '50%',
+          background: `radial-gradient(circle, ${COLORS.accent100} 0%, transparent 70%)`,
+          opacity: 0.5,
+        }} />
       </div>
 
       {/* Card */}
       <div style={{
         width: '100%',
         maxWidth: '400px',
-        background: 'rgba(15,23,42,0.85)',
-        border: '1px solid rgba(30,58,138,0.3)',
-        borderRadius: '20px',
-        padding: '36px 28px',
-        backdropFilter: 'blur(20px)',
-        boxShadow: '0 25px 50px rgba(0,0,0,0.5)',
+        background: COLORS.bgSurface,
+        border: `1px solid ${COLORS.borderDefault}`,
+        borderRadius: '14px',
+        padding: '40px 30px 32px',
+        boxShadow: '0 4px 6px rgba(15,27,46,0.04), 0 12px 32px rgba(15,27,46,0.08)',
         position: 'relative',
         zIndex: 1,
       }}>
 
         {/* Logo / Brand */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
           <div style={{
-            width: '64px',
-            height: '64px',
-            background: 'linear-gradient(135deg, #1e3a8a, #065f46)',
+            width: '72px',
+            height: '72px',
             borderRadius: '16px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            margin: '0 auto 14px',
-            fontSize: '28px',
-            boxShadow: '0 8px 24px rgba(30,58,138,0.4)',
+            margin: '0 auto 16px',
+            overflow: 'hidden',
+            background: COLORS.bgAlt,
+            border: `1px solid ${COLORS.borderDefault}`,
           }}>
-            🏢
+            <img
+              src={logo}
+              alt="ZovoriX"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
           </div>
-          <h1 style={{ color: '#f1f5f9', fontSize: '22px', fontWeight: 700, margin: 0 }}>
+          <h1 style={{
+            color: COLORS.primary700,
+            fontFamily: FONT_HEAD,
+            fontSize: '26px',
+            fontWeight: 600,
+            margin: 0,
+            letterSpacing: '-0.01em',
+          }}>
             ZovoriX
           </h1>
-          <p style={{ color: 'rgba(148,163,184,0.7)', fontSize: '13px', marginTop: '4px' }}>
+          <p style={{ color: COLORS.textSecondary, fontSize: '14px', marginTop: '6px' }}>
             আপনার অ্যাকাউন্টে লগইন করুন
           </p>
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
 
           {/* Identifier */}
           <div>
-            <label style={{ color: 'rgba(148,163,184,0.9)', fontSize: '13px', display: 'block', marginBottom: '6px' }}>
+            <label style={{
+              color: COLORS.textSecondary, fontSize: '13px', fontWeight: 500,
+              display: 'block', marginBottom: '7px',
+            }}>
               ইউজারনেম / ইমেইল / ফোন
             </label>
             <div style={{ position: 'relative' }}>
               <span style={{
-                position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
-                color: 'rgba(100,116,139,0.8)', fontSize: '16px',
+                position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)',
+                color: COLORS.textMuted, fontSize: '16px', display: 'flex',
               }}>
                 <FiUser />
               </span>
@@ -137,35 +184,27 @@ export default function Login() {
                 type="text"
                 value={identifier}
                 onChange={e => setIdentifier(e.target.value)}
+                onFocus={() => setFocusField('id')}
+                onBlur={() => setFocusField(null)}
                 placeholder="এন্টার করুন..."
                 autoComplete="username"
-                style={{
-                  width: '100%',
-                  padding: '12px 12px 12px 38px',
-                  background: 'rgba(15,23,42,0.6)',
-                  border: '1px solid rgba(30,58,138,0.4)',
-                  borderRadius: '10px',
-                  color: '#f1f5f9',
-                  fontSize: '14px',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                  transition: 'border-color 0.2s',
-                }}
-                onFocus={e => e.target.style.borderColor = 'rgba(30,58,138,0.8)'}
-                onBlur={e => e.target.style.borderColor = 'rgba(30,58,138,0.4)'}
+                style={inputStyle('id')}
               />
             </div>
           </div>
 
           {/* Password */}
           <div>
-            <label style={{ color: 'rgba(148,163,184,0.9)', fontSize: '13px', display: 'block', marginBottom: '6px' }}>
+            <label style={{
+              color: COLORS.textSecondary, fontSize: '13px', fontWeight: 500,
+              display: 'block', marginBottom: '7px',
+            }}>
               পাসওয়ার্ড
             </label>
             <div style={{ position: 'relative' }}>
               <span style={{
-                position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)',
-                color: 'rgba(100,116,139,0.8)', fontSize: '16px',
+                position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)',
+                color: COLORS.textMuted, fontSize: '16px', display: 'flex',
               }}>
                 <FiLock />
               </span>
@@ -173,30 +212,20 @@ export default function Login() {
                 type={showPass ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
+                onFocus={() => setFocusField('pw')}
+                onBlur={() => setFocusField(null)}
                 placeholder="••••••••"
                 autoComplete="current-password"
-                style={{
-                  width: '100%',
-                  padding: '12px 40px 12px 38px',
-                  background: 'rgba(15,23,42,0.6)',
-                  border: '1px solid rgba(30,58,138,0.4)',
-                  borderRadius: '10px',
-                  color: '#f1f5f9',
-                  fontSize: '14px',
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                  transition: 'border-color 0.2s',
-                }}
-                onFocus={e => e.target.style.borderColor = 'rgba(30,58,138,0.8)'}
-                onBlur={e => e.target.style.borderColor = 'rgba(30,58,138,0.4)'}
+                style={{ ...inputStyle('pw'), padding: '13px 42px 13px 40px' }}
               />
               <button
                 type="button"
                 onClick={() => setShowPass(p => !p)}
+                aria-label={showPass ? 'পাসওয়ার্ড লুকান' : 'পাসওয়ার্ড দেখান'}
                 style={{
                   position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
                   background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'rgba(100,116,139,0.8)', fontSize: '16px', padding: '2px',
+                  color: COLORS.textMuted, fontSize: '16px', padding: '2px', display: 'flex',
                 }}
               >
                 {showPass ? <FiEyeOff /> : <FiEye />}
@@ -209,14 +238,12 @@ export default function Login() {
             type="submit"
             disabled={loading}
             style={{
-              marginTop: '6px',
+              marginTop: '8px',
               padding: '13px',
-              background: loading
-                ? 'rgba(30,58,138,0.4)'
-                : 'linear-gradient(135deg, #1e3a8a, #162d6e)',
-              border: '1px solid rgba(30,58,138,0.5)',
-              borderRadius: '10px',
-              color: '#f1f5f9',
+              background: loading ? COLORS.primary300 : COLORS.primary700,
+              border: `1px solid ${loading ? COLORS.primary300 : COLORS.primary700}`,
+              borderRadius: '8px',
+              color: '#fff',
               fontSize: '15px',
               fontWeight: 600,
               cursor: loading ? 'not-allowed' : 'pointer',
@@ -224,19 +251,21 @@ export default function Login() {
               alignItems: 'center',
               justifyContent: 'center',
               gap: '8px',
-              fontFamily: "'Hind Siliguri', Arial, sans-serif",
-              transition: 'opacity 0.2s',
+              fontFamily: FONT_BODY,
+              transition: 'background 0.15s',
             }}
+            onMouseEnter={e => { if (!loading) e.currentTarget.style.background = COLORS.primary900 }}
+            onMouseLeave={e => { if (!loading) e.currentTarget.style.background = COLORS.primary700 }}
           >
             {loading ? (
               <>
                 <span style={{
-                  width: '18px', height: '18px',
-                  border: '2px solid rgba(255,255,255,0.3)',
+                  width: '17px', height: '17px',
+                  border: '2px solid rgba(255,255,255,0.35)',
                   borderTop: '2px solid #fff',
                   borderRadius: '50%',
                   display: 'inline-block',
-                  animation: 'spin 0.8s linear infinite',
+                  animation: 'zx-spin 0.8s linear infinite',
                 }} />
                 লগইন হচ্ছে...
               </>
@@ -245,18 +274,20 @@ export default function Login() {
             )}
           </button>
 
-          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+          <style>{`@keyframes zx-spin { to { transform: rotate(360deg) } }`}</style>
         </form>
 
         {/* Footer */}
         <p style={{
           textAlign: 'center',
-          marginTop: '20px',
-          color: 'rgba(100,116,139,0.6)',
-          fontSize: '12px',
+          marginTop: '24px',
+          paddingTop: '20px',
+          borderTop: `1px solid ${COLORS.borderDefault}`,
+          color: COLORS.textMuted,
+          fontSize: '13px',
         }}>
           SR হিসেবে যোগ দিতে চান?{' '}
-          <Link to="/apply/sr" style={{ color: 'rgba(74,222,128,0.8)', textDecoration: 'none' }}>
+          <Link to="/apply/sr" style={{ color: COLORS.accent600, textDecoration: 'none', fontWeight: 600 }}>
             এখানে আবেদন করুন
           </Link>
         </p>
