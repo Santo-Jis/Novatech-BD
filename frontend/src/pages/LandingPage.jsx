@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiLogIn, FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSettings, FiArrowRight } from 'react-icons/fi'
+import { FiLogIn, FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSettings, FiArrowRight, FiPhone, FiMail, FiMessageCircle, FiUserPlus, FiSliders, FiTrendingUp } from 'react-icons/fi'
+import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
 
 // ============================================================
@@ -53,6 +54,12 @@ export default function LandingPage() {
     { icon: <FiUsers />,       title: 'টিম ম্যানেজমেন্ট',    desc: 'কর্মীদের অ্যাটেন্ডেন্স ও পারফরম্যান্স ট্র্যাকিং' },
     { icon: <FiBarChart2 />,   title: 'রিয়েল-টাইম রিপোর্ট',  desc: 'ব্যবসার সামগ্রিক চিত্র একনজরে দেখুন' },
     { icon: <FiShield />,      title: 'নিরাপদ প্ল্যাটফর্ম',   desc: 'এনক্রিপ্টেড ডেটা ও সুরক্ষিত অ্যাক্সেস' },
+  ]
+
+  const steps = [
+    { icon: <FiUserPlus />,   title: 'SR আবেদন করুন',       desc: 'ফর্ম পূরণ করে আবেদন জমা দিন — অ্যাডমিন যাচাই করে অ্যাকাউন্ট সক্রিয় করবেন' },
+    { icon: <FiSliders />,    title: 'রুট ও কাস্টমার সেট করুন', desc: 'আপনার এলাকার দোকান যোগ করুন, রুট সাজান, টিম নিয়োগ দিন' },
+    { icon: <FiTrendingUp />, title: 'বিক্রয় ট্র্যাক করুন',     desc: 'প্রতিদিনের অর্ডার, পেমেন্ট ও পারফরম্যান্স রিয়েল-টাইমে দেখুন' },
   ]
 
   const roles = [
@@ -351,10 +358,10 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Features */}
+      {/* How it works */}
       <section style={{
-        padding: '48px 24px 80px',
-        maxWidth: '960px',
+        padding: '8px 24px 64px',
+        maxWidth: '880px',
         margin: '0 auto',
       }}>
         <h2 style={{
@@ -363,7 +370,84 @@ export default function LandingPage() {
           fontSize: '24px',
           fontWeight: 600,
           color: T.primary700,
-          marginBottom: '36px',
+          marginBottom: '40px',
+        }}>
+          কীভাবে শুরু করবেন
+        </h2>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '0',
+          position: 'relative',
+        }}>
+          {steps.map((s, i) => (
+            <div key={i} style={{
+              padding: '0 20px',
+              textAlign: 'center',
+              position: 'relative',
+            }}>
+              {/* সংযোগকারী রেখা — শুধু পরের ধাপ থাকলে */}
+              {i < steps.length - 1 && (
+                <div style={{
+                  position: 'absolute',
+                  top: '23px',
+                  left: '50%',
+                  width: '100%',
+                  height: '1px',
+                  background: T.borderStrong,
+                  zIndex: 0,
+                  display: 'none',
+                }} className="step-connector" />
+              )}
+              <div style={{
+                width: '46px', height: '46px',
+                background: T.primary700,
+                borderRadius: '50%',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '19px', color: '#fff',
+                margin: '0 auto 16px',
+                position: 'relative',
+                zIndex: 1,
+                fontFamily: T.fontMono,
+              }}>
+                {s.icon}
+              </div>
+              <div style={{
+                fontFamily: T.fontMono,
+                fontSize: '11px',
+                fontWeight: 600,
+                color: T.accent600,
+                letterSpacing: '0.06em',
+                marginBottom: '6px',
+              }}>
+                ধাপ {i + 1}
+              </div>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, color: T.textPrimary, marginBottom: '6px', fontFamily: T.fontBody }}>
+                {s.title}
+              </h3>
+              <p style={{ fontSize: '13px', color: T.textSecondary, lineHeight: 1.6, margin: 0 }}>
+                {s.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Features */}
+      <section style={{
+        padding: '8px 24px 80px',
+        maxWidth: '960px',
+        margin: '0 auto',
+        borderTop: `1px solid ${T.borderDefault}`,
+      }}>
+        <h2 style={{
+          textAlign: 'center',
+          fontFamily: T.fontHead,
+          fontSize: '24px',
+          fontWeight: 600,
+          color: T.primary700,
+          margin: '48px 0 36px',
         }}>
           কেন ZovoriX?
         </h2>
@@ -410,25 +494,119 @@ export default function LandingPage() {
       <footer style={{
         background: T.primary900,
         color: T.primary100,
-        padding: '28px 24px',
+        padding: '48px 24px 24px',
       }}>
         <div style={{
           maxWidth: '960px',
           margin: '0 auto',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '12px',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ width: '28px', height: '28px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
-              <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '32px',
+            paddingBottom: '32px',
+            borderBottom: '1px solid rgba(255,255,255,0.12)',
+          }}>
+            {/* ব্র্যান্ড */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
+                  <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+                <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '16px', color: '#fff' }}>ZovoriX</span>
+              </div>
+              <p style={{ fontSize: '12.5px', lineHeight: 1.7, color: T.primary300, margin: 0, maxWidth: '240px' }}>
+                বিক্রয়, টিম ও কাস্টমার ব্যবস্থাপনার জন্য একটি সম্পূর্ণ প্ল্যাটফর্ম।
+              </p>
             </div>
-            <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '16px', color: '#fff' }}>ZovoriX</span>
+
+            {/* যোগাযোগ */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
+                যোগাযোগ
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <a href="tel:+8801309540282" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
+                  <FiPhone style={{ fontSize: '14px', color: T.accent300 }} /> +৮৮০ ১৩০৯-৫৪০২৮২
+                </a>
+                <a href="mailto:support@zovorix.com" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
+                  <FiMail style={{ fontSize: '14px', color: T.accent300 }} /> support@zovorix.com
+                </a>
+                <a href="https://wa.me/8801309540282" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
+                  <FiMessageCircle style={{ fontSize: '14px', color: T.accent300 }} /> WhatsApp-এ লিখুন
+                </a>
+              </div>
+            </div>
+
+            {/* সোশ্যাল */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
+                সামাজিক যোগাযোগ
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                {[
+                  { icon: <FaFacebookF />,  href: 'https://www.facebook.com/profile.php?id=61591653097465&mibextid=ZbWKwL', label: 'Facebook' },
+                  { icon: <FaXTwitter />,   href: 'https://x.com/Zovorix',              label: 'X' },
+                  { icon: <FaInstagram />,  href: 'https://instagram.com/zovorix',       label: 'Instagram' },
+                  { icon: <FaTiktok />,     href: 'https://tiktok.com/@zovorix.com',     label: 'TikTok' },
+                  { icon: <FaDiscord />,    href: 'https://discord.gg/zovorix',          label: 'Discord' },
+                  { icon: <FaRedditAlien />,href: 'https://reddit.com/u/zovorix',        label: 'Reddit' },
+                ].map((s) => (
+                  <a
+                    key={s.label}
+                    href={s.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={s.label}
+                    title={s.label}
+                    style={{
+                      width: '32px', height: '32px',
+                      borderRadius: '8px',
+                      background: 'rgba(255,255,255,0.08)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: T.primary100,
+                      fontSize: '14px',
+                      transition: 'background 0.15s, color 0.15s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = T.accent600; e.currentTarget.style.color = '#fff' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = T.primary100 }}
+                  >
+                    {s.icon}
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            {/* কুইক লিংক */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
+                লগইন
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  ম্যানেজমেন্ট লগইন
+                </button>
+                <button onClick={() => navigate('/customer-login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  রিটেইলার শপ লগইন
+                </button>
+                <button onClick={() => navigate('/apply/sr')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  SR আবেদন করুন
+                </button>
+              </div>
+            </div>
           </div>
-          <div style={{ fontSize: '12px', textAlign: 'center' }}>
-            © {new Date().getFullYear()} ZovoriX. সর্বস্বত্ব সংরক্ষিত।
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+            paddingTop: '20px',
+          }}>
+            <div style={{ fontSize: '12px', color: T.primary300 }}>
+              © {new Date().getFullYear()} ZovoriX. সর্বস্বত্ব সংরক্ষিত।
+            </div>
           </div>
         </div>
       </footer>
