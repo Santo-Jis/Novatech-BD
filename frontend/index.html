@@ -71,10 +71,54 @@
       এখন React mount হলে inner div টা replace হবে, #root clean থাকবে।
     -->
     <div id="root">
-      <div style="position:fixed;inset:0;background:linear-gradient(135deg,#030712 0%,#0a0f1a 40%,#051a0e 100%);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:16px;z-index:1;">
-        <div style="width:36px;height:36px;border:4px solid rgba(74,222,128,0.2);border-top:4px solid #4ade80;border-radius:50%;animation:spin 0.8s linear infinite;"></div>
-        <p style="color:rgba(74,222,128,0.7);font-size:14px;font-family:sans-serif;margin:0;">লোড হচ্ছে...</p>
-        <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
+      <div style="position:fixed;inset:0;background:linear-gradient(160deg,#0F1B2E 0%,#16253D 55%,#0F1B2E 100%);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;z-index:1;">
+        <svg width="88" height="88" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style="overflow:visible;">
+          <defs>
+            <filter id="zxGlow" x="-80%" y="-80%" width="260%" height="260%">
+              <feGaussianBlur stdDeviation="2.4" result="blur"/>
+              <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+            <linearGradient id="zxSpark" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#C99B5A" stop-opacity="0"/>
+              <stop offset="50%" stop-color="#F7EFDD" stop-opacity="1"/>
+              <stop offset="100%" stop-color="#C99B5A" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+
+          <!-- স্থির ZovoriX লোগো চিহ্ন -->
+          <line x1="77" y1="23" x2="23" y2="77" stroke="#22385c" stroke-width="9"/>
+          <line x1="23" y1="23" x2="77" y2="77" stroke="#7a5426" stroke-width="9"/>
+          <rect x="18" y="18" width="64" height="9" fill="#1c2f4d"/>
+          <rect x="18" y="73" width="64" height="9" fill="#1c2f4d"/>
+
+          <!-- লোগোর ভিতর দিয়ে প্রবাহিত বিদ্যুৎ -->
+          <line class="zx-streak zx-streak-a" x1="77" y1="23" x2="23" y2="77" pathLength="100"
+                stroke="url(#zxSpark)" stroke-width="9" stroke-linecap="round" filter="url(#zxGlow)"/>
+          <line class="zx-streak zx-streak-b" x1="23" y1="23" x2="77" y2="77" pathLength="100"
+                stroke="url(#zxSpark)" stroke-width="9" stroke-linecap="round" filter="url(#zxGlow)"/>
+          <circle class="zx-spark-core" cx="50" cy="50" r="3.2" fill="#F7EFDD" filter="url(#zxGlow)" style="transform-origin:50px 50px;"/>
+        </svg>
+        <p style="color:#C99B5A;font-size:14px;font-family:'IBM Plex Sans','Noto Sans Bengali',sans-serif;letter-spacing:.03em;margin:0;">লোড হচ্ছে...</p>
+        <style>
+          .zx-streak{stroke-dasharray:20 300;animation:zxFlow 1.6s linear infinite;}
+          .zx-streak-a{animation-delay:0s;}
+          .zx-streak-b{animation-delay:.55s;}
+          @keyframes zxFlow{
+            0%{stroke-dashoffset:100;opacity:0;}
+            8%{opacity:1;}
+            88%{opacity:1;}
+            100%{stroke-dashoffset:-32;opacity:0;}
+          }
+          .zx-spark-core{animation:zxPulse 1.6s ease-in-out infinite;}
+          @keyframes zxPulse{
+            0%,42%,100%{opacity:0;transform:scale(.6);}
+            50%{opacity:1;transform:scale(1.35);}
+            58%{opacity:0;transform:scale(.6);}
+          }
+        </style>
       </div>
     </div>
 
