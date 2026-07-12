@@ -89,48 +89,40 @@ export default function ContactUs() {
   return (
     <div style={{ minHeight: '100vh', background: T.bgBase, fontFamily: T.fontBody, color: T.textPrimary, overflowX: 'hidden' }}>
       {/* Navbar */}
-      <nav style={{
+      <style>{`
+        @media (max-width: 480px) {
+          .zx-navbar { padding: 8px 10px !important; flex-wrap: nowrap !important; row-gap: 0 !important; }
+          .zx-brand { gap: 6px !important; }
+          .zx-logo-box { width: 26px !important; height: 26px !important; border-radius: 6px !important; }
+          .zx-brand-text { font-size: 14px !important; }
+          .zx-nav-actions { gap: 6px !important; }
+          .zx-btn-retailer, .zx-btn-mgmt { padding: 6px 8px !important; font-size: 11px !important; gap: 4px !important; border-radius: 6px !important; }
+          .zx-btn-suffix { display: none !important; }
+          .zx-btn-icon { font-size: 12px !important; }
+          .zx-chevron { font-size: 11px !important; }
+        }
+        @media (max-width: 360px) {
+          .zx-brand-text { display: none !important; }
+          .zx-btn-retailer, .zx-btn-mgmt { padding: 6px 7px !important; }
+        }
+      `}</style>
+      <nav className="zx-navbar" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '14px 24px', borderBottom: `1px solid ${T.borderDefault}`,
         background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(12px)',
         position: 'sticky', top: 0, zIndex: 100,
         flexWrap: 'wrap', rowGap: '10px',
       }}>
-        <div onClick={() => navigate('/landing')} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-          <div style={{ width: '34px', height: '34px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0, border: `1px solid ${T.borderDefault}` }}>
+        <div className="zx-brand" onClick={() => navigate('/landing')} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', minWidth: 0 }}>
+          <div className="zx-logo-box" style={{ width: '34px', height: '34px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0, border: `1px solid ${T.borderDefault}` }}>
             <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
-          <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em' }}>ZovoriX</span>
+          <span className="zx-brand-text" style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>ZovoriX</span>
         </div>
 
-        {/* Navbar center — Home / About / Contact লিংক */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
+        <div className="zx-nav-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
           <button
-            onClick={() => navigate('/landing')}
-            style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = T.primary700}
-            onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
-          >
-            হোম
-          </button>
-          <button
-            onClick={() => navigate('/about')}
-            style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = T.primary700}
-            onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
-          >
-            আমাদের সম্পর্কে
-          </button>
-          <button
-            onClick={() => navigate('/contact')}
-            style={{ background: 'none', border: 'none', padding: 0, color: T.primary700, fontSize: '13.5px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody }}
-          >
-            যোগাযোগ
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button
+            className="zx-btn-retailer"
             onClick={() => navigate('/customer-login')}
             style={{
               padding: '9px 18px', background: 'transparent', border: `1px solid ${T.primary700}`,
@@ -141,11 +133,12 @@ export default function ContactUs() {
             onMouseEnter={e => { e.currentTarget.style.background = T.primary700; e.currentTarget.style.color = '#fff' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = T.primary700 }}
           >
-            <FiShoppingBag style={{ fontSize: '14px' }} /> রিটেইলার লগইন
+            <FiShoppingBag className="zx-btn-icon" style={{ fontSize: '14px' }} /> রিটেইলার<span className="zx-btn-suffix">&nbsp;লগইন</span>
           </button>
 
           <div ref={dropRef} style={{ position: 'relative' }}>
             <button
+              className="zx-btn-mgmt"
               onClick={() => setMgmtOpen(p => !p)}
               style={{
                 padding: '9px 18px', background: T.primary700, border: `1px solid ${T.primary700}`,
@@ -154,9 +147,9 @@ export default function ContactUs() {
                 fontFamily: T.fontBody, transition: 'background 0.2s', whiteSpace: 'nowrap',
               }}
             >
-              <FiSettings style={{ fontSize: '14px' }} />
-              ম্যানেজমেন্ট লগইন
-              <FiChevronDown style={{ fontSize: '13px', transition: 'transform 0.2s', transform: mgmtOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+              <FiSettings className="zx-btn-icon" style={{ fontSize: '14px' }} />
+              ম্যানেজমেন্ট<span className="zx-btn-suffix">&nbsp;লগইন</span>
+              <FiChevronDown className="zx-chevron" style={{ fontSize: '13px', transition: 'transform 0.2s', transform: mgmtOpen ? 'rotate(180deg)' : 'rotate(0deg)' }} />
             </button>
 
             {mgmtOpen && (
@@ -195,6 +188,37 @@ export default function ContactUs() {
           </div>
         </div>
       </nav>
+
+      {/* Utility links bar — Home / About / Contact */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '24px',
+        padding: '10px 24px', borderBottom: `1px solid ${T.borderDefault}`,
+        background: T.bgAlt, flexWrap: 'wrap',
+      }}>
+        <button
+          onClick={() => navigate('/landing')}
+          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+        >
+          হোম
+        </button>
+        <button
+          onClick={() => navigate('/about')}
+          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+        >
+          আমাদের সম্পর্কে
+        </button>
+        <button
+          onClick={() => navigate('/contact')}
+          style={{ background: 'none', border: 'none', padding: 0, color: T.primary700, fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody }}
+        >
+          যোগাযোগ
+        </button>
+      </div>
+
 
       {/* Hero */}
       <section style={{ textAlign: 'center', padding: '64px 24px 40px' }}>
