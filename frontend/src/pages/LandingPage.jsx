@@ -583,6 +583,12 @@ export default function LandingPage() {
                 লগইন
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <button onClick={() => navigate('/about')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  আমাদের সম্পর্কে
+                </button>
+                <button onClick={() => navigate('/contact')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  যোগাযোগ করুন
+                </button>
                 <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   ম্যানেজমেন্ট লগইন
                 </button>
