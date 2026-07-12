@@ -55,13 +55,6 @@ export default function AboutUs() {
     { label: 'Admin লগইন',   role: 'admin',   icon: '⚙️', desc: 'অ্যাডমিন প্যানেল' },
   ]
 
-  const stats = [
-    { value: '২৪+',      label: 'ডিস্ট্রিবিউটর' },
-    { value: '৮৪+',      label: 'সেলস রিপ্রেজেন্টেটিভ (SR)' },
-    { value: '২৪',       label: 'ম্যানেজার' },
-    { value: '১৪,৬৮৩',  label: 'রিটেইল দোকান' },
-  ]
-
   const values = [
     { icon: <FiEye />,        title: 'স্বচ্ছতা',        desc: 'প্রতিটি অর্ডার, পেমেন্ট ও SR-এর কার্যক্রম সবার জন্য স্পষ্ট ও দৃশ্যমান' },
     { icon: <FiTrendingUp />, title: 'ডেটা-নির্ভর সিদ্ধান্ত', desc: 'অনুমান নয় — সঠিক তথ্য দেখে ব্যবসায়িক সিদ্ধান্ত নেওয়ার সুযোগ' },
@@ -91,8 +84,16 @@ export default function AboutUs() {
           </span>
         </div>
 
-        {/* Navbar center — About / Contact লিংক */}
+        {/* Navbar center — Home / About / Contact লিংক */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
+          <button
+            onClick={() => navigate('/landing')}
+            style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+            onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+          >
+            হোম
+          </button>
           <button
             onClick={() => navigate('/about')}
             style={{ background: 'none', border: 'none', padding: 0, color: T.primary700, fontSize: '13.5px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody }}
@@ -282,25 +283,6 @@ export default function AboutUs() {
               রাখা — যাতে সিদ্ধান্ত নেওয়া হয় অনুমানে নয়, তথ্যের আলোয়।
             </p>
           </div>
-        </div>
-      </section>
-
-      {/* Stats */}
-      <section style={{ padding: '8px 24px 64px', maxWidth: '960px', margin: '0 auto' }}>
-        <div style={{
-          background: T.primary900, borderRadius: '18px', padding: '40px 28px',
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '24px',
-        }}>
-          {stats.map((s, i) => (
-            <div key={i} style={{ textAlign: 'center' }}>
-              <div style={{ fontFamily: T.fontHead, fontSize: '32px', fontWeight: 600, color: T.accent300 }}>
-                {s.value}
-              </div>
-              <div style={{ fontSize: '12.5px', color: T.primary100, marginTop: '6px' }}>
-                {s.label}
-              </div>
-            </div>
-          ))}
         </div>
       </section>
 

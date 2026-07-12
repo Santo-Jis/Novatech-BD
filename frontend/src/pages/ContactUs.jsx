@@ -103,8 +103,16 @@ export default function ContactUs() {
           <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em' }}>ZovoriX</span>
         </div>
 
-        {/* Navbar center — About / Contact লিংক */}
+        {/* Navbar center — Home / About / Contact লিংক */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
+          <button
+            onClick={() => navigate('/landing')}
+            style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+            onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+            onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+          >
+            হোম
+          </button>
           <button
             onClick={() => navigate('/about')}
             style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}

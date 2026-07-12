@@ -1,0 +1,529 @@
+import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSettings, FiPhone, FiMail, FiMessageCircle } from 'react-icons/fi'
+import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
+import logo from '../assets/zovorix-logo.png'
+
+// ============================================================
+// Landing Page — ZovoriX
+// লগইন না করা ব্যবহারকারীদের জন্য পাবলিক পেজ
+// ডিজাইন সিস্টেম: cream base / deep-navy primary / bronze accent (সীমিত ব্যবহার)
+// ============================================================
+
+const T = {
+  bgBase:    '#FAF8F3',
+  bgSurface: '#FFFFFF',
+  bgAlt:     '#F3F1EA',
+  bgSunken:  '#EFEDE4',
+  primary900:'#0F1B2E',
+  primary700:'#16253D',
+  primary500:'#2C4870',
+  primary300:'#6B85A8',
+  primary100:'#DCE3EC',
+  accent600: '#9C6B2E',
+  accent300: '#C99B5A',
+  accent100: '#F3E6D0',
+  textPrimary:  '#1F2937',
+  textSecondary:'#5B6472',
+  textMuted:    '#8B8F98',
+  borderDefault:'#E4E1D8',
+  borderStrong: '#D0CCC0',
+  fontHead: "'Source Serif 4','Noto Sans Bengali',Georgia,serif",
+  fontBody: "'IBM Plex Sans','Noto Sans Bengali',Arial,sans-serif",
+  fontMono: "'IBM Plex Mono',monospace",
+}
+
+export default function LandingPage() {
+  const navigate = useNavigate()
+  const [mgmtOpen, setMgmtOpen] = useState(false)
+  const dropRef = useRef(null)
+
+  // বাইরে ক্লিক করলে ড্রপডাউন বন্ধ
+  useEffect(() => {
+    const handler = (e) => {
+      if (dropRef.current && !dropRef.current.contains(e.target)) {
+        setMgmtOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const features = [
+    { icon: <FiShoppingBag />, title: 'বিক্রয় ব্যবস্থাপনা',  desc: 'অর্ডার, ইনভয়েস ও পেমেন্ট সব এক জায়গায়' },
+    { icon: <FiUsers />,       title: 'টিম ম্যানেজমেন্ট',    desc: 'কর্মীদের অ্যাটেন্ডেন্স ও পারফরম্যান্স ট্র্যাকিং' },
+    { icon: <FiBarChart2 />,   title: 'রিয়েল-টাইম রিপোর্ট',  desc: 'ব্যবসার সামগ্রিক চিত্র একনজরে দেখুন' },
+    { icon: <FiShield />,      title: 'নিরাপদ প্ল্যাটফর্ম',   desc: 'এনক্রিপ্টেড ডেটা ও সুরক্ষিত অ্যাক্সেস' },
+  ]
+
+  const roles = [
+    { label: 'SR লগইন',      role: 'sr',      icon: '👤', desc: 'Sales Representative' },
+    { label: 'Manager লগইন', role: 'manager', icon: '📊', desc: 'ম্যানেজার / সুপারভাইজার' },
+    { label: 'Admin লগইন',   role: 'admin',   icon: '⚙️', desc: 'অ্যাডমিন প্যানেল' },
+  ]
+
+  const stats = [
+    { value: '২৪+',      label: 'ডিস্ট্রিবিউটর' },
+    { value: '৮৪+',      label: 'সেলস রিপ্রেজেন্টেটিভ (SR)' },
+    { value: '২৪',       label: 'ম্যানেজার' },
+    { value: '১৪,৬৮৩',  label: 'রিটেইল দোকান' },
+  ]
+
+  return (
+    <div style={{
+      minHeight: '100vh',
+      background: T.bgBase,
+      fontFamily: T.fontBody,
+      color: T.textPrimary,
+      overflowX: 'hidden',
+    }}>
+      {/* Navbar */}
+      <nav style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '14px 24px',
+        borderBottom: `1px solid ${T.borderDefault}`,
+        background: 'rgba(255,255,255,0.92)',
+        backdropFilter: 'blur(12px)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 100,
+        flexWrap: 'wrap',
+        rowGap: '10px',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '34px', height: '34px',
+            borderRadius: '8px',
+            overflow: 'hidden',
+            flexShrink: 0,
+            border: `1px solid ${T.borderDefault}`,
+          }}>
+            <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+          </div>
+          <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em' }}>
+            ZovoriX
+          </span>
+        </div>
+
+        {/* Navbar right — রিটেইলার + ম্যানেজমেন্ট */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+
+          {/* রিটেইলার শপ লগইন */}
+          <button
+            onClick={() => navigate('/customer-login')}
+            style={{
+              padding: '9px 18px',
+              background: 'transparent',
+              border: `1px solid ${T.primary700}`,
+              borderRadius: '8px',
+              color: T.primary700,
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontFamily: T.fontBody,
+              whiteSpace: 'nowrap',
+              transition: 'background 0.15s, color 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = T.primary700; e.currentTarget.style.color = '#fff' }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = T.primary700 }}
+          >
+            <FiShoppingBag style={{ fontSize: '14px' }} /> রিটেইলার লগইন
+          </button>
+
+          {/* ম্যানেজমেন্ট লগইন ড্রপডাউন */}
+          <div ref={dropRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => setMgmtOpen(p => !p)}
+              style={{
+                padding: '9px 18px',
+                background: T.primary700,
+                border: `1px solid ${T.primary700}`,
+                borderRadius: '8px',
+                color: '#fff',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontFamily: T.fontBody,
+                transition: 'background 0.2s',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              <FiSettings style={{ fontSize: '14px' }} />
+              ম্যানেজমেন্ট লগইন
+              <FiChevronDown style={{
+                fontSize: '13px',
+                transition: 'transform 0.2s',
+                transform: mgmtOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+              }} />
+            </button>
+
+            {/* Dropdown Menu */}
+            {mgmtOpen && (
+              <div style={{
+                position: 'absolute',
+                top: 'calc(100% + 8px)',
+                right: 0,
+                minWidth: '210px',
+                background: T.bgSurface,
+                border: `1px solid ${T.borderDefault}`,
+                borderRadius: '10px',
+                overflow: 'hidden',
+                boxShadow: '0 16px 40px rgba(15,27,46,0.18)',
+                zIndex: 200,
+                animation: 'fadeSlideDown 0.15s ease-out',
+              }}>
+                <style>{`@keyframes fadeSlideDown { from { opacity:0; transform:translateY(-6px) } to { opacity:1; transform:translateY(0) } }`}</style>
+
+                {/* Header */}
+                <div style={{
+                  padding: '10px 16px 8px',
+                  borderBottom: `1px solid ${T.borderDefault}`,
+                  color: T.textMuted,
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                  fontFamily: T.fontMono,
+                }}>
+                  ম্যানেজমেন্ট পোর্টাল
+                </div>
+
+                {roles.map((item) => (
+                  <button
+                    key={item.role}
+                    onClick={() => {
+                      setMgmtOpen(false)
+                      navigate('/login', { state: { roleHint: item.role } })
+                    }}
+                    style={{
+                      width: '100%',
+                      padding: '11px 16px',
+                      background: 'transparent',
+                      border: 'none',
+                      borderBottom: `1px solid ${T.borderDefault}`,
+                      color: T.textPrimary,
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '12px',
+                      fontFamily: T.fontBody,
+                      textAlign: 'left',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = T.bgAlt}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                  >
+                    <span style={{
+                      width: '32px', height: '32px',
+                      background: T.primary100,
+                      borderRadius: '7px',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      fontSize: '15px', flexShrink: 0,
+                    }}>{item.icon}</span>
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 700, color: T.primary700 }}>{item.label}</div>
+                      <div style={{ fontSize: '11px', color: T.textMuted, marginTop: '1px' }}>{item.desc}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </nav>
+
+      {/* Utility links bar — About / Contact (ভবিষ্যতে আরও লিংক যুক্ত হতে পারে) */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '24px',
+        padding: '10px 24px',
+        borderBottom: `1px solid ${T.borderDefault}`,
+        background: T.bgAlt,
+        flexWrap: 'wrap',
+      }}>
+        <button
+          onClick={() => navigate('/about')}
+          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+        >
+          আমাদের সম্পর্কে
+        </button>
+        <button
+          onClick={() => navigate('/contact')}
+          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+        >
+          যোগাযোগ
+        </button>
+      </div>
+
+      {/* Hero */}
+      <section style={{
+        textAlign: 'center',
+        padding: '76px 24px 56px',
+        position: 'relative',
+      }}>
+        <div style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '6px 14px',
+          background: T.bgSurface,
+          border: `1px solid ${T.borderDefault}`,
+          borderRadius: '20px',
+          fontSize: '11px',
+          fontFamily: T.fontMono,
+          letterSpacing: '0.04em',
+          textTransform: 'uppercase',
+          color: T.textMuted,
+          marginBottom: '28px',
+        }}>
+          আধুনিক ব্যবসা ব্যবস্থাপনা সফটওয়্যার
+        </div>
+
+        <h1 style={{
+          fontFamily: T.fontHead,
+          fontSize: 'clamp(30px, 6vw, 50px)',
+          fontWeight: 600,
+          lineHeight: 1.25,
+          margin: '0 auto 8px',
+          maxWidth: '620px',
+          color: T.primary700,
+        }}>
+          আপনার ব্যবসাকে<br />
+          <span style={{ position: 'relative', display: 'inline-block' }}>
+            <span style={{ color: T.accent600 }}>স্মার্ট করে তুলুন</span>
+            <svg
+              viewBox="0 0 220 14" preserveAspectRatio="none"
+              style={{ position: 'absolute', left: 0, bottom: '-8px', width: '100%', height: '12px' }}
+            >
+              <path d="M2 11 L218 3" stroke={T.accent300} strokeWidth="4" strokeLinecap="round" fill="none" />
+            </svg>
+          </span>
+        </h1>
+
+        <p style={{
+          color: T.textSecondary,
+          fontSize: '16px',
+          maxWidth: '480px',
+          margin: '28px auto 36px',
+          lineHeight: 1.7,
+        }}>
+          বিক্রয়, কর্মী ও কাস্টমার — সব কিছু একটি প্ল্যাটফর্মে পরিচালনা করুন।
+          রিয়েল-টাইম ডেটা দিয়ে সঠিক সিদ্ধান্ত নিন।
+        </p>
+
+      </section>
+
+      {/* Features */}
+      <section style={{
+        padding: '8px 24px 80px',
+        maxWidth: '960px',
+        margin: '0 auto',
+        borderTop: `1px solid ${T.borderDefault}`,
+      }}>
+        <h2 style={{
+          textAlign: 'center',
+          fontFamily: T.fontHead,
+          fontSize: '24px',
+          fontWeight: 600,
+          color: T.primary700,
+          margin: '48px 0 36px',
+        }}>
+          কেন ZovoriX?
+        </h2>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))',
+          gap: '18px',
+        }}>
+          {features.map((f, i) => (
+            <div key={i} style={{
+              background: T.bgSurface,
+              border: `1px solid ${T.borderDefault}`,
+              borderRadius: '12px',
+              padding: '26px 20px',
+              textAlign: 'center',
+              transition: 'border-color 0.2s, transform 0.2s',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = T.primary300; e.currentTarget.style.transform = 'translateY(-2px)' }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = T.borderDefault; e.currentTarget.style.transform = 'translateY(0)' }}
+            >
+              <div style={{
+                width: '46px', height: '46px',
+                background: T.primary100,
+                borderRadius: '10px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '20px', color: T.primary700,
+                margin: '0 auto 14px',
+              }}>
+                {f.icon}
+              </div>
+              <h3 style={{ fontSize: '15px', fontWeight: 700, color: T.textPrimary, marginBottom: '6px', fontFamily: T.fontBody }}>
+                {f.title}
+              </h3>
+              <p style={{ fontSize: '13px', color: T.textSecondary, lineHeight: 1.6, margin: 0 }}>
+                {f.desc}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Stats */}
+      <section style={{ padding: '8px 24px 64px', maxWidth: '960px', margin: '0 auto' }}>
+        <div style={{
+          background: T.primary900, borderRadius: '18px', padding: '40px 28px',
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '24px',
+        }}>
+          {stats.map((s, i) => (
+            <div key={i} style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: T.fontHead, fontSize: '32px', fontWeight: 600, color: T.accent300 }}>
+                {s.value}
+              </div>
+              <div style={{ fontSize: '12.5px', color: T.primary100, marginTop: '6px' }}>
+                {s.label}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer style={{
+        background: T.primary900,
+        color: T.primary100,
+        padding: '48px 24px 24px',
+      }}>
+        <div style={{
+          maxWidth: '960px',
+          margin: '0 auto',
+        }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '32px',
+            paddingBottom: '32px',
+            borderBottom: '1px solid rgba(255,255,255,0.12)',
+          }}>
+            {/* ব্র্যান্ড */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
+                  <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+                <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '16px', color: '#fff' }}>ZovoriX</span>
+              </div>
+              <p style={{ fontSize: '12.5px', lineHeight: 1.7, color: T.primary300, margin: 0, maxWidth: '240px' }}>
+                বিক্রয়, টিম ও কাস্টমার ব্যবস্থাপনার জন্য একটি সম্পূর্ণ প্ল্যাটফর্ম।
+              </p>
+            </div>
+
+            {/* যোগাযোগ */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
+                যোগাযোগ
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <a href="tel:+8801309540282" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
+                  <FiPhone style={{ fontSize: '14px', color: T.accent300 }} /> +৮৮০ ১৩০৯-৫৪০২৮২
+                </a>
+                <a href="mailto:support@zovorix.com" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
+                  <FiMail style={{ fontSize: '14px', color: T.accent300 }} /> support@zovorix.com
+                </a>
+                <a href="https://wa.me/8801309540282" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
+                  <FiMessageCircle style={{ fontSize: '14px', color: T.accent300 }} /> WhatsApp-এ লিখুন
+                </a>
+              </div>
+            </div>
+
+            {/* সোশ্যাল */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
+                সামাজিক যোগাযোগ
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                {[
+                  { icon: <FaFacebookF />,  href: 'https://www.facebook.com/profile.php?id=61591653097465&mibextid=ZbWKwL', label: 'Facebook' },
+                  { icon: <FaXTwitter />,   href: 'https://x.com/Zovorix',              label: 'X' },
+                  { icon: <FaInstagram />,  href: 'https://instagram.com/zovorix',       label: 'Instagram' },
+                  { icon: <FaTiktok />,     href: 'https://tiktok.com/@zovorix.com',     label: 'TikTok' },
+                  { icon: <FaDiscord />,    href: 'https://discord.gg/zovorix',          label: 'Discord' },
+                  { icon: <FaRedditAlien />,href: 'https://reddit.com/u/zovorix',        label: 'Reddit' },
+                ].map((s) => (
+                  <a
+                    key={s.label}
+                    href={s.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={s.label}
+                    title={s.label}
+                    style={{
+                      width: '32px', height: '32px',
+                      borderRadius: '8px',
+                      background: 'rgba(255,255,255,0.08)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: T.primary100,
+                      fontSize: '14px',
+                      transition: 'background 0.15s, color 0.15s',
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = T.accent600; e.currentTarget.style.color = '#fff' }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = T.primary100 }}
+                  >
+                    {s.icon}
+                  </a>
+                ))}
+              </div>
+            </div>
+
+            {/* কুইক লিংক */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
+                লগইন
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  ম্যানেজমেন্ট লগইন
+                </button>
+                <button onClick={() => navigate('/customer-login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  রিটেইলার শপ লগইন
+                </button>
+                <button onClick={() => navigate('/apply/sr')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  SR আবেদন করুন
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+            paddingTop: '20px',
+          }}>
+            <div style={{ fontSize: '12px', color: T.primary300 }}>
+              © {new Date().getFullYear()} ZovoriX. সর্বস্বত্ব সংরক্ষিত।
+            </div>
+          </div>
+        </div>
+      </footer>
+    </div>
+  )
+}
