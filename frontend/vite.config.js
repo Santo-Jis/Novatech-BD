@@ -18,7 +18,10 @@ export default defineConfig({
       manifest:       false,
       devOptions: { enabled: true, type: 'module' },
       injectManifest: {
-        globPatterns: ['**/*.{css,html,ico,png,svg,woff2}'],
+        // ✅ FIX: html বাদ দেওয়া হলো — নাহলে workbox পুরনো index.html
+        // cache-first serve করতো এবং নতুন deploy এর loading page কখনো দেখাতো না।
+        // HTML এখন sw.js এর NetworkFirst navigation route দিয়ে হ্যান্ডেল হয়।
+        globPatterns: ['**/*.{css,ico,png,svg,woff2}'],
         globIgnores:  ['**/role-*.js', '**/vendor-*.js'],
         maximumFileSizeToCacheInBytes: 5242880,
       },
