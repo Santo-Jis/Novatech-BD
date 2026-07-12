@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiLogIn, FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSettings, FiArrowRight, FiPhone, FiMail, FiMessageCircle, FiUserPlus, FiSliders, FiTrendingUp } from 'react-icons/fi'
+import { FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSettings, FiPhone, FiMail, FiMessageCircle } from 'react-icons/fi'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
 
@@ -56,12 +56,6 @@ export default function LandingPage() {
     { icon: <FiShield />,      title: 'নিরাপদ প্ল্যাটফর্ম',   desc: 'এনক্রিপ্টেড ডেটা ও সুরক্ষিত অ্যাক্সেস' },
   ]
 
-  const steps = [
-    { icon: <FiUserPlus />,   title: 'SR আবেদন করুন',       desc: 'ফর্ম পূরণ করে আবেদন জমা দিন — অ্যাডমিন যাচাই করে অ্যাকাউন্ট সক্রিয় করবেন' },
-    { icon: <FiSliders />,    title: 'রুট ও কাস্টমার সেট করুন', desc: 'আপনার এলাকার দোকান যোগ করুন, রুট সাজান, টিম নিয়োগ দিন' },
-    { icon: <FiTrendingUp />, title: 'বিক্রয় ট্র্যাক করুন',     desc: 'প্রতিদিনের অর্ডার, পেমেন্ট ও পারফরম্যান্স রিয়েল-টাইমে দেখুন' },
-  ]
-
   const roles = [
     { label: 'SR লগইন',      role: 'sr',      icon: '👤', desc: 'Sales Representative' },
     { label: 'Manager লগইন', role: 'manager', icon: '📊', desc: 'ম্যানেজার / সুপারভাইজার' },
@@ -104,26 +98,6 @@ export default function LandingPage() {
           <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em' }}>
             ZovoriX
           </span>
-        </div>
-
-        {/* Navbar center — About / Contact লিংক */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '22px' }}>
-          <button
-            onClick={() => navigate('/about')}
-            style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = T.primary700}
-            onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
-          >
-            আমাদের সম্পর্কে
-          </button>
-          <button
-            onClick={() => navigate('/contact')}
-            style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
-            onMouseEnter={e => e.currentTarget.style.color = T.primary700}
-            onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
-          >
-            যোগাযোগ
-          </button>
         </div>
 
         {/* Navbar right — রিটেইলার + ম্যানেজমেন্ট */}
@@ -261,6 +235,35 @@ export default function LandingPage() {
         </div>
       </nav>
 
+      {/* Utility links bar — About / Contact (ভবিষ্যতে আরও লিংক যুক্ত হতে পারে) */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '24px',
+        padding: '10px 24px',
+        borderBottom: `1px solid ${T.borderDefault}`,
+        background: T.bgAlt,
+        flexWrap: 'wrap',
+      }}>
+        <button
+          onClick={() => navigate('/about')}
+          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+        >
+          আমাদের সম্পর্কে
+        </button>
+        <button
+          onClick={() => navigate('/contact')}
+          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+        >
+          যোগাযোগ
+        </button>
+      </div>
+
       {/* Hero */}
       <section style={{
         textAlign: 'center',
@@ -317,143 +320,6 @@ export default function LandingPage() {
           রিয়েল-টাইম ডেটা দিয়ে সঠিক সিদ্ধান্ত নিন।
         </p>
 
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          {/* ম্যানেজমেন্ট লগইন — প্রধান CTA */}
-          <button
-            onClick={() => navigate('/login')}
-            style={{
-              padding: '13px 26px',
-              background: T.primary700,
-              border: 'none',
-              borderRadius: '9px',
-              color: '#fff',
-              fontSize: '15px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontFamily: T.fontBody,
-              boxShadow: '0 10px 24px rgba(15,27,46,0.22)',
-            }}
-          >
-            <FiLogIn /> ম্যানেজমেন্ট লগইন
-          </button>
-          {/* রিটেইলার শপ লগইন */}
-          <button
-            onClick={() => navigate('/customer-login')}
-            style={{
-              padding: '13px 26px',
-              background: 'transparent',
-              border: `1px solid ${T.primary700}`,
-              borderRadius: '9px',
-              color: T.primary700,
-              fontSize: '15px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              fontFamily: T.fontBody,
-            }}
-          >
-            <FiShoppingBag /> রিটেইলার শপ লগইন
-          </button>
-          <button
-            onClick={() => navigate('/apply/sr')}
-            style={{
-              padding: '13px 22px',
-              background: 'transparent',
-              border: 'none',
-              color: T.textSecondary,
-              fontSize: '15px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              fontFamily: T.fontBody,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-            }}
-          >
-            SR আবেদন করুন <FiArrowRight style={{ fontSize: '14px' }} />
-          </button>
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section style={{
-        padding: '8px 24px 64px',
-        maxWidth: '880px',
-        margin: '0 auto',
-      }}>
-        <h2 style={{
-          textAlign: 'center',
-          fontFamily: T.fontHead,
-          fontSize: '24px',
-          fontWeight: 600,
-          color: T.primary700,
-          marginBottom: '40px',
-        }}>
-          কীভাবে শুরু করবেন
-        </h2>
-
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: '0',
-          position: 'relative',
-        }}>
-          {steps.map((s, i) => (
-            <div key={i} style={{
-              padding: '0 20px',
-              textAlign: 'center',
-              position: 'relative',
-            }}>
-              {/* সংযোগকারী রেখা — শুধু পরের ধাপ থাকলে */}
-              {i < steps.length - 1 && (
-                <div style={{
-                  position: 'absolute',
-                  top: '23px',
-                  left: '50%',
-                  width: '100%',
-                  height: '1px',
-                  background: T.borderStrong,
-                  zIndex: 0,
-                  display: 'none',
-                }} className="step-connector" />
-              )}
-              <div style={{
-                width: '46px', height: '46px',
-                background: T.primary700,
-                borderRadius: '50%',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '19px', color: '#fff',
-                margin: '0 auto 16px',
-                position: 'relative',
-                zIndex: 1,
-                fontFamily: T.fontMono,
-              }}>
-                {s.icon}
-              </div>
-              <div style={{
-                fontFamily: T.fontMono,
-                fontSize: '11px',
-                fontWeight: 600,
-                color: T.accent600,
-                letterSpacing: '0.06em',
-                marginBottom: '6px',
-              }}>
-                ধাপ {i + 1}
-              </div>
-              <h3 style={{ fontSize: '15px', fontWeight: 700, color: T.textPrimary, marginBottom: '6px', fontFamily: T.fontBody }}>
-                {s.title}
-              </h3>
-              <p style={{ fontSize: '13px', color: T.textSecondary, lineHeight: 1.6, margin: 0 }}>
-                {s.desc}
-              </p>
-            </div>
-          ))}
-        </div>
       </section>
 
       {/* Features */}
