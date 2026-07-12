@@ -71,7 +71,26 @@ export default function LandingPage() {
       overflowX: 'hidden',
     }}>
       {/* Navbar */}
-      <nav style={{
+      <style>{`
+        /* মোবাইল স্ক্রিনে নেভবার — লোগোর পাশে বাটনগুলো ছোট হয়ে একই লাইনে থাকবে, নিচে wrap করবে না।
+           ট্যাব/ল্যাপটপে (৪৮০px-এর উপরে) কোনো পরিবর্তন নেই — বেস স্টাইলই বহাল থাকবে। */
+        @media (max-width: 480px) {
+          .zx-navbar { padding: 8px 10px !important; flex-wrap: nowrap !important; row-gap: 0 !important; }
+          .zx-brand { gap: 6px !important; }
+          .zx-logo-box { width: 26px !important; height: 26px !important; border-radius: 6px !important; }
+          .zx-brand-text { font-size: 14px !important; }
+          .zx-nav-actions { gap: 6px !important; }
+          .zx-btn-retailer, .zx-btn-mgmt { padding: 6px 8px !important; font-size: 11px !important; gap: 4px !important; border-radius: 6px !important; }
+          .zx-btn-suffix { display: none !important; }
+          .zx-btn-icon { font-size: 12px !important; }
+          .zx-chevron { font-size: 11px !important; }
+        }
+        @media (max-width: 360px) {
+          .zx-brand-text { display: none !important; }
+          .zx-btn-retailer, .zx-btn-mgmt { padding: 6px 7px !important; }
+        }
+      `}</style>
+      <nav className="zx-navbar" style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -85,8 +104,8 @@ export default function LandingPage() {
         flexWrap: 'wrap',
         rowGap: '10px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div style={{
+        <div className="zx-brand" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+          <div className="zx-logo-box" style={{
             width: '34px', height: '34px',
             borderRadius: '8px',
             overflow: 'hidden',
@@ -95,16 +114,17 @@ export default function LandingPage() {
           }}>
             <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
-          <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em' }}>
+          <span className="zx-brand-text" style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
             ZovoriX
           </span>
         </div>
 
         {/* Navbar right — রিটেইলার + ম্যানেজমেন্ট */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div className="zx-nav-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
 
           {/* রিটেইলার শপ লগইন */}
           <button
+            className="zx-btn-retailer"
             onClick={() => navigate('/customer-login')}
             style={{
               padding: '9px 18px',
@@ -125,12 +145,13 @@ export default function LandingPage() {
             onMouseEnter={e => { e.currentTarget.style.background = T.primary700; e.currentTarget.style.color = '#fff' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = T.primary700 }}
           >
-            <FiShoppingBag style={{ fontSize: '14px' }} /> রিটেইলার লগইন
+            <FiShoppingBag className="zx-btn-icon" style={{ fontSize: '14px' }} /> রিটেইলার<span className="zx-btn-suffix">&nbsp;লগইন</span>
           </button>
 
           {/* ম্যানেজমেন্ট লগইন ড্রপডাউন */}
           <div ref={dropRef} style={{ position: 'relative' }}>
             <button
+              className="zx-btn-mgmt"
               onClick={() => setMgmtOpen(p => !p)}
               style={{
                 padding: '9px 18px',
@@ -149,9 +170,9 @@ export default function LandingPage() {
                 whiteSpace: 'nowrap',
               }}
             >
-              <FiSettings style={{ fontSize: '14px' }} />
-              ম্যানেজমেন্ট লগইন
-              <FiChevronDown style={{
+              <FiSettings className="zx-btn-icon" style={{ fontSize: '14px' }} />
+              ম্যানেজমেন্ট<span className="zx-btn-suffix">&nbsp;লগইন</span>
+              <FiChevronDown className="zx-chevron" style={{
                 fontSize: '13px',
                 transition: 'transform 0.2s',
                 transform: mgmtOpen ? 'rotate(180deg)' : 'rotate(0deg)',
