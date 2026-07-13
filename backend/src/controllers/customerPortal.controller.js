@@ -19,7 +19,7 @@ const logger          = require('../config/logger');
 const PDFDocument     = require('pdfkit');
 const { invalidatePortalAuthCache } = require('../services/portalCache.service');
 const { generateCustomerCode }      = require('../services/employee.service');
-const { getTenantBySlug }           = require('../middlewares/tenantResolver');
+const { DEFAULT_TENANT_ID }         = require('../services/auth.service');
 
 // ============================================================
 // HELPERS
@@ -171,11 +171,8 @@ const sendPortalLink = async (req, res) => {
 // is_verified = false দিয়ে শুরু হয় — createSale-এ প্রথম sale রেকর্ড
 // হলে true হয়ে যাবে (sales.controller.js দেখুন)।
 //
-// ✅ Multi-tenant: প্রতিটা কোম্পানির নিজস্ব রেজিস্ট্রেশন লিংক
-// (/customer-register/:slug) — slug দিয়ে tenantResolver.js-এর
-// getTenantBySlug() ব্যবহার করে সঠিক tenant বের করা হয় (একই
-// helper যেটা onboarding/superAdmin flow-এ ব্যবহার হয়)। Admin
-// তাদের লিংক পাবে Settings পেজে (GET /api/admin/tenant-info)।
+// কোনো কোম্পানি-নির্দিষ্ট লিংক/স্লাগ/কোড লাগে না — সরাসরি
+// DEFAULT_TENANT_ID-এর অধীনে কাস্টমার তৈরি হয় (single-tenant)।
 //
 // সফল হলে শুধু customer_code ফেরত দেয়। JWT/cookie এখানে সেট করা হয়
 // না — frontend সাথে সাথেই এই code দিয়ে বিদ্যমান direct-auth ফ্লো
@@ -183,24 +180,8 @@ const sendPortalLink = async (req, res) => {
 // ============================================================
 const selfRegisterCustomer = async (req, res) => {
     try {
-        const { shop_name, owner_name, business_type, whatsapp, sms_phone, email, slug } = req.body;
-
-        // ✅ প্রতিটা কোম্পানির নিজস্ব রেজিস্ট্রেশন লিংক থাকে:
-        // /customer-register/:slug — slug ছাড়া কোন tenant-এ কাস্টমার
-        // যোগ হবে সেটা জানার উপায় নেই, তাই বাধ্যতামূলক
-        if (!slug) {
-            return res.status(400).json({ success: false, message: 'রেজিস্ট্রেশন লিংকে কোম্পানির তথ্য নেই। সঠিক লিংক ব্যবহার করুন।' });
-        }
-        const tenant = await getTenantBySlug(slug);
-        if (!tenant) {
-            return res.status(404).json({ success: false, message: 'ভুল রেজিস্ট্রেশন লিংক — কোম্পানি খুঁজে পাওয়া যায়নি।' });
-        }
-        if (tenant.status === 'suspended') {
-            return res.status(403).json({ success: false, message: 'এই অ্যাকাউন্ট বর্তমানে সাসপেন্ড আছে।' });
-        }
-        if (tenant.status === 'cancelled') {
-            return res.status(403).json({ success: false, message: 'এই সাবস্ক্রিপশন বাতিল হয়ে গেছে।' });
-        }
+        const { shop_name, owner_name, business_type, whatsapp, sms_phone, email } = req.body;
+        const tenantId = DEFAULT_TENANT_ID;
 
         if (!shop_name || !shop_name.trim()) {
             return res.status(400).json({ success: false, message: 'দোকানের নাম দিন।' });
@@ -214,10 +195,9 @@ const selfRegisterCustomer = async (req, res) => {
         }
 
         // একই WhatsApp-এ আগে থেকে সক্রিয় কাস্টমার থাকলে ডুপ্লিকেট আটকাও
-        // (এই tenant-এর মধ্যেই — অন্য কোম্পানিতে একই নম্বর থাকতেই পারে)
         const existing = await query(
             `SELECT id FROM customers WHERE whatsapp = $1 AND is_active = true AND tenant_id = $2 LIMIT 1`,
-            [cleanWhatsapp, tenant.id]
+            [cleanWhatsapp, tenantId]
         );
         if (existing.rows.length > 0) {
             return res.status(409).json({
@@ -249,11 +229,11 @@ const selfRegisterCustomer = async (req, res) => {
             [
                 customerCode, shop_name.trim(), owner_name.trim(), business_type || null,
                 cleanWhatsapp, (sms_phone || '').trim() || null, (email || '').trim() || null,
-                defaultCreditLimit, tenant.id
+                defaultCreditLimit, tenantId
             ]
         );
 
-        logger.info(`✅ Self-registered customer: ${customerCode} (${shop_name}) — tenant: ${tenant.slug}`);
+        logger.info(`✅ Self-registered customer: ${customerCode} (${shop_name})`);
 
         return res.status(201).json({
             success: true,
@@ -264,32 +244,6 @@ const selfRegisterCustomer = async (req, res) => {
     } catch (error) {
         logger.error('❌ Self Register Error:', error.message);
         return res.status(500).json({ success: false, message: 'রেজিস্ট্রেশন করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।' });
-    }
-};
-
-// ============================================================
-// 1a-ii. COMPANY INFO BY SLUG (Public)
-// GET /api/portal/company-info/:slug
-// রেজিস্ট্রেশন পেজে কোম্পানির নাম দেখানোর জন্য — শুধু non-sensitive
-// তথ্য (নাম) রিটার্ন করে, tenant অস্তিত্ব/status ভ্যালিডেট করে
-// ============================================================
-const getCompanyInfoBySlug = async (req, res) => {
-    try {
-        const { slug } = req.params;
-        const tenant = await getTenantBySlug(slug);
-
-        if (!tenant || tenant.status === 'suspended' || tenant.status === 'cancelled') {
-            return res.status(404).json({ success: false, message: 'ভুল রেজিস্ট্রেশন লিংক — কোম্পানি খুঁজে পাওয়া যায়নি।' });
-        }
-
-        return res.json({
-            success: true,
-            company_name:    tenant.company_name,
-            company_name_bn: tenant.company_name_bn,
-        });
-    } catch (error) {
-        logger.error('❌ Company Info Error:', error.message);
-        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
 
@@ -2088,7 +2042,6 @@ const logoutPortal = (req, res) => {
 module.exports = {
     sendPortalLink,
     selfRegisterCustomer,  // ✅ NEW: কাস্টমার নিজে সাইন-আপ
-    getCompanyInfoBySlug,  // ✅ NEW: রেজিস্ট্রেশন পেজে কোম্পানির নাম দেখাতে
     resolveLink,           // backward compat — পুরনো link কাজ করবে
     verifyPortalToken,     // backward compat
     deviceLogin,           // backward compat

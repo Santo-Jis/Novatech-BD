@@ -302,7 +302,6 @@ function AppWithPermissions() {
           <Route path="/"                       element={<HomeRedirect />} />
           <Route path="/customer-login"         element={<CustomerPortal />} />
           <Route path="/customer-register"      element={<CustomerSelfRegister />} />
-          <Route path="/customer-register/:slug" element={<CustomerSelfRegister />} />
           <Route path="/customer-portal"        element={<Navigate to="/customer/dashboard" replace />} />
           <Route path="/portal-oauth-callback"  element={<PortalOAuthCallback />} />
 

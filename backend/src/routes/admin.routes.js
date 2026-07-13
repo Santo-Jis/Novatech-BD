@@ -25,7 +25,6 @@ const {
 } = require('../controllers/admin.controller');
 
 // ✅ NEW — কাস্টমার সেলফ-রেজিস্ট্রেশন লিংকের জন্য কোম্পানির slug
-const { getMyTenant } = require('../controllers/onboarding.controller');
 
 const {
     getPortalOverview,
@@ -48,7 +47,6 @@ const {
 // ── System Settings (Admin only) ─────────────────────────────
 router.get('/settings',        auth, isAdmin, getSettings);
 router.put('/settings',        auth, isAdmin, updateSettings);
-router.get('/tenant-info',     auth, isAdmin, getMyTenant);  // ✅ NEW: রেজিস্ট্রেশন লিংকের slug
 
 // ── Audit & Stats (Admin only) ───────────────────────────────
 router.get('/audit-logs',      auth, isAdmin, getAuditLogs);

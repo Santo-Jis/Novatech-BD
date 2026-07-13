@@ -8,41 +8,55 @@
 //      টেস্টেড CustomerPortal ফ্লো (Welcome → Google login → Dashboard)
 //      হুবহু একইভাবে চলে, নতুন কোনো auth কোড লাগে না
 //
+// কোনো কোম্পানি-নির্দিষ্ট লিংক/স্লাগ/কোড লাগে না — এই পেজ সরাসরি
+// খোলা যায়, কিছু যাচাই করার দরকার নেই।
+//
 // GPS/route/credit_limit/photo এখানে নেই — SR পরে "Edit Customer"
 // থেকে বসাবে (customer.controller.js → updateCustomer, আগে থেকেই আছে)
 
-import { useState, useEffect } from 'react'
-import { useParams } from 'react-router-dom'
+import { useState } from 'react'
 import { BACKEND } from './utils/api'
 
 const BUSINESS_TYPES = ['মুদি', 'ফার্মেসি', 'হার্ডওয়্যার', 'কসমেটিক্স', 'ইলেকট্রনিক্স', 'কাপড়', 'খাদ্য ও পানীয়', 'স্টেশনারি', 'অন্যান্য']
 
+// ── ডিজাইন সিস্টেম টোকেন (design.html অনুযায়ী) ──────────────
+const C = {
+  bgBase: '#FAF8F3', bgSurface: '#FFFFFF',
+  primary900: '#0F1B2E', primary700: '#16253D',
+  accent600: '#9C6B2E', accent300: '#C99B5A',
+  textSecondary: '#5B6472', textMuted: '#8B8F98',
+  borderDefault: '#E4E1D8', error: '#B3452C', errorBg: '#F5E4DF',
+}
+const FONT_HEAD = "'Source Serif 4','Noto Sans Bengali',Georgia,serif"
+const FONT_BODY = "'IBM Plex Sans','Noto Sans Bengali','Hind Siliguri',sans-serif"
+
 const inputStyle = {
   width: '100%',
-  padding: '13px 16px',
-  borderRadius: 12,
-  background: 'rgba(255,255,255,0.08)',
-  border: '1px solid rgba(255,255,255,0.18)',
-  color: 'white',
+  padding: '12px 14px',
+  borderRadius: 8,
+  background: C.bgSurface,
+  border: `1px solid ${C.borderDefault}`,
+  color: '#1F2937',
   fontSize: 14,
-  fontFamily: "'Hind Siliguri', sans-serif",
+  fontFamily: FONT_BODY,
   outline: 'none',
   boxSizing: 'border-box',
 }
 
 const labelStyle = {
-  color: 'rgba(255,255,255,0.55)',
+  color: C.textSecondary,
   fontSize: 12,
   marginBottom: 6,
   display: 'block',
-  fontFamily: "'Hind Siliguri', sans-serif",
+  fontFamily: FONT_BODY,
+  fontWeight: 500,
 }
 
 function Field({ label, required, children }) {
   return (
     <div style={{ marginBottom: 14 }}>
       <label style={labelStyle}>
-        {label} {required && <span style={{ color: '#f87171' }}>*</span>}
+        {label} {required && <span style={{ color: C.error }}>*</span>}
       </label>
       {children}
     </div>
@@ -50,35 +64,12 @@ function Field({ label, required, children }) {
 }
 
 export default function CustomerSelfRegister() {
-  const { slug } = useParams()
-
   const [form, setForm] = useState({
     shop_name: '', owner_name: '', business_type: '',
     whatsapp: '', sms_phone: '', email: '',
   })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-
-  // কোম্পানি lookup — slug ছাড়া বা ভুল slug হলে ফর্ম দেখানো হবে না
-  const [companyLoading, setCompanyLoading] = useState(true)
-  const [company, setCompany] = useState(null)     // { company_name, company_name_bn }
-  const [linkInvalid, setLinkInvalid] = useState(false)
-
-  useEffect(() => {
-    if (!slug) {
-      setCompanyLoading(false)
-      setLinkInvalid(true)
-      return
-    }
-    fetch(`${BACKEND}/portal/company-info/${encodeURIComponent(slug)}`)
-      .then(res => res.ok ? res.json() : Promise.reject())
-      .then(data => {
-        if (!data.success) throw new Error()
-        setCompany(data)
-      })
-      .catch(() => setLinkInvalid(true))
-      .finally(() => setCompanyLoading(false))
-  }, [slug])
 
   const set = (key) => (e) => setForm(p => ({ ...p, [key]: e.target.value }))
 
@@ -95,7 +86,7 @@ export default function CustomerSelfRegister() {
       const res = await fetch(`${BACKEND}/portal/self-register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, slug }),
+        body: JSON.stringify(form),
       })
       const data = await res.json()
 
@@ -114,58 +105,30 @@ export default function CustomerSelfRegister() {
     }
   }
 
-  // ── লোডিং ────────────────────────────────────────────────
-  if (companyLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #1d4ed8 100%)' }}>
-        <span style={{ width: 32, height: 32, border: '3px solid rgba(255,255,255,0.25)', borderTop: '3px solid white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
-      </div>
-    )
-  }
-
-  // ── ভুল/অনুপস্থিত লিংক ───────────────────────────────────
-  if (linkInvalid) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #1d4ed8 100%)' }}>
-        <span style={{ fontSize: 40, marginBottom: 12 }}>🔗</span>
-        <h1 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px', textAlign: 'center', fontFamily: "'Hind Siliguri', sans-serif" }}>
-          এই লিংকটি সঠিক নয়
-        </h1>
-        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, textAlign: 'center', maxWidth: 300, lineHeight: 1.6, fontFamily: "'Hind Siliguri', sans-serif" }}>
-          রেজিস্ট্রেশনের জন্য আপনার ডিলার/SR-এর দেওয়া সঠিক লিংকটি ব্যবহার করুন।
-        </p>
-        <a href="/customer-login" style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 20, textDecoration: 'underline', fontFamily: "'Hind Siliguri', sans-serif" }}>
-          লগইন পেজে ফিরে যান
-        </a>
-      </div>
-    )
-  }
-
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #1d4ed8 100%)' }}>
+    <div className="min-h-screen flex flex-col" style={{ background: C.bgBase }}>
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 20px' }}>
 
         {/* Logo */}
-        <div style={{ width: 64, height: 64, borderRadius: 20, background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(10px)', border: '2px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
-          <span style={{ color: 'white', fontSize: 28, fontWeight: 800, fontFamily: 'Georgia, serif' }}>N</span>
+        <div style={{ width: 60, height: 60, borderRadius: 16, background: C.primary900, border: `2px solid ${C.accent300}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+          <span style={{ color: C.accent300, fontSize: 26, fontWeight: 700, fontFamily: FONT_HEAD }}>N</span>
         </div>
 
-        <h1 style={{ color: 'white', fontSize: 22, fontWeight: 800, margin: '0 0 4px', textAlign: 'center', fontFamily: "'Hind Siliguri', sans-serif" }}>
+        <h1 style={{ color: C.primary700, fontSize: 20, fontWeight: 600, margin: '0 0 4px', textAlign: 'center', fontFamily: FONT_HEAD }}>
           নতুন কাস্টমার রেজিস্ট্রেশন
         </h1>
-        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, margin: '0 0 24px', textAlign: 'center', fontFamily: "'Hind Siliguri', sans-serif" }}>
-          {company?.company_name_bn || company?.company_name}-এ আপনার দোকানের তথ্য দিয়ে অ্যাকাউন্ট খুলুন
+        <p style={{ color: C.textSecondary, fontSize: 13, margin: '0 0 24px', textAlign: 'center', fontFamily: FONT_BODY }}>
+          আপনার দোকানের তথ্য দিয়ে অ্যাকাউন্ট খুলুন
         </p>
 
         {error && (
-          <div style={{ width: '100%', maxWidth: 380, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+          <div style={{ width: '100%', maxWidth: 380, background: C.errorBg, border: `1px solid ${C.error}33`, borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 10, boxSizing: 'border-box' }}>
             <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⚠️</span>
-            <p style={{ color: 'rgba(252,165,165,0.9)', fontSize: 13, margin: 0, lineHeight: 1.5, fontFamily: "'Hind Siliguri', sans-serif" }}>{error}</p>
+            <p style={{ color: C.error, fontSize: 13, margin: 0, lineHeight: 1.5, fontFamily: FONT_BODY }}>{error}</p>
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 380, background: 'rgba(255,255,255,0.07)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 20, padding: 22 }}>
+        <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 380, background: C.bgSurface, border: `1px solid ${C.borderDefault}`, borderRadius: 14, padding: 22, boxSizing: 'border-box' }}>
 
           <Field label="দোকানের নাম" required>
             <input style={inputStyle} value={form.shop_name} onChange={set('shop_name')} placeholder="যেমন: আল-আমিন স্টোর" />
@@ -180,9 +143,9 @@ export default function CustomerSelfRegister() {
           </Field>
 
           <Field label="ব্যবসার ধরন">
-            <select style={{ ...inputStyle, colorScheme: 'dark' }} value={form.business_type} onChange={set('business_type')}>
-              <option value="" style={{ color: '#1e293b' }}>-- বেছে নিন --</option>
-              {BUSINESS_TYPES.map(t => <option key={t} value={t} style={{ color: '#1e293b' }}>{t}</option>)}
+            <select style={inputStyle} value={form.business_type} onChange={set('business_type')}>
+              <option value="">-- বেছে নিন --</option>
+              {BUSINESS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </Field>
 
@@ -197,22 +160,22 @@ export default function CustomerSelfRegister() {
           {/* GPS-না-থাকার ব্যাখ্যা — যাতে ব্যবহারকারী বিভ্রান্ত না হয় */}
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 18, marginTop: 4 }}>
             <span style={{ fontSize: 14, flexShrink: 0 }}>📍</span>
-            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11.5, margin: 0, lineHeight: 1.5, fontFamily: "'Hind Siliguri', sans-serif" }}>
+            <p style={{ color: C.textMuted, fontSize: 11.5, margin: 0, lineHeight: 1.5, fontFamily: FONT_BODY }}>
               দোকানের লোকেশন এখন লাগবে না — আমাদের প্রতিনিধি (SR) শীঘ্রই দোকানে গিয়ে যুক্ত করে দেবেন।
             </p>
           </div>
 
-          <button type="submit" disabled={submitting} style={{ width: '100%', padding: '15px', borderRadius: 14, background: submitting ? 'rgba(255,255,255,0.7)' : 'white', border: 'none', color: '#1e3a8a', fontSize: 15, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontFamily: "'Hind Siliguri', sans-serif", opacity: submitting ? 0.8 : 1 }}>
+          <button type="submit" disabled={submitting} style={{ width: '100%', padding: '14px', borderRadius: 8, background: submitting ? C.accent300 : C.accent600, border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: FONT_BODY }}>
             {submitting ? 'রেজিস্ট্রেশন হচ্ছে...' : 'রেজিস্ট্রেশন করুন'}
           </button>
         </form>
 
-        <a href="/customer-login" style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 20, textAlign: 'center', fontFamily: "'Hind Siliguri', sans-serif", textDecoration: 'underline' }}>
+        <a href="/customer-login" style={{ color: C.textMuted, fontSize: 13, marginTop: 20, textAlign: 'center', fontFamily: FONT_BODY, textDecoration: 'underline' }}>
           আগে থেকে অ্যাকাউন্ট আছে? লগইন করুন
         </a>
       </div>
 
-      <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: 11, padding: '16px', letterSpacing: 0.5 }}>
+      <p style={{ textAlign: 'center', color: C.textMuted, fontSize: 11, padding: '16px', letterSpacing: 0.5, fontFamily: FONT_BODY }}>
         © {new Date().getFullYear()} ZovoriX Ltd.
       </p>
     </div>

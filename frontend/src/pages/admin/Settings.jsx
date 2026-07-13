@@ -37,8 +37,6 @@ export default function AdminSettings() {
   const [commSlabs,       setCommSlabs]       = useState([])
   const [commLoading,     setCommLoading]     = useState(false)
   const [commSaving,      setCommSaving]      = useState(false)
-  // ── কাস্টমার সেলফ-রেজিস্ট্রেশন লিংক (tenant slug) ─────────────
-  const [tenantInfo,      setTenantInfo]      = useState(null)
 
   // ── Settings লোড ────────────────────────────────────────────
   useEffect(() => {
@@ -63,11 +61,6 @@ export default function AdminSettings() {
   }, [])
 
   useEffect(() => { loadSmsStatus() }, [loadSmsStatus])
-
-  // ── Tenant slug লোড (কাস্টমার রেজিস্ট্রেশন লিংকের জন্য) ─────
-  useEffect(() => {
-    api.get('/admin/tenant-info').then(res => setTenantInfo(res.data)).catch(() => {})
-  }, [])
 
   // ── SMS Logs লোড ────────────────────────────────────────────
   const loadSmsLogs = useCallback(async (page = 1) => {
@@ -257,32 +250,6 @@ export default function AdminSettings() {
           <Input label="ইমেইল" type="email" value={settings.company_email || ''}
             onChange={e => set('company_email', e.target.value)} />
         </div>
-      </Card>
-
-      {/* ✅ NEW: কাস্টমার সেলফ-রেজিস্ট্রেশন লিংক */}
-      <Card title="কাস্টমার রেজিস্ট্রেশন লিংক">
-        {tenantInfo ? (
-          <div className="space-y-2">
-            <p className="text-sm text-gray-500">
-              নতুন কাস্টমাররা নিজে অ্যাকাউন্ট খুলতে এই লিংকটি ব্যবহার করবে। WhatsApp, Facebook পেজ বা প্রিন্ট করে শেয়ার করুন।
-            </p>
-            <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-3">
-              <code className="text-xs text-gray-700 flex-1 truncate">
-                {window.location.origin}/customer-register/{tenantInfo.slug}
-              </code>
-              <Button
-                onClick={() => {
-                  navigator.clipboard.writeText(`${window.location.origin}/customer-register/${tenantInfo.slug}`)
-                  toast.success('লিংক কপি হয়েছে!')
-                }}
-              >
-                কপি
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <p className="text-sm text-gray-400">লোড হচ্ছে...</p>
-        )}
       </Card>
 
       {/* VAT */}

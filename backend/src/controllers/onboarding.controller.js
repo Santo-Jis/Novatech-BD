@@ -144,23 +144,4 @@ const checkSlugAvailability = async (req, res) => {
   return res.json({ available: result.rows.length === 0 });
 };
 
-// ─── নিজের Tenant Info (Admin Settings-এ ব্যবহার হয়) ──────────
-// GET /api/admin/tenant-info — auth + isAdmin (দেখো admin.routes.js)
-// কাস্টমার সেলফ-রেজিস্ট্রেশন লিংক বানাতে slug লাগবে:
-//   https://<app-domain>/customer-register/<slug>
-const getMyTenant = async (req, res) => {
-  try {
-    const result = await query(
-      `SELECT slug, company_name, company_name_bn FROM tenants WHERE id = $1`,
-      [req.tenantId]
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Tenant পাওয়া যায়নি।' });
-    }
-    return res.json({ success: true, ...result.rows[0] });
-  } catch (err) {
-    return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
-  }
-};
-
-module.exports = { registerCompany, checkSlugAvailability, getMyTenant };
+module.exports = { registerCompany, checkSlugAvailability };

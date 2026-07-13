@@ -15,7 +15,6 @@ const { getCached, setCache, invalidatePortalAuthCache } = require('../services/
 const {
     sendPortalLink,
     selfRegisterCustomer,
-    getCompanyInfoBySlug,
     resolveLink,
     verifyPortalToken,
     deviceLogin,
@@ -199,7 +198,6 @@ const selfRegisterLimiter = rateLimit({
 
 router.post('/send-link/:customerId', auth, sendPortalLink);
 router.post('/self-register', selfRegisterLimiter, selfRegisterCustomer);
-router.get('/company-info/:slug', getCompanyInfoBySlug);
 router.post('/resolve-link',  resolveLink);
 router.get('/verify-token',   verifyPortalToken);
 router.post('/google-auth',   googleAuth);

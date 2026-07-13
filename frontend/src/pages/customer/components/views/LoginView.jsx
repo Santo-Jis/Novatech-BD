@@ -1,11 +1,35 @@
 // components/views/LoginView.jsx
 // Session শেষ হলে বা Google auth দরকার হলে দেখানো হয়
+// ডিজাইন সিস্টেম: bg-base/primary navy/accent bronze (design.html অনুযায়ী)
+
+const COLORS = {
+  bgBase: '#FAF8F3',
+  bgSurface: '#FFFFFF',
+  bgAlt: '#F3F1EA',
+  primary900: '#0F1B2E',
+  primary700: '#16253D',
+  primary500: '#2C4870',
+  primary300: '#6B85A8',
+  primary100: '#DCE3EC',
+  accent600: '#9C6B2E',
+  accent300: '#C99B5A',
+  accent100: '#F3E6D0',
+  textPrimary: '#1F2937',
+  textSecondary: '#5B6472',
+  textMuted: '#8B8F98',
+  borderDefault: '#E4E1D8',
+  error: '#B3452C',
+  errorBg: '#F5E4DF',
+}
+
+const FONT_HEAD = "'Source Serif 4','Noto Sans Bengali',Georgia,serif"
+const FONT_BODY = "'IBM Plex Sans','Noto Sans Bengali','Hind Siliguri',sans-serif"
 
 export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {
   return (
     <div
       className="min-h-screen flex flex-col"
-      style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)' }}
+      style={{ background: COLORS.bgBase }}
     >
       <div style={{
         flex: 1,
@@ -20,30 +44,29 @@ export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {
         <div style={{
           width: 72,
           height: 72,
-          borderRadius: 20,
-          background: 'rgba(99,102,241,0.2)',
-          backdropFilter: 'blur(10px)',
-          border: '2px solid rgba(99,102,241,0.4)',
+          borderRadius: 18,
+          background: COLORS.primary900,
+          border: `2px solid ${COLORS.accent300}`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          marginBottom: 18,
-          boxShadow: '0 8px 32px rgba(99,102,241,0.2)',
+          marginBottom: 20,
+          boxShadow: '0 8px 24px rgba(15,27,46,0.15)',
         }}>
-          <span style={{ color: 'white', fontSize: 32, fontWeight: 800, fontFamily: 'Georgia, serif' }}>N</span>
+          <span style={{ color: COLORS.accent300, fontSize: 32, fontWeight: 700, fontFamily: FONT_HEAD }}>N</span>
         </div>
 
         <h1 style={{
-          color: 'white',
-          fontSize: 22,
-          fontWeight: 800,
+          color: COLORS.primary700,
+          fontSize: 24,
+          fontWeight: 600,
           margin: '0 0 4px',
           textAlign: 'center',
-          fontFamily: "'Hind Siliguri', sans-serif",
+          fontFamily: FONT_HEAD,
         }}>
           ZovoriX
         </h1>
-        <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12, margin: '0 0 28px', letterSpacing: 1 }}>
+        <p style={{ color: COLORS.textMuted, fontSize: 12, margin: '0 0 28px', letterSpacing: 1, fontFamily: FONT_BODY }}>
           কাস্টমার পোর্টাল
         </p>
 
@@ -52,8 +75,8 @@ export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {
           <div style={{
             width: '100%',
             maxWidth: 360,
-            background: 'rgba(239,68,68,0.15)',
-            border: '1px solid rgba(239,68,68,0.35)',
+            background: COLORS.errorBg,
+            border: `1px solid ${COLORS.error}33`,
             borderRadius: 12,
             padding: '12px 16px',
             marginBottom: 18,
@@ -63,11 +86,11 @@ export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {
           }}>
             <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⚠️</span>
             <p style={{
-              color: 'rgba(252,165,165,0.9)',
+              color: COLORS.error,
               fontSize: 13,
               margin: 0,
               lineHeight: 1.5,
-              fontFamily: "'Hind Siliguri', sans-serif",
+              fontFamily: FONT_BODY,
             }}>
               {error}
             </p>
@@ -77,37 +100,38 @@ export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {
         {/* Customer info card */}
         {tokenInfo && (
           <div style={{
-            background: 'rgba(255,255,255,0.07)',
-            backdropFilter: 'blur(12px)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: 18,
+            background: COLORS.bgSurface,
+            border: `1px solid ${COLORS.borderDefault}`,
+            borderRadius: 14,
             padding: '18px 22px',
             width: '100%',
             maxWidth: 360,
             marginBottom: 24,
             textAlign: 'center',
           }}>
-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 6, letterSpacing: 1 }}>
+            <p style={{ color: COLORS.textMuted, fontSize: 11, marginBottom: 6, letterSpacing: 1, fontFamily: FONT_BODY, textTransform: 'uppercase' }}>
               আপনার দোকান
             </p>
             <p style={{
-              color: 'white',
+              color: COLORS.primary700,
               fontSize: 18,
-              fontWeight: 700,
+              fontWeight: 600,
               margin: '0 0 4px',
-              fontFamily: "'Hind Siliguri', sans-serif",
+              fontFamily: FONT_HEAD,
             }}>
               🏪 {tokenInfo.shop_name}
             </p>
-            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, margin: '0 0 8px' }}>
+            <p style={{ color: COLORS.textSecondary, fontSize: 13, margin: '0 0 8px', fontFamily: FONT_BODY }}>
               {tokenInfo.owner_name}
             </p>
             <span style={{
-              background: 'rgba(255,255,255,0.1)',
-              color: 'rgba(255,255,255,0.6)',
+              background: COLORS.accent100,
+              color: COLORS.accent600,
               fontSize: 11,
+              fontWeight: 600,
               padding: '3px 12px',
               borderRadius: 20,
+              fontFamily: FONT_BODY,
             }}>
               কোড: {tokenInfo.customer_code}
             </span>
@@ -116,13 +140,13 @@ export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {
 
         {/* Info text */}
         <p style={{
-          color: 'rgba(255,255,255,0.45)',
+          color: COLORS.textSecondary,
           fontSize: 13,
           textAlign: 'center',
           maxWidth: 320,
           margin: '0 0 24px',
           lineHeight: 1.6,
-          fontFamily: "'Hind Siliguri', sans-serif",
+          fontFamily: FONT_BODY,
         }}>
           আবার প্রবেশ করতে আপনার Google অ্যাকাউন্ট ব্যবহার করুন।
         </p>
@@ -134,16 +158,16 @@ export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {
           style={{
             width: '100%',
             maxWidth: 360,
-            padding: '15px',
-            borderRadius: 14,
-            background: loggingIn ? 'rgba(255,255,255,0.7)' : 'white',
-            border: 'none',
-            color: '#1e1b4b',
+            padding: '14px',
+            borderRadius: 10,
+            background: loggingIn ? COLORS.bgAlt : COLORS.bgSurface,
+            border: `1px solid ${COLORS.borderDefault}`,
+            color: COLORS.primary700,
             fontSize: 15,
-            fontWeight: 700,
+            fontWeight: 600,
             cursor: loggingIn ? 'not-allowed' : 'pointer',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',
-            fontFamily: "'Hind Siliguri', sans-serif",
+            boxShadow: '0 2px 8px rgba(15,27,46,0.06)',
+            fontFamily: FONT_BODY,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -151,9 +175,9 @@ export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {
             transition: 'transform 0.15s, opacity 0.2s',
             opacity: loggingIn ? 0.8 : 1,
           }}
-          onMouseDown={e => { if (!loggingIn) e.currentTarget.style.transform = 'scale(0.97)' }}
+          onMouseDown={e => { if (!loggingIn) e.currentTarget.style.transform = 'scale(0.98)' }}
           onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)' }}
-          onTouchStart={e => { if (!loggingIn) e.currentTarget.style.transform = 'scale(0.97)' }}
+          onTouchStart={e => { if (!loggingIn) e.currentTarget.style.transform = 'scale(0.98)' }}
           onTouchEnd={e => { e.currentTarget.style.transform = 'scale(1)' }}
         >
           {loggingIn ? (
@@ -161,8 +185,8 @@ export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {
               <span style={{
                 width: 18,
                 height: 18,
-                border: '2px solid rgba(30,27,75,0.2)',
-                borderTop: '2px solid #1e1b4b',
+                border: `2px solid ${COLORS.primary100}`,
+                borderTop: `2px solid ${COLORS.primary700}`,
                 borderRadius: '50%',
                 display: 'inline-block',
                 animation: 'spin 0.8s linear infinite',
@@ -184,19 +208,49 @@ export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {
           )}
         </button>
 
-        <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11, marginTop: 14, textAlign: 'center' }}>
+        <p style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 14, textAlign: 'center', fontFamily: FONT_BODY }}>
           আপনার Gmail অ্যাকাউন্ট দিয়ে নিরাপদে প্রবেশ করুন
         </p>
+
+        {/* Divider */}
+        <div style={{ width: '100%', maxWidth: 360, display: 'flex', alignItems: 'center', gap: 12, margin: '22px 0' }}>
+          <div style={{ flex: 1, height: 1, background: COLORS.borderDefault }} />
+          <span style={{ color: COLORS.textMuted, fontSize: 11, fontFamily: FONT_BODY }}>অথবা</span>
+          <div style={{ flex: 1, height: 1, background: COLORS.borderDefault }} />
+        </div>
+
+        {/* ✅ নতুন কাস্টমার সেলফ-রেজিস্ট্রেশন লিংক */}
+        <a
+          href="/customer-register"
+          style={{
+            width: '100%',
+            maxWidth: 360,
+            display: 'block',
+            textAlign: 'center',
+            padding: '14px',
+            borderRadius: 10,
+            background: COLORS.primary900,
+            color: COLORS.accent300,
+            fontSize: 14,
+            fontWeight: 600,
+            fontFamily: FONT_BODY,
+            textDecoration: 'none',
+            boxSizing: 'border-box',
+          }}
+        >
+          নতুন কাস্টমার? এখানে রেজিস্ট্রেশন করুন
+        </a>
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
 
       <p style={{
         textAlign: 'center',
-        color: 'rgba(255,255,255,0.15)',
+        color: COLORS.textMuted,
         fontSize: 11,
         padding: '16px',
         letterSpacing: 0.5,
+        fontFamily: FONT_BODY,
       }}>
         © {new Date().getFullYear()} ZovoriX Ltd.
       </p>
