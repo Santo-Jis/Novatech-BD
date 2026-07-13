@@ -14,6 +14,8 @@ const { getCached, setCache, invalidatePortalAuthCache } = require('../services/
 
 const {
     sendPortalLink,
+    selfRegisterCustomer,
+    getCompanyInfoBySlug,
     resolveLink,
     verifyPortalToken,
     deviceLogin,
@@ -180,11 +182,24 @@ const creditLimiter = rateLimit({
     message: { success: false, message: 'অনেক বেশি আবেদন করা হয়েছে। ১ ঘণ্টা পর চেষ্টা করুন।' }
 });
 
+// সেলফ-রেজিস্ট্রেশন: ১ ঘণ্টায় প্রতি IP থেকে সর্বোচ্চ ৫টি (spam/bot ঠেকাতে)
+const selfRegisterLimiter = rateLimit({
+    windowMs:     60 * 60 * 1000,
+    max:          5,
+    keyGenerator: (req) => `self_register:${req.ip}`,
+    store:        makeRedisStore(),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: { success: false, message: 'অনেকবার চেষ্টা করা হয়েছে। ১ ঘণ্টা পর আবার চেষ্টা করুন।' }
+});
+
 // ============================================================
 // AUTH ROUTES
 // ============================================================
 
 router.post('/send-link/:customerId', auth, sendPortalLink);
+router.post('/self-register', selfRegisterLimiter, selfRegisterCustomer);
+router.get('/company-info/:slug', getCompanyInfoBySlug);
 router.post('/resolve-link',  resolveLink);
 router.get('/verify-token',   verifyPortalToken);
 router.post('/google-auth',   googleAuth);

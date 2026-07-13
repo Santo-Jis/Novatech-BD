@@ -23,15 +23,18 @@ const getCustomers = async (req, res) => {
         let params = [req.tenantId];
     let paramCount = 1;
 
-        // SR শুধু নিজের অ্যাসাইন করা কাস্টমার দেখবে
+        // SR নিজের অ্যাসাইন করা কাস্টমার দেখবে, প্লাস self-registered "unclaimed"
+        // লিড (route_id নেই, এখনো verified না) — যেকোনো SR এদের দেখে GPS বসাতে
+        // ও প্রথম sale করে verified/assigned করে নিতে পারবে
         if (req.user.role === 'worker') {
             paramCount++;
             conditions.push(
-                `c.id IN (
+                `(c.id IN (
                     SELECT customer_id FROM customer_assignments
                     WHERE worker_id = $${paramCount} AND is_active = true
                     AND customer_id IS NOT NULL
-                 )`
+                 )
+                 OR (c.route_id IS NULL AND c.is_verified = false))`
             );
             params.push(req.user.id);
         }
@@ -123,6 +126,7 @@ const getCustomers = async (req, res) => {
                     c.whatsapp, c.sms_phone, c.email,
                     c.credit_limit, c.current_credit, c.credit_balance,
                     c.has_pending_edit,
+                    c.is_verified, c.registration_source,
                     r.name AS route_name,
                     ca.visit_order,
                     ST_Y(c.location::geometry) AS latitude,
@@ -289,7 +293,7 @@ const createCustomer = async (req, res) => {
                 `INSERT INTO customers (customer_code, shop_name, owner_name, shop_photo,
                   business_type, whatsapp, sms_phone, email, route_id,
                   credit_limit, location, created_by, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                  ST_SetSRID(ST_MakePoint($11, $12, 3), 4326)::geography, $13)
+                  ST_SetSRID(ST_MakePoint($11, $12), 4326)::geography, $13, $14)
                  RETURNING *`,
                 [
                     customerCode, shop_name, owner_name, shopPhotoUrl,
@@ -297,15 +301,17 @@ const createCustomer = async (req, res) => {
                     sms_phone || null, email || null,
                     route_id || null,
                     finalCreditLimit,
-                    parsedLng, parsedLat,  // ✅ FIX: $11=longitude, $12=latitude
-                    req.user.id            // ✅ FIX: $13=created_by
+                    parsedLng, parsedLat,  // $11=longitude, $12=latitude
+                    req.user.id,           // $13=created_by
+                    req.tenantId           // 🐛 FIX: tenant_id-এর ভ্যালু আগে বাদ পড়ে ছিল
+                                            // (13 কলাম বনাম 12 ভ্যালু — Postgres error দিত)
                 ]
             );
         } else {
             result = await query(
                 `INSERT INTO customers (customer_code, shop_name, owner_name, shop_photo,
                   business_type, whatsapp, sms_phone, email, route_id,
-                  credit_limit, created_by, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 2)
+                  credit_limit, created_by, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
                  RETURNING *`,
                 [
                     customerCode, shop_name, owner_name, shopPhotoUrl,
@@ -313,7 +319,8 @@ const createCustomer = async (req, res) => {
                     sms_phone || null, email || null,
                     route_id || null,
                     finalCreditLimit,
-                    req.user.id
+                    req.user.id,
+                    req.tenantId  // 🐛 FIX: আগে hardcoded 2 ছিল, ভুল tenant-এ কাস্টমার যোগ হতো
                 ]
             );
         }

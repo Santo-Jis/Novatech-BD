@@ -34,6 +34,7 @@ const WorkerLayout  = IS_CUSTOMER_APP ? null : lazy(() => import('./layouts/Work
 // Customer (সবসময় থাকবে — দুই APK-এই)
 const CustomerPortal = lazy(() => import('./pages/customer/CustomerPortal'))
 const CustomerAIChat = lazy(() => import('./pages/customer/CustomerAIChat'))
+const CustomerSelfRegister = lazy(() => import('./pages/customer/CustomerSelfRegister'))
 
 // Auth / Public
 const Login     = lazy(() => import('./pages/Login'))
@@ -300,6 +301,8 @@ function AppWithPermissions() {
           {/* ── Public ── */}
           <Route path="/"                       element={<HomeRedirect />} />
           <Route path="/customer-login"         element={<CustomerPortal />} />
+          <Route path="/customer-register"      element={<CustomerSelfRegister />} />
+          <Route path="/customer-register/:slug" element={<CustomerSelfRegister />} />
           <Route path="/customer-portal"        element={<Navigate to="/customer/dashboard" replace />} />
           <Route path="/portal-oauth-callback"  element={<PortalOAuthCallback />} />
 

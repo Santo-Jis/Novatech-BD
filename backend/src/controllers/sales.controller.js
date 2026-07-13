@@ -464,6 +464,35 @@ const createSale = async (req, res) => {
                 ]
             );
 
+            // ✅ Auto-verify: এই কাস্টমারের প্রথম sale হলে verified badge পাবে
+            // (is_verified = false চেক করাতে idempotent — verified_at/verified_by
+            //  দ্বিতীয় sale-এ overwrite হবে না, একই transaction-এর অংশ বলে sale
+            //  rollback হলে verification-ও rollback হবে)
+            await client.query(
+                `UPDATE customers
+                 SET is_verified = true, verified_at = NOW(), verified_by = $1
+                 WHERE id = $2 AND tenant_id = $3 AND is_verified = false`,
+                [req.user.id, customer_id, req.tenantId]
+            );
+
+            // ✅ Auto-assign: self-registered কাস্টমারের কোনো active assignment
+            // থাকে না (কেউ তাদের "দেখতে" পায় না, তাই getCustomers-এ worker-দের
+            // জন্য route_id IS NULL + is_verified=false কাস্টমারও দেখানো হচ্ছে —
+            // দেখুন customer.controller.js)। যে SR প্রথম sale করলো, স্বাভাবিকভাবে
+            // সে-ই এখন থেকে এই কাস্টমারের দায়িত্বে — NOT EXISTS দিয়ে শুধু তখনই
+            // assign হবে যখন কোনো active assignment নেই (existing assignment
+            // থাকলে touch করা হচ্ছে না)
+            await client.query(
+                `INSERT INTO customer_assignments (worker_id, customer_id, route_id, assigned_by, tenant_id)
+                 SELECT $1, id, route_id, $1, $2 FROM customers
+                 WHERE id = $3
+                   AND NOT EXISTS (
+                       SELECT 1 FROM customer_assignments
+                       WHERE customer_id = $3 AND is_active = true
+                   )`,
+                [req.user.id, req.tenantId, customer_id]
+            );
+
             // ─── স্টক আন্দোলন রেকর্ড ───────────────────────────
             // ⚠️ FIX #1 — Double Deduction সমস্যা সমাধান:
             // approveOrder()-এ products.stock ইতোমধ্যে কমানো হয়েছে।

@@ -210,7 +210,12 @@ function CustomerCreditCard({ customer, onCollect, onSetLimit, onRemind, remindi
           <FiUser className="text-primary" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="font-semibold text-gray-800 truncate">{customer.shop_name}</p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <p className="font-semibold text-gray-800 truncate">{customer.shop_name}</p>
+            {!customer.is_verified && (
+              <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium flex-shrink-0">🆕 Unverified</span>
+            )}
+          </div>
           <p className="text-xs text-gray-400">{customer.customer_code} • {customer.owner_name}</p>
           {customer.route_name && <p className="text-xs text-gray-400">{customer.route_name}</p>}
         </div>

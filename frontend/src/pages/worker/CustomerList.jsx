@@ -737,8 +737,16 @@ export default function CustomerList() {
                     {c.has_pending_edit && (
                       <span className="text-xs bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full">⏳ pending</span>
                     )}
+                    {!c.is_verified && (
+                      <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">🆕 Unverified</span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-500">{c.owner_name}</p>
+                  {!c.latitude && (
+                    <p className="text-xs text-red-500 mt-0.5 flex items-center gap-1">
+                      📍 GPS বসানো হয়নি — এডিট থেকে যোগ করুন
+                    </p>
+                  )}
 
                   {(c.whatsapp || c.sms_phone) && (
                     <p className="text-xs text-gray-500 mt-0.5 flex items-center gap-1">

@@ -187,6 +187,15 @@ export default function DashboardView({
               <span style={{ width:6, height:6, borderRadius:'50%', background:'#10B981', flexShrink:0, boxShadow:'0 0 8px rgba(16,185,129,0.9)' }}/>
               <span style={{ fontSize:10, color:'rgba(255,255,255,0.38)' }}>{customer.owner_name} • {customer.customer_code}</span>
             </div>
+            <span style={{
+              display:'inline-flex', alignItems:'center', gap:4, marginTop:8,
+              fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20,
+              background: customer.is_verified ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
+              color:      customer.is_verified ? '#34D399' : '#FBBF24',
+              border: `1px solid ${customer.is_verified ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
+            }}>
+              {customer.is_verified ? '✅ Verified কাস্টমার' : '⏳ Unverified — SR ভিজিটের অপেক্ষায়'}
+            </span>
           </div>
 
           <div style={{ display:'flex', gap:8 }}>
