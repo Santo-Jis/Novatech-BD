@@ -62,6 +62,13 @@ export default function LandingPage() {
     { label: 'Admin লগইন',   role: 'admin',   icon: '⚙️', desc: 'অ্যাডমিন প্যানেল' },
   ]
 
+  const stats = [
+    { value: '২৪+',      label: 'ডিস্ট্রিবিউটর' },
+    { value: '৮৪+',      label: 'সেলস রিপ্রেজেন্টেটিভ (SR)' },
+    { value: '২৪',       label: 'ম্যানেজার' },
+    { value: '১৪,৬৮৩',  label: 'রিটেইল দোকান' },
+  ]
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -399,6 +406,25 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Stats */}
+      <section style={{ padding: '8px 24px 64px', maxWidth: '960px', margin: '0 auto' }}>
+        <div style={{
+          background: T.primary900, borderRadius: '18px', padding: '40px 28px',
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '24px',
+        }}>
+          {stats.map((s, i) => (
+            <div key={i} style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: T.fontHead, fontSize: '32px', fontWeight: 600, color: T.accent300 }}>
+                {s.value}
+              </div>
+              <div style={{ fontSize: '12.5px', color: T.primary100, marginTop: '6px' }}>
+                {s.label}
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* Footer */}
       <footer style={{
         background: T.primary900,
@@ -500,6 +526,9 @@ export default function LandingPage() {
                 </button>
                 <button onClick={() => navigate('/apply/sr')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   SR আবেদন করুন
+                </button>
+                <button onClick={() => navigate('/privacy-policy')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  Privacy Policy
                 </button>
               </div>
             </div>
