@@ -303,7 +303,18 @@ export default function CustomerSelfRegister() {
         return
       }
 
-      navigate(`/customer-login?c=${encodeURIComponent(data.customer_code)}`)
+      // ✅ রেজিস্ট্রেশন সফল — Welcome/Login স্ক্রিনে দোকানের তথ্য ও
+      // সফল-বার্তা দেখানোর জন্য state দিয়ে পাঠানো হচ্ছে (tokenInfo আগে
+      // কখনো সেট হতো না, তাই কার্ডটা দেখাই যেত না — এখন সরাসরি এখান
+      // থেকেই দিয়ে দিচ্ছি, আলাদা API কলের দরকার নেই)
+      navigate(`/customer-login?c=${encodeURIComponent(data.customer_code)}`, {
+        state: {
+          justRegistered: true,
+          shopName: form.shop_name.trim(),
+          ownerName: form.owner_name.trim(),
+          customerCode: data.customer_code,
+        },
+      })
     } catch {
       setError('নেটওয়ার্ক সমস্যা হয়েছে। আবার চেষ্টা করুন।')
       setSubmitting(false)
