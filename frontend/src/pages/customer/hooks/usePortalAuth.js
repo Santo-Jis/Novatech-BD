@@ -13,7 +13,7 @@
 //     JS refresh token পড়তে পারে না — HttpOnly cookie
 
 import { useState, useEffect, useRef } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useLocation } from 'react-router-dom'
 import { Capacitor } from '@capacitor/core'
 import { portalFetch, BACKEND } from '../utils/api'
 import { getDeviceFingerprint, webGoogleLogin } from '../utils/fingerprint'
@@ -24,12 +24,24 @@ import { portalTokenStore } from '../utils/portalTokenStore'
 
 export function usePortalAuth(defaultTab = 'summary') {
   const [searchParams] = useSearchParams()
+  const location = useLocation()
   const customerCodeFromURL = searchParams.get('c')  // SR link-এ থাকে, প্রথমবার login এ
+
+  // ✅ নতুন সেলফ-রেজিস্ট্রেশনের পর CustomerSelfRegister.jsx navigate() করার সময়
+  // state হিসেবে দোকানের নাম/মালিকের নাম/কোড পাঠায় — এখান থেকে Welcome স্ক্রিনে
+  // "দোকান" কার্ড ও সফল-বার্তা দেখানো হয় (আগে tokenInfo কখনো set হতো না বলে
+  // এই কার্ডটা কখনো দেখা যেত না — এটাই ছিল মূল বাগ)
+  const regState      = location.state || {}
+  const justRegistered = !!regState.justRegistered
 
   const [phase,       setPhase]       = useState('loading')
   const portalJWTRef  = useRef(null)   // stale closure এড়াতে (React state mirror)
   const toastTimerRef = useRef(null)
-  const [tokenInfo,   setTokenInfo]   = useState(null)  // backward compat
+  const [tokenInfo,   setTokenInfo]   = useState(
+    justRegistered
+      ? { shop_name: regState.shopName, owner_name: regState.ownerName, customer_code: regState.customerCode }
+      : null
+  )
   const [portalJWT,   setPortalJWT]   = useState(null)
   const [dashboard,   setDashboard]   = useState(null)
   const [activeTab,   setActiveTab]   = useState(defaultTab)
@@ -563,7 +575,7 @@ export function usePortalAuth(defaultTab = 'summary') {
   }, [customerCodeFromURL])
 
   return {
-    phase, tokenInfo, portalJWT, dashboard,
+    phase, tokenInfo, justRegistered, portalJWT, dashboard,
     activeTab, error, loggingIn,
     googleLogin, handleLogout, handleTabChange,
     toast,
