@@ -18,7 +18,7 @@ const axios           = require('axios');
 const logger          = require('../config/logger');
 const PDFDocument     = require('pdfkit');
 const { invalidatePortalAuthCache } = require('../services/portalCache.service');
-const { generateCustomerCode }      = require('../services/employee.service');
+const { generateCustomerCode, uploadToCloudinary } = require('../services/employee.service');
 const { DEFAULT_TENANT_ID }         = require('../services/auth.service');
 
 // ============================================================
@@ -180,7 +180,7 @@ const sendPortalLink = async (req, res) => {
 // ============================================================
 const selfRegisterCustomer = async (req, res) => {
     try {
-        const { shop_name, owner_name, business_type, whatsapp, sms_phone, email } = req.body;
+        const { shop_name, owner_name, business_type, date_of_birth, whatsapp, sms_phone, email } = req.body;
         const tenantId = DEFAULT_TENANT_ID;
 
         if (!shop_name || !shop_name.trim()) {
@@ -189,9 +189,33 @@ const selfRegisterCustomer = async (req, res) => {
         if (!owner_name || !owner_name.trim()) {
             return res.status(400).json({ success: false, message: 'মালিকের নাম দিন।' });
         }
+        if (!business_type || !business_type.trim()) {
+            return res.status(400).json({ success: false, message: 'ব্যবসার ধরন নির্বাচন করুন।' });
+        }
         const cleanWhatsapp = (whatsapp || '').trim();
         if (!/^01[0-9]{9}$/.test(cleanWhatsapp)) {
             return res.status(400).json({ success: false, message: 'সঠিক WhatsApp নম্বর দিন (01XXXXXXXXX)।' });
+        }
+
+        // জন্মতারিখ যাচাই — আবশ্যক, ন্যূনতম বয়স ১৫ বছর
+        if (!date_of_birth) {
+            return res.status(400).json({ success: false, message: 'জন্মতারিখ দিন।' });
+        }
+        const dob = new Date(date_of_birth);
+        if (isNaN(dob.getTime())) {
+            return res.status(400).json({ success: false, message: 'সঠিক জন্মতারিখ দিন।' });
+        }
+        const today = new Date();
+        let age = today.getFullYear() - dob.getFullYear();
+        const monthDiff = today.getMonth() - dob.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
+            age--;
+        }
+        if (age < 15) {
+            return res.status(400).json({ success: false, message: 'রেজিস্ট্রেশনের জন্য ন্যূনতম বয়স ১৫ বছর হতে হবে।' });
+        }
+        if (dob > today) {
+            return res.status(400).json({ success: false, message: 'সঠিক জন্মতারিখ দিন।' });
         }
 
         // একই WhatsApp-এ আগে থেকে সক্রিয় কাস্টমার থাকলে ডুপ্লিকেট আটকাও
@@ -218,16 +242,35 @@ const selfRegisterCustomer = async (req, res) => {
             }
         } catch { /* সমস্যা হলে 0 দিয়ে চলবে */ }
 
+        // প্রোফাইল ছবি ও দোকানের ছবি — দুটোই ঐচ্ছিক, দিলে Cloudinary-তে যাবে
+        let profilePhotoUrl = null;
+        let shopPhotoUrl    = null;
+        const profileFile = req.files?.profile_photo?.[0];
+        const shopFile     = req.files?.shop_photo?.[0];
+
+        if (profileFile) {
+            profilePhotoUrl = await uploadToCloudinary(
+                profileFile.buffer, 'customer_profiles', `profile_${Date.now()}`, profileFile.mimetype
+            );
+        }
+        if (shopFile) {
+            shopPhotoUrl = await uploadToCloudinary(
+                shopFile.buffer, 'shops', `shop_${Date.now()}`, shopFile.mimetype
+            );
+        }
+
         const customerCode  = await generateCustomerCode(new Date());
 
         const result = await query(
             `INSERT INTO customers (customer_code, shop_name, owner_name, business_type,
+              date_of_birth, profile_photo, shop_photo,
               whatsapp, sms_phone, email, credit_limit, is_active,
               is_verified, registration_source, tenant_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true, false, 'self', $9)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, false, 'self', $12)
              RETURNING id, customer_code`,
             [
-                customerCode, shop_name.trim(), owner_name.trim(), business_type || null,
+                customerCode, shop_name.trim(), owner_name.trim(), business_type.trim(),
+                date_of_birth, profilePhotoUrl, shopPhotoUrl,
                 cleanWhatsapp, (sms_phone || '').trim() || null, (email || '').trim() || null,
                 defaultCreditLimit, tenantId
             ]
