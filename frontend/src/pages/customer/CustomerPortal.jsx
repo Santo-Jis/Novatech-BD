@@ -14,37 +14,30 @@
 //   components/OrderTrackingModal.jsx → order tracking bottom sheet
 //   components/OrderRequestTab.jsx  → order list / new / catalog
 //   components/views/LoadingView.jsx
-//   components/views/InvalidView.jsx
 //   components/views/WelcomeView.jsx
-//   components/views/LoginView.jsx
 //   components/views/DashboardView.jsx
+//
+// ✅ পুরনো token-link ভিত্তিক 'login'/'invalid' phase ও তাদের ভিউ
+// (LoginView.jsx, InvalidView.jsx) বাদ দেওয়া হয়েছে — সেগুলো কখনো
+// সেট হতো না, dead code ছিল। এখন ফ্লো শুধু:
+//   loading → welcome (Google login বাটন) → dashboard
 
 import { usePortalAuth } from './hooks/usePortalAuth'
 import LoadingView   from './components/views/LoadingView'
-import InvalidView   from './components/views/InvalidView'
 import WelcomeView   from './components/views/WelcomeView'
-import LoginView     from './components/views/LoginView'
 import DashboardView from './components/views/DashboardView'
 
 export default function CustomerPortal({ defaultTab = 'summary' }) {
   const auth = usePortalAuth(defaultTab)
 
   if (auth.phase === 'loading')   return <LoadingView />
-  if (auth.phase === 'invalid')   return <InvalidView error={auth.error} onGoToLogin={auth.handleLogout} />
   if (auth.phase === 'welcome')   return (
     <WelcomeView
       tokenInfo={auth.tokenInfo}
+      justRegistered={auth.justRegistered}
       error={auth.error}
       loggingIn={auth.loggingIn}
       onLogin={() => auth.googleLogin()}
-    />
-  )
-  if (auth.phase === 'login')     return (
-    <LoginView
-      tokenInfo={auth.tokenInfo}
-      error={auth.error}
-      loggingIn={auth.loggingIn}
-      onLogin={auth.googleLogin}
     />
   )
 
