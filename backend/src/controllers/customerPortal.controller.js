@@ -265,8 +265,8 @@ const selfRegisterCustomer = async (req, res) => {
             `INSERT INTO customers (customer_code, shop_name, owner_name, business_type,
               date_of_birth, profile_photo, shop_photo,
               whatsapp, sms_phone, email, credit_limit, is_active,
-              is_verified, registration_source, tenant_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, false, 'self', $12)
+              is_verified, registration_source, created_by, tenant_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, false, 'self', NULL, $12)
              RETURNING id, customer_code`,
             [
                 customerCode, shop_name.trim(), owner_name.trim(), business_type.trim(),
