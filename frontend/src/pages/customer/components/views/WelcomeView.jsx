@@ -27,7 +27,7 @@ const COLORS = {
 const FONT_HEAD = "'Source Serif 4','Noto Sans Bengali',Georgia,serif"
 const FONT_BODY = "'IBM Plex Sans','Noto Sans Bengali','Hind Siliguri',sans-serif"
 
-export default function WelcomeView({ tokenInfo, error, loggingIn, onLogin }) {
+export default function WelcomeView({ tokenInfo, justRegistered, error, loggingIn, onLogin }) {
   const navigate = useNavigate()
   return (
     <div
@@ -72,6 +72,34 @@ export default function WelcomeView({ tokenInfo, error, loggingIn, onLogin }) {
         <p style={{ color: COLORS.textMuted, fontSize: 12, margin: '0 0 28px', letterSpacing: 1, fontFamily: FONT_BODY }}>
           কাস্টমার পোর্টাল
         </p>
+
+        {/* ✅ রেজিস্ট্রেশনের পরে সফল-বার্তা — ইউজার যেন বুঝতে পারে ফর্ম জমা
+            হয়েছে এবং এখন Google দিয়ে লগইন করলেই দোকান তৈরি হয়ে যাবে */}
+        {justRegistered && (
+          <div style={{
+            width: '100%',
+            maxWidth: 360,
+            background: '#EAF4EC',
+            border: '1px solid #2F9E5033',
+            borderRadius: 12,
+            padding: '12px 16px',
+            marginBottom: 18,
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: 10,
+          }}>
+            <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>✅</span>
+            <p style={{
+              color: '#1F7A3D',
+              fontSize: 13,
+              margin: 0,
+              lineHeight: 1.5,
+              fontFamily: FONT_BODY,
+            }}>
+              রেজিস্ট্রেশন সফল হয়েছে! এখন এই দোকানের জন্য নিচে Google দিয়ে প্রবেশ করুন।
+            </p>
+          </div>
+        )}
 
         {/* Error banner */}
         {error && (
