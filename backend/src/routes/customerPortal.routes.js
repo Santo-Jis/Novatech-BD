@@ -6,11 +6,26 @@
 const express    = require('express');
 const router     = express.Router();
 const jwt        = require('jsonwebtoken');
+const multer     = require('multer');
 const rateLimit  = require('express-rate-limit');
 const { RedisStore }     = require('rate-limit-redis');
 const { getRedisClient } = require('../config/redis');
 const logger             = require('../config/logger');
 const { getCached, setCache, invalidatePortalAuthCache } = require('../services/portalCache.service');
+
+// ============================================================
+// FILE UPLOAD (সেলফ-রেজিস্ট্রেশনে প্রোফাইল ছবি ও দোকানের ছবি)
+// ============================================================
+const selfRegisterUpload = multer({
+    storage: multer.memoryStorage(),
+    limits:  { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+            return cb(new Error('শুধু ছবি আপলোড করা যাবে।'));
+        }
+        cb(null, true);
+    }
+});
 
 const {
     sendPortalLink,
@@ -197,7 +212,9 @@ const selfRegisterLimiter = rateLimit({
 // ============================================================
 
 router.post('/send-link/:customerId', auth, sendPortalLink);
-router.post('/self-register', selfRegisterLimiter, selfRegisterCustomer);
+router.post('/self-register', selfRegisterLimiter,
+    selfRegisterUpload.fields([{ name: 'profile_photo', maxCount: 1 }, { name: 'shop_photo', maxCount: 1 }]),
+    selfRegisterCustomer);
 router.post('/resolve-link',  resolveLink);
 router.get('/verify-token',   verifyPortalToken);
 router.post('/google-auth',   googleAuth);
