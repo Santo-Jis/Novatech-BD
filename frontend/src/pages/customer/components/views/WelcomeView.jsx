@@ -2,6 +2,8 @@
 // প্রথমবার আসলে Google login করার আগে welcome screen
 // ডিজাইন সিস্টেম: bg-base/primary navy/accent bronze (design.html অনুযায়ী)
 
+import { useNavigate } from 'react-router-dom'
+
 const COLORS = {
   bgBase: '#FAF8F3',
   bgSurface: '#FFFFFF',
@@ -26,6 +28,7 @@ const FONT_HEAD = "'Source Serif 4','Noto Sans Bengali',Georgia,serif"
 const FONT_BODY = "'IBM Plex Sans','Noto Sans Bengali','Hind Siliguri',sans-serif"
 
 export default function WelcomeView({ tokenInfo, error, loggingIn, onLogin }) {
+  const navigate = useNavigate()
   return (
     <div
       className="min-h-screen flex flex-col"
@@ -220,8 +223,9 @@ export default function WelcomeView({ tokenInfo, error, loggingIn, onLogin }) {
         </div>
 
         {/* ✅ নতুন কাস্টমার সেলফ-রেজিস্ট্রেশন লিংক */}
-        <a
-          href="/customer-register"
+        <button
+          type="button"
+          onClick={() => navigate('/customer-register')}
           style={{
             width: '100%',
             maxWidth: 360,
@@ -234,12 +238,13 @@ export default function WelcomeView({ tokenInfo, error, loggingIn, onLogin }) {
             fontSize: 14,
             fontWeight: 600,
             fontFamily: FONT_BODY,
-            textDecoration: 'none',
+            border: 'none',
+            cursor: 'pointer',
             boxSizing: 'border-box',
           }}
         >
           নতুন কাস্টমার? এখানে রেজিস্ট্রেশন করুন
-        </a>
+        </button>
       </div>
 
       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
