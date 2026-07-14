@@ -1902,12 +1902,12 @@ const directGoogleAuth = async (req, res) => {
             await query(
                 `INSERT INTO customer_portal_tokens
                     (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email)
-                 VALUES ($1, $2, $3, NOW() + INTERVAL '10 years', 1, $4, NOW(), $4)
+                 VALUES ($1, $2, $3, NOW() + INTERVAL '10 years', 1, $4, NOW(), $5)
                  ON CONFLICT (customer_id) DO UPDATE SET
                     bound_email  = $4,
-                    google_email = $4,
+                    google_email = $5,
                     last_login   = NOW()`,
-                [customer.id, generatePortalToken(), generateRedirectId(), email.toLowerCase()]
+                [customer.id, generatePortalToken(), generateRedirectId(), email.toLowerCase(), email.toLowerCase()]
             );
 
             // customers.email খালি থাকলে সেভ করো
