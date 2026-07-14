@@ -4,7 +4,9 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 
-const BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+const BACKEND = import.meta.env.DEV
+  ? (import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
+  : '/api'
 
 // ── Portal JWT helper ──────────────────────────────────────────
 function getPortalJWT() {
