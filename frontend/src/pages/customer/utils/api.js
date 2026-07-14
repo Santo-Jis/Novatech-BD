@@ -3,7 +3,14 @@
 
 import { portalTokenStore } from './portalTokenStore'
 
-export const BACKEND = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+// ✅ COOKIE FIX: production-এ relative '/api' পাথ ব্যবহার করা হচ্ছে (cross-origin URL না)।
+//    Vercel-এর vercel.json rewrite এটাকে Render backend-এ proxy করে দেয়।
+//    ফলে browser-এর কাছে request same-origin মনে হয় → portal_rt cookie
+//    third-party হিসেবে ব্লক হয় না (Chrome-এর third-party cookie block বাইপাস হয়)।
+//    Dev-এ (localhost) সরাসরি backend URL লাগে যেহেতু rewrite proxy কাজ করে না।
+export const BACKEND = import.meta.env.DEV
+  ? (import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
+  : '/api'
 
 // ── Refresh queue ────────────────────────────────────────────
 // একসাথে একাধিক request 401 পেলে শুধু একটিই refresh call হবে,

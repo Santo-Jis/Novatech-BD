@@ -1,0 +1,765 @@
+[33mcommit 1107bb535c3b0117fc75a49e985a293e1d443d4a[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Santo-Jis <jisbusinessbd@gmail.com>
+Date:   Mon Jul 13 15:17:08 2026 +0600
+
+    Remove slug-based customer registration link system
+
+[1mdiff --git a/backend/src/controllers/customerPortal.controller.js b/backend/src/controllers/customerPortal.controller.js[m
+[1mindex 69489067..d19ab94c 100644[m
+[1m--- a/backend/src/controllers/customerPortal.controller.js[m
+[1m+++ b/backend/src/controllers/customerPortal.controller.js[m
+[36m@@ -19,7 +19,7 @@[m [mconst logger          = require('../config/logger');[m
+ const PDFDocument     = require('pdfkit');[m
+ const { invalidatePortalAuthCache } = require('../services/portalCache.service');[m
+ const { generateCustomerCode }      = require('../services/employee.service');[m
+[31m-const { getTenantBySlug }           = require('../middlewares/tenantResolver');[m
+[32m+[m[32mconst { DEFAULT_TENANT_ID }         = require('../services/auth.service');[m
+ [m
+ // ============================================================[m
+ // HELPERS[m
+[36m@@ -171,11 +171,8 @@[m [mconst sendPortalLink = async (req, res) => {[m
+ // is_verified = false দিয়ে শুরু হয় — createSale-এ প্রথম sale রেকর্ড[m
+ // হলে true হয়ে যাবে (sales.controller.js দেখুন)।[m
+ //[m
+[31m-// ✅ Multi-tenant: প্রতিটা কোম্পানির নিজস্ব রেজিস্ট্রেশন লিংক[m
+[31m-// (/customer-register/:slug) — slug দিয়ে tenantResolver.js-এর[m
+[31m-// getTenantBySlug() ব্যবহার করে সঠিক tenant বের করা হয় (একই[m
+[31m-// helper যেটা onboarding/superAdmin flow-এ ব্যবহার হয়)। Admin[m
+[31m-// তাদের লিংক পাবে Settings পেজে (GET /api/admin/tenant-info)।[m
+[32m+[m[32m// কোনো কোম্পানি-নির্দিষ্ট লিংক/স্লাগ/কোড লাগে না — সরাসরি[m
+[32m+[m[32m// DEFAULT_TENANT_ID-এর অধীনে কাস্টমার তৈরি হয় (single-tenant)।[m
+ //[m
+ // সফল হলে শুধু customer_code ফেরত দেয়। JWT/cookie এখানে সেট করা হয়[m
+ // না — frontend সাথে সাথেই এই code দিয়ে বিদ্যমান direct-auth ফ্লো[m
+[36m@@ -183,24 +180,8 @@[m [mconst sendPortalLink = async (req, res) => {[m
+ // ============================================================[m
+ const selfRegisterCustomer = async (req, res) => {[m
+     try {[m
+[31m-        const { shop_name, owner_name, business_type, whatsapp, sms_phone, email, slug } = req.body;[m
+[31m-[m
+[31m-        // ✅ প্রতিটা কোম্পানির নিজস্ব রেজিস্ট্রেশন লিংক থাকে:[m
+[31m-        // /customer-register/:slug — slug ছাড়া কোন tenant-এ কাস্টমার[m
+[31m-        // যোগ হবে সেটা জানার উপায় নেই, তাই বাধ্যতামূলক[m
+[31m-        if (!slug) {[m
+[31m-            return res.status(400).json({ success: false, message: 'রেজিস্ট্রেশন লিংকে কোম্পানির তথ্য নেই। সঠিক লিংক ব্যবহার করুন।' });[m
+[31m-        }[m
+[31m-        const tenant = await getTenantBySlug(slug);[m
+[31m-        if (!tenant) {[m
+[31m-            return res.status(404).json({ success: false, message: 'ভুল রেজিস্ট্রেশন লিংক — কোম্পানি খুঁজে পাওয়া যায়নি।' });[m
+[31m-        }[m
+[31m-        if (tenant.status === 'suspended') {[m
+[31m-            return res.status(403).json({ success: false, message: 'এই অ্যাকাউন্ট বর্তমানে সাসপেন্ড আছে।' });[m
+[31m-        }[m
+[31m-        if (tenant.status === 'cancelled') {[m
+[31m-            return res.status(403).json({ success: false, message: 'এই সাবস্ক্রিপশন বাতিল হয়ে গেছে।' });[m
+[31m-        }[m
+[32m+[m[32m        const { shop_name, owner_name, business_type, whatsapp, sms_phone, email } = req.body;[m
+[32m+[m[32m        const tenantId = DEFAULT_TENANT_ID;[m
+ [m
+         if (!shop_name || !shop_name.trim()) {[m
+             return res.status(400).json({ success: false, message: 'দোকানের নাম দিন।' });[m
+[36m@@ -214,10 +195,9 @@[m [mconst selfRegisterCustomer = async (req, res) => {[m
+         }[m
+ [m
+         // একই WhatsApp-এ আগে থেকে সক্রিয় কাস্টমার থাকলে ডুপ্লিকেট আটকাও[m
+[31m-        // (এই tenant-এর মধ্যেই — অন্য কোম্পানিতে একই নম্বর থাকতেই পারে)[m
+         const existing = await query([m
+             `SELECT id FROM customers WHERE whatsapp = $1 AND is_active = true AND tenant_id = $2 LIMIT 1`,[m
+[31m-            [cleanWhatsapp, tenant.id][m
+[32m+[m[32m            [cleanWhatsapp, tenantId][m
+         );[m
+         if (existing.rows.length > 0) {[m
+             return res.status(409).json({[m
+[36m@@ -249,11 +229,11 @@[m [mconst selfRegisterCustomer = async (req, res) => {[m
+             [[m
+                 customerCode, shop_name.trim(), owner_name.trim(), business_type || null,[m
+                 cleanWhatsapp, (sms_phone || '').trim() || null, (email || '').trim() || null,[m
+[31m-                defaultCreditLimit, tenant.id[m
+[32m+[m[32m                defaultCreditLimit, tenantId[m
+             ][m
+         );[m
+ [m
+[31m-        logger.info(`✅ Self-registered customer: ${customerCode} (${shop_name}) — tenant: ${tenant.slug}`);[m
+[32m+[m[32m        logger.info(`✅ Self-registered customer: ${customerCode} (${shop_name})`);[m
+ [m
+         return res.status(201).json({[m
+             success: true,[m
+[36m@@ -267,32 +247,6 @@[m [mconst selfRegisterCustomer = async (req, res) => {[m
+     }[m
+ };[m
+ [m
+[31m-// ============================================================[m
+[31m-// 1a-ii. COMPANY INFO BY SLUG (Public)[m
+[31m-// GET /api/portal/company-info/:slug[m
+[31m-// রেজিস্ট্রেশন পেজে কোম্পানির নাম দেখানোর জন্য — শুধু non-sensitive[m
+[31m-// তথ্য (নাম) রিটার্ন করে, tenant অস্তিত্ব/status ভ্যালিডেট করে[m
+[31m-// ============================================================[m
+[31m-const getCompanyInfoBySlug = async (req, res) => {[m
+[31m-    try {[m
+[31m-        const { slug } = req.params;[m
+[31m-        const tenant = await getTenantBySlug(slug);[m
+[31m-[m
+[31m-        if (!tenant || tenant.status === 'suspended' || tenant.status === 'cancelled') {[m
+[31m-            return res.status(404).json({ success: false, message: 'ভুল রেজিস্ট্রেশন লিংক — কোম্পানি খুঁজে পাওয়া যায়নি।' });[m
+[31m-        }[m
+[31m-[m
+[31m-        return res.json({[m
+[31m-            success: true,[m
+[31m-            company_name:    tenant.company_name,[m
+[31m-            company_name_bn: tenant.company_name_bn,[m
+[31m-        });[m
+[31m-    } catch (error) {[m
+[31m-        logger.error('❌ Company Info Error:', error.message);[m
+[31m-        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });[m
+[31m-    }[m
+[31m-};[m
+[31m-[m
+ // ============================================================[m
+ // 1b. RESOLVE LINK[m
+ // POST /api/portal/resolve-link[m
+[36m@@ -2088,7 +2042,6 @@[m [mconst logoutPortal = (req, res) => {[m
+ module.exports = {[m
+     sendPortalLink,[m
+     selfRegisterCustomer,  // ✅ NEW: কাস্টমার নিজে সাইন-আপ[m
+[31m-    getCompanyInfoBySlug,  // ✅ NEW: রেজিস্ট্রেশন পেজে কোম্পানির নাম দেখাতে[m
+     resolveLink,           // backward compat — পুরনো link কাজ করবে[m
+     verifyPortalToken,     // backward compat[m
+     deviceLogin,           // backward compat[m
+[1mdiff --git a/backend/src/controllers/onboarding.controller.js b/backend/src/controllers/onboarding.controller.js[m
+[1mindex b58ae42f..45ec4b7b 100644[m
+[1m--- a/backend/src/controllers/onboarding.controller.js[m
+[1m+++ b/backend/src/controllers/onboarding.controller.js[m
+[36m@@ -144,23 +144,4 @@[m [mconst checkSlugAvailability = async (req, res) => {[m
+   return res.json({ available: result.rows.length === 0 });[m
+ };[m
+ [m
+[31m-// ─── নিজের Tenant Info (Admin Settings-এ ব্যবহার হয়) ──────────[m
+[31m-// GET /api/admin/tenant-info — auth + isAdmin (দেখো admin.routes.js)[m
+[31m-// কাস্টমার সেলফ-রেজিস্ট্রেশন লিংক বানাতে slug লাগবে:[m
+[31m-//   https://<app-domain>/customer-register/<slug>[m
+[31m-const getMyTenant = async (req, res) => {[m
+[31m-  try {[m
+[31m-    const result = await query([m
+[31m-      `SELECT slug, company_name, company_name_bn FROM tenants WHERE id = $1`,[m
+[31m-      [req.tenantId][m
+[31m-    );[m
+[31m-    if (result.rows.length === 0) {[m
+[31m-      return res.status(404).json({ success: false, message: 'Tenant পাওয়া যায়নি।' });[m
+[31m-    }[m
+[31m-    return res.json({ success: true, ...result.rows[0] });[m
+[31m-  } catch (err) {[m
+[31m-    return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });[m
+[31m-  }[m
+[31m-};[m
+[31m-[m
+[31m-module.exports = { registerCompany, checkSlugAvailability, getMyTenant };[m
+[32m+[m[32mmodule.exports = { registerCompany, checkSlugAvailability };[m
+[1mdiff --git a/backend/src/routes/admin.routes.js b/backend/src/routes/admin.routes.js[m
+[1mindex 611e8856..e3c9b0d9 100644[m
+[1m--- a/backend/src/routes/admin.routes.js[m
+[1m+++ b/backend/src/routes/admin.routes.js[m
+[36m@@ -25,7 +25,6 @@[m [mconst {[m
+ } = require('../controllers/admin.controller');[m
+ [m
+ // ✅ NEW — কাস্টমার সেলফ-রেজিস্ট্রেশন লিংকের জন্য কোম্পানির slug[m
+[31m-const { getMyTenant } = require('../controllers/onboarding.controller');[m
+ [m
+ const {[m
+     getPortalOverview,[m
+[36m@@ -48,7 +47,6 @@[m [mconst {[m
+ // ── System Settings (Admin only) ─────────────────────────────[m
+ router.get('/settings',        auth, isAdmin, getSettings);[m
+ router.put('/settings',        auth, isAdmin, updateSettings);[m
+[31m-router.get('/tenant-info',     auth, isAdmin, getMyTenant);  // ✅ NEW: রেজিস্ট্রেশন লিংকের slug[m
+ [m
+ // ── Audit & Stats (Admin only) ───────────────────────────────[m
+ router.get('/audit-logs',      auth, isAdmin, getAuditLogs);[m
+[1mdiff --git a/backend/src/routes/customerPortal.routes.js b/backend/src/routes/customerPortal.routes.js[m
+[1mindex b7e61097..693f4e75 100644[m
+[1m--- a/backend/src/routes/customerPortal.routes.js[m
+[1m+++ b/backend/src/routes/customerPortal.routes.js[m
+[36m@@ -15,7 +15,6 @@[m [mconst { getCached, setCache, invalidatePortalAuthCache } = require('../services/[m
+ const {[m
+     sendPortalLink,[m
+     selfRegisterCustomer,[m
+[31m-    getCompanyInfoBySlug,[m
+     resolveLink,[m
+     verifyPortalToken,[m
+     deviceLogin,[m
+[36m@@ -199,7 +198,6 @@[m [mconst selfRegisterLimiter = rateLimit({[m
+ [m
+ router.post('/send-link/:customerId', auth, sendPortalLink);[m
+ router.post('/self-register', selfRegisterLimiter, selfRegisterCustomer);[m
+[31m-router.get('/company-info/:slug', getCompanyInfoBySlug);[m
+ router.post('/resolve-link',  resolveLink);[m
+ router.get('/verify-token',   verifyPortalToken);[m
+ router.post('/google-auth',   googleAuth);[m
+[1mdiff --git a/frontend/src/App.jsx b/frontend/src/App.jsx[m
+[1mindex 89356941..5d12e532 100644[m
+[1m--- a/frontend/src/App.jsx[m
+[1m+++ b/frontend/src/App.jsx[m
+[36m@@ -302,7 +302,6 @@[m [mfunction AppWithPermissions() {[m
+           <Route path="/"                       element={<HomeRedirect />} />[m
+           <Route path="/customer-login"         element={<CustomerPortal />} />[m
+           <Route path="/customer-register"      element={<CustomerSelfRegister />} />[m
+[31m-          <Route path="/customer-register/:slug" element={<CustomerSelfRegister />} />[m
+           <Route path="/customer-portal"        element={<Navigate to="/customer/dashboard" replace />} />[m
+           <Route path="/portal-oauth-callback"  element={<PortalOAuthCallback />} />[m
+ [m
+[1mdiff --git a/frontend/src/pages/admin/Settings.jsx b/frontend/src/pages/admin/Settings.jsx[m
+[1mindex ff00408a..97d7d559 100644[m
+[1m--- a/frontend/src/pages/admin/Settings.jsx[m
+[1m+++ b/frontend/src/pages/admin/Settings.jsx[m
+[36m@@ -37,8 +37,6 @@[m [mexport default function AdminSettings() {[m
+   const [commSlabs,       setCommSlabs]       = useState([])[m
+   const [commLoading,     setCommLoading]     = useState(false)[m
+   const [commSaving,      setCommSaving]      = useState(false)[m
+[31m-  // ── কাস্টমার সেলফ-রেজিস্ট্রেশন লিংক (tenant slug) ─────────────[m
+[31m-  const [tenantInfo,      setTenantInfo]      = useState(null)[m
+ [m
+   // ── Settings লোড ────────────────────────────────────────────[m
+   useEffect(() => {[m
+[36m@@ -64,11 +62,6 @@[m [mexport default function AdminSettings() {[m
+ [m
+   useEffect(() => { loadSmsStatus() }, [loadSmsStatus])[m
+ [m
+[31m-  // ── Tenant slug লোড (কাস্টমার রেজিস্ট্রেশন লিংকের জন্য) ─────[m
+[31m-  useEffect(() => {[m
+[31m-    api.get('/admin/tenant-info').then(res => setTenantInfo(res.data)).catch(() => {})[m
+[31m-  }, [])[m
+[31m-[m
+   // ── SMS Logs লোড ────────────────────────────────────────────[m
+   const loadSmsLogs = useCallback(async (page = 1) => {[m
+     setSmsLogsLoading(true)[m
+[36m@@ -259,32 +252,6 @@[m [mexport default function AdminSettings() {[m
+         </div>[m
+       </Card>[m
+ [m
+[31m-      {/* ✅ NEW: কাস্টমার সেলফ-রেজিস্ট্রেশন লিংক */}[m
+[31m-      <Card title="কাস্টমার রেজিস্ট্রেশন লিংক">[m
+[31m-        {tenantInfo ? ([m
+[31m-          <div className="space-y-2">[m
+[31m-            <p className="text-sm text-gray-500">[m
+[31m-              নতুন কাস্টমাররা নিজে অ্যাকাউন্ট খুলতে এই লিংকটি ব্যবহার করবে। WhatsApp, Facebook পেজ বা প্রিন্ট করে শেয়ার করুন।[m
+[31m-            </p>[m
+[31m-            <div className="flex items-center gap-2 bg-gray-50 rounded-xl p-3">[m
+[31m-              <code className="text-xs text-gray-700 flex-1 truncate">[m
+[31m-                {window.location.origin}/customer-register/{tenantInfo.slug}[m
+[31m-              </code>[m
+[31m-              <Button[m
+[31m-                onClick={() => {[m
+[31m-                  navigator.clipboard.writeText(`${window.location.origin}/customer-register/${tenantInfo.slug}`)[m
+[31m-                  toast.success('লিংক কপি হয়েছে!')[m
+[31m-                }}[m
+[31m-              >[m
+[31m-                কপি[m
+[31m-              </Button>[m
+[31m-            </div>[m
+[31m-          </div>[m
+[31m-        ) : ([m
+[31m-          <p className="text-sm text-gray-400">লোড হচ্ছে...</p>[m
+[31m-        )}[m
+[31m-      </Card>[m
+[31m-[m
+       {/* VAT */}[m
+       <Card title="ভ্যাট / GST সেটিংস">[m
+         <div className="grid grid-cols-2 gap-3">[m
+[1mdiff --git a/frontend/src/pages/customer/CustomerSelfRegister.jsx b/frontend/src/pages/customer/CustomerSelfRegister.jsx[m
+[1mindex 0b860cac..96f0d2a4 100644[m
+[1m--- a/frontend/src/pages/customer/CustomerSelfRegister.jsx[m
+[1m+++ b/frontend/src/pages/customer/CustomerSelfRegister.jsx[m
+[36m@@ -8,41 +8,55 @@[m
+ //      টেস্টেড CustomerPortal ফ্লো (Welcome → Google login → Dashboard)[m
+ //      হুবহু একইভাবে চলে, নতুন কোনো auth কোড লাগে না[m
+ //[m
+[32m+[m[32m// কোনো কোম্পানি-নির্দিষ্ট লিংক/স্লাগ/কোড লাগে না — এই পেজ সরাসরি[m
+[32m+[m[32m// খোলা যায়, কিছু যাচাই করার দরকার নেই।[m
+[32m+[m[32m//[m
+ // GPS/route/credit_limit/photo এখানে নেই — SR পরে "Edit Customer"[m
+ // থেকে বসাবে (customer.controller.js → updateCustomer, আগে থেকেই আছে)[m
+ [m
+[31m-import { useState, useEffect } from 'react'[m
+[31m-import { useParams } from 'react-router-dom'[m
+[32m+[m[32mimport { useState } from 'react'[m
+ import { BACKEND } from './utils/api'[m
+ [m
+ const BUSINESS_TYPES = ['মুদি', 'ফার্মেসি', 'হার্ডওয়্যার', 'কসমেটিক্স', 'ইলেকট্রনিক্স', 'কাপড়', 'খাদ্য ও পানীয়', 'স্টেশনারি', 'অন্যান্য'][m
+ [m
+[32m+[m[32m// ── ডিজাইন সিস্টেম টোকেন (design.html অনুযায়ী) ──────────────[m
+[32m+[m[32mconst C = {[m
+[32m+[m[32m  bgBase: '#FAF8F3', bgSurface: '#FFFFFF',[m
+[32m+[m[32m  primary900: '#0F1B2E', primary700: '#16253D',[m
+[32m+[m[32m  accent600: '#9C6B2E', accent300: '#C99B5A',[m
+[32m+[m[32m  textSecondary: '#5B6472', textMuted: '#8B8F98',[m
+[32m+[m[32m  borderDefault: '#E4E1D8', error: '#B3452C', errorBg: '#F5E4DF',[m
+[32m+[m[32m}[m
+[32m+[m[32mconst FONT_HEAD = "'Source Serif 4','Noto Sans Bengali',Georgia,serif"[m
+[32m+[m[32mconst FONT_BODY = "'IBM Plex Sans','Noto Sans Bengali','Hind Siliguri',sans-serif"[m
+[32m+[m
+ const inputStyle = {[m
+   width: '100%',[m
+[31m-  padding: '13px 16px',[m
+[31m-  borderRadius: 12,[m
+[31m-  background: 'rgba(255,255,255,0.08)',[m
+[31m-  border: '1px solid rgba(255,255,255,0.18)',[m
+[31m-  color: 'white',[m
+[32m+[m[32m  padding: '12px 14px',[m
+[32m+[m[32m  borderRadius: 8,[m
+[32m+[m[32m  background: C.bgSurface,[m
+[32m+[m[32m  border: `1px solid ${C.borderDefault}`,[m
+[32m+[m[32m  color: '#1F2937',[m
+   fontSize: 14,[m
+[31m-  fontFamily: "'Hind Siliguri', sans-serif",[m
+[32m+[m[32m  fontFamily: FONT_BODY,[m
+   outline: 'none',[m
+   boxSizing: 'border-box',[m
+ }[m
+ [m
+ const labelStyle = {[m
+[31m-  color: 'rgba(255,255,255,0.55)',[m
+[32m+[m[32m  color: C.textSecondary,[m
+   fontSize: 12,[m
+   marginBottom: 6,[m
+   display: 'block',[m
+[31m-  fontFamily: "'Hind Siliguri', sans-serif",[m
+[32m+[m[32m  fontFamily: FONT_BODY,[m
+[32m+[m[32m  fontWeight: 500,[m
+ }[m
+ [m
+ function Field({ label, required, children }) {[m
+   return ([m
+     <div style={{ marginBottom: 14 }}>[m
+       <label style={labelStyle}>[m
+[31m-        {label} {required && <span style={{ color: '#f87171' }}>*</span>}[m
+[32m+[m[32m        {label} {required && <span style={{ color: C.error }}>*</span>}[m
+       </label>[m
+       {children}[m
+     </div>[m
+[36m@@ -50,8 +64,6 @@[m [mfunction Field({ label, required, children }) {[m
+ }[m
+ [m
+ export default function CustomerSelfRegister() {[m
+[31m-  const { slug } = useParams()[m
+[31m-[m
+   const [form, setForm] = useState({[m
+     shop_name: '', owner_name: '', business_type: '',[m
+     whatsapp: '', sms_phone: '', email: '',[m
+[36m@@ -59,27 +71,6 @@[m [mexport default function CustomerSelfRegister() {[m
+   const [submitting, setSubmitting] = useState(false)[m
+   const [error, setError] = useState('')[m
+ [m
+[31m-  // কোম্পানি lookup — slug ছাড়া বা ভুল slug হলে ফর্ম দেখানো হবে না[m
+[31m-  const [companyLoading, setCompanyLoading] = useState(true)[m
+[31m-  const [company, setCompany] = useState(null)     // { company_name, company_name_bn }[m
+[31m-  const [linkInvalid, setLinkInvalid] = useState(false)[m
+[31m-[m
+[31m-  useEffect(() => {[m
+[31m-    if (!slug) {[m
+[31m-      setCompanyLoading(false)[m
+[31m-      setLinkInvalid(true)[m
+[31m-      return[m
+[31m-    }[m
+[31m-    fetch(`${BACKEND}/portal/company-info/${encodeURIComponent(slug)}`)[m
+[31m-      .then(res => res.ok ? res.json() : Promise.reject())[m
+[31m-      .then(data => {[m
+[31m-        if (!data.success) throw new Error()[m
+[31m-        setCompany(data)[m
+[31m-      })[m
+[31m-      .catch(() => setLinkInvalid(true))[m
+[31m-      .finally(() => setCompanyLoading(false))[m
+[31m-  }, [slug])[m
+[31m-[m
+   const set = (key) => (e) => setForm(p => ({ ...p, [key]: e.target.value }))[m
+ [m
+   const handleSubmit = async (e) => {[m
+[36m@@ -95,7 +86,7 @@[m [mexport default function CustomerSelfRegister() {[m
+       const res = await fetch(`${BACKEND}/portal/self-register`, {[m
+         method: 'POST',[m
+         headers: { 'Content-Type': 'application/json' },[m
+[31m-        body: JSON.stringify({ ...form, slug }),[m
+[32m+[m[32m        body: JSON.stringify(form),[m
+       })[m
+       const data = await res.json()[m
+ [m
+[36m@@ -114,58 +105,30 @@[m [mexport default function CustomerSelfRegister() {[m
+     }[m
+   }[m
+ [m
+[31m-  // ── লোডিং ────────────────────────────────────────────────[m
+[31m-  if (companyLoading) {[m
+[31m-    return ([m
+[31m-      <div className="min-h-screen flex items-center justify-center" style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #1d4ed8 100%)' }}>[m
+[31m-        <span style={{ width: 32, height: 32, border: '3px solid rgba(255,255,255,0.25)', borderTop: '3px solid white', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />[m
+[31m-        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>[m
+[31m-      </div>[m
+[31m-    )[m
+[31m-  }[m
+[31m-[m
+[31m-  // ── ভুল/অনুপস্থিত লিংক ───────────────────────────────────[m
+[31m-  if (linkInvalid) {[m
+[31m-    return ([m
+[31m-      <div className="min-h-screen flex flex-col items-center justify-center px-6" style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #1d4ed8 100%)' }}>[m
+[31m-        <span style={{ fontSize: 40, marginBottom: 12 }}>🔗</span>[m
+[31m-        <h1 style={{ color: 'white', fontSize: 18, fontWeight: 800, margin: '0 0 8px', textAlign: 'center', fontFamily: "'Hind Siliguri', sans-serif" }}>[m
+[31m-          এই লিংকটি সঠিক নয়[m
+[31m-        </h1>[m
+[31m-        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, textAlign: 'center', maxWidth: 300, lineHeight: 1.6, fontFamily: "'Hind Siliguri', sans-serif" }}>[m
+[31m-          রেজিস্ট্রেশনের জন্য আপনার ডিলার/SR-এর দেওয়া সঠিক লিংকটি ব্যবহার করুন।[m
+[31m-        </p>[m
+[31m-        <a href="/customer-login" style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 20, textDecoration: 'underline', fontFamily: "'Hind Siliguri', sans-serif" }}>[m
+[31m-          লগইন পেজে ফিরে যান[m
+[31m-        </a>[m
+[31m-      </div>[m
+[31m-    )[m
+[31m-  }[m
+[31m-[m
+   return ([m
+[31m-    <div className="min-h-screen flex flex-col" style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #1e40af 50%, #1d4ed8 100%)' }}>[m
+[32m+[m[32m    <div className="min-h-screen flex flex-col" style={{ background: C.bgBase }}>[m
+       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '32px 20px' }}>[m
+ [m
+         {/* Logo */}[m
+[31m-        <div style={{ width: 64, height: 64, borderRadius: 20, background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(10px)', border: '2px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>[m
+[31m-          <span style={{ color: 'white', fontSize: 28, fontWeight: 800, fontFamily: 'Georgia, serif' }}>N</span>[m
+[32m+[m[32m        <div style={{ width: 60, height: 60, borderRadius: 16, background: C.primary900, border: `2px solid ${C.accent300}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>[m
+[32m+[m[32m          <span style={{ color: C.accent300, fontSize: 26, fontWeight: 700, fontFamily: FONT_HEAD }}>N</span>[m
+         </div>[m
+ [m
+[31m-        <h1 style={{ color: 'white', fontSize: 22, fontWeight: 800, margin: '0 0 4px', textAlign: 'center', fontFamily: "'Hind Siliguri', sans-serif" }}>[m
+[32m+[m[32m        <h1 style={{ color: C.primary700, fontSize: 20, fontWeight: 600, margin: '0 0 4px', textAlign: 'center', fontFamily: FONT_HEAD }}>[m
+           নতুন কাস্টমার রেজিস্ট্রেশন[m
+         </h1>[m
+[31m-        <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, margin: '0 0 24px', textAlign: 'center', fontFamily: "'Hind Siliguri', sans-serif" }}>[m
+[31m-          {company?.company_name_bn || company?.company_name}-এ আপনার দোকানের তথ্য দিয়ে অ্যাকাউন্ট খুলুন[m
+[32m+[m[32m        <p style={{ color: C.textSecondary, fontSize: 13, margin: '0 0 24px', textAlign: 'center', fontFamily: FONT_BODY }}>[m
+[32m+[m[32m          আপনার দোকানের তথ্য দিয়ে অ্যাকাউন্ট খুলুন[m
+         </p>[m
+ [m
+         {error && ([m
+[31m-          <div style={{ width: '100%', maxWidth: 380, background: 'rgba(239,68,68,0.15)', border: '1px solid rgba(239,68,68,0.35)', borderRadius: 12, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 10 }}>[m
+[32m+[m[32m          <div style={{ width: '100%', maxWidth: 380, background: C.errorBg, border: `1px solid ${C.error}33`, borderRadius: 10, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'flex-start', gap: 10, boxSizing: 'border-box' }}>[m
+             <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⚠️</span>[m
+[31m-            <p style={{ color: 'rgba(252,165,165,0.9)', fontSize: 13, margin: 0, lineHeight: 1.5, fontFamily: "'Hind Siliguri', sans-serif" }}>{error}</p>[m
+[32m+[m[32m            <p style={{ color: C.error, fontSize: 13, margin: 0, lineHeight: 1.5, fontFamily: FONT_BODY }}>{error}</p>[m
+           </div>[m
+         )}[m
+ [m
+[31m-        <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 380, background: 'rgba(255,255,255,0.07)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 20, padding: 22 }}>[m
+[32m+[m[32m        <form onSubmit={handleSubmit} style={{ width: '100%', maxWidth: 380, background: C.bgSurface, border: `1px solid ${C.borderDefault}`, borderRadius: 14, padding: 22, boxSizing: 'border-box' }}>[m
+ [m
+           <Field label="দোকানের নাম" required>[m
+             <input style={inputStyle} value={form.shop_name} onChange={set('shop_name')} placeholder="যেমন: আল-আমিন স্টোর" />[m
+[36m@@ -180,9 +143,9 @@[m [mexport default function CustomerSelfRegister() {[m
+           </Field>[m
+ [m
+           <Field label="ব্যবসার ধরন">[m
+[31m-            <select style={{ ...inputStyle, colorScheme: 'dark' }} value={form.business_type} onChange={set('business_type')}>[m
+[31m-              <option value="" style={{ color: '#1e293b' }}>-- বেছে নিন --</option>[m
+[31m-              {BUSINESS_TYPES.map(t => <option key={t} value={t} style={{ color: '#1e293b' }}>{t}</option>)}[m
+[32m+[m[32m            <select style={inputStyle} value={form.business_type} onChange={set('business_type')}>[m
+[32m+[m[32m              <option value="">-- বেছে নিন --</option>[m
+[32m+[m[32m              {BUSINESS_TYPES.map(t => <option key={t} value={t}>{t}</option>)}[m
+             </select>[m
+           </Field>[m
+ [m
+[36m@@ -197,22 +160,22 @@[m [mexport default function CustomerSelfRegister() {[m
+           {/* GPS-না-থাকার ব্যাখ্যা — যাতে ব্যবহারকারী বিভ্রান্ত না হয় */}[m
+           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 18, marginTop: 4 }}>[m
+             <span style={{ fontSize: 14, flexShrink: 0 }}>📍</span>[m
+[31m-            <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11.5, margin: 0, lineHeight: 1.5, fontFamily: "'Hind Siliguri', sans-serif" }}>[m
+[32m+[m[32m            <p style={{ color: C.textMuted, fontSize: 11.5, margin: 0, lineHeight: 1.5, fontFamily: FONT_BODY }}>[m
+               দোকানের লোকেশন এখন লাগবে না — আমাদের প্রতিনিধি (SR) শীঘ্রই দোকানে গিয়ে যুক্ত করে দেবেন।[m
+             </p>[m
+           </div>[m
+ [m
+[31m-          <button type="submit" disabled={submitting} style={{ width: '100%', padding: '15px', borderRadius: 14, background: submitting ? 'rgba(255,255,255,0.7)' : 'white', border: 'none', color: '#1e3a8a', fontSize: 15, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer', boxShadow: '0 8px 24px rgba(0,0,0,0.2)', fontFamily: "'Hind Siliguri', sans-serif", opacity: submitting ? 0.8 : 1 }}>[m
+[32m+[m[32m          <button type="submit" disabled={submitting} style={{ width: '100%', padding: '14px', borderRadius: 8, background: submitting ? C.accent300 : C.accent600, border: 'none', color: '#fff', fontSize: 15, fontWeight: 600, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: FONT_BODY }}>[m
+             {submitting ? 'রেজিস্ট্রেশন হচ্ছে...' : 'রেজিস্ট্রেশন করুন'}[m
+           </button>[m
+         </form>[m
+ [m
+[31m-        <a href="/customer-login" style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginTop: 20, textAlign: 'center', fontFamily: "'Hind Siliguri', sans-serif", textDecoration: 'underline' }}>[m
+[32m+[m[32m        <a href="/customer-login" style={{ color: C.textMuted, fontSize: 13, marginTop: 20, textAlign: 'center', fontFamily: FONT_BODY, textDecoration: 'underline' }}>[m
+           আগে থেকে অ্যাকাউন্ট আছে? লগইন করুন[m
+         </a>[m
+       </div>[m
+ [m
+[31m-      <p style={{ textAlign: 'center', color: 'rgba(255,255,255,0.2)', fontSize: 11, padding: '16px', letterSpacing: 0.5 }}>[m
+[32m+[m[32m      <p style={{ textAlign: 'center', color: C.textMuted, fontSize: 11, padding: '16px', letterSpacing: 0.5, fontFamily: FONT_BODY }}>[m
+         © {new Date().getFullYear()} ZovoriX Ltd.[m
+       </p>[m
+     </div>[m
+[1mdiff --git a/frontend/src/pages/customer/components/views/LoginView.jsx b/frontend/src/pages/customer/components/views/LoginView.jsx[m
+[1mindex 0b98e374..d1d05e8b 100644[m
+[1m--- a/frontend/src/pages/customer/components/views/LoginView.jsx[m
+[1m+++ b/frontend/src/pages/customer/components/views/LoginView.jsx[m
+[36m@@ -1,11 +1,35 @@[m
+ // components/views/LoginView.jsx[m
+ // Session শেষ হলে বা Google auth দরকার হলে দেখানো হয়[m
+[32m+[m[32m// ডিজাইন সিস্টেম: bg-base/primary navy/accent bronze (design.html অনুযায়ী)[m
+[32m+[m
+[32m+[m[32mconst COLORS = {[m
+[32m+[m[32m  bgBase: '#FAF8F3',[m
+[32m+[m[32m  bgSurface: '#FFFFFF',[m
+[32m+[m[32m  bgAlt: '#F3F1EA',[m
+[32m+[m[32m  primary900: '#0F1B2E',[m
+[32m+[m[32m  primary700: '#16253D',[m
+[32m+[m[32m  primary500: '#2C4870',[m
+[32m+[m[32m  primary300: '#6B85A8',[m
+[32m+[m[32m  primary100: '#DCE3EC',[m
+[32m+[m[32m  accent600: '#9C6B2E',[m
+[32m+[m[32m  accent300: '#C99B5A',[m
+[32m+[m[32m  accent100: '#F3E6D0',[m
+[32m+[m[32m  textPrimary: '#1F2937',[m
+[32m+[m[32m  textSecondary: '#5B6472',[m
+[32m+[m[32m  textMuted: '#8B8F98',[m
+[32m+[m[32m  borderDefault: '#E4E1D8',[m
+[32m+[m[32m  error: '#B3452C',[m
+[32m+[m[32m  errorBg: '#F5E4DF',[m
+[32m+[m[32m}[m
+[32m+[m
+[32m+[m[32mconst FONT_HEAD = "'Source Serif 4','Noto Sans Bengali',Georgia,serif"[m
+[32m+[m[32mconst FONT_BODY = "'IBM Plex Sans','Noto Sans Bengali','Hind Siliguri',sans-serif"[m
+ [m
+ export default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {[m
+   return ([m
+     <div[m
+       className="min-h-screen flex flex-col"[m
+[31m-      style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)' }}[m
+[32m+[m[32m      style={{ background: COLORS.bgBase }}[m
+     >[m
+       <div style={{[m
+         flex: 1,[m
+[36m@@ -20,30 +44,29 @@[m [mexport default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {[m
+         <div style={{[m
+           width: 72,[m
+           height: 72,[m
+[31m-          borderRadius: 20,[m
+[31m-          background: 'rgba(99,102,241,0.2)',[m
+[31m-          backdropFilter: 'blur(10px)',[m
+[31m-          border: '2px solid rgba(99,102,241,0.4)',[m
+[32m+[m[32m          borderRadius: 18,[m
+[32m+[m[32m          background: COLORS.primary900,[m
+[32m+[m[32m          border: `2px solid ${COLORS.accent300}`,[m
+           display: 'flex',[m
+           alignItems: 'center',[m
+           justifyContent: 'center',[m
+[31m-          marginBottom: 18,[m
+[31m-          boxShadow: '0 8px 32px rgba(99,102,241,0.2)',[m
+[32m+[m[32m          marginBottom: 20,[m
+[32m+[m[32m          boxShadow: '0 8px 24px rgba(15,27,46,0.15)',[m
+         }}>[m
+[31m-          <span style={{ color: 'white', fontSize: 32, fontWeight: 800, fontFamily: 'Georgia, serif' }}>N</span>[m
+[32m+[m[32m          <span style={{ color: COLORS.accent300, fontSize: 32, fontWeight: 700, fontFamily: FONT_HEAD }}>N</span>[m
+         </div>[m
+ [m
+         <h1 style={{[m
+[31m-          color: 'white',[m
+[31m-          fontSize: 22,[m
+[31m-          fontWeight: 800,[m
+[32m+[m[32m          color: COLORS.primary700,[m
+[32m+[m[32m          fontSize: 24,[m
+[32m+[m[32m          fontWeight: 600,[m
+           margin: '0 0 4px',[m
+           textAlign: 'center',[m
+[31m-          fontFamily: "'Hind Siliguri', sans-serif",[m
+[32m+[m[32m          fontFamily: FONT_HEAD,[m
+         }}>[m
+           ZovoriX[m
+         </h1>[m
+[31m-        <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 12, margin: '0 0 28px', letterSpacing: 1 }}>[m
+[32m+[m[32m        <p style={{ color: COLORS.textMuted, fontSize: 12, margin: '0 0 28px', letterSpacing: 1, fontFamily: FONT_BODY }}>[m
+           কাস্টমার পোর্টাল[m
+         </p>[m
+ [m
+[36m@@ -52,8 +75,8 @@[m [mexport default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {[m
+           <div style={{[m
+             width: '100%',[m
+             maxWidth: 360,[m
+[31m-            background: 'rgba(239,68,68,0.15)',[m
+[31m-            border: '1px solid rgba(239,68,68,0.35)',[m
+[32m+[m[32m            background: COLORS.errorBg,[m
+[32m+[m[32m            border: `1px solid ${COLORS.error}33`,[m
+             borderRadius: 12,[m
+             padding: '12px 16px',[m
+             marginBottom: 18,[m
+[36m@@ -63,11 +86,11 @@[m [mexport default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {[m
+           }}>[m
+             <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>⚠️</span>[m
+             <p style={{[m
+[31m-              color: 'rgba(252,165,165,0.9)',[m
+[32m+[m[32m              color: COLORS.error,[m
+               fontSize: 13,[m
+               margin: 0,[m
+               lineHeight: 1.5,[m
+[31m-              fontFamily: "'Hind Siliguri', sans-serif",[m
+[32m+[m[32m              fontFamily: FONT_BODY,[m
+             }}>[m
+               {error}[m
+             </p>[m
+[36m@@ -77,37 +100,38 @@[m [mexport default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {[m
+         {/* Customer info card */}[m
+         {tokenInfo && ([m
+           <div style={{[m
+[31m-            background: 'rgba(255,255,255,0.07)',[m
+[31m-            backdropFilter: 'blur(12px)',[m
+[31m-            border: '1px solid rgba(255,255,255,0.12)',[m
+[31m-            borderRadius: 18,[m
+[32m+[m[32m            background: COLORS.bgSurface,[m
+[32m+[m[32m            border: `1px solid ${COLORS.borderDefault}`,[m
+[32m+[m[32m            borderRadius: 14,[m
+             padding: '18px 22px',[m
+             width: '100%',[m
+             maxWidth: 360,[m
+             marginBottom: 24,[m
+             textAlign: 'center',[m
+           }}>[m
+[31m-            <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, marginBottom: 6, letterSpacing: 1 }}>[m
+[32m+[m[32m            <p style={{ color: COLORS.textMuted, fontSize: 11, marginBottom: 6, letterSpacing: 1, fontFamily: FONT_BODY, textTransform: 'uppercase' }}>[m
+               আপনার দোকান[m
+             </p>[m
+             <p style={{[m
+[31m-              color: 'white',[m
+[32m+[m[32m              color: COLORS.primary700,[m
+               fontSize: 18,[m
+[31m-              fontWeight: 700,[m
+[32m+[m[32m              fontWeight: 600,[m
+               margin: '0 0 4px',[m
+[31m-              fontFamily: "'Hind Siliguri', sans-serif",[m
+[32m+[m[32m              fontFamily: FONT_HEAD,[m
+             }}>[m
+               🏪 {tokenInfo.shop_name}[m
+             </p>[m
+[31m-            <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: 13, margin: '0 0 8px' }}>[m
+[32m+[m[32m            <p style={{ color: COLORS.textSecondary, fontSize: 13, margin: '0 0 8px', fontFamily: FONT_BODY }}>[m
+               {tokenInfo.owner_name}[m
+             </p>[m
+             <span style={{[m
+[31m-              background: 'rgba(255,255,255,0.1)',[m
+[31m-              color: 'rgba(255,255,255,0.6)',[m
+[32m+[m[32m              background: COLORS.accent100,[m
+[32m+[m[32m              color: COLORS.accent600,[m
+               fontSize: 11,[m
+[32m+[m[32m              fontWeight: 600,[m
+               padding: '3px 12px',[m
+               borderRadius: 20,[m
+[32m+[m[32m              fontFamily: FONT_BODY,[m
+             }}>[m
+               কোড: {tokenInfo.customer_code}[m
+             </span>[m
+[36m@@ -116,13 +140,13 @@[m [mexport default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {[m
+ [m
+         {/* Info text */}[m
+         <p style={{[m
+[31m-          color: 'rgba(255,255,255,0.45)',[m
+[32m+[m[32m          color: COLORS.textSecondary,[m
+           fontSize: 13,[m
+           textAlign: 'center',[m
+           maxWidth: 320,[m
+           margin: '0 0 24px',[m
+           lineHeight: 1.6,[m
+[31m-          fontFamily: "'Hind Siliguri', sans-serif",[m
+[32m+[m[32m          fontFamily: FONT_BODY,[m
+         }}>[m
+           আবার প্রবেশ করতে আপনার Google অ্যাকাউন্ট ব্যবহার করুন।[m
+         </p>[m
+[36m@@ -134,16 +158,16 @@[m [mexport default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {[m
+           style={{[m
+             width: '100%',[m
+             maxWidth: 360,[m
+[31m-            padding: '15px',[m
+[31m-            borderRadius: 14,[m
+[31m-            background: loggingIn ? 'rgba(255,255,255,0.7)' : 'white',[m
+[31m-            border: 'none',[m
+[31m-            color: '#1e1b4b',[m
+[32m+[m[32m            padding: '14px',[m
+[32m+[m[32m            borderRadius: 10,[m
+[32m+[m[32m            background: loggingIn ? COLORS.bgAlt : COLORS.bgSurface,[m
+[32m+[m[32m            border: `1px solid ${COLORS.borderDefault}`,[m
+[32m+[m[32m            color: COLORS.primary700,[m
+             fontSize: 15,[m
+[31m-            fontWeight: 700,[m
+[32m+[m[32m            fontWeight: 600,[m
+             cursor: loggingIn ? 'not-allowed' : 'pointer',[m
+[31m-            boxShadow: '0 8px 24px rgba(0,0,0,0.3)',[m
+[31m-            fontFamily: "'Hind Siliguri', sans-serif",[m
+[32m+[m[32m            boxShadow: '0 2px 8px rgba(15,27,46,0.06)',[m
+[32m+[m[32m            fontFamily: FONT_BODY,[m
+             display: 'flex',[m
+             alignItems: 'center',[m
+             justifyContent: 'center',[m
+[36m@@ -151,9 +175,9 @@[m [mexport default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {[m
+             transition: 'transform 0.15s, opacity 0.2s',[m
+             opacity: loggingIn ? 0.8 : 1,[m
+           }}[m
+[31m-          onMouseDown={e => { if (!loggingIn) e.currentTarget.style.transform = 'scale(0.97)' }}[m
+[32m+[m[32m          onMouseDown={e => { if (!loggingIn) e.currentTarget.style.transform = 'scale(0.98)' }}[m
+           onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)' }}[m
+[31m-          onTouchStart={e => { if (!loggingIn) e.currentTarget.style.transform = 'scale(0.97)' }}[m
+[32m+[m[32m          onTouchStart={e => { if (!loggingIn) e.currentTarget.style.transform = 'scale(0.98)' }}[m
+           onTouchEnd={e => { e.currentTarget.style.transform = 'scale(1)' }}[m
+         >[m
+           {loggingIn ? ([m
+[36m@@ -161,8 +185,8 @@[m [mexport default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {[m
+               <span style={{[m
+                 width: 18,[m
+                 height: 18,[m
+[31m-                border: '2px solid rgba(30,27,75,0.2)',[m
+[31m-                borderTop: '2px solid #1e1b4b',[m
+[32m+[m[32m                border: `2px solid ${COLORS.primary100}`,[m
+[32m+[m[32m                borderTop: `2px solid ${COLORS.primary700}`,[m
+                 borderRadius: '50%',[m
+                 display: 'inline-block',[m
+                 animation: 'spin 0.8s linear infinite',[m
+[36m@@ -184,19 +208,49 @@[m [mexport default function LoginView({ tokenInfo, error, loggingIn, onLogin }) {[m
+           )}[m
+         </button>[m
+ [m
+[31m-        <p style={{ color: 'rgba(255,255,255,0.25)', fontSize: 11, marginTop: 14, textAlign: 'center' }}>[m
+[32m+[m[32m        <p style={{ color: COLORS.textMuted, fontSize: 11, marginTop: 14, textAlign: 'center', fontFamily: FONT_BODY }}>[m
+           আপনার Gmail অ্যাকাউন্ট দিয়ে নিরাপদে প্রবেশ করুন[m
+         </p>[m
+[32m+[m
+[32m+[m[32m        {/* Divider */}[m
+[32m+[m[32m        <div style={{ width: '100%', maxWidth: 360, display: 'flex', alignItems: 'center', gap: 12, margin: '22px 0' }}>[m
+[32m+[m[32m          <div style={{ flex: 1, height: 1, background: COLORS.borderDefault }} />[m
+[32m+[m[32m          <span style={{ color: COLORS.textMuted, fontSize: 11, fontFamily: FONT_BODY }}>অথবা</span>[m
+[32m+[m[32m          <div style={{ flex: 1, height: 1, background: COLORS.borderDefault }} />[m
+[32m+[m[32m        </div>[m
+[32m+[m
+[32m+[m[32m        {/* ✅ নতুন কাস্টমার সেলফ-রেজিস্ট্রেশন লিংক */}[m
+[32m+[m[32m        <a[m
+[32m+[m[32m          href="/customer-register"[m
+[32m+[m[32m          style={{[m
+[32m+[m[32m            width: '100%',[m
+[32m+[m[32m            maxWidth: 360,[m
+[32m+[m[32m            display: 'block',[m
+[32m+[m[32m            textAlign: 'center',[m
+[32m+[m[32m            padding: '14px',[m
+[32m+[m[32m            borderRadius: 10,[m
+[32m+[m[32m            background: COLORS.primary900,[m
+[32m+[m[32m            color: COLORS.accent300,[m
+[32m+[m[32m            fontSize: 14,[m
+[32m+[m[32m            fontWeight: 600,[m
+[32m+[m[32m            fontFamily: FONT_BODY,[m
+[32m+[m[32m            textDecoration: 'none',[m
+[32m+[m[32m            boxSizing: 'border-box',[m
+[32m+[m[32m          }}[m
+[32m+[m[32m        >[m
+[32m+[m[32m          নতুন কাস্টমার? এখানে রেজিস্ট্রেশন করুন[m
+[32m+[m[32m        </a>[m
+       </div>[m
+ [m
+       <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>[m
+ [m
+       <p style={{[m
+         textAlign: 'center',[m
+[31m-        color: 'rgba(255,255,255,0.15)',[m
+[32m+[m[32m        color: COLORS.textMuted,[m
+         fontSize: 11,[m
+         padding: '16px',[m
+         letterSpacing: 0.5,[m
+[32m+[m[32m        fontFamily: FONT_BODY,[m
+       }}>[m
+         © {new Date().getFullYear()} ZovoriX Ltd.[m
+       </p>[m

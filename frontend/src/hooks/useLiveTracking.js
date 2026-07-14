@@ -99,10 +99,7 @@ export function useLiveTracking() {
             const data = JSON.stringify({ online: false })
             if (navigator.sendBeacon) {
                 const blob = new Blob([data], { type: 'application/json' })
-                navigator.sendBeacon(
-                    `${import.meta.env.VITE_API_URL || ''}/api/location/presence`,
-                    blob
-                )
+                navigator.sendBeacon('/api/location/presence', blob)
             }
         }
 

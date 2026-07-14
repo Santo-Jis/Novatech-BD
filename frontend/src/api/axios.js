@@ -20,8 +20,12 @@ export const tokenStore = {
   clear: ()      => { _accessToken = null },
 }
 
+// ✅ COOKIE FIX: production-এ relative '/api' — vercel.json rewrite backend-এ proxy করে,
+//    তাই refreshToken cookie same-origin থাকে, Chrome third-party cookie block এড়ানো যায়।
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: import.meta.env.DEV
+    ? (import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
+    : '/api',
   timeout: 12000,
   withCredentials: true,   // HttpOnly cookie cross-origin পাঠাতে হলে লাগবে
   headers: {
