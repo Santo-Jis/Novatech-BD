@@ -1,0 +1,310 @@
+// ============================================================
+// CUSTOMER PORTAL CONNECTION CONTROLLER
+// Base: /api/portal/connections   (req.portalUser.customer_id)
+//
+// Phase 1: রহিম একটা লগইনে একাধিক কোম্পানি ম্যানেজ করবে —
+// এই ফাইলটা কাস্টমার-সাইড অংশ। নতুন ফাইল, বিদ্যমান কিছু স্পর্শ করেনি।
+// ============================================================
+
+const { query } = require('../config/db');
+const logger    = require('../config/logger');
+
+// ── Helper: portal customer_id থেকে person_id বের করো ──
+async function getPersonId(customerId) {
+    const r = await query(`SELECT person_id FROM customers WHERE id = $1`, [customerId]);
+    if (r.rows.length === 0 || !r.rows[0].person_id) {
+        throw new Error('PERSON_NOT_LINKED');
+    }
+    return r.rows[0].person_id;
+}
+
+// ============================================================
+// GET /api/portal/connections/my-qr
+// রহিমের নিজের QR কোড — SR স্ক্যান করার জন্য দেখাবে
+// ============================================================
+const getMyQrCode = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser.customer_id);
+        const p = await query(`SELECT qr_code, full_name, discoverable FROM persons WHERE id = $1`, [personId]);
+        res.json({ success: true, data: p.rows[0] });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getMyQrCode error:', err.message);
+        res.status(500).json({ success: false, message: 'QR কোড আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/connections/my-companies
+// সব কানেক্টেড কোম্পানি (dashboard-এর company switcher/tags-এর জন্য)
+// ============================================================
+const getMyCompanies = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser.customer_id);
+        const result = await query(
+            `SELECT ccc.id AS connection_id, ccc.customer_id, ccc.created_at AS connected_since,
+                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url,
+                    c.customer_code, c.credit_limit, c.current_credit
+             FROM customer_company_connections ccc
+             JOIN tenants t ON t.id = ccc.tenant_id
+             LEFT JOIN customers c ON c.id = ccc.customer_id
+             WHERE ccc.person_id = $1 AND ccc.status = 'connected'
+             ORDER BY ccc.created_at ASC`,
+            [personId]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getMyCompanies error:', err.message);
+        res.status(500).json({ success: false, message: 'কোম্পানি লিস্ট আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/connections/pending
+// কোম্পানি-পাঠানো পেন্ডিং রিকোয়েস্ট (রহিমকে Accept/Reject করতে হবে)
+// ============================================================
+const getPendingForMe = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser.customer_id);
+        const result = await query(
+            `SELECT ccc.id AS connection_id, ccc.created_at, ccc.initiated_by,
+                    t.company_name, t.company_name_bn, t.logo_url
+             FROM customer_company_connections ccc
+             JOIN tenants t ON t.id = ccc.tenant_id
+             WHERE ccc.person_id = $1 AND ccc.status = 'pending'
+               AND ccc.initiated_by = 'company_search'
+             ORDER BY ccc.created_at DESC`,
+            [personId]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getPendingForMe error:', err.message);
+        res.status(500).json({ success: false, message: 'পেন্ডিং রিকোয়েস্ট আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/connections/search-companies?q=...
+// রহিম কোম্পানি খুঁজবে (গ্লোবাল tenant ডিরেক্টরি)
+// ============================================================
+const searchCompanies = async (req, res) => {
+    try {
+        const q = (req.query.q || '').trim();
+        if (q.length < 2) {
+            return res.status(400).json({ success: false, message: 'কমপক্ষে ২ অক্ষর লিখুন।' });
+        }
+        const result = await query(
+            `SELECT id AS tenant_id, company_name, company_name_bn, logo_url, company_address
+             FROM tenants
+             WHERE (company_name ILIKE $1 OR company_name_bn ILIKE $1)
+               AND status != 'suspended'
+             LIMIT 20`,
+            [`%${q}%`]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        logger.error('❌ searchCompanies error:', err.message);
+        res.status(500).json({ success: false, message: 'সার্চ করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/portal/connections/request   { tenant_id }
+// রহিম → কোম্পানি রিকোয়েস্ট (কোম্পানির Accept লাগবে)
+// ============================================================
+const requestConnectionToCompany = async (req, res) => {
+    try {
+        const { tenant_id } = req.body;
+        if (!tenant_id) {
+            return res.status(400).json({ success: false, message: 'tenant_id দিন।' });
+        }
+        const personId = await getPersonId(req.portalUser.customer_id);
+
+        const dup = await query(
+            `SELECT id, status FROM customer_company_connections
+             WHERE person_id = $1 AND tenant_id = $2 AND status IN ('pending','connected')`,
+            [personId, tenant_id]
+        );
+        if (dup.rows.length > 0) {
+            return res.status(409).json({
+                success: false,
+                message: dup.rows[0].status === 'connected' ? 'ইতিমধ্যে সংযুক্ত।' : 'রিকোয়েস্ট আগে থেকেই পাঠানো আছে।',
+            });
+        }
+
+        const created = await query(
+            `INSERT INTO customer_company_connections (person_id, tenant_id, status, initiated_by)
+             VALUES ($1, $2, 'pending', 'customer_search')
+             RETURNING *`,
+            [personId, tenant_id]
+        );
+        res.status(201).json({ success: true, data: created.rows[0] });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ requestConnectionToCompany error:', err.message);
+        res.status(500).json({ success: false, message: 'রিকোয়েস্ট পাঠাতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/portal/connections/:id/accept  (কোম্পানির পাঠানো রিকোয়েস্ট)
+// ============================================================
+const acceptCompanyRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const personId = await getPersonId(req.portalUser.customer_id);
+
+        const conn = await query(
+            `SELECT * FROM customer_company_connections
+             WHERE id = $1 AND person_id = $2 AND status = 'pending'`,
+            [id, personId]
+        );
+        if (conn.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'পেন্ডিং রিকোয়েস্ট পাওয়া যায়নি।' });
+        }
+
+        // এই tenant-এ person-এর জন্য customer row থাকলে reuse, না থাকলে বানাও
+        const { generateCustomerCode } = require('../services/employee.service');
+        let customerId;
+        const existingCust = await query(
+            `SELECT id FROM customers WHERE person_id = $1 AND tenant_id = $2 LIMIT 1`,
+            [personId, conn.rows[0].tenant_id]
+        );
+        if (existingCust.rows.length > 0) {
+            customerId = existingCust.rows[0].id;
+        } else {
+            const person = await query(`SELECT * FROM persons WHERE id = $1`, [personId]);
+            const p = person.rows[0];
+            const code = await generateCustomerCode(new Date());
+            const created = await query(
+                `INSERT INTO customers
+                    (customer_code, shop_name, owner_name, whatsapp, sms_phone, email,
+                     created_by, tenant_id, person_id, registration_source, is_verified)
+                 VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8, 'connection', true)
+                 RETURNING id`,
+                [code, p.full_name || 'নতুন কাস্টমার', p.full_name || 'নতুন কাস্টমার',
+                 p.whatsapp, p.phone, p.email, conn.rows[0].tenant_id, personId]
+            );
+            customerId = created.rows[0].id;
+        }
+
+        const updated = await query(
+            `UPDATE customer_company_connections
+             SET status = 'connected', customer_id = $2, responded_at = NOW()
+             WHERE id = $1 RETURNING *`,
+            [id, customerId]
+        );
+        res.json({ success: true, data: updated.rows[0] });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ acceptCompanyRequest error:', err.message);
+        res.status(500).json({ success: false, message: 'Accept করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/portal/connections/:id/reject
+// ============================================================
+const rejectCompanyRequest = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const personId = await getPersonId(req.portalUser.customer_id);
+        const updated = await query(
+            `UPDATE customer_company_connections
+             SET status = 'rejected', responded_at = NOW()
+             WHERE id = $1 AND person_id = $2 AND status = 'pending'
+             RETURNING *`,
+            [id, personId]
+        );
+        if (updated.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'পেন্ডিং রিকোয়েস্ট পাওয়া যায়নি।' });
+        }
+        res.json({ success: true, data: updated.rows[0] });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ rejectCompanyRequest error:', err.message);
+        res.status(500).json({ success: false, message: 'Reject করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/portal/connections/:id/disconnect
+// ============================================================
+const disconnectCompany = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const personId = await getPersonId(req.portalUser.customer_id);
+        const updated = await query(
+            `UPDATE customer_company_connections
+             SET status = 'disconnected', disconnected_at = NOW()
+             WHERE id = $1 AND person_id = $2 AND status = 'connected'
+             RETURNING *`,
+            [id, personId]
+        );
+        if (updated.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'সংযোগ পাওয়া যায়নি।' });
+        }
+        res.json({ success: true, data: updated.rows[0] });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ disconnectCompany error:', err.message);
+        res.status(500).json({ success: false, message: 'বিচ্ছিন্ন করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/connections/all-orders
+// সব কোম্পানির অর্ডার/সেল হিস্ট্রি — এক লিস্টে, কোম্পানি ট্যাগসহ (aggregated dashboard)
+// ============================================================
+const getAllCompanyOrders = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser.customer_id);
+        const result = await query(
+            `SELECT st.id, st.invoice_number, st.total_amount, st.net_amount,
+                    st.payment_method, st.created_at,
+                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+             FROM sales_transactions st
+             JOIN customers c ON c.id = st.customer_id
+             JOIN tenants t   ON t.id = c.tenant_id
+             WHERE c.person_id = $1
+             ORDER BY st.created_at DESC
+             LIMIT 100`,
+            [personId]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getAllCompanyOrders error:', err.message);
+        res.status(500).json({ success: false, message: 'অর্ডার হিস্ট্রি আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+module.exports = {
+    getMyQrCode,
+    getMyCompanies,
+    getPendingForMe,
+    searchCompanies,
+    requestConnectionToCompany,
+    acceptCompanyRequest,
+    rejectCompanyRequest,
+    disconnectCompany,
+    getAllCompanyOrders,
+};
