@@ -197,13 +197,16 @@ const onboardingRoutes          = require('./routes/onboarding.routes');       /
 const superAdminRoutes          = require('./routes/superAdmin.routes');       // ← নতুন (SaaS: super admin panel)
 const connectionRoutes          = require('./routes/connection.routes');       // ← নতুন (Multi-Company: staff-side connections)
 const portalConnectionRoutes    = require('./routes/customerPortalConnection.routes'); // ← নতুন (Multi-Company: customer-side connections)
-const devTestTokenRoutes        = require('./routes/devTestToken.routes');     // ⚠️ TEMPORARY — টেস্ট শেষে মুছে ফেলতে হবে
-
+const referenceRoutes           = require('./routes/reference.routes');        // ← নতুন (Phase 2: বিভাগ/জেলা/বিজনেস ফিল্ড)
+const discoveryRoutes           = require('./routes/discovery.routes');        // ← নতুন (Phase 2: staff-side area/field settings + shop discovery)
+const portalProfileRoutes       = require('./routes/customerPortalProfile.routes'); // ← নতুন (Phase 2: customer নিজের area/field প্রোফাইল)
 app.use('/api/auth',        loginLimiter, authRoutes);
 app.use('/api/portal',     loginLimiter, portalRoutes); // ✅ customer portal login-এও limiter
 app.use('/api/portal/connections', portalConnectionRoutes); // ✅ নতুন — multi-company (customer side)
 app.use('/api/connections', connectionRoutes);               // ✅ নতুন — multi-company (staff/company side)
-app.use('/api/dev-test-token', devTestTokenRoutes);           // ⚠️ TEMPORARY — secret-gated, fail-closed
+app.use('/api/reference', referenceRoutes);                   // ✅ নতুন — বিভাগ/জেলা/বিজনেস ফিল্ড (public)
+app.use('/api/discovery', discoveryRoutes);                   // ✅ নতুন — staff-side discovery
+app.use('/api/portal/profile', portalProfileRoutes);          // ✅ নতুন — customer নিজের প্রোফাইল
 app.use('/api/employees',   employeeRoutes);
 app.use('/api/attendance',  attendanceRoutes);
 app.use('/api/routes',      routeRoutes);
