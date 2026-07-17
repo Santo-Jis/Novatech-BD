@@ -1,15 +1,29 @@
 // components/views/DashboardView.jsx
-// ✅ REDESIGNED — same props, same imports, same backend logic
-// ✅ Premium dark-header + Credit Ring + color-coded cards
+// ✅ REDESIGNED (ধাপে ধাপে চলছে) — same props, same imports, same backend logic
+//
+// এই ফাইল এখন শুধু "শেল/অর্কেস্ট্রেটর" — header, tab navigation, আর নতুন করে
+// রিডিজাইন-হওয়া ট্যাবগুলো (Summary) আলাদা ফাইল থেকে import করে বসায়।
+// এখনো রিডিজাইন না-হওয়া ট্যাবগুলো (Invoices/Payments/Credit/Complaints/Returns/AI Chat)
+// আপাতত অবিকৃত আছে (নিচে) — একে একে পরের ধাপে এভাবেই আলাদা ফাইলে বের করে রিডিজাইন হবে।
+//
+// নতুন ফাইল স্ট্রাকচার (dashboard/ ফোল্ডার):
+//   DashboardHeader.jsx, NotificationBell.jsx, CreditRing.jsx,
+//   SectionLabel.jsx, StatCard.jsx, SummaryTab.jsx
 
 import { fmt, fmtDate } from '../../utils/helpers'
 import { useEffect, useState } from 'react'
-import MonthlyTrendChart from '../MonthlyTrendChart'
 import InvoiceCard from '../InvoiceCard'
 import OrderRequestTab from '../OrderRequestTab'
 import CustomerAIChat from '../../CustomerAIChat'
 
-// ── Design Tokens ─────────────────────────────────────────────
+import DashboardHeader from '../dashboard/DashboardHeader'
+import SummaryTab from '../dashboard/SummaryTab'
+import { NOTIF_CONFIG } from '../dashboard/NotificationBell'
+
+// ── এখনো-অরিডিজাইন করা ট্যাবগুলোর জন্য পুরনো Design Tokens (আপাতত রাখা হলো) ──
+// ⚠️ এগুলো মুছবেন না — নিচের Invoices/Payments/Credit/Complaints/Returns/AI ট্যাব
+// এখনো এই `C` অবজেক্ট ব্যবহার করছে (inline style)। প্রতিটা ট্যাব রিডিজাইন হওয়ার
+// সাথে সাথে সেই অংশটুকু এখান থেকে বাদ দেওয়া যাবে — একবারে না।
 const C = {
   hBg: '#09111F', hBg2: '#0E1F3D',
   primary: '#2563EB', pL: '#EFF6FF', pB: '#BFDBFE',
@@ -21,7 +35,7 @@ const C = {
   text: '#111827', sec: '#6B7280', muted: '#9CA3AF', surface: '#F8FAFC',
 }
 
-// ── Skeleton লোডিং কার্ড ─────────────────────────────────────
+// ⚠️ এই পুরনো SkeletonCard/StatCard — নিচের অরিডিজাইন-করা ট্যাবগুলো এখনো ব্যবহার করে
 function SkeletonCard({ rows = 3 }) {
   return (
     <div style={{ background:'white', borderRadius:14, padding:'14px 16px', border:`1px solid ${C.border}`, animation:'pulse 1.5s ease-in-out infinite' }}>
@@ -36,40 +50,6 @@ function SkeletonCard({ rows = 3 }) {
   )
 }
 
-// ── Credit Utilisation Ring ───────────────────────────────────
-function CreditRing({ current, limit, fmtCur }) {
-  const pct   = Math.min(limit > 0 ? (current / limit) * 100 : 0, 100)
-  const r     = 44, circ = 2 * Math.PI * r, dash = (pct / 100) * circ
-  const color = pct > 85 ? '#EF4444' : pct > 60 ? '#F59E0B' : '#10B981'
-  const glow  = pct > 85 ? 'rgba(239,68,68,0.5)' : pct > 60 ? 'rgba(245,158,11,0.5)' : 'rgba(16,185,129,0.5)'
-  return (
-    <div style={{ position:'relative', width:100, height:100, flexShrink:0 }}>
-      <svg width="100" height="100" style={{ transform:'rotate(-90deg)' }}>
-        <circle cx="50" cy="50" r={r} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="8"/>
-        <circle cx="50" cy="50" r={r} fill="none" stroke={color} strokeWidth="8"
-          strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
-          style={{ filter:`drop-shadow(0 0 8px ${glow})`, transition:'stroke-dasharray 1s ease' }}/>
-      </svg>
-      <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center' }}>
-        <span style={{ fontSize:8, color:'rgba(255,255,255,0.4)', fontWeight:600, letterSpacing:0.8, textTransform:'uppercase' }}>বাকি</span>
-        <span style={{ fontSize:14, color:'white', fontWeight:800, lineHeight:1.1, marginTop:1 }}>৳{fmtCur(current)}</span>
-        <span style={{ fontSize:8, color, fontWeight:700, marginTop:1 }}>{Math.round(pct)}%</span>
-      </div>
-    </div>
-  )
-}
-
-// ── Section Label ─────────────────────────────────────────────
-function SL({ label, color = C.primary }) {
-  return (
-    <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
-      <div style={{ width:3, height:15, background:color, borderRadius:2, flexShrink:0 }}/>
-      <p style={{ margin:0, fontSize:10, fontWeight:700, color:C.sec, textTransform:'uppercase', letterSpacing:1 }}>{label}</p>
-    </div>
-  )
-}
-
-// ── Stat Card ─────────────────────────────────────────────────
 function StatCard({ label, value, color, bg, border }) {
   return (
     <div style={{ background:bg, border:`1.5px solid ${border}`, borderRadius:16, padding:'12px 14px' }}>
@@ -77,16 +57,6 @@ function StatCard({ label, value, color, bg, border }) {
       <p style={{ margin:0, fontSize:20, fontWeight:800, color, lineHeight:1 }}>{value}</p>
     </div>
   )
-}
-
-// ── Notification config ───────────────────────────────────────
-const NOTIF_CONFIG = {
-  payment_received:      { icon:'💰', tab:'payments', hint:'👆 পেমেন্ট ট্যাবে দেখুন' },
-  new_invoice:           { icon:'🧾', tab:'invoices', hint:'👆 ইনভয়েস ট্যাবে দেখুন' },
-  order_request:         { icon:'📦', tab:'orders',   hint:'👆 অর্ডার ট্যাবে দেখুন' },
-  credit_reminder:       { icon:'💳', tab:null,       hint:null },
-  return_request_update: { icon:'🔄', tab:'returns',  hint:'👆 ফেরত ট্যাবে দেখুন' },
-  general:               { icon:'🔔', tab:null,       hint:null },
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -159,10 +129,8 @@ export default function DashboardView({
   ]
 
   return (
-    <div style={{ minHeight:'100vh', background:C.bg }}>
+    <div className="min-h-screen bg-cp-bg-base font-cp-body">
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&display=swap');
-        body { font-family: 'Hind Siliguri', system-ui, sans-serif; }
         @keyframes fadeIn  { from{opacity:0} to{opacity:1} }
         @keyframes slideUp { from{transform:translateY(60px);opacity:0} to{transform:translateY(0);opacity:1} }
         @keyframes spin    { to{transform:rotate(360deg)} }
@@ -170,141 +138,63 @@ export default function DashboardView({
       `}</style>
 
       {/* ═══ HEADER ══════════════════════════════════════════════ */}
-      <div style={{
-        background:`linear-gradient(155deg,${C.hBg} 0%,${C.hBg2} 50%,#1A1040 100%)`,
-        padding:'50px 20px 90px', position:'relative', overflow:'hidden',
-      }}>
-        <div style={{ position:'absolute', inset:0, backgroundImage:'radial-gradient(rgba(255,255,255,0.04) 1px,transparent 1px)', backgroundSize:'22px 22px', pointerEvents:'none' }}/>
-        <div style={{ position:'absolute', top:-60, right:-60, width:220, height:220, borderRadius:'50%', background:'rgba(37,99,235,0.07)', pointerEvents:'none' }}/>
-        <div style={{ position:'absolute', bottom:10, left:-40, width:160, height:160, borderRadius:'50%', background:'rgba(124,58,237,0.07)', pointerEvents:'none' }}/>
-
-        {/* Top bar */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', position:'relative', marginBottom:28 }}>
-          <div>
-            <span style={{ fontSize:9, color:'rgba(255,255,255,0.3)', letterSpacing:2, textTransform:'uppercase', display:'block', marginBottom:4 }}>CUSTOMER PORTAL</span>
-            <h1 style={{ margin:0, fontSize:20, fontWeight:800, color:'white', lineHeight:1.2 }}>{customer.shop_name}</h1>
-            <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:5 }}>
-              <span style={{ width:6, height:6, borderRadius:'50%', background:'#10B981', flexShrink:0, boxShadow:'0 0 8px rgba(16,185,129,0.9)' }}/>
-              <span style={{ fontSize:10, color:'rgba(255,255,255,0.38)' }}>{customer.owner_name} • {customer.customer_code}</span>
-            </div>
-            <span style={{
-              display:'inline-flex', alignItems:'center', gap:4, marginTop:8,
-              fontSize:10, fontWeight:700, padding:'3px 10px', borderRadius:20,
-              background: customer.is_verified ? 'rgba(16,185,129,0.15)' : 'rgba(245,158,11,0.15)',
-              color:      customer.is_verified ? '#34D399' : '#FBBF24',
-              border: `1px solid ${customer.is_verified ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)'}`,
-            }}>
-              {customer.is_verified ? '✅ Verified কাস্টমার' : '⏳ Unverified — SR ভিজিটের অপেক্ষায়'}
-            </span>
-          </div>
-
-          <div style={{ display:'flex', gap:8 }}>
-            {/* Bell */}
-            <div style={{ position:'relative' }}>
-              <button
-                onClick={() => { setShowBell(v => !v); if (unreadCount > 0) markAllAsRead(portalJWT) }}
-                style={{ width:40, height:40, borderRadius:12, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.1)', color:'white', fontSize:18, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', position:'relative' }}>
-                🔔
-                {unreadCount > 0 && (
-                  <span style={{ position:'absolute', top:-3, right:-3, background:'#ef4444', color:'white', borderRadius:'50%', width:18, height:18, fontSize:10, fontWeight:800, display:'flex', alignItems:'center', justifyContent:'center', border:`2px solid ${C.hBg}` }}>
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                )}
-              </button>
-              {showBell && (
-                <div style={{ position:'absolute', right:0, top:48, width:290, maxHeight:380, background:'white', borderRadius:16, boxShadow:'0 8px 32px rgba(0,0,0,0.18)', overflowY:'auto', zIndex:100 }}>
-                  <div style={{ padding:'12px 16px', borderBottom:`1px solid ${C.border}`, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                    <span style={{ color:C.text, fontWeight:700, fontSize:14 }}>🔔 Notification</span>
-                    <button onClick={() => setShowBell(false)} style={{ background:'none', border:'none', fontSize:16, cursor:'pointer', color:C.muted }}>✕</button>
-                  </div>
-                  {notifications.length === 0 ? (
-                    <p style={{ textAlign:'center', color:C.muted, fontSize:13, padding:'24px 16px' }}>কোনো notification নেই।</p>
-                  ) : notifications.map(n => {
-                    const cfg = NOTIF_CONFIG[n.type] || NOTIF_CONFIG.general
-                    return (
-                      <div key={n.id}
-                        onClick={() => { if (!n.is_read) markOneRead(n.id); setShowBell(false); if (cfg.tab) onTabChange(cfg.tab) }}
-                        style={{ padding:'12px 16px', borderBottom:`1px solid ${C.surface}`, background:n.is_read ? 'white' : C.pL, display:'flex', gap:10, alignItems:'flex-start', cursor:cfg.tab ? 'pointer' : 'default' }}>
-                        <span style={{ fontSize:20, marginTop:1 }}>{cfg.icon}</span>
-                        <div style={{ flex:1 }}>
-                          <p style={{ margin:0, fontWeight:700, fontSize:13, color:C.text }}>{n.title}</p>
-                          <p style={{ margin:'3px 0 0', fontSize:12, color:C.sec, lineHeight:1.5 }}>{n.body}</p>
-                          <p style={{ margin:'4px 0 0', fontSize:10, color:C.muted }}>{new Date(n.created_at).toLocaleString('bn-BD', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</p>
-                          {cfg.hint && <p style={{ margin:'4px 0 0', fontSize:10, color:C.primary, fontWeight:600 }}>{cfg.hint}</p>}
-                        </div>
-                        {!n.is_read ? (
-                          <button onClick={e => { e.stopPropagation(); markOneRead(n.id) }}
-                            style={{ flexShrink:0, marginTop:2, background:C.pL, border:`1px solid ${C.pB}`, borderRadius:6, padding:'2px 7px', cursor:'pointer', fontSize:11, color:C.primary, fontWeight:700, lineHeight:1.4 }}>✓</button>
-                        ) : (
-                          <span style={{ fontSize:14, color:C.border, marginTop:3, flexShrink:0 }}>✓</span>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-
-            <button onClick={() => setShowLogoutConfirm(true)}
-              style={{ height:40, padding:'0 14px', borderRadius:12, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.7)', fontSize:11, cursor:'pointer', fontWeight:600, letterSpacing:0.3 }}>
-              লগআউট
-            </button>
-          </div>
-        </div>
-
-        {/* Credit Ring + Balance Cards */}
-        <div style={{ display:'flex', alignItems:'center', gap:14, position:'relative' }}>
-          <CreditRing current={customer.current_credit} limit={customer.credit_limit} fmtCur={fmtCur}/>
-          <div style={{ flex:1, display:'flex', flexDirection:'column', gap:8 }}>
-            <div style={{ background:'rgba(255,255,255,0.06)', borderRadius:14, padding:'10px 14px', border:'1px solid rgba(255,255,255,0.07)' }}>
-              <p style={{ margin:'0 0 2px', fontSize:10, color:'rgba(255,255,255,0.38)', fontWeight:500 }}>ক্রেডিট লিমিট</p>
-              <p style={{ margin:0, fontSize:19, color:'white', fontWeight:800 }}>৳{fmtCur(customer.credit_limit)}</p>
-            </div>
-            <div style={{ background:'rgba(16,185,129,0.13)', borderRadius:14, padding:'10px 14px', border:'1px solid rgba(16,185,129,0.22)' }}>
-              <p style={{ margin:'0 0 2px', fontSize:10, color:'rgba(16,185,129,0.7)', fontWeight:500 }}>জমা ব্যালেন্স</p>
-              <p style={{ margin:0, fontSize:19, color:'#10B981', fontWeight:800 }}>৳{fmtCur(customer.credit_balance)}</p>
-            </div>
-          </div>
-        </div>
-      </div>
+      <DashboardHeader
+        customer={customer}
+        fmtCur={fmtCur}
+        portalJWT={portalJWT}
+        notifications={notifications}
+        unreadCount={unreadCount}
+        showBell={showBell}
+        setShowBell={setShowBell}
+        markAllAsRead={markAllAsRead}
+        markOneRead={markOneRead}
+        onTabChange={onTabChange}
+        onLogoutClick={() => setShowLogoutConfirm(true)}
+      />
 
       {/* ═══ MAIN CONTENT ════════════════════════════════════════ */}
-      <div style={{ padding:'0 16px 40px', marginTop:-46 }}>
+      <div className="px-4 pb-10" style={{ marginTop: -46 }}>
 
         {/* Unread Banner */}
         {unreadBanner && (() => {
           const cfg = NOTIF_CONFIG[unreadBanner.type] || NOTIF_CONFIG.general
           return (
-            <div onClick={() => { if (cfg.tab) { onTabChange(cfg.tab); setUnreadBanner(null); markAllAsRead(portalJWT) } }}
-              style={{ background:'linear-gradient(135deg,#1e3a8a,#1d4ed8)', borderRadius:20, padding:'14px 16px', display:'flex', gap:12, alignItems:'flex-start', boxShadow:'0 4px 16px rgba(29,78,216,0.3)', cursor:cfg.tab ? 'pointer' : 'default', marginBottom:14 }}>
-              <span style={{ fontSize:24, flexShrink:0 }}>{cfg.icon}</span>
-              <div style={{ flex:1 }}>
-                <p style={{ margin:0, color:'white', fontWeight:700, fontSize:14 }}>{unreadBanner.title}</p>
-                <p style={{ margin:'4px 0 0', color:'#bfdbfe', fontSize:12, lineHeight:1.5 }}>{unreadBanner.body}</p>
-                {cfg.hint && <p style={{ margin:'6px 0 0', color:'#93c5fd', fontSize:11, fontWeight:600 }}>{cfg.hint}</p>}
+            <div
+              onClick={() => { if (cfg.tab) { onTabChange(cfg.tab); setUnreadBanner(null); markAllAsRead(portalJWT) } }}
+              className="rounded-[20px] px-4 py-3.5 flex gap-3 items-start mb-3.5 bg-gradient-to-br from-cp-trust-700 to-cp-trust-500 shadow-lg shadow-cp-trust-500/25"
+              style={{ cursor: cfg.tab ? 'pointer' : 'default' }}
+            >
+              <span className="text-2xl flex-shrink-0">{cfg.icon}</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-white font-bold text-sm">{unreadBanner.title}</p>
+                <p className="text-cp-trust-100 text-xs leading-relaxed mt-1">{unreadBanner.body}</p>
+                {cfg.hint && <p className="text-cp-trust-100/90 text-[11px] font-semibold mt-1.5">{cfg.hint}</p>}
               </div>
-              <button onClick={e => { e.stopPropagation(); setUnreadBanner(null); markAllAsRead(portalJWT) }}
-                style={{ background:'rgba(255,255,255,0.15)', border:'none', borderRadius:8, padding:'4px 8px', color:'white', fontSize:12, cursor:'pointer', flexShrink:0 }}>✕</button>
+              <button
+                onClick={(e) => { e.stopPropagation(); setUnreadBanner(null); markAllAsRead(portalJWT) }}
+                className="bg-white/15 border-none rounded-lg px-2 py-1 text-white text-xs flex-shrink-0"
+              >
+                ✕
+              </button>
             </div>
           )
         })()}
 
         {/* ── Tab Card ─────────────────────────────────────────── */}
-        <div style={{ background:C.card, borderRadius:24, overflow:'hidden', boxShadow:'0 4px 24px rgba(0,0,0,0.06)' }}>
+        <div className="bg-cp-bg-surface rounded-[24px] overflow-hidden shadow-[0_4px_24px_rgba(10,46,92,0.08)]">
 
-          {/* Tab Bar */}
-          <div style={{ display:'flex', overflowX:'auto', padding:'6px 6px 0', gap:2, borderBottom:`1px solid ${C.border}` }}>
-            {tabs.map(t => {
+          {/* Tab Bar — pill-style segmented control (ডিজাইন সিস্টেম অনুযায়ী) */}
+          <div className="flex overflow-x-auto gap-1.5 p-2 bg-cp-bg-alt/60">
+            {tabs.map((t) => {
               const active = activeTab === t.id
               return (
-                <button key={t.id} onClick={() => onTabChange(t.id)} style={{
-                  flexShrink:0, padding:'9px 12px 10px', border:'none', cursor:'pointer',
-                  fontSize:11, fontWeight:active ? 700 : 600, borderRadius:'10px 10px 0 0',
-                  transition:'all 0.2s', whiteSpace:'nowrap',
-                  background:active ? C.pL : 'transparent',
-                  color:active ? C.primary : C.muted,
-                  borderBottom:active ? `2px solid ${C.primary}` : '2px solid transparent',
-                }}>
+                <button
+                  key={t.id}
+                  onClick={() => onTabChange(t.id)}
+                  className={`flex-shrink-0 px-3.5 py-2 rounded-full text-[11px] whitespace-nowrap transition-colors font-cp-head ${
+                    active ? 'bg-cp-trust-500 text-white font-semibold' : 'bg-transparent text-cp-text-muted font-medium'
+                  }`}
+                >
                   {t.label}
                 </button>
               )
@@ -314,57 +204,9 @@ export default function DashboardView({
           {/* ── Content ─────────────────────────────────────────── */}
           <div style={{ padding: activeTab === 'ai_chat' ? 0 : 16 }}>
 
-            {/* ══ সারসংক্ষেপ ══ */}
+            {/* ══ সারসংক্ষেপ (redesigned — নতুন ফাইল থেকে) ══ */}
             {activeTab === 'summary' && (
-              <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-
-                {/* SR Contact Card */}
-                {customer?.assigned_sr_name && (
-                  <div style={{ background:'linear-gradient(135deg,#1D4ED8 0%,#7C3AED 100%)', borderRadius:18, padding:'13px 16px', display:'flex', alignItems:'center', gap:12, boxShadow:'0 10px 28px rgba(29,78,216,0.25)' }}>
-                    <div style={{ width:44, height:44, borderRadius:14, background:'rgba(255,255,255,0.18)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>🧑‍💼</div>
-                    <div style={{ flex:1 }}>
-                      <p style={{ margin:0, fontSize:9, color:'rgba(255,255,255,0.55)', fontWeight:700, textTransform:'uppercase', letterSpacing:1 }}>আপনার বিক্রয় প্রতিনিধি</p>
-                      <p style={{ margin:'2px 0 0', fontSize:14, color:'white', fontWeight:700 }}>{customer.assigned_sr_name}</p>
-                      {customer.assigned_sr_code && <p style={{ margin:'1px 0 0', fontSize:10, color:'rgba(255,255,255,0.5)' }}>কোড: {customer.assigned_sr_code}</p>}
-                    </div>
-                    {customer?.assigned_sr_phone && (
-                      <a href={`tel:${customer.assigned_sr_phone}`}
-                        style={{ textDecoration:'none', background:'rgba(255,255,255,0.18)', borderRadius:12, padding:'10px 14px', display:'flex', flexDirection:'column', alignItems:'center', gap:3, flexShrink:0 }}>
-                        <span style={{ fontSize:20 }}>📞</span>
-                        <span style={{ fontSize:9, color:'white', fontWeight:700 }}>কল</span>
-                      </a>
-                    )}
-                  </div>
-                )}
-
-                {/* এই মাস */}
-                <div>
-                  <SL label="এই মাস" color={C.primary}/>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                    <StatCard label="মোট কেনাকাটা"  value={`৳${fmt(monthly_summary?.total_purchase)}`}  color={C.text}    bg={C.surface} border={C.border}/>
-                    <StatCard label="ইনভয়েস সংখ্যা" value={monthly_summary?.total_invoices ?? 0}         color={C.primary} bg={C.pL}      border={C.pB}/>
-                    <StatCard label="নগদ দিয়েছেন"   value={`৳${fmt(monthly_summary?.total_cash)}`}       color={C.success} bg={C.sL}      border={C.sB}/>
-                    <StatCard label="বাকি রেখেছেন"   value={`৳${fmt(monthly_summary?.total_credit)}`}     color={C.danger}  bg={C.dL}      border={C.dB}/>
-                  </div>
-                </div>
-
-                {/* ৬ মাসের ট্রেন্ড */}
-                <div>
-                  <SL label="গত ৬ মাসের ট্রেন্ড" color={C.purple}/>
-                  <MonthlyTrendChart portalJWT={portalJWT}/>
-                </div>
-
-                {/* সর্বমোট */}
-                <div>
-                  <SL label="সর্বমোট" color={C.success}/>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                    <StatCard label="মোট কেনাকাটা" value={`৳${fmt(total_summary?.total_purchase)}`} color={C.text}    bg={C.surface} border={C.border}/>
-                    <StatCard label="মোট ইনভয়েস"  value={total_summary?.total_invoices ?? 0}         color={C.primary} bg={C.pL}      border={C.pB}/>
-                    <StatCard label="মোট নগদ"      value={`৳${fmt(total_summary?.total_cash)}`}      color={C.success} bg={C.sL}      border={C.sB}/>
-                    <StatCard label="মোট বাকি"     value={`৳${fmt(total_summary?.total_credit)}`}    color={C.danger}  bg={C.dL}      border={C.dB}/>
-                  </div>
-                </div>
-              </div>
+              <SummaryTab customer={customer} monthly_summary={monthly_summary} total_summary={total_summary} portalJWT={portalJWT} />
             )}
 
             {/* ══ অর্ডার ══ */}
