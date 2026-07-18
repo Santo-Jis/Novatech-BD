@@ -159,7 +159,7 @@ export default function DashboardView({
           -28px করা হলো যাতে balance card গুলো এখনো সুন্দরভাবে overlap করে (floating
           card effect বজায় থাকে) কিন্তু Tab Bar সবসময় সাদা কার্ডের নিজের background-এর
           উপর বসে, header-এর অন্ধকার অংশ স্পর্শ না করে। */}
-      <div className="px-4 pb-10" style={{ marginTop: -28 }}>
+      <div className="px-4 pb-10" style={{ marginTop: -8 }}>
 
         {/* Unread Banner */}
         {unreadBanner && (() => {
