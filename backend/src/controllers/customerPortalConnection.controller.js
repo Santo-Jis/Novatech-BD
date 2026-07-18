@@ -8,6 +8,7 @@
 
 const { query } = require('../config/db');
 const logger    = require('../config/logger');
+const jwt       = require('jsonwebtoken');
 
 // ── Helper: portal customer_id থেকে person_id বের করো ──
 async function getPersonId(customerId) {
@@ -297,6 +298,118 @@ const getAllCompanyOrders = async (req, res) => {
     }
 };
 
+// ── Refresh-cookie helper (Session 11 fix) ──────────────────────
+// customerPortal.controller.js-এ একই নামের helper আছে, কিন্তু সেই ফাইল
+// স্পর্শ না করার নীতি মেনে (portalAuthShared.js-এর মতোই) এখানে আলাদা
+// একটা কপি রাখা হলো — সেটিংস হুবহু এক (httpOnly/secure/sameSite/path/maxAge)।
+const setRefreshCookie = (res, refreshJWT) => {
+    res.cookie('portal_rt', refreshJWT, {
+        httpOnly: true,
+        secure:   process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge:   30 * 24 * 60 * 60 * 1000,   // 30 দিন (ms)
+        path:     '/api/portal',
+    });
+};
+
+// ============================================================
+// POST /api/portal/connections/switch
+// ✅ NEW (Session 11 — SaaS multi-company foundation)
+// ✅ FIX (Session 12 — permanent): শুরুতে শুধু access token বদলানো
+// হচ্ছিল, refresh cookie পুরনো কোম্পানির সাথেই বাঁধা থেকে যাচ্ছিল —
+// ফলে ~15 মিনিট পর silent auto-refresh চুপচাপ পুরনো কোম্পানিতে ফিরিয়ে
+// দিতে পারত। এখন switch করার সময় refresh cookie-ও নতুন কোম্পানির জন্য
+// পুনরায় ইস্যু করা হয় (মূল লগইনের মতোই), তাই এরপর থেকে
+// POST /portal/refresh স্বয়ংক্রিয়ভাবে সঠিক (নতুন) কোম্পানির জন্যই কাজ
+// করবে। এখন access token আবার স্বাভাবিক ১৫-মিনিট মেয়াদেই ইস্যু হয়,
+// কারণ refresh flow এখন সঠিকভাবে কোম্পানি-স্কোপড।
+//
+// রহিম একটা লগইনে একাধিক কোম্পানির সাথে কানেক্টেড থাকতে পারে (Phase 1)।
+// এই এন্ডপয়েন্ট দিয়ে সে dashboard-এ company switcher থেকে অন্য কোম্পানি
+// বেছে নিলে, সেই কোম্পানির জন্য নতুন করে scoped portalJWT ইস্যু হয় —
+// পুরো সেশন re-login না করেই। ব্যাকএন্ডের সব বিদ্যমান portalAuth রুট
+// (invoices/payments/summary ইত্যাদি) অপরিবর্তিত থাকে, কারণ তারা এখনো
+// req.portalUser.customer_id দিয়েই কাজ করে — শুধু সেই customer_id-টা এখন
+// active company অনুযায়ী বদলাতে পারবে।
+// body: { connection_id }
+// ============================================================
+const switchCompany = async (req, res) => {
+    try {
+        const { connection_id } = req.body;
+        if (!connection_id) {
+            return res.status(400).json({ success: false, message: 'connection_id প্রয়োজন।' });
+        }
+
+        const personId = await getPersonId(req.portalUser.customer_id);
+
+        // ✅ নিশ্চিত করা হচ্ছে এই connection সত্যিই এই person-এর, এবং connected অবস্থায় আছে
+        const result = await query(
+            `SELECT c.id AS target_customer_id, c.customer_code, c.is_active,
+                    cpt.token_version, t.company_name
+             FROM customer_company_connections ccc
+             JOIN customers c ON c.id = ccc.customer_id
+             JOIN tenants t ON t.id = ccc.tenant_id
+             LEFT JOIN customer_portal_tokens cpt ON cpt.customer_id = c.id
+             WHERE ccc.id = $1 AND ccc.person_id = $2 AND ccc.status = 'connected'`,
+            [connection_id, personId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(403).json({ success: false, message: 'এই কোম্পানিতে আপনার অ্যাক্সেস নেই।' });
+        }
+
+        const target = result.rows[0];
+        if (!target.is_active) {
+            return res.status(403).json({ success: false, message: 'এই কোম্পানিতে আপনার অ্যাকাউন্ট নিষ্ক্রিয়।' });
+        }
+
+        if (!process.env.JWT_PORTAL_SECRET) {
+            return res.status(500).json({ success: false, message: 'সার্ভার কনফিগারেশন সমস্যা।' });
+        }
+
+        const jwtPayload = {
+            customer_id:   target.target_customer_id,
+            customer_code: target.customer_code,
+            type:          'customer_portal',
+            token_version: target.token_version || 1,
+        };
+
+        // ✅ FIX (Session 12): এখন আবার স্বাভাবিক ১৫-মিনিট access token
+        const newPortalJWT = jwt.sign(
+            jwtPayload,
+            process.env.JWT_PORTAL_SECRET,
+            { expiresIn: '15m', algorithm: 'HS256' }
+        );
+
+        // ✅ FIX (Session 12): নতুন কোম্পানির জন্য refresh token-ও নতুন করে
+        // ইস্যু করে cookie-তে বসিয়ে দেওয়া হলো — পুরনো (কোম্পানি A-এর)
+        // refresh cookie এখানেই প্রতিস্থাপিত হয়ে যায়
+        const newRefreshJWT = jwt.sign(
+            { ...jwtPayload, type: 'customer_portal_refresh' },
+            process.env.JWT_PORTAL_SECRET,
+            { expiresIn: '30d', algorithm: 'HS256' }
+        );
+        setRefreshCookie(res, newRefreshJWT);
+
+        res.json({
+            success: true,
+            data: {
+                portal_jwt:    newPortalJWT,
+                expires_in:    900,
+                customer_id:   target.target_customer_id,
+                customer_code: target.customer_code,
+                company_name:  target.company_name,
+            }
+        });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ switchCompany error:', err.message);
+        res.status(500).json({ success: false, message: 'কোম্পানি পরিবর্তন করতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getMyQrCode,
     getMyCompanies,
@@ -307,4 +420,5 @@ module.exports = {
     rejectCompanyRequest,
     disconnectCompany,
     getAllCompanyOrders,
+    switchCompany,
 };

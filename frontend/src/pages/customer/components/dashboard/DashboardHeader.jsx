@@ -4,11 +4,12 @@
 
 import CreditRing from './CreditRing'
 import NotificationBell from './NotificationBell'
+import CompanySwitcher from '../company/CompanySwitcher'
 
 export default function DashboardHeader({
   customer, fmtCur, portalJWT,
   notifications, unreadCount, showBell, setShowBell, markAllAsRead, markOneRead, onTabChange,
-  onLogoutClick,
+  onLogoutClick, switchCompany, toast,
 }) {
   return (
     <div className="relative overflow-hidden bg-gradient-to-br from-cp-trust-900 via-cp-trust-900 to-cp-trust-700 px-5 pt-12 pb-[90px]">
@@ -23,7 +24,7 @@ export default function DashboardHeader({
       <div className="relative flex justify-between items-start mb-7">
         <div className="min-w-0">
           <span className="text-[9px] text-white/35 tracking-[2px] uppercase block mb-1">CUSTOMER PORTAL</span>
-          <h1 className="text-xl font-bold text-white leading-tight font-cp-head truncate">{customer.shop_name}</h1>
+          <CompanySwitcher customer={customer} portalJWT={portalJWT} switchCompany={switchCompany} toast={toast} />
           <div className="flex items-center gap-1.5 mt-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-cp-confidence-600 flex-shrink-0 shadow-[0_0_8px_rgba(14,155,108,0.9)]" />
             <span className="text-[10px] text-white/40 truncate">{customer.owner_name} • {customer.customer_code}</span>

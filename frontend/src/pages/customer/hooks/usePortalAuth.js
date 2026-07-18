@@ -472,6 +472,26 @@ export function usePortalAuth(defaultTab = 'summary') {
       loadMyReturnReqs(1, 'all', true)
   }
 
+  // ── Company Switch (Session 11 — SaaS multi-company foundation) ─
+  // ✅ FIX (Session 12): backend এখন switch করার সময় refresh cookie-ও
+  // নতুন কোম্পানির জন্য পুনরায় ইস্যু করে, তাই এখানে আর কৃত্রিমভাবে
+  // expires_in বড় করে রাখার দরকার নেই — স্বাভাবিক ১৫-মিনিট access token
+  // + company-aware refresh cookie ব্যবহার করা হচ্ছে, ঠিক প্রথম লগইনের
+  // মতোই।
+  const switchCompany = async (connectionId) => {
+    const data = await portalFetch('/portal/connections/switch', {
+      method: 'POST',
+      body:   JSON.stringify({ connection_id: connectionId }),
+    })
+    const { portal_jwt, expires_in = 900 } = data.data
+    portalTokenStore.set(portal_jwt, expires_in)
+    portalJWTRef.current = portal_jwt
+    setPortalJWT(portal_jwt)
+    setDashboard(null)
+    await loadDashboard()
+    return data.data
+  }
+
   // ── Logout ───────────────────────────────────────────────────
   // ✅ memory clear + backend HttpOnly cookie মুছে দেয়
   const handleLogout = async () => {
@@ -577,7 +597,7 @@ export function usePortalAuth(defaultTab = 'summary') {
   return {
     phase, tokenInfo, justRegistered, portalJWT, dashboard,
     activeTab, error, loggingIn,
-    googleLogin, handleLogout, handleTabChange,
+    googleLogin, handleLogout, handleTabChange, switchCompany,
     toast,
     notifications, unreadCount, showBell, setShowBell,
     unreadBanner, setUnreadBanner, markAllAsRead, markOneRead,

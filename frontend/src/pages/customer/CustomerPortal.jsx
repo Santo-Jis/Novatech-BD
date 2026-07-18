@@ -48,6 +48,7 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
       activeTab={auth.activeTab}
       onTabChange={auth.handleTabChange}
       onLogout={auth.handleLogout}
+      switchCompany={auth.switchCompany}
       toast={auth.toast}
       // notifications
       notifications={auth.notifications}

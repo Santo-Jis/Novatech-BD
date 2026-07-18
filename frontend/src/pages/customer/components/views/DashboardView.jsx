@@ -61,7 +61,7 @@ function StatCard({ label, value, color, bg, border }) {
 
 // ═══════════════════════════════════════════════════════════════
 export default function DashboardView({
-  dashboard, portalJWT, activeTab, onTabChange, onLogout, toast,
+  dashboard, portalJWT, activeTab, onTabChange, onLogout, toast, switchCompany,
   notifications, unreadCount, showBell, setShowBell, unreadBanner, setUnreadBanner, markAllAsRead, markOneRead,
   invoices, invoiceTotal, invoicePage, invoiceTotalPages, invoiceLoading,
   invoiceSearch, setInvoiceSearch, invoicePayMethod, setInvoicePayMethod,
@@ -150,6 +150,8 @@ export default function DashboardView({
         markOneRead={markOneRead}
         onTabChange={onTabChange}
         onLogoutClick={() => setShowLogoutConfirm(true)}
+        switchCompany={switchCompany}
+        toast={toast}
       />
 
       {/* ═══ MAIN CONTENT ════════════════════════════════════════ */}

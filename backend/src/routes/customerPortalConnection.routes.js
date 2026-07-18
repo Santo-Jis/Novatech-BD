@@ -17,6 +17,7 @@ const {
     rejectCompanyRequest,
     disconnectCompany,
     getAllCompanyOrders,
+    switchCompany,
 } = require('../controllers/customerPortalConnection.controller');
 
 router.get('/my-qr',              portalAuth, getMyQrCode);
@@ -28,5 +29,6 @@ router.post('/:id/accept',        portalAuth, acceptCompanyRequest);
 router.post('/:id/reject',        portalAuth, rejectCompanyRequest);
 router.post('/:id/disconnect',    portalAuth, disconnectCompany);
 router.get('/all-orders',         portalAuth, getAllCompanyOrders);
+router.post('/switch',            portalAuth, switchCompany); // ✅ NEW (Session 11)
 
 module.exports = router;
