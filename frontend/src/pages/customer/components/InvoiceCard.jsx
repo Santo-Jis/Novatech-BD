@@ -13,7 +13,7 @@ const BORDER_COLOR = {
   replacement: '#2563EB',
 }
 
-export default function InvoiceCard({ sale }) {
+export default function InvoiceCard({ sale, companyTag }) {
   const [open, setOpen] = useState(false)
   const items = typeof sale.items === 'string'
     ? JSON.parse(sale.items)
@@ -50,6 +50,16 @@ export default function InvoiceCard({ sale }) {
       >
         {/* Left: date, invoice no, SR */}
         <div style={{ flex: 1, minWidth: 0 }}>
+          {/* ✅ NEW (Session 14): aggregate ভিউয়ে কোন কোম্পানির ইনভয়েস তা বোঝাতে ছোট ট্যাগ */}
+          {companyTag && (
+            <span style={{
+              display: 'inline-block', fontSize: 9.5, fontWeight: 700, color: '#2563EB',
+              background: '#EFF6FF', border: '1px solid #DBEAFE', borderRadius: 999,
+              padding: '2px 8px', marginBottom: 5,
+            }}>
+              {companyTag}
+            </span>
+          )}
           <p style={{ margin: '0 0 3px', fontSize: 10, color: '#9CA3AF', fontFamily: 'Inter, system-ui' }}>
             {fmtDate(sale.created_at)}
           </p>

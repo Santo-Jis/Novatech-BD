@@ -13,6 +13,7 @@
 import { fmt, fmtDate } from '../../utils/helpers'
 import { useEffect, useState } from 'react'
 import InvoiceCard from '../InvoiceCard'
+import InvoicesTab from '../InvoicesTab'
 import OrderRequestTab from '../OrderRequestTab'
 import CustomerAIChat from '../../CustomerAIChat'
 
@@ -224,7 +225,10 @@ export default function DashboardView({
             {activeTab === 'orders' && <OrderRequestTab portalJWT={portalJWT}/>}
 
             {/* ══ ইনভয়েস ══ */}
-            {activeTab === 'invoices' && (
+            {/* ✅ REDESIGNED (Session 14): এখন aggregate + company-ট্যাগ প্যাটার্নে,
+                self-contained InvoicesTab কম্পোনেন্ট — /all-invoices endpoint ব্যবহার করে */}
+            {activeTab === 'invoices' && <InvoicesTab portalJWT={portalJWT} />}
+            {false && (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 <div style={{ display:'flex', gap:8 }}>
                   <input type="text" value={invoiceSearch}

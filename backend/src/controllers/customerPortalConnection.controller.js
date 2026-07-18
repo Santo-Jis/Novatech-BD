@@ -301,27 +301,75 @@ const getAllCompanyOrders = async (req, res) => {
 // ============================================================
 // GET /api/portal/connections/all-invoices
 // ✅ NEW (Session 13 — spec correction)
+// ✅ UPDATED (Session 14): date-range + company (tenant_id) ফিল্টার,
+// পেজিনেশন, এবং InvoiceCard-এর পূর্ণ ডিটেইল (items/discount/cash_received/
+// credit_used/replacement_value/sr_name) যোগ করা হলো — যাতে নতুন
+// aggregate Invoices ট্যাব পুরনো single-company ভিউয়ের সমান বিস্তারিত
+// তথ্য দেখাতে পারে, শুধু company-ট্যাগ অতিরিক্ত।
 // 01-Requirements-Spec.md ধারা ৩.১ অনুযায়ী সঠিক প্যাটার্ন: ডাটা merge হয় না,
-// শুধু UI-তে aggregate + company-ট্যাগ দেখানো হয়। ঠিক getAllCompanyOrders-এর
-// মতোই — person_id দিয়ে সব connected কোম্পানির ইনভয়েস এক লিস্টে, প্রতিটায়
-// কোম্পানির নাম/লোগো ট্যাগসহ।
+// শুধু UI-তে aggregate + company-ট্যাগ দেখানো হয়।
+// query params: page, limit, date_from, date_to, tenant_id
 // ============================================================
 const getAllCompanyInvoices = async (req, res) => {
     try {
         const personId = await getPersonId(req.portalUser.customer_id);
+
+        const page  = Math.max(parseInt(req.query.page)  || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 50);
+        const offset = (page - 1) * limit;
+
+        const date_from = req.query.date_from || null;
+        const date_to   = req.query.date_to   || null;
+        const tenantId  = req.query.tenant_id  || null;
+
+        const params  = [personId];
+        const filters = ['c.person_id = $1', '(st.otp_verified = true OR st.otp_skipped = true)'];
+
+        if (date_from) {
+            params.push(date_from);
+            filters.push(`st.created_at >= $${params.length}::date`);
+        }
+        if (date_to) {
+            params.push(date_to);
+            filters.push(`st.created_at < ($${params.length}::date + INTERVAL '1 day')`);
+        }
+        if (tenantId) {
+            params.push(tenantId);
+            filters.push(`t.id = $${params.length}`);
+        }
+
+        const whereClause = filters.join(' AND ');
+        params.push(limit, offset);
+        const limitIdx  = params.length - 1;
+        const offsetIdx = params.length;
+
         const result = await query(
-            `SELECT st.id, st.invoice_number, st.total_amount, st.net_amount,
-                    st.payment_method, st.created_at,
-                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+            `SELECT st.id, st.invoice_number, st.items, st.total_amount,
+                    st.discount_amount, st.net_amount, st.payment_method,
+                    st.cash_received, st.credit_used, st.replacement_value,
+                    st.created_at,
+                    u.name_bn AS sr_name,
+                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url,
+                    COUNT(*) OVER() AS total_count
              FROM sales_transactions st
              JOIN customers c ON c.id = st.customer_id
              JOIN tenants t   ON t.id = c.tenant_id
-             WHERE c.person_id = $1
+             LEFT JOIN users u ON u.id = st.worker_id
+             WHERE ${whereClause}
              ORDER BY st.created_at DESC
-             LIMIT 200`,
-            [personId]
+             LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+            params
         );
-        res.json({ success: true, data: result.rows });
+
+        const total      = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
+        const totalPages = Math.max(Math.ceil(total / limit), 1);
+        const rows       = result.rows.map(({ total_count, ...rest }) => rest);
+
+        res.json({
+            success: true,
+            data: rows,
+            pagination: { page, limit, total, total_pages: totalPages },
+        });
     } catch (err) {
         if (err.message === 'PERSON_NOT_LINKED') {
             return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
