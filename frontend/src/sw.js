@@ -27,13 +27,35 @@ clientsClaim()
 // index.html কখনো দেখা যেত না — শুধু একদম প্রথমবার (SW install হওয়ার আগে) দেখা যেত।
 // এখন: network থেকে সবসময় নতুন HTML আনার চেষ্টা হবে, অফলাইন থাকলে বা ৩ সেকেন্ডে
 // রেসপন্স না এলে cache থেকে fallback হবে (অফলাইন সাপোর্টও বজায় থাকবে)।
+// ✅ FIX (Session 9): 3 সেকেন্ড টাইমআউট স্লো নেটওয়ার্কে (2G/3G, খারাপ সিগন্যাল)
+// অনেক সময়ই পার হয়ে যায় — তখন SW চুপচাপ পুরনো cached HTML সার্ভ করে দিত,
+// ফলে নতুন deploy হওয়া UI (নতুন JS bundle রেফারেন্স) হার্ড রিফ্রেশ করলেও
+// দেখা যেত না। টাইমআউট বাড়িয়ে ৮ সেকেন্ড করা হলো যাতে সাধারণ স্লো কানেকশনেও
+// (যেমন ২৭ KB/s) নতুন HTML আনার যথেষ্ট সময় পাওয়া যায়, fallback শুধু সত্যিকারের
+// অফলাইন/টাইমআউট অবস্থাতেই হবে।
 registerRoute(
   ({ request }) => request.mode === 'navigate',
   new NetworkFirst({
-    cacheName: 'html-cache-v1',
-    networkTimeoutSeconds: 3,
+    cacheName: 'html-cache-v2', // ✅ FIX: cache নাম বদলানো হলো — পুরনো v1-এ যদি
+    // কোনো stale HTML আটকে থাকে, সেটা নতুন নামের cache খুললে আর ব্যবহার হবে না।
+    networkTimeoutSeconds: 8,
   })
 )
+
+// ✅ FIX (Session 9): পুরনো cache নাম (html-cache-v1, js-chunks-v1) থেকে যেকোনো
+// stale entry activate-এর সময় মুছে ফেলা হয়, যাতে নতুন SW সবসময় ফাঁকা/ফ্রেশ
+// অবস্থা থেকে শুরু করে — কোনো অদৃশ্য পুরনো cache থেকে যায় না।
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((names) =>
+      Promise.all(
+        names
+          .filter((n) => n === 'html-cache-v1')
+          .map((n) => caches.delete(n))
+      )
+    )
+  )
+})
 
 // ── Runtime caching for JS role chunks ─────────────────────
 // ✅ FIX: role-worker.js, role-admin.js ইত্যাদি প্রথমবার navigate করলে
