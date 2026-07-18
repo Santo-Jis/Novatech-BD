@@ -42,10 +42,46 @@ const getTenantBySlug = async (slug) => {
   return tenant;
 };
 
+// ─── Tenant cache (by ID) ───────────────────────────────────
+// ✅ SaaS Phase 1 (Super Admin suspend fix): auth.js middleware, login
+// (auth.controller.js), refresh (auth.service.js), portalAuthShared.js —
+// এই সবাই প্রতি-request DB query এড়াতে এই cache ব্যবহার করে tenant.status
+// চেক করবে। TTL ছোট (৬০ সেকেন্ড) রাখা হয়েছে যাতে super admin suspend করলে
+// দ্রুত effect হয়, আর superAdmin.controller.js status/plan আপডেটের পর
+// clearTenantCache() ডাকে বলে সেক্ষেত্রে সাথে সাথেই effect হবে।
+const tenantByIdCache  = new Map();
+const CACHE_TTL_BY_ID  = 60 * 1000; // ৬০ সেকেন্ড
+
+const getTenantById = async (tenantId) => {
+  if (!tenantId) return null;
+
+  const cached = tenantByIdCache.get(tenantId);
+  if (cached && Date.now() - cached.time < CACHE_TTL_BY_ID) {
+    return cached.data;
+  }
+
+  const result = await query(
+    `SELECT id, slug, company_name, status, plan FROM tenants WHERE id = $1`,
+    [tenantId]
+  );
+
+  // Tenant row না পেলে null (caller fail-open সিদ্ধান্ত নেবে — DB-তে
+  // row missing মানেই suspended না, তাই এখানে জোর করে block করা হচ্ছে না)।
+  const tenant = result.rows.length ? result.rows[0] : null;
+  tenantByIdCache.set(tenantId, { data: tenant, time: Date.now() });
+  return tenant;
+};
+
 // Cache clear করার function (tenant update হলে call করো)
-const clearTenantCache = (slug) => {
-  if (slug) tenantCache.delete(slug);
-  else      tenantCache.clear();
+// slugOrId দিলে শুধু সেই এন্ট্রি (দুই cache থেকেই) মুছবে, না দিলে সব মুছবে।
+const clearTenantCache = (slugOrId) => {
+  if (slugOrId) {
+    tenantCache.delete(slugOrId);
+    tenantByIdCache.delete(slugOrId);
+  } else {
+    tenantCache.clear();
+    tenantByIdCache.clear();
+  }
 };
 
 // ─── Middleware (এখনো mount করা হয়নি) ──────────────────────
@@ -101,4 +137,4 @@ const tenantResolver = async (req, res, next) => {
   }
 };
 
-module.exports = { tenantResolver, getTenantBySlug, clearTenantCache };
+module.exports = { tenantResolver, getTenantBySlug, getTenantById, clearTenantCache };

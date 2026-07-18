@@ -2,6 +2,7 @@ const jwt               = require('jsonwebtoken');
 const logger = require('../config/logger');
 const { query }         = require('../config/db');
 const { isUserBlocked } = require('../config/redis');
+const { getTenantById } = require('./tenantResolver'); // ✅ SaaS Phase 1: tenant suspend/cancel enforce
 
 // ============================================================
 // JWT Authentication Middleware
@@ -124,6 +125,28 @@ const auth = async (req, res, next) => {
 
         // ✅ SaaS: controller-এ সরাসরি req.tenantId হিসেবেও পাওয়া যাবে
         req.tenantId = req.user.tenantId;
+
+        // ৫. SaaS Phase 1: Tenant suspend/cancel enforce (Super Admin fix)
+        //    আগে এই চেক কোথাও ছিল না — super admin tenant suspend করলেও
+        //    আগে থেকে ইস্যু হওয়া token পুরোপুরি valid থেকে যেত। এখন cached
+        //    lookup (৬০ সেকেন্ড TTL, tenantResolver.js) দিয়ে চেক করা হচ্ছে —
+        //    fail-open: DB error/lookup issue হলে ব্লক করা হবে না (existing
+        //    users যেন অকারণে লগআউট না হয়ে যান), শুধু suspended/cancelled
+        //    নিশ্চিতভাবে জানা গেলেই ব্লক করা হবে।
+        try {
+            const tenant = await getTenantById(req.tenantId);
+            if (tenant && (tenant.status === 'suspended' || tenant.status === 'cancelled')) {
+                return res.status(403).json({
+                    success: false,
+                    message: tenant.status === 'suspended'
+                        ? 'আপনার প্রতিষ্ঠানের অ্যাকাউন্ট সাময়িকভাবে বন্ধ। সাপোর্টের সাথে যোগাযোগ করুন।'
+                        : 'আপনার প্রতিষ্ঠানের সাবস্ক্রিপশন বাতিল হয়ে গেছে।',
+                    code: 'TENANT_INACTIVE'
+                });
+            }
+        } catch (tenantErr) {
+            logger.warn('⚠️ Tenant status check failed (fail-open):', tenantErr.message);
+        }
 
         next();
 

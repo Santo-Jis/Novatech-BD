@@ -2,6 +2,7 @@ const jwt       = require('jsonwebtoken');
 const logger = require('../config/logger');
 const { query } = require('../config/db');
 const { blockUserTokens, unblockUser } = require('../config/redis');
+const { getTenantById } = require('../middlewares/tenantResolver'); // ✅ SaaS Phase 1: tenant suspend/cancel enforce
 
 // ============================================================
 // Auth Service — JWT Token ব্যবস্থাপনা
@@ -93,6 +94,20 @@ const verifyRefreshToken = async (refreshToken) => {
 
     if (user.status !== 'active') {
         throw new Error('অ্যাকাউন্ট সক্রিয় নেই।');
+    }
+
+    // ✅ SaaS Phase 1: refresh-এর সময়ও tenant suspend/cancel চেক
+    // fail-open: tenant row না পাওয়া গেলে বা DB সমস্যা হলে ব্লক করা হবে না।
+    try {
+        const tenant = await getTenantById(user.tenant_id);
+        if (tenant && (tenant.status === 'suspended' || tenant.status === 'cancelled')) {
+            throw new Error('আপনার প্রতিষ্ঠানের অ্যাকাউন্ট বন্ধ। সাপোর্টের সাথে যোগাযোগ করুন।');
+        }
+    } catch (tenantErr) {
+        // উপরের throw-টাও এই catch-এ ধরা পড়বে — সেটা আবার ছুঁড়ে দিতে হবে,
+        // শুধু DB/lookup error হলে fail-open (silent) থাকতে হবে।
+        if (tenantErr.message.includes('প্রতিষ্ঠানের অ্যাকাউন্ট বন্ধ')) throw tenantErr;
+        logger.warn('⚠️ Refresh tenant status check failed (fail-open):', tenantErr.message);
     }
 
     return user;

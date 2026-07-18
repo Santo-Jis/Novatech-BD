@@ -12,6 +12,7 @@ const {
 } = require('../services/auth.service');
 const { saveFCMToken: saveFCMTokenToDB, clearFCMToken } = require('../services/fcm.service');
 const { generateOTP } = require('../config/encryption');
+const { getTenantById } = require('../middlewares/tenantResolver'); // ✅ SaaS Phase 1: tenant suspend/cancel enforce
 
 // ──────────────────────────────────────────────────────────────
 // OTP HASH HELPER
@@ -55,11 +56,11 @@ const login = async (req, res) => {
         const result = await query(
             `SELECT id, role, employee_code, name_bn, name_en,
                     email, phone, password_hash, status,
-                    profile_photo
+                    profile_photo, tenant_id
              FROM users
-             WHERE email = $1 
+             WHERE (email = $1 
                 OR phone = $1 
-                OR employee_code = $1
+                OR employee_code = $1)
              AND tenant_id = $2`,
             [identifier.trim(), req.tenantId]
         );
@@ -81,6 +82,23 @@ const login = async (req, res) => {
                 success: false,
                 message: 'ইমেইল/ফোন/কোড বা পাসওয়ার্ড ভুল।'
             });
+        }
+
+        // ✅ SaaS Phase 1: প্রতিষ্ঠান (tenant) suspended/cancelled কিনা যাচাই
+        // fail-open: tenant row না পাওয়া গেলে বা DB সমস্যা হলে ব্লক করা হবে না।
+        try {
+            const tenant = await getTenantById(user.tenant_id);
+            if (tenant && (tenant.status === 'suspended' || tenant.status === 'cancelled')) {
+                return res.status(403).json({
+                    success: false,
+                    message: tenant.status === 'suspended'
+                        ? 'আপনার প্রতিষ্ঠানের অ্যাকাউন্ট সাময়িকভাবে বন্ধ। সাপোর্টের সাথে যোগাযোগ করুন।'
+                        : 'আপনার প্রতিষ্ঠানের সাবস্ক্রিপশন বাতিল হয়ে গেছে।',
+                    code: 'TENANT_INACTIVE'
+                });
+            }
+        } catch (tenantErr) {
+            logger.warn('⚠️ Login tenant status check failed (fail-open):', tenantErr.message);
         }
 
         // অ্যাকাউন্ট স্ট্যাটাস যাচাই
@@ -116,8 +134,8 @@ const login = async (req, res) => {
             logger.warn('⚠️ RefreshToken save failed:', tokenErr.message);
         }
 
-        // password_hash বাদ দিয়ে response পাঠাও
-        const { password_hash, ...userData } = user;
+        // password_hash ও tenant_id বাদ দিয়ে response পাঠাও (response shape অপরিবর্তিত)
+        const { password_hash, tenant_id, ...userData } = user;
 
         // ✅ FIX: refreshToken HttpOnly cookie-তে — XSS attack-এ JS দিয়ে
         // পড়া সম্ভব নয়। accessToken memory/localStorage-এ থাকে (short-lived, 15m)।

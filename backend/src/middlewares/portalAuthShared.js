@@ -12,6 +12,7 @@ const jwt     = require('jsonwebtoken');
 const logger  = require('../config/logger');
 const { query } = require('../config/db');
 const { getCached, setCache, invalidatePortalAuthCache } = require('../services/portalCache.service');
+const { getTenantById } = require('./tenantResolver'); // ✅ SaaS Phase 1: tenant suspend/cancel enforce
 
 const portalAuth = async (req, res, next) => {
     const authHeader = req.headers.authorization;
@@ -44,7 +45,7 @@ const portalAuth = async (req, res, next) => {
         if (!cached) {
             try {
                 const authCheck = await query(
-                    `SELECT c.id, c.is_active, cpt.token_version AS current_version
+                    `SELECT c.id, c.is_active, c.tenant_id, cpt.token_version AS current_version
                      FROM customers c
                      LEFT JOIN customer_portal_tokens cpt ON cpt.customer_id = c.id
                      WHERE c.id = $1`,
@@ -56,6 +57,21 @@ const portalAuth = async (req, res, next) => {
                         success: false,
                         message: 'আপনার অ্যাকাউন্ট নিষ্ক্রিয় করা হয়েছে।',
                     });
+                }
+
+                // ✅ SaaS Phase 1: প্রতিষ্ঠান (tenant) suspended/cancelled কিনা যাচাই
+                // fail-open: tenant row না পাওয়া গেলে বা DB সমস্যা হলে ব্লক করা হবে না।
+                try {
+                    const tenant = await getTenantById(authCheck.rows[0].tenant_id);
+                    if (tenant && (tenant.status === 'suspended' || tenant.status === 'cancelled')) {
+                        return res.status(403).json({
+                            success: false,
+                            message: 'এই প্রতিষ্ঠানের সেবা সাময়িকভাবে বন্ধ আছে।',
+                            error_code: 'TENANT_INACTIVE',
+                        });
+                    }
+                } catch (tenantErr) {
+                    logger.warn('⚠️ Portal tenant status check failed (fail-open):', tenantErr.message);
                 }
 
                 const currentVersion = authCheck.rows[0].current_version || 1;

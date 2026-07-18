@@ -17,7 +17,28 @@ const {
     customerLogin
 } = require('../controllers/auth.controller');
 
-const { auth } = require('../middlewares/auth');
+const { auth, DEFAULT_TENANT_ID } = require('../middlewares/auth');
+
+// ============================================================
+// ✅ বাগ ফিক্স: pre-login routes (login/forgot-password/etc.)-এ
+// req.tenantId কখনোই সেট হতো না (auth middleware চলার আগেই এসব route
+// hit হয়, আর tenantResolver mount করা নেই) — ফলে controller-এ
+// `AND tenant_id = $2`-তে $2 = undefined যেত। এতদিন login query-তে
+// OR/AND precedence bug থাকায় email/phone লগইন কাকতালীয়ভাবে কাজ
+// করছিল (tenant filter কার্যত ignore হচ্ছিল, ঠিক আছে যেহেতু এখন
+// একটাই tenant আছে) — কিন্তু employee_code লগইন ও forgot-password/
+// verify-otp/reset-password/check-email/customer-login পুরোপুরি ভাঙা
+// ছিল (tenant_id = NULL কখনো match করে না)।
+//
+// এই middleware শুধু req.tenantId খালি থাকলে DEFAULT_TENANT_ID বসায় —
+// এখন যেহেতু সিস্টেমে একটাই tenant আছে, এটা সম্পূর্ণ নিরাপদ ও
+// non-breaking। ভবিষ্যতে সত্যিকারের multi-tenant public routing
+// (subdomain/X-Tenant-Slug) লাগলে এই জায়গাতেই tenantResolver বসানো
+// যাবে।
+const defaultTenant = (req, res, next) => {
+    if (!req.tenantId) req.tenantId = DEFAULT_TENANT_ID;
+    next();
+};
 
 // ============================================================
 // RATE LIMITERS
@@ -57,7 +78,7 @@ const loginLimiter = rateLimit({
 // POST /api/auth/login
 // ৩ ভাবে লগইন: ইমেইল / ফোন / কর্মী কোড + পাসওয়ার্ড
 // ✅ loginLimiter: ১৫ মিনিটে ১০টি — credential stuffing রোধ
-router.post('/login', loginLimiter, login);
+router.post('/login', loginLimiter, defaultTenant, login);
 
 // POST /api/auth/refresh
 // Refresh Token দিয়ে নতুন Access Token নেওয়া
@@ -82,17 +103,17 @@ router.put('/change-password', auth, changePassword);
 // POST /api/auth/forgot-password
 // OTP পাঠাও
 // ✅ otpLimiter: ১৫ মিনিটে ৫টি — email abuse এবং brute force রোধ
-router.post('/forgot-password', otpLimiter, forgotPassword);
+router.post('/forgot-password', otpLimiter, defaultTenant, forgotPassword);
 
 // POST /api/auth/verify-otp
 // OTP যাচাই
 // ✅ otpLimiter: ১৫ মিনিটে ৫টি — OTP guessing attack রোধ
-router.post('/verify-otp', otpLimiter, verifyOtp);
+router.post('/verify-otp', otpLimiter, defaultTenant, verifyOtp);
 
 // POST /api/auth/reset-password
 // নতুন পাসওয়ার্ড সেট
 // ✅ otpLimiter: reset token guessing রোধ
-router.post('/reset-password', otpLimiter, resetPasswordWithOtp);
+router.post('/reset-password', otpLimiter, defaultTenant, resetPasswordWithOtp);
 
 // POST /api/auth/fcm-token
 // FCM Push Token সেভ করা (login করা user)
@@ -100,12 +121,12 @@ router.post('/fcm-token', auth, saveFCMToken);
 
 // POST /api/auth/check-email
 // Google Login এর পর email দিয়ে কাস্টমার/কর্মী চেক
-router.post('/check-email', checkEmailType);
+router.post('/check-email', defaultTenant, checkEmailType);
 
 // POST /api/auth/customer-login
 // কাস্টমার কোড + ফোন নম্বর দিয়ে কাস্টমার পোর্টালে লগইন
 // customers টেবিলে password নেই — customer_code + phone দিয়ে verify
 // ✅ loginLimiter: ১৫ মিনিটে ১০টি — brute force রোধ
-router.post('/customer-login', loginLimiter, customerLogin);
+router.post('/customer-login', loginLimiter, defaultTenant, customerLogin);
 
 module.exports = router;
