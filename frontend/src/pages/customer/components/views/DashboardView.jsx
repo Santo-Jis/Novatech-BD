@@ -153,7 +153,13 @@ export default function DashboardView({
       />
 
       {/* ═══ MAIN CONTENT ════════════════════════════════════════ */}
-      <div className="px-4 pb-10" style={{ marginTop: -46 }}>
+      {/* ✅ FIX (Session 10): -46px ছিল, যা Tab Bar row-কে (Tab Card-এর একদম উপরের
+          অংশ) এখনো গাঢ় নীল header-এর ব্যাকগ্রাউন্ডের উপর বসিয়ে দিচ্ছিল — ফলে
+          হালকা ধূসর ট্যাব টেক্সট (text-cp-text-muted) কার্যত অদৃশ্য হয়ে যাচ্ছিল।
+          -28px করা হলো যাতে balance card গুলো এখনো সুন্দরভাবে overlap করে (floating
+          card effect বজায় থাকে) কিন্তু Tab Bar সবসময় সাদা কার্ডের নিজের background-এর
+          উপর বসে, header-এর অন্ধকার অংশ স্পর্শ না করে। */}
+      <div className="px-4 pb-10" style={{ marginTop: -28 }}>
 
         {/* Unread Banner */}
         {unreadBanner && (() => {
@@ -184,7 +190,10 @@ export default function DashboardView({
         <div className="bg-cp-bg-surface rounded-[24px] overflow-hidden shadow-[0_4px_24px_rgba(10,46,92,0.08)]">
 
           {/* Tab Bar — pill-style segmented control (ডিজাইন সিস্টেম অনুযায়ী) */}
-          <div className="flex overflow-x-auto gap-1.5 p-2 bg-cp-bg-alt/60">
+          {/* ✅ FIX (Session 10): /60 translucent bg বাদ দিয়ে solid bg-cp-bg-alt করা
+              হলো — নিচে যাই থাকুক (header-এর গাঢ় নীল হোক বা সাদা কার্ড), ট্যাব
+              টেক্সট সবসময় নিজের স্বাভাবিক কনট্রাস্টে দেখা যাবে। */}
+          <div className="flex overflow-x-auto gap-1.5 p-2 bg-cp-bg-alt">
             {tabs.map((t) => {
               const active = activeTab === t.id
               return (
