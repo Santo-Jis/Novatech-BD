@@ -17,6 +17,8 @@ const {
     rejectCompanyRequest,
     disconnectCompany,
     getAllCompanyOrders,
+    getAllCompanyInvoices,
+    getAllCompanyCreditSummary,
     switchCompany,
 } = require('../controllers/customerPortalConnection.controller');
 
@@ -29,6 +31,8 @@ router.post('/:id/accept',        portalAuth, acceptCompanyRequest);
 router.post('/:id/reject',        portalAuth, rejectCompanyRequest);
 router.post('/:id/disconnect',    portalAuth, disconnectCompany);
 router.get('/all-orders',         portalAuth, getAllCompanyOrders);
+router.get('/all-invoices',       portalAuth, getAllCompanyInvoices);       // ✅ NEW (Session 13)
+router.get('/all-credit-summary', portalAuth, getAllCompanyCreditSummary); // ✅ NEW (Session 13)
 router.post('/switch',            portalAuth, switchCompany); // ✅ NEW (Session 11)
 
 module.exports = router;

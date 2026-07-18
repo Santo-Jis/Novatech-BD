@@ -4,12 +4,11 @@
 
 import CreditRing from './CreditRing'
 import NotificationBell from './NotificationBell'
-import CompanySwitcher from '../company/CompanySwitcher'
 
 export default function DashboardHeader({
   customer, fmtCur, portalJWT,
   notifications, unreadCount, showBell, setShowBell, markAllAsRead, markOneRead, onTabChange,
-  onLogoutClick, switchCompany, toast,
+  onLogoutClick,
 }) {
   return (
     <div className="relative overflow-hidden bg-gradient-to-br from-cp-trust-900 via-cp-trust-900 to-cp-trust-700 px-5 pt-12 pb-[90px]">
@@ -24,7 +23,13 @@ export default function DashboardHeader({
       <div className="relative flex justify-between items-start mb-7">
         <div className="min-w-0">
           <span className="text-[9px] text-white/35 tracking-[2px] uppercase block mb-1">CUSTOMER PORTAL</span>
-          <CompanySwitcher customer={customer} portalJWT={portalJWT} switchCompany={switchCompany} toast={toast} />
+          {/* ✅ FIX (Session 13): CompanySwitcher (session-switch) সরিয়ে সাধারণ
+              শপ-নামে ফেরত আনা হলো। 01-Requirements-Spec.md অনুযায়ী সঠিক প্যাটার্ন
+              হলো aggregate + company-ট্যাগ (এক লিস্টে সব কোম্পানি), সেশন সুইচ না —
+              তাই এটা header-এর প্রধান নেভিগেশন হিসেবে রাখা ঠিক না। CompanySwitcher.jsx
+              কম্পোনেন্ট ও backend switch endpoint কোডে থেকে গেল, ভবিষ্যতে অন্য কোনো
+              দরকারে (যেমন per-company সেটিংস স্ক্রিন) কাজে লাগতে পারে। */}
+          <h1 className="text-xl font-bold text-white leading-tight font-cp-head truncate">{customer.shop_name}</h1>
           <div className="flex items-center gap-1.5 mt-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-cp-confidence-600 flex-shrink-0 shadow-[0_0_8px_rgba(14,155,108,0.9)]" />
             <span className="text-[10px] text-white/40 truncate">{customer.owner_name} • {customer.customer_code}</span>
