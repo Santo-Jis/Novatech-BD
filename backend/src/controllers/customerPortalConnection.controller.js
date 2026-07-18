@@ -298,6 +298,69 @@ const getAllCompanyOrders = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET /api/portal/connections/all-invoices
+// ✅ NEW (Session 13 — spec correction)
+// 01-Requirements-Spec.md ধারা ৩.১ অনুযায়ী সঠিক প্যাটার্ন: ডাটা merge হয় না,
+// শুধু UI-তে aggregate + company-ট্যাগ দেখানো হয়। ঠিক getAllCompanyOrders-এর
+// মতোই — person_id দিয়ে সব connected কোম্পানির ইনভয়েস এক লিস্টে, প্রতিটায়
+// কোম্পানির নাম/লোগো ট্যাগসহ।
+// ============================================================
+const getAllCompanyInvoices = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser.customer_id);
+        const result = await query(
+            `SELECT st.id, st.invoice_number, st.total_amount, st.net_amount,
+                    st.payment_method, st.created_at,
+                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+             FROM sales_transactions st
+             JOIN customers c ON c.id = st.customer_id
+             JOIN tenants t   ON t.id = c.tenant_id
+             WHERE c.person_id = $1
+             ORDER BY st.created_at DESC
+             LIMIT 200`,
+            [personId]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getAllCompanyInvoices error:', err.message);
+        res.status(500).json({ success: false, message: 'ইনভয়েস তালিকা আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/connections/all-credit-summary
+// ✅ NEW (Session 13 — spec correction)
+// প্রতিটা connected কোম্পানির ক্রেডিট লিমিট/বর্তমান বকেয়া — এক লিস্টে,
+// company ট্যাগসহ। Summary ট্যাব ভবিষ্যতে এটা দিয়ে "সব কোম্পানি মিলিয়ে
+// মোট বকেয়া" + "কোম্পানি-ভিত্তিক ব্রেকডাউন" দুটোই দেখাতে পারবে।
+// ============================================================
+const getAllCompanyCreditSummary = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser.customer_id);
+        const result = await query(
+            `SELECT c.id AS customer_id, c.customer_code, c.credit_limit, c.current_credit,
+                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+             FROM customer_company_connections ccc
+             JOIN customers c ON c.id = ccc.customer_id
+             JOIN tenants t   ON t.id = ccc.tenant_id
+             WHERE ccc.person_id = $1 AND ccc.status = 'connected'
+             ORDER BY ccc.created_at ASC`,
+            [personId]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getAllCompanyCreditSummary error:', err.message);
+        res.status(500).json({ success: false, message: 'ক্রেডিট সারাংশ আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 // ── Refresh-cookie helper (Session 11 fix) ──────────────────────
 // customerPortal.controller.js-এ একই নামের helper আছে, কিন্তু সেই ফাইল
 // স্পর্শ না করার নীতি মেনে (portalAuthShared.js-এর মতোই) এখানে আলাদা
@@ -420,5 +483,7 @@ module.exports = {
     rejectCompanyRequest,
     disconnectCompany,
     getAllCompanyOrders,
+    getAllCompanyInvoices,
+    getAllCompanyCreditSummary,
     switchCompany,
 };
