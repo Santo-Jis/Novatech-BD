@@ -1,3 +1,7 @@
+const { seedPlatformStaffFromEnv } = require('./bootstrap/seedPlatformStaff');
+seedPlatformStaffFromEnv();
+const { seedPlatformStaffFromEnv } = require('./bootstrap/seedPlatformStaff');
+seedPlatformStaffFromEnv();
 require('dotenv').config();
 
 const logger = require('./config/logger');
@@ -364,6 +368,9 @@ const PORT = process.env.PORT || 5000;
 // test mode-এ listen করি না — supertest নিজেই handle করে
 // এতে background jobs চলে না, port conflict হয় না, worker leak হয় না
 if (process.env.NODE_ENV !== 'test') {
+const { seedPlatformStaffFromEnv } = require('./bootstrap/seedPlatformStaff');
+seedPlatformStaffFromEnv();
+
     app.listen(PORT, "0.0.0.0", () => {
         logger.info('');
         logger.info('╔════════════════════════════════════════╗');
