@@ -409,6 +409,113 @@ const getAllCompanyCreditSummary = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET /api/portal/connections/all-payment-history
+// ✅ NEW (Session 15) — Payments ট্যাব redesign
+// পুরনো getPaymentHistory (customerPortal.controller.js)-এর মতোই cash +
+// credit_payments UNION প্যাটার্ন, কিন্তু person_id দিয়ে সব কানেক্টেড
+// কোম্পানি জুড়ে অ্যাগ্রিগেট করা, company ট্যাগসহ।
+// query params: page, limit, type (cash|credit), date_from, date_to, tenant_id
+// ============================================================
+const getAllCompanyPaymentHistory = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser.customer_id);
+
+        const page  = Math.max(parseInt(req.query.page)  || 1, 1);
+        const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 50);
+        const offset = (page - 1) * limit;
+
+        const typeFilter = (req.query.type || '').trim().toLowerCase();
+        const date_from  = req.query.date_from || null;
+        const date_to    = req.query.date_to   || null;
+        const tenantId   = req.query.tenant_id  || null;
+
+        // params ইনডেক্স মিলিয়ে দুই ব্রাঞ্চেই একই ফিল্টার বসানো হচ্ছে
+        const params = [personId];
+        let extraClause = '';
+        if (date_from) { params.push(date_from); extraClause += ` AND created_at >= $${params.length}::date`; }
+        if (date_to)   { params.push(date_to);   extraClause += ` AND created_at < ($${params.length}::date + INTERVAL '1 day')`; }
+        if (tenantId)  { params.push(tenantId);  extraClause += ` AND tenant_id = $${params.length}`; }
+
+        const cashBranch = `
+            SELECT st.cash_received AS amount, 'cash' AS payment_type, st.invoice_number AS reference,
+                   u.name_bn AS collected_by, st.created_at,
+                   t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+            FROM sales_transactions st
+            JOIN customers c ON c.id = st.customer_id
+            JOIN tenants t   ON t.id = c.tenant_id
+            JOIN users u     ON u.id = st.worker_id
+            WHERE c.person_id = $1
+              AND (st.otp_verified = true OR st.otp_skipped = true)
+              AND st.cash_received > 0
+              ${extraClause}`;
+
+        const creditBranch = `
+            SELECT cp.amount AS amount, 'credit' AS payment_type, cp.notes AS reference,
+                   u.name_bn AS collected_by, cp.created_at,
+                   t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+            FROM credit_payments cp
+            JOIN customers c ON c.id = cp.customer_id
+            JOIN tenants t   ON t.id = c.tenant_id
+            JOIN users u     ON u.id = cp.worker_id
+            WHERE c.person_id = $1
+              ${extraClause}`;
+
+        let unionSQL;
+        if (typeFilter === 'cash')        unionSQL = cashBranch;
+        else if (typeFilter === 'credit') unionSQL = creditBranch;
+        else                               unionSQL = `${cashBranch} UNION ALL ${creditBranch}`;
+
+        params.push(limit, offset);
+        const limitIdx  = params.length - 1;
+        const offsetIdx = params.length;
+
+        const result = await query(
+            `SELECT *, COUNT(*) OVER() AS total_count
+             FROM (${unionSQL}) AS combined
+             ORDER BY created_at DESC
+             LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+            params
+        );
+
+        const total      = result.rows.length > 0 ? parseInt(result.rows[0].total_count) : 0;
+        const totalPages = Math.max(Math.ceil(total / limit), 1);
+        const rows        = result.rows.map(({ total_count, ...rest }) => rest);
+
+        // সারাংশ (ফিল্টার ছাড়া, সব সময়ের জন্য) — শুধু tenant ফিল্টার প্রযোজ্য হলে সেটাও মানা হয়
+        const summaryParams = tenantId ? [personId, tenantId] : [personId];
+        const summaryTenantClause = tenantId ? `AND c.tenant_id = $2` : '';
+        const summaryResult = await query(
+            `SELECT
+                 COALESCE(SUM(CASE WHEN payment_type = 'cash'   THEN amount ELSE 0 END), 0) AS total_cash_received,
+                 COALESCE(SUM(CASE WHEN payment_type = 'credit' THEN amount ELSE 0 END), 0) AS total_credit_collected
+             FROM (
+                 SELECT st.cash_received AS amount, 'cash' AS payment_type, c.tenant_id
+                 FROM sales_transactions st JOIN customers c ON c.id = st.customer_id
+                 WHERE c.person_id = $1 AND (st.otp_verified = true OR st.otp_skipped = true) AND st.cash_received > 0 ${summaryTenantClause}
+                 UNION ALL
+                 SELECT cp.amount, 'credit' AS payment_type, c.tenant_id
+                 FROM credit_payments cp JOIN customers c ON c.id = cp.customer_id
+                 WHERE c.person_id = $1 ${summaryTenantClause}
+             ) AS all_payments`,
+            summaryParams
+        );
+
+        res.json({
+            success: true,
+            data: rows,
+            summary: summaryResult.rows[0],
+            pagination: { page, limit, total, total_pages: totalPages },
+        });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getAllCompanyPaymentHistory error:', err.message);
+        res.status(500).json({ success: false, message: 'পেমেন্ট হিস্ট্রি আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 // ── Refresh-cookie helper (Session 11 fix) ──────────────────────
 // customerPortal.controller.js-এ একই নামের helper আছে, কিন্তু সেই ফাইল
 // স্পর্শ না করার নীতি মেনে (portalAuthShared.js-এর মতোই) এখানে আলাদা
@@ -533,5 +640,6 @@ module.exports = {
     getAllCompanyOrders,
     getAllCompanyInvoices,
     getAllCompanyCreditSummary,
+    getAllCompanyPaymentHistory,
     switchCompany,
 };

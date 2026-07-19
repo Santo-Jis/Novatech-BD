@@ -14,6 +14,7 @@ import { fmt, fmtDate } from '../../utils/helpers'
 import { useEffect, useState } from 'react'
 import InvoiceCard from '../InvoiceCard'
 import InvoicesTab from '../InvoicesTab'
+import PaymentsTab from '../PaymentsTab'
 import OrderRequestTab from '../OrderRequestTab'
 import CustomerAIChat from '../../CustomerAIChat'
 
@@ -98,7 +99,7 @@ export default function DashboardView({
     { id:'summary',    label:'সারসংক্ষেপ' },
     { id:'orders',     label:'🛒 অর্ডার' },
     { id:'invoices',   label:`🧾 ইনভয়েস` },
-    { id:'payments',   label:`পরিশোধ (${paymentTotal > 0 ? paymentTotal : credit_payments.length})` },
+    { id:'payments',   label:`পরিশোধ` },
     { id:'returns',    label:`🔄 রিটার্ন${returnReqTotal > 0 ? ` (${returnReqTotal})` : ''}` },
     { id:'credit_req', label:'💳 লিমিট' },
     { id:'complaints', label:'📣 অভিযোগ' },
@@ -326,7 +327,10 @@ export default function DashboardView({
             )}
 
             {/* ══ পরিশোধ ══ */}
-            {activeTab === 'payments' && (
+            {/* ══ পেমেন্ট ══ */}
+            {/* ✅ REDESIGNED (Session 15): aggregate + company-ট্যাগ প্যাটার্নে, self-contained PaymentsTab */}
+            {activeTab === 'payments' && <PaymentsTab portalJWT={portalJWT} />}
+            {false && (
               <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                 <div style={{ display:'flex', gap:8 }}>
                   <button onClick={() => setPaymentFilterOpen(v => !v)}
