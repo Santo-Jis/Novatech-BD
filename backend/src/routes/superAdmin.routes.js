@@ -15,11 +15,33 @@
  *   X-Super-Admin-Key: <সেই same string>
  */
 
-const express = require('express');
-const router  = express.Router();
-const ctrl    = require('../controllers/superAdmin.controller');
+const express     = require('express');
+const router      = express.Router();
+const rateLimit    = require('express-rate-limit');
+const crypto       = require('crypto');
+const ctrl         = require('../controllers/superAdmin.controller');
 
-// Super Admin auth — simple secret key
+// ✅ Phase 2 (Security Hardening): brute-force রোধে rate limit।
+// /superadmin/api প্রথম থেকেই /api/ prefix-এর বাইরে ছিল বলে global
+// apiLimiter এখানে কখনো apply হতো না — এখন dedicated limiter বসানো হলো।
+const superAdminLimiter = rateLimit({
+  windowMs:        15 * 60 * 1000, // ১৫ মিনিট
+  max:             20,             // দৈনন্দিন ব্যবহারের জন্য যথেষ্ট, brute-force ঠেকানোর জন্য কড়া
+  standardHeaders: true,
+  legacyHeaders:   false,
+  message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
+});
+
+// ✅ Phase 2: timing-safe comparison — plain `!==` টাইমিং অ্যাটাকের
+// (ছোট হলেও theoretical) ঝুঁকি রাখে, crypto.timingSafeEqual দিয়ে সেটা এড়ানো।
+function safeCompare(a, b) {
+  const bufA = Buffer.from(String(a || ''));
+  const bufB = Buffer.from(String(b || ''));
+  if (bufA.length !== bufB.length) return false; // দৈর্ঘ্য না মিললে সরাসরি false (timingSafeEqual দৈর্ঘ্য না মিললে throw করে)
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+// Super Admin auth — simple secret key (timing-safe compare)
 const superAdminAuth = (req, res, next) => {
   const key = req.headers['x-super-admin-key'];
 
@@ -28,12 +50,13 @@ const superAdminAuth = (req, res, next) => {
     return res.status(500).json({ success: false, message: 'Server misconfigured' });
   }
 
-  if (!key || key !== process.env.SUPER_ADMIN_SECRET_KEY) {
+  if (!key || !safeCompare(key, process.env.SUPER_ADMIN_SECRET_KEY)) {
     return res.status(401).json({ success: false, message: 'Unauthorized' });
   }
   next();
 };
 
+router.use(superAdminLimiter);
 router.use(superAdminAuth);
 
 // Tenant CRUD

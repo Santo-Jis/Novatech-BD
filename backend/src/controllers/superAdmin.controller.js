@@ -14,6 +14,26 @@ const { query } = require('../config/db');
 const bcrypt    = require('bcryptjs');
 const { clearTenantCache } = require('../middlewares/tenantResolver');
 
+// ✅ Phase 2 (Security Hardening, 19 July 2026): Audit logging।
+// "Novatech BD - Support Role & Panel" প্রজেক্টের বানানো
+// platform_audit_log টেবিল পুনঃব্যবহার করা হচ্ছে (নতুন টেবিল না,
+// coordinate করেই এই সিদ্ধান্ত — দেখো Technical Architecture Doc §২)।
+// staff_id = null, staff_email = 'super-admin-key' — placeholder,
+// যতক্ষণ না key-based auth individual platform_staff login-এ migrate হয়।
+// লগ ব্যর্থ হলেও মূল action (tenant create/suspend/delete) যেন আটকে না
+// যায় সেজন্য try/catch দিয়ে wrap করা (fail-open, শুধু console এ warn)।
+const logAudit = async (req, action, targetId, details) => {
+  try {
+    await query(
+      `INSERT INTO platform_audit_log (staff_id, staff_email, action, target_type, target_id, details, ip_address)
+       VALUES (NULL, 'super-admin-key', $1, 'tenant', $2, $3, $4)`,
+      [action, targetId, JSON.stringify(details || {}), req.ip || null]
+    );
+  } catch (err) {
+    console.error('[superAdmin.logAudit] audit log ব্যর্থ (মূল action অব্যাহত):', err.message);
+  }
+};
+
 // ─── সব Tenant দেখো ────────────────────────────────────────
 const getAllTenants = async (req, res) => {
   try {
@@ -87,6 +107,9 @@ const createTenant = async (req, res) => {
       [tenant.id, plan]
     );
 
+    // ৫. Audit log (Phase 2)
+    await logAudit(req, 'tenant.create', tenant.id, { slug, company_name, plan });
+
     return res.status(201).json({
       success: true,
       message: `Tenant "${company_name}" created!`,
@@ -112,6 +135,9 @@ const updateTenantStatus = async (req, res) => {
   }
 
   try {
+    const before = await query(`SELECT status FROM tenants WHERE id = $1`, [tenantId]);
+    const oldStatus = before.rows[0]?.status || null;
+
     await query(
       `UPDATE tenants SET status = $1, updated_at = NOW() WHERE id = $2`,
       [status, tenantId]
@@ -124,6 +150,9 @@ const updateTenantStatus = async (req, res) => {
     );
 
     clearTenantCache();
+
+    // Audit log (Phase 2) — reason সহ, কেন suspend/cancel করা হলো সেটা ধরা থাকে
+    await logAudit(req, 'tenant.status_change', tenantId, { old_status: oldStatus, new_status: status, reason: reason || null });
 
     return res.json({ success: true, message: `Tenant status updated to ${status}` });
   } catch (err) {
@@ -174,6 +203,15 @@ const updateTenantPlan = async (req, res) => {
     );
 
     clearTenantCache();
+
+    // Audit log (Phase 2)
+    await logAudit(req, 'tenant.plan_change', tenantId, {
+      old_plan: oldPlan,
+      new_plan: plan,
+      max_employees: max_employees || defaults.max_employees,
+      max_customers: max_customers || defaults.max_customers,
+      ai_tokens_monthly: ai_tokens_monthly || defaults.ai_tokens_monthly,
+    });
 
     return res.json({ success: true, message: `Plan updated to ${plan}` });
   } catch (err) {
@@ -230,9 +268,18 @@ const deleteTenant = async (req, res) => {
   }
 
   try {
+    // Delete-এর আগে snapshot নেওয়া — row চলে গেলেও audit log-এ কী ডিলিট হলো সেটা থাকবে
+    const before = await query(`SELECT slug, company_name, plan, status FROM tenants WHERE id = $1`, [tenantId]);
+    const tenantSnapshot = before.rows[0] || null;
+
     // CASCADE delete হবে (সব related data চলে যাবে)
     await query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
     clearTenantCache();
+
+    // Audit log (Phase 2) — response পাঠানোর আগে synchronously commit,
+    // যাতে delete হয়ে গেলেও log commit না হওয়ার race condition না ঘটে
+    await logAudit(req, 'tenant.delete', tenantId, tenantSnapshot);
+
     return res.json({ success: true, message: 'Tenant and all data deleted' });
   } catch (err) {
     console.error('[superAdmin.deleteTenant]', err);

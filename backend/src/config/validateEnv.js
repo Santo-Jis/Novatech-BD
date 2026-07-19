@@ -161,6 +161,24 @@ const validateEnv = () => {
         }
     }
 
+    // ── ৩.৫ SUPER_ADMIN_SECRET_KEY (Phase 2, 19 July 2026) ──
+    // ইচ্ছাকৃতভাবে SECRETS array-এ রাখা হয়নি — ওই array-এর minLen
+    // check production-এ সবসময় fatal (process.exit), আর এই key-টা
+    // শুধু /superadmin/api-কেই protect করে, বাকি পুরো tenant-facing
+    // app-কে না। তাই এখানে missing/দুর্বল হলেও শুধু warn করা হচ্ছে —
+    // পুরো লাইভ business app বন্ধ হয়ে যাওয়ার ঝুঁকি না নিয়ে। এই key
+    // দুর্বল হলে /superadmin/api নিজে থেকেই 401/500 দেবে (routes ফাইলে
+    // চেক আছে), কিন্তু বাকি সবকিছু (employee/customer login ইত্যাদি)
+    // অক্ষত থাকবে।
+    const superAdminKey = process.env.SUPER_ADMIN_SECRET_KEY;
+    if (!superAdminKey || superAdminKey.trim() === '') {
+        warnings.push('SUPER_ADMIN_SECRET_KEY সেট নেই  →  "/superadmin/api" সব request-এ 500 দেবে (বাকি app ঠিক থাকবে)');
+    } else if (isPlaceholder(superAdminKey)) {
+        warnings.push('SUPER_ADMIN_SECRET_KEY এখনো placeholder মান  →  আসল random secret বসান');
+    } else if (superAdminKey.trim().length < 32) {
+        warnings.push(`SUPER_ADMIN_SECRET_KEY খুব ছোট (${superAdminKey.trim().length} char, সুপারিশকৃত minimum 32)  →  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" দিয়ে নতুন key বসান`);
+    }
+
     // ── ৪. Extra: JWT secret দুটো একই হওয়া উচিত নয় ─────────
     const accessSecret  = process.env.JWT_ACCESS_SECRET  || '';
     const refreshSecret = process.env.JWT_REFRESH_SECRET || '';
