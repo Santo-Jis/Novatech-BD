@@ -195,6 +195,8 @@ const invoiceTargetRoutes       = require('./routes/invoiceTarget.routes');    /
 const batteryRoutes             = require('./routes/battery.routes');          // ← নতুন (Battery Alert)
 const onboardingRoutes          = require('./routes/onboarding.routes');       // ← নতুন (SaaS: company register)
 const superAdminRoutes          = require('./routes/superAdmin.routes');       // ← নতুন (SaaS: super admin panel)
+const platformAuthRoutes    = require('./routes/platformAuth.routes');
+const platformSupportRoutes = require('./routes/platformSupport.routes');
 const connectionRoutes          = require('./routes/connection.routes');       // ← নতুন (Multi-Company: staff-side connections)
 const portalConnectionRoutes    = require('./routes/customerPortalConnection.routes'); // ← নতুন (Multi-Company: customer-side connections)
 const referenceRoutes           = require('./routes/reference.routes');        // ← নতুন (Phase 2: বিভাগ/জেলা/বিজনেস ফিল্ড)
@@ -243,6 +245,8 @@ app.use('/api/invoice-target',          invoiceTargetRoutes);  // ← নতু�
 app.use('/api/battery',                 batteryRoutes);        // ← নতুন
 app.use('/api',          onboardingRoutes);   // ← নতুন (SaaS): POST /api/register, GET /api/register/check-slug/:slug
 app.use('/superadmin/api', superAdminRoutes); // ← নতুন (SaaS): X-Super-Admin-Key দিয়ে protected, /api ও tenant middleware-এর বাইরে
+app.use('/platform/api/auth', platformAuthRoutes);
+app.use('/platform/api/support', platformSupportRoutes);
 jisAiRoutes(app);                                              // ✅ JIS-AI WhatsApp integration
 
 // ============================================================
