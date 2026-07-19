@@ -65,6 +65,7 @@ router.post  ('/tenants',                  ctrl.createTenant);
 router.get   ('/tenants/:tenantId',        ctrl.getTenantDetails);
 router.patch ('/tenants/:tenantId/status', ctrl.updateTenantStatus);
 router.patch ('/tenants/:tenantId/plan',   ctrl.updateTenantPlan);
+router.post  ('/tenants/:tenantId/reset-admin-password', ctrl.resetTenantAdminPassword); // ✅ Phase 3 TICKET-06
 router.delete('/tenants/:tenantId',        ctrl.deleteTenant);
 
 module.exports = router;

@@ -34,19 +34,60 @@ const logAudit = async (req, action, targetId, details) => {
   }
 };
 
-// ─── সব Tenant দেখো ────────────────────────────────────────
+// ─── সব Tenant দেখো (✅ Phase 3 TICKET-05: pagination + search) ──
 const getAllTenants = async (req, res) => {
   try {
+    // page/limit — ইউজার ভুল/malicious value দিলেও safe default-এ পড়ে
+    let page  = parseInt(req.query.page, 10);
+    let limit = parseInt(req.query.limit, 10);
+    if (!Number.isInteger(page)  || page  < 1) page  = 1;
+    if (!Number.isInteger(limit) || limit < 1) limit = 20;
+    if (limit > 100) limit = 100; // অতিরিক্ত বড় limit দিয়ে DB-তে চাপ দেওয়া রোধ
+
+    const offset = (page - 1) * limit;
+    const search = (req.query.search || '').trim();
+    const status = (req.query.status || '').trim();
+
+    const conditions = [];
+    const params     = [];
+
+    if (search) {
+      params.push(`%${search}%`);
+      conditions.push(`(t.slug ILIKE $${params.length} OR t.company_name ILIKE $${params.length} OR t.company_name_bn ILIKE $${params.length})`);
+    }
+    if (status) {
+      params.push(status);
+      conditions.push(`t.status = $${params.length}`);
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countResult = await query(
+      `SELECT COUNT(*) AS total FROM tenants t ${whereClause}`,
+      params
+    );
+    const total = parseInt(countResult.rows[0].total, 10);
+
+    params.push(limit);
+    params.push(offset);
     const result = await query(`
       SELECT
         t.*,
         (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id)     AS employee_count,
         (SELECT COUNT(*) FROM customers c WHERE c.tenant_id = t.id) AS customer_count
       FROM tenants t
+      ${whereClause}
       ORDER BY t.created_at DESC
-    `);
+      LIMIT $${params.length - 1} OFFSET $${params.length}
+    `, params);
 
-    return res.json({ success: true, data: result.rows });
+    return res.json({
+      success: true,
+      data: result.rows,
+      pagination: {
+        page, limit, total,
+        total_pages: Math.max(1, Math.ceil(total / limit)),
+      },
+    });
   } catch (err) {
     console.error('[superAdmin.getAllTenants]', err);
     return res.status(500).json({ success: false, message: err.message });
@@ -164,7 +205,20 @@ const updateTenantStatus = async (req, res) => {
 // ─── Tenant plan পরিবর্তন ────────────────────────────────────
 const updateTenantPlan = async (req, res) => {
   const { tenantId } = req.params;
-  const { plan, max_employees, max_customers, ai_tokens_monthly } = req.body;
+  const { plan, max_employees, max_customers, ai_tokens_monthly, payment_reference, force_no_payment } = req.body;
+
+  // ✅ Phase 3 TICKET-07: blind ৩০-দিন extension বন্ধ — হয় payment_reference
+  // দিতে হবে, নাহলে সচেতনভাবে force_no_payment:true (যেমন: বিনামূল্যে upgrade/
+  // discount দেওয়ার সিদ্ধান্ত) পাঠাতে হবে। কোনোটাই না দিলে 400।
+  if (!payment_reference && force_no_payment !== true) {
+    return res.status(400).json({
+      success: false,
+      message: 'payment_reference দিন, অথবা সচেতনভাবে বিনামূল্যে extend করতে চাইলে force_no_payment: true পাঠান',
+    });
+  }
+  const paymentCheck = payment_reference
+    ? await verifyPlanPayment(payment_reference)
+    : { verified: false, reason: 'force_no_payment override — payment_reference দেওয়া হয়নি' };
 
   const planDefaults = {
     basic:      { max_employees: 10,   max_customers: 200,   ai_tokens_monthly: 50000   },
@@ -204,16 +258,23 @@ const updateTenantPlan = async (req, res) => {
 
     clearTenantCache();
 
-    // Audit log (Phase 2)
+    // Audit log (Phase 2) + payment verification result (Phase 3 TICKET-07)
     await logAudit(req, 'tenant.plan_change', tenantId, {
       old_plan: oldPlan,
       new_plan: plan,
       max_employees: max_employees || defaults.max_employees,
       max_customers: max_customers || defaults.max_customers,
       ai_tokens_monthly: ai_tokens_monthly || defaults.ai_tokens_monthly,
+      payment_reference: payment_reference || null,
+      payment_verified: paymentCheck.verified,
+      payment_verification_note: paymentCheck.reason,
     });
 
-    return res.json({ success: true, message: `Plan updated to ${plan}` });
+    return res.json({
+      success: true,
+      message: `Plan updated to ${plan}`,
+      payment_verification: paymentCheck,
+    });
   } catch (err) {
     console.error('[superAdmin.updateTenantPlan]', err);
     return res.status(500).json({ success: false, message: err.message });
@@ -287,6 +348,75 @@ const deleteTenant = async (req, res) => {
   }
 };
 
+// ─── Phase 3 TICKET-06: Tenant admin password reset ──────────
+// Direct email/SMS পাঠানোর infra এই ফাইলে নেই বলে (existing forgot-password
+// flow user নিজে ট্রিগার করে, এখানে super admin অন্য কারো হয়ে করছে),
+// একটা নিরাপদ, সাময়িক random password জেনারেট করে দেওয়া হচ্ছে —
+// super admin সেটা তারপর client-কে (ফোন/হোয়াটসঅ্যাপে) জানাবে,
+// client প্রথম লগইনের পরই normal change-password ফিচার দিয়ে বদলে নেবে।
+const crypto = require('crypto');
+
+const resetTenantAdminPassword = async (req, res) => {
+  const { tenantId } = req.params;
+  const { admin_email } = req.body; // একাধিক admin থাকলে নির্দিষ্ট করে দিতে পারবে, না দিলে প্রথম active admin
+
+  try {
+    const tenantCheck = await query(`SELECT id, company_name FROM tenants WHERE id = $1`, [tenantId]);
+    if (tenantCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Tenant পাওয়া যায়নি' });
+    }
+
+    const params = admin_email
+      ? [tenantId, admin_email]
+      : [tenantId];
+
+    const adminQuery = admin_email
+      ? `SELECT id, name_bn, email, phone FROM users WHERE tenant_id = $1 AND email = $2 AND role = 'admin' AND status = 'active' LIMIT 1`
+      : `SELECT id, name_bn, email, phone FROM users WHERE tenant_id = $1 AND role = 'admin' AND status = 'active' ORDER BY created_at ASC LIMIT 1`;
+
+    const adminResult = await query(adminQuery, params);
+    if (adminResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'এই tenant-এ কোনো active admin ইউজার পাওয়া যায়নি' });
+    }
+    const admin = adminResult.rows[0];
+
+    // ১২-ক্যারেক্টার cryptographically-random সাময়িক পাসওয়ার্ড
+    const tempPassword = crypto.randomBytes(9).toString('base64').replace(/[+/=]/g, '').slice(0, 12);
+    const hashedPass   = await bcrypt.hash(tempPassword, 10);
+
+    await query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`, [hashedPass, admin.id]);
+
+    // Audit log — পাসওয়ার্ড নিজেই log-এ যাবে না, শুধু কার জন্য reset হলো সেটা
+    await logAudit(req, 'tenant.admin_password_reset', tenantId, { admin_user_id: admin.id, admin_email: admin.email });
+
+    return res.json({
+      success: true,
+      message: 'সাময়িক পাসওয়ার্ড তৈরি হয়েছে — client-কে জানিয়ে দিন, প্রথম লগইনের পরই এটা বদলে ফেলার পরামর্শ দিন',
+      data: {
+        admin_name:     admin.name_bn,
+        admin_email:    admin.email,
+        admin_phone:    admin.phone,
+        temp_password:  tempPassword, // ⚠️ শুধু এই একবারই response-এ আসবে, DB-তে plaintext সংরক্ষণ হয় না
+      },
+    });
+  } catch (err) {
+    console.error('[superAdmin.resetTenantAdminPassword]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ─── Phase 3 TICKET-07: Plan-upgrade payment verification hook ──
+// আসল payment gateway integration আলাদা প্রজেক্ট — এখানে শুধু একটা
+// verification placeholder, যাতে blind ৩০-দিন extension বন্ধ হয় এবং
+// অন্তত manual verification ট্র্যাক করা যায়।
+const verifyPlanPayment = async (paymentReference) => {
+  if (!paymentReference || typeof paymentReference !== 'string' || paymentReference.trim().length < 4) {
+    return { verified: false, reason: 'payment_reference missing/invalid — manual verification প্রয়োজন' };
+  }
+  // TODO: আসল payment gateway (bKash/Nagad/Stripe ইত্যাদি) API দিয়ে যাচাই এখানে বসবে
+  return { verified: true, reason: 'placeholder — manual verification assumed OK, real gateway যুক্ত হলে বদলাবে' };
+};
+
 module.exports = {
   getAllTenants,
   createTenant,
@@ -294,4 +424,6 @@ module.exports = {
   updateTenantPlan,
   getTenantDetails,
   deleteTenant,
+  resetTenantAdminPassword,
+  verifyPlanPayment,
 };
