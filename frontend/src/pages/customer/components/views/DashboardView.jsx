@@ -97,7 +97,7 @@ export default function DashboardView({
   const tabs = [
     { id:'summary',    label:'সারসংক্ষেপ' },
     { id:'orders',     label:'🛒 অর্ডার' },
-    { id:'invoices',   label:`🧾 ইনভয়েস (${invoiceTotal > 0 ? invoiceTotal : total_summary?.total_invoices || 0})` },
+    { id:'invoices',   label:`🧾 ইনভয়েস` },
     { id:'payments',   label:`পরিশোধ (${paymentTotal > 0 ? paymentTotal : credit_payments.length})` },
     { id:'returns',    label:`🔄 রিটার্ন${returnReqTotal > 0 ? ` (${returnReqTotal})` : ''}` },
     { id:'credit_req', label:'💳 লিমিট' },
