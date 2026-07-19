@@ -1,7 +1,3 @@
-const { seedPlatformStaffFromEnv } = require('./bootstrap/seedPlatformStaff');
-seedPlatformStaffFromEnv();
-const { seedPlatformStaffFromEnv } = require('./bootstrap/seedPlatformStaff');
-seedPlatformStaffFromEnv();
 require('dotenv').config();
 
 const logger = require('./config/logger');
