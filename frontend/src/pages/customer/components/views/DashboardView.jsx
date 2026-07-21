@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react'
 import InvoiceCard from '../InvoiceCard'
 import InvoicesTab from '../InvoicesTab'
 import PaymentsTab from '../PaymentsTab'
+import CreditTab from '../CreditTab'
 import OrderRequestTab from '../OrderRequestTab'
 import CustomerAIChat from '../../CustomerAIChat'
 
@@ -427,7 +428,10 @@ export default function DashboardView({
             )}
 
             {/* ══ ক্রেডিট লিমিট ══ */}
-            {activeTab === 'credit_req' && (
+            {/* ✅ REDESIGNED (Session 17): aggregate + company-ট্যাগ প্যাটার্নে, self-contained CreditTab
+                (/all-credit-summary কার্ড + /limit-request ফর্ম + /all-limit-requests ইতিহাস) */}
+            {activeTab === 'credit_req' && <CreditTab portalJWT={portalJWT} />}
+            {false && (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 <div style={{ background:'linear-gradient(135deg,#1D4ED8,#7C3AED)', borderRadius:18, padding:16 }}>
                   <p style={{ margin:'0 0 10px', fontSize:9, color:'rgba(255,255,255,0.55)', fontWeight:700, textTransform:'uppercase', letterSpacing:1 }}>বর্তমান ক্রেডিট তথ্য</p>
