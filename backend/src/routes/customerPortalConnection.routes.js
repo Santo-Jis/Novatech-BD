@@ -20,6 +20,8 @@ const {
     getAllCompanyInvoices,
     getAllCompanyCreditSummary,
     getAllCompanyPaymentHistory,
+    getAllCompanyLimitRequests,
+    submitCompanyLimitRequest,
     switchCompany,
 } = require('../controllers/customerPortalConnection.controller');
 
@@ -35,6 +37,8 @@ router.get('/all-orders',         portalAuth, getAllCompanyOrders);
 router.get('/all-invoices',       portalAuth, getAllCompanyInvoices);       // ✅ NEW (Session 13)
 router.get('/all-credit-summary', portalAuth, getAllCompanyCreditSummary); // ✅ NEW (Session 13)
 router.get('/all-payment-history', portalAuth, getAllCompanyPaymentHistory); // ✅ NEW (Session 15)
+router.get('/all-limit-requests', portalAuth, getAllCompanyLimitRequests); // ✅ NEW (Session 16)
+router.post('/limit-request',     portalAuth, submitCompanyLimitRequest); // ✅ NEW (Session 16)
 router.post('/switch',            portalAuth, switchCompany); // ✅ NEW (Session 11)
 
 module.exports = router;

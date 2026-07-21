@@ -516,6 +516,119 @@ const getAllCompanyPaymentHistory = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET /api/portal/connections/all-limit-requests
+// ✅ NEW (Session 16) — Credit ট্যাব redesign
+// সব কোম্পানির ক্রেডিট লিমিট বৃদ্ধির আবেদন — এক লিস্টে, company ট্যাগসহ।
+// ============================================================
+const getAllCompanyLimitRequests = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser.customer_id);
+        const result = await query(
+            `SELECT clr.id, clr.current_limit, clr.requested_amount, clr.reason,
+                    clr.status, clr.admin_note, clr.created_at, clr.resolved_at,
+                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+             FROM credit_limit_requests clr
+             JOIN customers c ON c.id = clr.customer_id
+             JOIN tenants t   ON t.id = c.tenant_id
+             WHERE c.person_id = $1
+             ORDER BY clr.created_at DESC
+             LIMIT 30`,
+            [personId]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getAllCompanyLimitRequests error:', err.message);
+        res.status(500).json({ success: false, message: 'আবেদনের তালিকা আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/portal/connections/limit-request
+// ✅ NEW (Session 16) — company-parameterized action
+// switchCompany (session-swap) ব্যবহার না করেই নির্দিষ্ট কোম্পানির জন্য
+// ক্রেডিট লিমিট আবেদন জমা দেওয়া যাবে — body-তে connection_id দিয়ে বলে
+// দিতে হবে কোন কোম্পানির জন্য। এই প্যাটার্নটাই ভবিষ্যতে অন্য write-action
+// ট্যাবগুলোর (complaints/returns) জন্যও অনুসরণ করা হবে।
+// body: { connection_id, requested_amount, reason }
+// ============================================================
+const MAX_CREDIT_REQUEST_AGG = 10_000_000;
+const MIN_CREDIT_REQUEST_AGG =      1_000;
+
+const submitCompanyLimitRequest = async (req, res) => {
+    try {
+        const { connection_id, requested_amount, reason } = req.body;
+        const amount = parseFloat(requested_amount);
+
+        if (!connection_id) {
+            return res.status(400).json({ success: false, message: 'কোম্পানি বেছে নিন।' });
+        }
+        if (!requested_amount || isNaN(amount) || amount <= 0) {
+            return res.status(400).json({ success: false, message: 'সঠিক পরিমাণ দিন।' });
+        }
+        if (amount < MIN_CREDIT_REQUEST_AGG) {
+            return res.status(400).json({ success: false, message: 'ন্যূনতম ১,০০০ টাকার আবেদন করুন।' });
+        }
+        if (amount > MAX_CREDIT_REQUEST_AGG) {
+            return res.status(400).json({ success: false, message: 'অনুরোধকৃত পরিমাণ সর্বোচ্চ ১,০০,০০,০০০ টাকার বেশি হবে না।' });
+        }
+        if (reason && reason.trim().length > 500) {
+            return res.status(400).json({ success: false, message: 'কারণ ৫০০ অক্ষরের বেশি হবে না।' });
+        }
+
+        const personId = await getPersonId(req.portalUser.customer_id);
+
+        // এই connection সত্যিই এই person-এর এবং connected কিনা যাচাই
+        const conn = await query(
+            `SELECT c.id AS customer_id, c.credit_limit
+             FROM customer_company_connections ccc
+             JOIN customers c ON c.id = ccc.customer_id
+             WHERE ccc.id = $1 AND ccc.person_id = $2 AND ccc.status = 'connected'`,
+            [connection_id, personId]
+        );
+        if (conn.rows.length === 0) {
+            return res.status(403).json({ success: false, message: 'এই কোম্পানিতে আপনার অ্যাক্সেস নেই।' });
+        }
+        const targetCustomerId = conn.rows[0].customer_id;
+
+        const existing = await query(
+            `SELECT id FROM credit_limit_requests WHERE customer_id = $1 AND status = 'pending' LIMIT 1`,
+            [targetCustomerId]
+        );
+        if (existing.rows.length > 0) {
+            return res.status(409).json({ success: false, message: 'এই কোম্পানিতে আপনার একটি আবেদন ইতোমধ্যে প্রক্রিয়াধীন আছে।' });
+        }
+
+        const result = await query(
+            `INSERT INTO credit_limit_requests (customer_id, current_limit, requested_amount, reason, status)
+             VALUES ($1, $2, $3, $4, 'pending')
+             RETURNING id, created_at`,
+            [targetCustomerId, conn.rows[0].credit_limit, amount, reason?.trim() || null]
+        );
+
+        await query(
+            `INSERT INTO customer_notifications (customer_id, title, body, type)
+             VALUES ($1, $2, $3, 'credit_request')`,
+            [
+                targetCustomerId,
+                '📋 ক্রেডিট লিমিট আবেদন জমা হয়েছে',
+                `আপনার ৳${amount.toLocaleString()} ক্রেডিট লিমিট বৃদ্ধির আবেদন জমা হয়েছে। Manager অনুমোদন দিলে আপনাকে জানানো হবে।`
+            ]
+        );
+
+        res.status(201).json({ success: true, message: 'আবেদন সফলভাবে জমা হয়েছে।', data: { id: result.rows[0].id, created_at: result.rows[0].created_at } });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ submitCompanyLimitRequest error:', err.message);
+        res.status(500).json({ success: false, message: 'আবেদন জমা দিতে সমস্যা হয়েছে।' });
+    }
+};
+
 // ── Refresh-cookie helper (Session 11 fix) ──────────────────────
 // customerPortal.controller.js-এ একই নামের helper আছে, কিন্তু সেই ফাইল
 // স্পর্শ না করার নীতি মেনে (portalAuthShared.js-এর মতোই) এখানে আলাদা
@@ -641,5 +754,7 @@ module.exports = {
     getAllCompanyInvoices,
     getAllCompanyCreditSummary,
     getAllCompanyPaymentHistory,
+    getAllCompanyLimitRequests,
+    submitCompanyLimitRequest,
     switchCompany,
 };
