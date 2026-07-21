@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useAuthStore } from './store/auth.store'
+import { usePlatformAuthStore } from './pages/platform/store/platformAuth.store'
 import { FirebaseProvider } from './firebase/notifications'
 import PermissionSetup, { usePermissionSetup } from './components/PermissionSetup'
 import AppUpdateDialog from './components/AppUpdateDialog'
@@ -46,6 +47,16 @@ const TermsConditions = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/Term
 
 // SR Application — Customer APK-এ নেই
 const SRApplicationForm = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/SRApplicationForm'))
+
+// ── Platform Support & Admin Panel — Customer APK-এ নেই ──────
+// (platform_staff login, tenant-user auth থেকে সম্পূর্ণ আলাদা সিস্টেম)
+const PlatformLayout   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/layouts/PlatformLayout'))
+const PlatformLogin    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/Login'))
+const PlatformDashboard = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/Dashboard'))
+const PlatformTenantList   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/TenantList'))
+const PlatformTenantDetail = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/TenantDetail'))
+const PlatformUserLookup   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/UserLookup'))
+const PlatformTickets      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/Tickets'))
 
 // Shared — Customer APK-এ নেই
 const AIChat      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/AIChat'))
@@ -183,6 +194,21 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   if (!token || !user) return <Navigate to="/login" replace />
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to="/unauthorized" replace />
+  }
+  return children
+}
+
+// ============================================================
+// Platform Protected Route — platform_staff (full/support scope)
+// ============================================================
+// ⚠️ tenant-user ProtectedRoute (useAuthStore) থেকে ইচ্ছাকৃতভাবে
+// আলাদা — platform_staff একদম আলাদা JWT/টেবিলের ওপর ভিত্তি করে।
+
+const PlatformProtectedRoute = ({ children }) => {
+  const isAuthed = usePlatformAuthStore((s) => s.isAuthenticated())
+
+  if (!isAuthed) {
+    return <Navigate to="/platform/login" replace />
   }
   return children
 }
@@ -350,6 +376,21 @@ function AppWithPermissions() {
           {/* IS_CUSTOMER_APP=true হলে Vite এই পুরো block tree-shake করে */}
           {!IS_CUSTOMER_APP && (
             <>
+              {/* ── PLATFORM PANEL — platform_staff, tenant-user auth থেকে সম্পূর্ণ আলাদা ── */}
+              <Route path="/platform/login" element={<PlatformLogin />} />
+              <Route path="/platform" element={
+                <PlatformProtectedRoute>
+                  <PlatformLayout />
+                </PlatformProtectedRoute>
+              }>
+                <Route index               element={<Navigate to="dashboard" replace />} />
+                <Route path="dashboard"    element={<PlatformDashboard />} />
+                <Route path="tenants"      element={<PlatformTenantList />} />
+                <Route path="tenants/:tenantId" element={<PlatformTenantDetail />} />
+                <Route path="users"        element={<PlatformUserLookup />} />
+                <Route path="tickets"      element={<PlatformTickets />} />
+              </Route>
+
               {/* Unauthorized */}
               <Route path="/unauthorized" element={
                 <div className="min-h-screen flex items-center justify-center">

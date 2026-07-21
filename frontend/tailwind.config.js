@@ -52,6 +52,46 @@ export default {
         'cp-warning': { DEFAULT: '#F07B22', bg: '#FDEBDB' },
         'cp-error':   { DEFAULT: '#D64545', bg: '#FBE4E4' },
         'cp-info':    { DEFAULT: '#2E7BD6', bg: '#E1EEFC' },
+
+        // ============================================================
+        // ⬇️ নতুন — Platform Panel Design System (design.html — Business
+        // Admin থিম: warm serif + IBM Plex Sans)। Super Admin ও Support
+        // Panel দুটোই এই একই 'pf-' (platform) টোকেন সেট ব্যবহার করবে,
+        // যেহেতু দুটোই একই internal/business-facing admin context —
+        // আলাদা করার দরকার নেই, customer-facing 'cp-' থেকে সম্পূর্ণ পৃথক।
+        // ============================================================
+        'pf-bg': {
+          base:    '#FAF8F3',
+          surface: '#FFFFFF',
+          alt:     '#F3F1EA',
+          sunken:  '#EFEDE4',
+        },
+        'pf-primary': {
+          900: '#0F1B2E',
+          700: '#16253D',
+          500: '#2C4870',
+          300: '#6B85A8',
+          100: '#DCE3EC',
+        },
+        'pf-accent': {
+          600: '#9C6B2E',
+          300: '#C99B5A',
+          100: '#F3E6D0',
+        },
+        'pf-text': {
+          primary:   '#1F2937',
+          secondary: '#5B6472',
+          muted:     '#8B8F98',
+        },
+        'pf-border': {
+          DEFAULT: '#E4E1D8',
+          strong:  '#D0CCC0',
+          focus:   '#16253D',
+        },
+        'pf-success': { DEFAULT: '#2F7D5D', bg: '#E3F0EA' },
+        'pf-warning': { DEFAULT: '#B8860B', bg: '#F7EED9' },
+        'pf-error':   { DEFAULT: '#B3452C', bg: '#F5E4DF' },
+        'pf-info':    { DEFAULT: '#2C5C87', bg: '#E1EAF2' },
       },
       fontFamily: {
         sans: ['Hind Siliguri', 'Arial', 'sans-serif'],
@@ -60,6 +100,12 @@ export default {
         'cp-head': ['Poppins', 'Hind Siliguri', 'sans-serif'],
         'cp-body': ['Inter', 'Hind Siliguri', 'sans-serif'],
         'cp-mono': ['IBM Plex Mono', 'monospace'],
+
+        // ⬇️ নতুন — Platform Panel ফন্ট (index.html-এ আগে থেকেই Source Serif 4 +
+        // IBM Plex Sans link যোগ করা আছে, design.html-এর সাথে সামঞ্জস্যপূর্ণ)
+        'pf-head': ['Source Serif 4', 'Noto Sans Bengali', 'Georgia', 'serif'],
+        'pf-body': ['IBM Plex Sans', 'Noto Sans Bengali', 'Hind Siliguri', 'sans-serif'],
+        'pf-mono': ['IBM Plex Mono', 'monospace'],
       },
       animation: {
         'pulse-slow':   'pulse 2s infinite',
