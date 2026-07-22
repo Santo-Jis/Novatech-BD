@@ -1,67 +1,121 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { FiSearch, FiUnlock, FiKey, FiLoader, FiCheckCircle } from 'react-icons/fi'
+import {
+  FiSearch, FiUnlock, FiKey, FiLoader, FiCheckCircle,
+  FiMail as FiMailIcon, FiSmartphone, FiUser, FiShoppingBag,
+} from 'react-icons/fi'
 import platformApi from './api/platformApi'
 import StatusBadge from './components/StatusBadge'
 import { EmptyState, ErrorState } from './components/PanelStates'
 
 export default function UserLookup() {
   const [q, setQ] = useState('')
-  const [results, setResults] = useState(null)
+  const [staffResults, setStaffResults] = useState(null)
+  const [customerResults, setCustomerResults] = useState(null)
   const [error, setError] = useState('')
   const [searching, setSearching] = useState(false)
-  const [actionState, setActionState] = useState({}) // { [userId]: { unblocking, resetting, unblockedAt, resetAt } }
+  const [actionState, setActionState] = useState({}) // { [id]: { ...flags } }
 
   const handleSearch = async (e) => {
     e.preventDefault()
     if (!q.trim()) return
     setSearching(true)
     setError('')
-    setResults(null)
-    try {
-      const res = await platformApi.get('/support/users/search', { params: { q: q.trim() } })
-      setResults(res.data.data)
-    } catch (err) {
-      if (err.response?.status === 404) setResults([])
-      else if (!err._toastShown) setError('সার্চ করা যায়নি।')
-    } finally {
-      setSearching(false)
-    }
+    setStaffResults(null)
+    setCustomerResults(null)
+
+    const [staffRes, custRes] = await Promise.allSettled([
+      platformApi.get('/support/users/search', { params: { q: q.trim() } }),
+      platformApi.get('/support/customers/search', { params: { q: q.trim() } }),
+    ])
+
+    if (staffRes.status === 'fulfilled') setStaffResults(staffRes.value.data.data)
+    else if (staffRes.reason?.response?.status === 404) setStaffResults([])
+    else if (!staffRes.reason?._toastShown) setError((e) => e || 'স্টাফ সার্চ করা যায়নি।')
+
+    if (custRes.status === 'fulfilled') setCustomerResults(custRes.value.data.data)
+    else if (custRes.reason?.response?.status === 404) setCustomerResults([])
+    else if (!custRes.reason?._toastShown) setError((e) => e || 'কাস্টমার সার্চ করা যায়নি।')
+
+    setSearching(false)
   }
 
-  const setUserAction = (id, patch) =>
+  const setAction = (id, patch) =>
     setActionState((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }))
 
+  // ── Staff actions ──────────────────────────────────────────
   const handleUnblock = async (user) => {
-    setUserAction(user.id, { unblocking: true })
+    setAction(user.id, { unblocking: true })
     try {
       const res = await platformApi.post(`/support/users/${user.id}/unblock`)
       toast.success(res.data.message || 'ব্লক সরানো হয়েছে।')
-      setUserAction(user.id, { unblocking: false, unblockedAt: Date.now() })
-      setResults((prev) => prev.map((u) => (u.id === user.id ? { ...u, is_blocked: false } : u)))
+      setAction(user.id, { unblocking: false, unblockedAt: Date.now() })
+      setStaffResults((prev) => prev.map((u) => (u.id === user.id ? { ...u, is_blocked: false } : u)))
     } catch (err) {
-      setUserAction(user.id, { unblocking: false })
+      setAction(user.id, { unblocking: false })
       if (!err._toastShown) toast.error('ব্লক সরানো যায়নি।')
     }
   }
 
   const handleResetLink = async (user) => {
-    setUserAction(user.id, { resetting: true })
+    setAction(user.id, { resetting: true })
     try {
       const res = await platformApi.post(`/support/users/${user.id}/reset-password-link`)
       toast.success(res.data.message || 'Reset link পাঠানো হয়েছে।')
-      setUserAction(user.id, { resetting: false, resetAt: Date.now() })
+      setAction(user.id, { resetting: false, resetAt: Date.now() })
     } catch (err) {
-      setUserAction(user.id, { resetting: false })
+      setAction(user.id, { resetting: false })
       if (!err._toastShown) toast.error('Reset link পাঠানো যায়নি।')
     }
   }
+
+  // ── Customer (রিটেইলার) actions ────────────────────────────
+  const handleReactivate = async (cust) => {
+    setAction(cust.id, { reactivating: true })
+    try {
+      const res = await platformApi.post(`/support/customers/${cust.id}/reactivate`)
+      toast.success(res.data.message || 'Reactivate করা হয়েছে।')
+      setAction(cust.id, { reactivating: false, reactivatedAt: Date.now() })
+      setCustomerResults((prev) => prev.map((c) => (c.id === cust.id ? { ...c, is_active: true } : c)))
+    } catch (err) {
+      setAction(cust.id, { reactivating: false })
+      if (!err._toastShown) toast.error('Reactivate করা যায়নি।')
+    }
+  }
+
+  const handleClearGmailLock = async (cust) => {
+    setAction(cust.id, { clearingLock: true })
+    try {
+      const res = await platformApi.post(`/support/customers/${cust.id}/clear-gmail-lock`)
+      toast.success(res.data.message || 'Gmail lock ক্লিয়ার হয়েছে।')
+      setAction(cust.id, { clearingLock: false, lockClearedAt: Date.now() })
+      setCustomerResults((prev) => prev.map((c) => (c.id === cust.id ? { ...c, bound_email: null, google_email: null } : c)))
+    } catch (err) {
+      setAction(cust.id, { clearingLock: false })
+      if (!err._toastShown) toast.error('Gmail lock ক্লিয়ার করা যায়নি।')
+    }
+  }
+
+  const handleRevokeDevices = async (cust) => {
+    setAction(cust.id, { revoking: true })
+    try {
+      const res = await platformApi.post(`/support/customers/${cust.id}/revoke-devices`)
+      toast.success(res.data.message || 'ডিভাইস revoke করা হয়েছে।')
+      setAction(cust.id, { revoking: false, revokedAt: Date.now() })
+    } catch (err) {
+      setAction(cust.id, { revoking: false })
+      if (!err._toastShown) toast.error('Revoke করা যায়নি।')
+    }
+  }
+
+  const noResults =
+    staffResults && customerResults && staffResults.length === 0 && customerResults.length === 0
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="font-pf-head text-2xl font-semibold text-pf-primary-700">ইউজার লুকআপ</h1>
-        <p className="text-pf-text-secondary text-sm mt-1">ফোন বা ইমেইল দিয়ে খুঁজে ব্লক সরান বা পাসওয়ার্ড রিসেট পাঠান</p>
+        <p className="text-pf-text-secondary text-sm mt-1">ফোন বা ইমেইল দিয়ে স্টাফ ও রিটেইলার — দুই ধরনের অ্যাকাউন্টই একসাথে খুঁজুন</p>
       </div>
 
       <form onSubmit={handleSearch} className="flex gap-3">
@@ -87,67 +141,148 @@ export default function UserLookup() {
 
       {error && <ErrorState description={error} onRetry={handleSearch} />}
 
-      {results && results.length === 0 && (
+      {noResults && (
         <div className="bg-pf-bg-surface border border-pf-border rounded-xl">
-          <EmptyState title="কোনো ইউজার পাওয়া যায়নি" description="phone/email বানান চেক করে আবার চেষ্টা করুন।" />
+          <EmptyState title="কোনো অ্যাকাউন্ট পাওয়া যায়নি" description="phone/email বানান চেক করে আবার চেষ্টা করুন।" />
         </div>
       )}
 
-      {results && results.length > 0 && (
-        <div className="space-y-3">
-          {results.map((u) => {
-            const act = actionState[u.id] || {}
-            return (
-              <div key={u.id} className="bg-pf-bg-surface border border-pf-border rounded-xl p-4">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div className="min-w-0">
-                    <p className="font-medium text-pf-text-primary">{u.name_bn || u.name_en}</p>
-                    <p className="text-xs text-pf-text-muted">
-                      {u.company_name || 'কোনো টেন্যান্ট নেই'} · {u.role}
-                    </p>
-                    <p className="text-xs text-pf-text-muted font-pf-mono mt-0.5">{u.email || u.phone}</p>
+      {/* ── স্টাফ/কর্মী ── */}
+      {staffResults && staffResults.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-pf-text-muted uppercase tracking-wide">
+            <FiUser /> স্টাফ / কর্মী
+          </div>
+          <div className="space-y-3">
+            {staffResults.map((u) => {
+              const act = actionState[u.id] || {}
+              return (
+                <div key={u.id} className="bg-pf-bg-surface border border-pf-border rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <p className="font-medium text-pf-text-primary">{u.name_bn || u.name_en}</p>
+                      <p className="text-xs text-pf-text-muted">
+                        {u.company_name || 'কোনো টেন্যান্ট নেই'} · {u.role}
+                      </p>
+                      <p className="text-xs text-pf-text-muted font-pf-mono mt-0.5">{u.email || u.phone}</p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <StatusBadge status={u.status} />
+                      {u.is_blocked && (
+                        <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-pf-error-bg text-pf-error">
+                          Blocked
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    <StatusBadge status={u.status} />
-                    {u.is_blocked && (
-                      <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-pf-error-bg text-pf-error">
-                        Redis Blocked
+
+                  <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-pf-border">
+                    <button
+                      onClick={() => handleUnblock(u)}
+                      disabled={!u.is_blocked || act.unblocking}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-pf-border
+                        text-pf-text-primary hover:border-pf-primary-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {act.unblocking ? <FiLoader className="animate-spin" /> : <FiUnlock />}
+                      {u.is_blocked ? 'Unblock করুন' : 'ব্লক নেই'}
+                    </button>
+
+                    <button
+                      onClick={() => handleResetLink(u)}
+                      disabled={!u.email || act.resetting}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-pf-border
+                        text-pf-text-primary hover:border-pf-primary-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={!u.email ? 'এই ইউজারের ইমেইল নেই' : undefined}
+                    >
+                      {act.resetting ? <FiLoader className="animate-spin" /> : <FiKey />}
+                      Password Reset Link
+                    </button>
+
+                    {(act.unblockedAt || act.resetAt) && (
+                      <span className="flex items-center gap-1 text-xs text-pf-success">
+                        <FiCheckCircle /> লগ করা হয়েছে ✓
                       </span>
                     )}
                   </div>
                 </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
-                <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-pf-border">
-                  <button
-                    onClick={() => handleUnblock(u)}
-                    disabled={!u.is_blocked || act.unblocking}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-pf-border
-                      text-pf-text-primary hover:border-pf-primary-500 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {act.unblocking ? <FiLoader className="animate-spin" /> : <FiUnlock />}
-                    {u.is_blocked ? 'Unblock করুন' : 'ব্লক নেই'}
-                  </button>
+      {/* ── রিটেইলার/কাস্টমার ── */}
+      {customerResults && customerResults.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex items-center gap-1.5 text-xs font-semibold text-pf-text-muted uppercase tracking-wide">
+            <FiShoppingBag /> রিটেইলার / কাস্টমার
+          </div>
+          <div className="space-y-3">
+            {customerResults.map((c) => {
+              const act = actionState[c.id] || {}
+              const hasGmailLock = !!(c.bound_email || c.google_email)
+              return (
+                <div key={c.id} className="bg-pf-bg-surface border border-pf-border rounded-xl p-4">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="min-w-0">
+                      <p className="font-medium text-pf-text-primary">{c.shop_name}</p>
+                      <p className="text-xs text-pf-text-muted">
+                        {c.company_name || 'কোনো টেন্যান্ট নেই'} · {c.owner_name}
+                      </p>
+                      <p className="text-xs text-pf-text-muted font-pf-mono mt-0.5">
+                        {c.whatsapp || c.sms_phone || c.email || '—'}
+                      </p>
+                      {hasGmailLock && (
+                        <p className="text-xs text-pf-text-muted mt-1 flex items-center gap-1">
+                          <FiMailIcon className="text-pf-accent-600" /> লক করা: {c.bound_email || c.google_email}
+                        </p>
+                      )}
+                    </div>
+                    <StatusBadge status={c.is_active ? 'active' : 'suspended'} label={c.is_active ? 'সক্রিয়' : 'নিষ্ক্রিয়'} />
+                  </div>
 
-                  <button
-                    onClick={() => handleResetLink(u)}
-                    disabled={!u.email || act.resetting}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-pf-border
-                      text-pf-text-primary hover:border-pf-primary-500 disabled:opacity-40 disabled:cursor-not-allowed"
-                    title={!u.email ? 'এই ইউজারের ইমেইল নেই' : undefined}
-                  >
-                    {act.resetting ? <FiLoader className="animate-spin" /> : <FiKey />}
-                    Password Reset Link পাঠান
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-pf-border">
+                    <button
+                      onClick={() => handleReactivate(c)}
+                      disabled={c.is_active || act.reactivating}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-pf-border
+                        text-pf-text-primary hover:border-pf-primary-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {act.reactivating ? <FiLoader className="animate-spin" /> : <FiUnlock />}
+                      {c.is_active ? 'ইতিমধ্যে সক্রিয়' : 'Reactivate করুন'}
+                    </button>
 
-                  {(act.unblockedAt || act.resetAt) && (
-                    <span className="flex items-center gap-1 text-xs text-pf-success">
-                      <FiCheckCircle /> লগ করা হয়েছে ✓
-                    </span>
-                  )}
+                    <button
+                      onClick={() => handleClearGmailLock(c)}
+                      disabled={!hasGmailLock || act.clearingLock}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-pf-border
+                        text-pf-text-primary hover:border-pf-primary-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={!hasGmailLock ? 'কোনো Gmail lock নেই' : undefined}
+                    >
+                      {act.clearingLock ? <FiLoader className="animate-spin" /> : <FiMailIcon />}
+                      Gmail Lock ক্লিয়ার
+                    </button>
+
+                    <button
+                      onClick={() => handleRevokeDevices(c)}
+                      disabled={act.revoking}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-pf-border
+                        text-pf-text-primary hover:border-pf-primary-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {act.revoking ? <FiLoader className="animate-spin" /> : <FiSmartphone />}
+                      সব ডিভাইস Revoke
+                    </button>
+
+                    {(act.reactivatedAt || act.lockClearedAt || act.revokedAt) && (
+                      <span className="flex items-center gap-1 text-xs text-pf-success">
+                        <FiCheckCircle /> লগ করা হয়েছে ✓
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       )}
     </div>

@@ -4,6 +4,13 @@ const { query } = require('../config/db');
 const { isUserBlocked, unblockUser } = require('../config/redis');
 const { generateOTP } = require('../config/encryption');
 const { logPlatformAction } = require('../services/platformAudit.service');
+const { invalidatePortalAuthCache } = require('../services/portalCache.service');
+// ✅ কাস্টমার (রিটেইলার) portal-এর device revoke লজিক হুবহু কাস্টমার
+// পোর্টাল কন্ট্রোলার থেকেই reuse করা হচ্ছে (ডুপ্লিকেট করা হয়নি) —
+// ওখানকার ফাংশন শুধু req.params.customerId, query, cache নির্ভর করে,
+// কোনো tenant-user role/session-নির্দিষ্ট কিছুর ওপর না, তাই platform_staff
+// context থেকে সরাসরি নিরাপদে কল করা যায়।
+const { revokeAllDevices: revokeCustomerPortalDevices } = require('./customerPortal.controller');
 
 // ============================================================
 // Support Panel — User Lookup / Unblock / Reset-Link / Tickets
@@ -208,6 +215,101 @@ const updateTicket = async (req, res) => {
     }
 };
 
+// ============================================================
+// রিটেইলার/কাস্টমার (Customer Portal) সাপোর্ট অ্যাকশন
+// ─────────────────────────────────────────────────────────────
+// ⚠️ Staff auth-এর মতো password/Redis-blocklist সিস্টেম না — কাস্টমার
+// পোর্টাল সম্পূর্ণ ভিন্ন: Google login + device whitelist + email-lock।
+// তাই এখানে আলাদা action সেট: reactivate, clear-gmail-lock, revoke-devices।
+// ============================================================
+
+// ─── Customer Lookup (phone/whatsapp/email দিয়ে) ─────────────
+const lookupCustomer = async (req, res) => {
+    const { q } = req.query;
+
+    if (!q) {
+        return res.status(400).json({ success: false, message: 'phone বা email দিয়ে সার্চ করুন (?q=)' });
+    }
+
+    try {
+        const result = await query(
+            `SELECT c.id, c.shop_name, c.owner_name, c.whatsapp, c.sms_phone, c.email,
+                    c.is_active, c.tenant_id, t.company_name,
+                    cpt.bound_email, cpt.google_email, cpt.token_version, cpt.last_login
+             FROM customers c
+             LEFT JOIN tenants t ON t.id = c.tenant_id
+             LEFT JOIN customer_portal_tokens cpt ON cpt.customer_id = c.id
+             WHERE c.email = $1 OR c.whatsapp = $1 OR c.sms_phone = $1
+             LIMIT 5`,
+            [q.trim()]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'কোনো কাস্টমার পাওয়া যায়নি।' });
+        }
+
+        return res.json({ success: true, data: result.rows });
+    } catch (err) {
+        logger.error('❌ platformSupport.lookupCustomer Error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+// ─── Customer Reactivate (is_active=false → true) ────────────
+const reactivateCustomer = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const result = await query(
+            `UPDATE customers SET is_active = true, updated_at = NOW()
+             WHERE id = $1 RETURNING id, shop_name, is_active`,
+            [id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
+        }
+        await invalidatePortalAuthCache(id);
+        return res.json({ success: true, message: `"${result.rows[0].shop_name}" reactivate করা হয়েছে।`, data: result.rows[0] });
+    } catch (err) {
+        logger.error('❌ platformSupport.reactivateCustomer Error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+// ─── Gmail Lock ক্লিয়ার (ভুল Gmail-এ bound হয়ে গেলে) ────────
+// bound_email/google_email মুছে দেয় + token_version বাড়ায়, যাতে
+// পুরনো JWT-ও সাথে সাথে অকার্যকর হয়ে যায় (customer পরের বার নতুন
+// Gmail দিয়ে আবার লগইন করতে বাধ্য হবে)।
+const clearGmailLock = async (req, res) => {
+    const { id } = req.params;
+
+    try {
+        const result = await query(
+            `UPDATE customer_portal_tokens
+             SET bound_email = NULL, google_email = NULL, token_version = COALESCE(token_version, 1) + 1
+             WHERE customer_id = $1
+             RETURNING customer_id, token_version`,
+            [id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'এই কাস্টমারের কোনো পোর্টাল লিংক পাওয়া যায়নি (এখনো লিংক তৈরি হয়নি)।' });
+        }
+        await invalidatePortalAuthCache(id);
+        return res.json({ success: true, message: 'Gmail lock ক্লিয়ার করা হয়েছে — কাস্টমার এখন নতুন Gmail দিয়ে লগইন করতে পারবেন।' });
+    } catch (err) {
+        logger.error('❌ platformSupport.clearGmailLock Error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+// ─── সব ডিভাইস Revoke (force re-login) ───────────────────────
+// customerPortal.controller.js-এর revokeAllDevices সরাসরি reuse —
+// শুধু param নাম map করে দেওয়া হলো (:id → :customerId)।
+const revokeCustomerDevices = (req, res) => {
+    req.params.customerId = req.params.id;
+    return revokeCustomerPortalDevices(req, res);
+};
+
 module.exports = {
     lookupUser,
     unblockUserAccount,
@@ -215,4 +317,8 @@ module.exports = {
     createTicket,
     listTickets,
     updateTicket,
+    lookupCustomer,
+    reactivateCustomer,
+    clearGmailLock,
+    revokeCustomerDevices,
 };

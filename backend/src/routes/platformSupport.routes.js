@@ -28,6 +28,34 @@ router.post(
     ctrl.triggerPasswordReset
 );
 
+// ─── Customer (রিটেইলার) lookup/reactivate/gmail-lock/devices ─
+router.get(
+    '/customers/search',
+    requireScope('full', 'support'),
+    ctrl.lookupCustomer
+);
+
+router.post(
+    '/customers/:id/reactivate',
+    requireScope('full', 'support'),
+    auditLog('customer.reactivate', 'customer'),
+    ctrl.reactivateCustomer
+);
+
+router.post(
+    '/customers/:id/clear-gmail-lock',
+    requireScope('full', 'support'),
+    auditLog('customer.clear_gmail_lock', 'customer'),
+    ctrl.clearGmailLock
+);
+
+router.post(
+    '/customers/:id/revoke-devices',
+    requireScope('full', 'support'),
+    auditLog('customer.revoke_devices', 'customer'),
+    ctrl.revokeCustomerDevices
+);
+
 // ─── Tickets ─────────────────────────────────────────────────
 router.get(
     '/tickets',
