@@ -38,6 +38,22 @@ export default function LandingPage() {
   const [mgmtOpen, setMgmtOpen] = useState(false)
   const dropRef = useRef(null)
 
+  // ── লুকানো Platform Panel অ্যাক্সেস ──────────────────────────
+  // ফুটারের ZovoriX লোগোতে ৩ সেকেন্ডের মধ্যে ৬ বার ট্যাপ করলে
+  // /platform/login-এ নিয়ে যাবে। ইচ্ছাকৃতভাবে UI-তে কোনো visible
+  // hint নেই — শুধু platform staff-রাই জানবেন।
+  const logoTapsRef = useRef([])
+  const handleLogoTap = () => {
+    const now = Date.now()
+    const taps = logoTapsRef.current.filter((t) => now - t < 3000)
+    taps.push(now)
+    logoTapsRef.current = taps
+    if (taps.length >= 6) {
+      logoTapsRef.current = []
+      navigate('/platform/login')
+    }
+  }
+
   // বাইরে ক্লিক করলে ড্রপডাউন বন্ধ
   useEffect(() => {
     const handler = (e) => {
@@ -444,7 +460,13 @@ export default function LandingPage() {
           }}>
             {/* ব্র্যান্ড */}
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+              <div
+                onClick={handleLogoTap}
+                role="button"
+                tabIndex={-1}
+                aria-hidden="true"
+                style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px', cursor: 'default', userSelect: 'none' }}
+              >
                 <div style={{ width: '28px', height: '28px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
                   <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 </div>
