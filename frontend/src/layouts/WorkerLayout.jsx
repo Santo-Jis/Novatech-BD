@@ -27,82 +27,37 @@ const bottomNav = [
   { path: '/worker/profile',    icon: <FiUser />,         label: 'প্রোফাইল' },
 ]
 
-// ─── Hamburger Menu Items (গৌণ পৃষ্ঠা) ──────────────────────
-const menuItems = [
+// ─── Hamburger Menu Items (গৌণ পৃষ্ঠা) — বিভাগ অনুযায়ী গ্রুপ করা ──────
+const menuGroups = [
   {
-    icon: <FiMapPin />,
-    label: 'রুট সিলেক্ট করুন',
-    path: '/worker/route',
+    label: 'বিক্রয় ও স্টক',
+    items: [
+      { icon: <FiMapPin />,     label: 'রুট সিলেক্ট করুন', path: '/worker/route' },
+      { icon: <FiPackage />,    label: 'স্টক স্ট্যাটাস',   path: '/worker/stock-status' },
+      { icon: <FiClipboard />,  label: 'অর্ডার দিন',       path: '/worker/order' },
+      { icon: <FiTrendingUp />, label: 'বিক্রয় ইতিহাস',    path: '/worker/sales-history' },
+      { icon: <FiTruck />,      label: 'ডেলিভারি টাস্ক',   path: '/worker/deliveries' },
+    ],
   },
   {
-    icon: <FiPackage />,
-    label: 'স্টক স্ট্যাটাস',
-    path: '/worker/stock-status',
+    label: 'হিসাব ও বেতন',
+    items: [
+      { icon: <FiDollarSign />, label: 'কমিশন',            path: '/worker/commission' },
+      { icon: <FiCreditCard />, label: 'বেতন ইতিহাস',      path: '/worker/salary-history' },
+      { icon: <FiFileText />,   label: 'মাসিক স্টেটমেন্ট', path: '/worker/statement' },
+      { icon: <FiFileText />,   label: 'দৈনিক খরচ জমা',    path: '/worker/expense' },
+      { icon: <FiFileText />,   label: 'খরচের ইতিহাস',     path: '/worker/expense-history' },
+    ],
   },
   {
-    icon: <FiClipboard />,
-    label: 'অর্ডার দিন',
-    path: '/worker/order',
-  },
-  {
-    icon: <FiDollarSign />,
-    label: 'কমিশন',
-    path: '/worker/commission',
-  },
-  {
-    icon: <FiCreditCard />,
-    label: 'বেতন ইতিহাস',
-    path: '/worker/salary-history',
-  },
-  {
-    icon: <FiFileText />,
-    label: 'মাসিক স্টেটমেন্ট',
-    path: '/worker/statement',
-  },
-  {
-    icon: <FiTrendingUp />,
-    label: 'বিক্রয় ইতিহাস',
-    path: '/worker/sales-history',
-  },
-  {
-    icon: <FiRefreshCw />,
-    label: 'রিটার্ন / রিপ্লেসমেন্ট',
-    path: '/worker/return-history',
-  },
-  {
-    icon: <FiInbox />,
-    label: 'অনুমোদিত রিটার্ন',
-    path: '/worker/my-return-requests',
-  },
-  {
-    icon: <FiFileText />,
-    label: 'দৈনিক খরচ জমা',
-    path: '/worker/expense',
-  },
-  {
-    icon: <FiFileText />,
-    label: 'খরচের ইতিহাস',
-    path: '/worker/expense-history',
-  },
-  {
-    icon: <FiBell />,
-    label: 'নোটিশ বোর্ড',
-    path: '/worker/notices',
-  },
-  {
-    icon: <FiTag />,
-    label: 'চলমান অফার',
-    path: '/worker/offers',
-  },
-  {
-    icon: <FiTruck />,
-    label: 'ডেলিভারি টাস্ক',
-    path: '/worker/deliveries',
-  },
-  {
-    icon: <FiAward />,
-    label: 'লিডারবোর্ড',
-    path: '/worker/leaderboard',
+    label: 'অন্যান্য',
+    items: [
+      { icon: <FiRefreshCw />, label: 'রিটার্ন / রিপ্লেসমেন্ট', path: '/worker/return-history' },
+      { icon: <FiInbox />,     label: 'অনুমোদিত রিটার্ন',       path: '/worker/my-return-requests' },
+      { icon: <FiBell />,      label: 'নোটিশ বোর্ড',            path: '/worker/notices' },
+      { icon: <FiTag />,       label: 'চলমান অফার',             path: '/worker/offers' },
+      { icon: <FiAward />,     label: 'লিডারবোর্ড',             path: '/worker/leaderboard' },
+    ],
   },
 ]
 
@@ -379,17 +334,24 @@ export default function WorkerLayout() {
               </button>
             </div>
 
-            {/* Menu items */}
-            <nav className="flex-1 py-3 overflow-y-auto">
-              {menuItems.map((item) => (
-                <button
-                  key={item.path}
-                  onClick={() => handleNavigate(item.path)}
-                  className="w-full flex items-center gap-4 px-5 py-3.5 text-gray-700 dark:text-gray-200 hover:bg-primary/5 dark:hover:bg-slate-700 transition-colors text-left"
-                >
-                  <span className="text-xl text-primary dark:text-blue-400">{item.icon}</span>
-                  <span className="font-medium text-sm">{item.label}</span>
-                </button>
+            {/* Menu items — বিভাগ অনুযায়ী গ্রুপ করা */}
+            <nav className="flex-1 py-2 overflow-y-auto">
+              {menuGroups.map((group, gi) => (
+                <div key={group.label} className={gi > 0 ? 'mt-2 pt-2 border-t border-gray-100 dark:border-slate-700' : ''}>
+                  <p className="px-5 pt-2 pb-1 text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                    {group.label}
+                  </p>
+                  {group.items.map((item) => (
+                    <button
+                      key={item.path}
+                      onClick={() => handleNavigate(item.path)}
+                      className="w-full flex items-center gap-4 px-5 py-3.5 text-gray-700 dark:text-gray-200 hover:bg-primary/5 dark:hover:bg-slate-700 transition-colors text-left"
+                    >
+                      <span className="text-xl text-primary dark:text-blue-400">{item.icon}</span>
+                      <span className="font-medium text-sm">{item.label}</span>
+                    </button>
+                  ))}
+                </div>
               ))}
             </nav>
 
