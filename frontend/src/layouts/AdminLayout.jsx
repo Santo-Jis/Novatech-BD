@@ -1,39 +1,123 @@
-import { useState } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
 import ErrorBoundary from '../components/ErrorBoundary'
 import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag } from 'react-icons/fi'
 
-const navItems = [
-  { path: '/admin/dashboard',               icon: <FiHome />,         label: 'ড্যাশবোর্ড' },
-  { path: '/admin/employees',               icon: <FiUsers />,        label: 'কর্মী তালিকা' },
-  { path: '/admin/teams',                   icon: <FiGrid />,         label: 'টিম ম্যানেজমেন্ট' },
-  { path: '/admin/recruitment',             icon: <FiUserPlus />,     label: 'SR নিয়োগ' },
-  { path: '/admin/pending',                 icon: <FiCheckSquare />,  label: 'অনুমোদন বাকি' },
-  { path: '/admin/products',               icon: <FiPackage />,      label: 'পণ্য' },
-  { path: '/admin/promotions',              icon: <FiTag />,          label: 'অফার / প্রমোশন' },
-  { path: '/admin/routes',                 icon: <FiMapPin />,       label: 'রুট ম্যানেজমেন্ট' },
-  { path: '/admin/portal-returns',          icon: <FiRotateCcw />,    label: 'পোর্টাল রিটার্ন' },
-  { path: '/admin/customer-order-requests', icon: <FiShoppingCart />, label: 'অর্ডার রিকোয়েস্ট' },
-  { path: '/admin/portal-devices',          icon: <FiSmartphone />,   label: 'পোর্টাল ডিভাইস' },
-  { path: '/admin/leave-management',        icon: <FiCalendar />,     label: 'ছুটি ব্যবস্থাপনা' },
-  { path: '/admin/commission-pay',          icon: <FiDollarSign />,   label: 'কমিশন পরিশোধ' },
-  { path: '/admin/salary-pay',              icon: <FiCreditCard />,   label: 'বেতন পরিশোধ' },
-  { path: '/admin/credit-settings',         icon: <FiCreditCard />,   label: 'ক্রেডিট সেটিংস' },
-  { path: '/admin/reports',                 icon: <FiBarChart2 />,    label: 'রিপোর্ট' },
-  { path: '/admin/ai-insights',             icon: <FiCpu />,          label: 'AI বিশ্লেষণ' },
-  { path: '/admin/ai-chat',                 icon: <FiMessageSquare />,label: 'AI চ্যাট' },
-  { path: '/admin/notices',                 icon: <FiBell />,         label: 'নোটিশ বোর্ড' },
-  { path: '/admin/audit-logs',              icon: <FiShield />,       label: 'অডিট লগ' },
-  { path: '/admin/customer-requests',       icon: <FiInbox />,        label: 'কাস্টমার রিকোয়েস্ট' },
-  { path: '/admin/settings',               icon: <FiSettings />,     label: 'সেটিংস' },
+// সবসময় দেখা যাবে — গ্রুপের বাইরে (ঘন ঘন ব্যবহার হয়)
+const pinnedItems = [
+  { path: '/admin/dashboard', icon: <FiHome />,          label: 'ড্যাশবোর্ড' },
+  { path: '/admin/ai-chat',   icon: <FiMessageSquare />, label: 'AI চ্যাট' },
+  { path: '/admin/notices',   icon: <FiBell />,          label: 'নোটিশ বোর্ড' },
 ]
+
+// বাকি সব আইটেম বিষয়ভিত্তিক গ্রুপে ভাগ করা — collapsible sidebar-এর জন্য
+const navGroups = [
+  {
+    key: 'hr-team',
+    label: 'HR & Team',
+    icon: <FiUsers />,
+    items: [
+      { path: '/admin/employees',        icon: <FiUsers />,       label: 'কর্মী তালিকা' },
+      { path: '/admin/teams',            icon: <FiGrid />,        label: 'টিম ম্যানেজমেন্ট' },
+      { path: '/admin/recruitment',      icon: <FiUserPlus />,    label: 'SR নিয়োগ' },
+      { path: '/admin/pending',          icon: <FiCheckSquare />, label: 'অনুমোদন বাকি' },
+      { path: '/admin/leave-management', icon: <FiCalendar />,    label: 'ছুটি ব্যবস্থাপনা' },
+    ],
+  },
+  {
+    key: 'catalog-sales',
+    label: 'Catalog & Sales',
+    icon: <FiPackage />,
+    items: [
+      { path: '/admin/products',   icon: <FiPackage />, label: 'পণ্য' },
+      { path: '/admin/promotions', icon: <FiTag />,     label: 'অফার / প্রমোশন' },
+      { path: '/admin/routes',     icon: <FiMapPin />,  label: 'রুট ম্যানেজমেন্ট' },
+    ],
+  },
+  {
+    key: 'customer-returns',
+    label: 'Customer & Returns',
+    icon: <FiRotateCcw />,
+    items: [
+      { path: '/admin/portal-returns',          icon: <FiRotateCcw />,    label: 'পোর্টাল রিটার্ন' },
+      { path: '/admin/customer-order-requests', icon: <FiShoppingCart />, label: 'অর্ডার রিকোয়েস্ট' },
+      { path: '/admin/portal-devices',          icon: <FiSmartphone />,   label: 'পোর্টাল ডিভাইস' },
+      { path: '/admin/customer-requests',       icon: <FiInbox />,        label: 'কাস্টমার রিকোয়েস্ট' },
+    ],
+  },
+  {
+    key: 'finance-payroll',
+    label: 'Finance & Payroll',
+    icon: <FiDollarSign />,
+    items: [
+      { path: '/admin/commission-pay',  icon: <FiDollarSign />, label: 'কমিশন পরিশোধ' },
+      { path: '/admin/salary-pay',      icon: <FiCreditCard />, label: 'বেতন পরিশোধ' },
+      { path: '/admin/credit-settings', icon: <FiCreditCard />, label: 'ক্রেডিট সেটিংস' },
+    ],
+  },
+  {
+    key: 'reports-system',
+    label: 'Reports & System',
+    icon: <FiBarChart2 />,
+    items: [
+      { path: '/admin/reports',     icon: <FiBarChart2 />, label: 'রিপোর্ট' },
+      { path: '/admin/ai-insights', icon: <FiCpu />,       label: 'AI বিশ্লেষণ' },
+      { path: '/admin/audit-logs', icon: <FiShield />,    label: 'অডিট লগ' },
+      { path: '/admin/settings',    icon: <FiSettings />,  label: 'সেটিংস' },
+    ],
+  },
+]
+
+function SidebarGroup({ group, isOpen, hasActiveItem, onToggle, onItemClick }) {
+  return (
+    <div className="mb-1">
+      <button
+        onClick={onToggle}
+        className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl text-sm transition-all
+          ${hasActiveItem ? 'text-white font-semibold bg-white/10' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}
+      >
+        <span className="flex items-center gap-3">
+          <span className="text-lg flex-shrink-0">{group.icon}</span>
+          <span>{group.label}</span>
+        </span>
+        <FiChevronDown className={`text-sm transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="mt-1 ml-3 pl-3 border-l border-white/10 space-y-1">
+          {group.items.map(item => (
+            <NavLink key={item.path} to={item.path} onClick={onItemClick}
+              className={({ isActive }) => `flex items-center gap-3 px-3 py-2 rounded-xl transition-all text-sm ${isActive ? 'bg-white/20 text-white font-semibold' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}>
+              <span className="text-base flex-shrink-0">{item.icon}</span>
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function AdminLayout() {
   const { user, logout } = useAuthStore()
   const { allUnreadCount, darkMode, toggleDarkMode } = useAppStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const location = useLocation()
+
+  // যে গ্রুপে current route আছে সেটা বের করা
+  const activeGroupKey = useMemo(() => {
+    const g = navGroups.find(grp => grp.items.some(it => location.pathname.startsWith(it.path)))
+    return g?.key || null
+  }, [location.pathname])
+
+  const [openGroupKey, setOpenGroupKey] = useState(activeGroupKey || navGroups[0].key)
+
+  // route বদলালে সংশ্লিষ্ট গ্রুপ auto-open (accordion — একবারে একটাই খোলা থাকবে)
+  useEffect(() => {
+    if (activeGroupKey) setOpenGroupKey(activeGroupKey)
+  }, [activeGroupKey])
 
   return (
     <div className="min-h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors">
@@ -56,12 +140,25 @@ export default function AdminLayout() {
         </div>
 
         <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
-          {navItems.map(item => (
+          {pinnedItems.map(item => (
             <NavLink key={item.path} to={item.path} onClick={() => setSidebarOpen(false)}
               className={({ isActive }) => `flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all text-sm ${isActive ? 'bg-white/20 text-white font-semibold' : 'text-white/70 hover:bg-white/10 hover:text-white'}`}>
               <span className="text-lg flex-shrink-0">{item.icon}</span>
               <span>{item.label}</span>
             </NavLink>
+          ))}
+
+          <div className="my-2 border-t border-white/10" />
+
+          {navGroups.map(group => (
+            <SidebarGroup
+              key={group.key}
+              group={group}
+              isOpen={openGroupKey === group.key}
+              hasActiveItem={group.items.some(it => location.pathname.startsWith(it.path))}
+              onToggle={() => setOpenGroupKey(openGroupKey === group.key ? null : group.key)}
+              onItemClick={() => setSidebarOpen(false)}
+            />
           ))}
         </nav>
 
