@@ -381,7 +381,7 @@ const resetTenantAdminPassword = async (req, res) => {
     const admin = adminResult.rows[0];
 
     // ১২-ক্যারেক্টার cryptographically-random সাময়িক পাসওয়ার্ড
-    const tempPassword = crypto.randomBytes(9).toString('base64').replace(/[+/=]/g, '').slice(0, 12);
+    const tempPassword = crypto.randomBytes(16).toString('base64').replace(/[+/=]/g, '').slice(0, 12);
     const hashedPass   = await bcrypt.hash(tempPassword, 10);
 
     await query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`, [hashedPass, admin.id]);

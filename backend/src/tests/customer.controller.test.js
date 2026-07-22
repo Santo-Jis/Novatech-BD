@@ -209,9 +209,9 @@ describe('getCustomers — কাস্টমার লিস্ট', () => {
     });
 
     test('visited_today flag সঠিকভাবে set হয়', async () => {
-        query
-            .mockResolvedValueOnce({ rows: [{ ...sampleCustomer, id: 'cust-uuid-1' }] })
-            .mockResolvedValueOnce({ rows: [{ customer_id: 'cust-uuid-1' }] }); // today visit
+        // getCustomers এখন visited_today একটাই query-তে EXISTS(...) subquery দিয়ে বের করে
+        // (আগে আলাদা দ্বিতীয় query ছিল, এখন optimize করে এক query-তে আনা হয়েছে)
+        query.mockResolvedValueOnce({ rows: [{ ...sampleCustomer, id: 'cust-uuid-1', visited_today: true }] });
 
         const req = { query: {}, user: workerUser };
         const res = mockRes();
@@ -336,7 +336,9 @@ describe('createCustomer — নতুন কাস্টমার তৈরি'
     });
 
     test('GPS সহ সফল create → 201 (Admin)', async () => {
-        query.mockResolvedValueOnce({ rows: [sampleCustomer] }); // INSERT RETURNING
+        query
+            .mockResolvedValueOnce({ rows: [] })              // system_settings default_credit_limit lookup
+            .mockResolvedValueOnce({ rows: [sampleCustomer] }); // INSERT RETURNING
 
         const req = {
             body: {
@@ -362,7 +364,9 @@ describe('createCustomer — নতুন কাস্টমার তৈরি'
     });
 
     test('GPS ছাড়া সফল create → 201', async () => {
-        query.mockResolvedValueOnce({ rows: [sampleCustomer] });
+        query
+            .mockResolvedValueOnce({ rows: [] })              // system_settings default_credit_limit lookup
+            .mockResolvedValueOnce({ rows: [sampleCustomer] });
 
         const req = {
             body: { shop_name: 'নতুন দোকান', owner_name: 'করিম' },
@@ -372,14 +376,15 @@ describe('createCustomer — নতুন কাস্টমার তৈরি'
         const res = mockRes();
         await createCustomer(req, res);
 
-        // GPS ছাড়া query তে ST_MakePoint থাকবে না
-        const sql = query.mock.calls[0][0];
+        // GPS ছাড়া query তে ST_MakePoint থাকবে না (INSERT query index 1, index 0 হলো settings lookup)
+        const sql = query.mock.calls[1][0];
         expect(sql).not.toContain('ST_SetSRID');
         expect(res.status).toHaveBeenCalledWith(201);
     });
 
     test('Worker create করলে auto-assignment হয়', async () => {
         query
+            .mockResolvedValueOnce({ rows: [] })                                          // system_settings default_credit_limit lookup
             .mockResolvedValueOnce({ rows: [{ ...sampleCustomer, id: 'new-cust-uuid' }] }) // INSERT customer
             .mockResolvedValueOnce({ rows: [] }); // INSERT customer_assignments
 
@@ -391,16 +396,18 @@ describe('createCustomer — নতুন কাস্টমার তৈরি'
         const res = mockRes();
         await createCustomer(req, res);
 
-        // দ্বিতীয় query হলো assignment
-        expect(query).toHaveBeenCalledTimes(2);
-        const assignSql = query.mock.calls[1][0];
+        // তৃতীয় query হলো assignment (index 0 = settings, 1 = INSERT customer, 2 = assignment)
+        expect(query).toHaveBeenCalledTimes(3);
+        const assignSql = query.mock.calls[2][0];
         expect(assignSql).toContain('customer_assignments');
         expect(res.status).toHaveBeenCalledWith(201);
     });
 
     test('photo file থাকলে Cloudinary upload call হয়', async () => {
         const { uploadToCloudinary } = require('../services/employee.service');
-        query.mockResolvedValueOnce({ rows: [sampleCustomer] });
+        query
+            .mockResolvedValueOnce({ rows: [] })              // system_settings default_credit_limit lookup
+            .mockResolvedValueOnce({ rows: [sampleCustomer] });
 
         const req = {
             body: { shop_name: 'ফটো দোকান', owner_name: 'ফারুক' },
@@ -419,6 +426,7 @@ describe('createCustomer — নতুন কাস্টমার তৈরি'
 
     test('email থাকলে welcome email পাঠানো হয়', async () => {
         query
+            .mockResolvedValueOnce({ rows: [] })                                                   // system_settings default_credit_limit lookup
             .mockResolvedValueOnce({ rows: [sampleCustomer] })                                     // INSERT customer
             .mockResolvedValueOnce({ rows: [] })                                                   // INSERT customer_assignments (worker)
             .mockResolvedValueOnce({ rows: [{ name_bn: 'আলী', name_en: 'Ali', phone: '017' }] }); // worker info
@@ -439,7 +447,9 @@ describe('createCustomer — নতুন কাস্টমার তৈরি'
     });
 
     test('credit_limit না দিলে default 5000 সেট হয়', async () => {
-        query.mockResolvedValueOnce({ rows: [sampleCustomer] });
+        query
+            .mockResolvedValueOnce({ rows: [{ value: '5000' }] }) // system_settings default_credit_limit = 5000
+            .mockResolvedValueOnce({ rows: [sampleCustomer] });
 
         const req = {
             body: { shop_name: 'ডিফল্ট ক্রেডিট', owner_name: 'হাসান' },
@@ -449,12 +459,15 @@ describe('createCustomer — নতুন কাস্টমার তৈরি'
         const res = mockRes();
         await createCustomer(req, res);
 
-        const insertParams = query.mock.calls[0][1];
+        // INSERT query index 1 (index 0 = settings lookup)
+        const insertParams = query.mock.calls[1][1];
         expect(insertParams).toContain(5000);
     });
 
     test('invalid GPS (lat > 90) → location ছাড়া create', async () => {
-        query.mockResolvedValueOnce({ rows: [sampleCustomer] });
+        query
+            .mockResolvedValueOnce({ rows: [] })              // system_settings default_credit_limit lookup
+            .mockResolvedValueOnce({ rows: [sampleCustomer] });
 
         const req = {
             body: { shop_name: 'টেস্ট', owner_name: 'টেস্ট', latitude: '200', longitude: '90' },
@@ -464,12 +477,14 @@ describe('createCustomer — নতুন কাস্টমার তৈরি'
         const res = mockRes();
         await createCustomer(req, res);
 
-        const sql = query.mock.calls[0][0];
+        const sql = query.mock.calls[1][0];
         expect(sql).not.toContain('ST_SetSRID');
     });
 
     test('DB error → 500', async () => {
-        query.mockRejectedValueOnce(new Error('unique violation'));
+        query
+            .mockResolvedValueOnce({ rows: [] })                        // system_settings lookup (succeeds, unrelated to this test)
+            .mockRejectedValueOnce(new Error('unique violation'));      // INSERT fails
 
         const req = {
             body: { shop_name: 'ডুপ্লিকেট', owner_name: 'করিম' },

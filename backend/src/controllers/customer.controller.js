@@ -3,6 +3,7 @@ const { query, withTransaction } = require('../config/db');
 const { uploadToCloudinary, generateCustomerCode } = require('../services/employee.service');
 const { sendWelcomeEmail, sendOTPEmail } = require('../services/email.service');
 const { generateOTP } = require('../config/encryption');
+const { sendCustomerNotification } = require('./customerNotification.controller');
 
 // ============================================================
 // GET CUSTOMERS

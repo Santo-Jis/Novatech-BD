@@ -102,11 +102,12 @@ describe('createSettlement — হিসাব জমার নিয়ম', ()
 
     test('৳৫০০+ পার্থক্যে কারণ ছাড়া 422', async () => {
         query
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [{ total_sales: 5000, cash_collected: 5000, credit_given: 0, replacement_value: 0, old_credit_collected: 0 }] })
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [] });
+            .mockResolvedValueOnce({ rows: [] })   // existing settlement check
+            .mockResolvedValueOnce({ rows: [] })   // ordersResult (reference only)
+            .mockResolvedValueOnce({ rows: [] })   // ledgerRes (no products in hand)
+            .mockResolvedValueOnce({ rows: [] })   // priceRes
+            .mockResolvedValueOnce({ rows: [{ total_sales: 5000, cash_collected: 5000, credit_given: 0, replacement_value: 0, old_credit_collected: 0 }] }); // salesData
+            // soldBulkRes / replacedBulkRes fall back to the beforeEach default { rows: [] }
 
         const res = mockRes();
         await createSettlement({
@@ -122,11 +123,11 @@ describe('createSettlement — হিসাব জমার নিয়ম', ()
 
     test('৳৫০০+ পার্থক্যে কারণ দিলে সফল', async () => {
         query
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [{ total_sales: 5000, cash_collected: 5000, credit_given: 0, replacement_value: 0, old_credit_collected: 0 }] })
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [] });
+            .mockResolvedValueOnce({ rows: [] })   // existing settlement check
+            .mockResolvedValueOnce({ rows: [] })   // ordersResult (reference only)
+            .mockResolvedValueOnce({ rows: [] })   // ledgerRes
+            .mockResolvedValueOnce({ rows: [] })   // priceRes
+            .mockResolvedValueOnce({ rows: [{ total_sales: 5000, cash_collected: 5000, credit_given: 0, replacement_value: 0, old_credit_collected: 0 }] }); // salesData
 
         const res = mockRes();
         await createSettlement({
@@ -140,11 +141,11 @@ describe('createSettlement — হিসাব জমার নিয়ম', ()
 
     test('৳৫০০ এর কম পার্থক্যে কারণ ছাড়াও সফল', async () => {
         query
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [{ total_sales: 5000, cash_collected: 5000, credit_given: 0, replacement_value: 0, old_credit_collected: 0 }] })
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [] });
+            .mockResolvedValueOnce({ rows: [] })   // existing settlement check
+            .mockResolvedValueOnce({ rows: [] })   // ordersResult (reference only)
+            .mockResolvedValueOnce({ rows: [] })   // ledgerRes
+            .mockResolvedValueOnce({ rows: [] })   // priceRes
+            .mockResolvedValueOnce({ rows: [{ total_sales: 5000, cash_collected: 5000, credit_given: 0, replacement_value: 0, old_credit_collected: 0 }] }); // salesData
 
         const res = mockRes();
         await createSettlement({
@@ -156,17 +157,16 @@ describe('createSettlement — হিসাব জমার নিয়ম', ()
     });
 
     test('ঘাটতি সঠিক হিসাব হচ্ছে', async () => {
-        const orderItems = [{
-            product_id: 'product-a', product_name: 'পণ্য-A',
-            approved_qty: 10, price: 500, final_price: 500,
-        }];
-
+        // shortage হিসাব এখন ledger balance + price lookup থেকে হয় (আগে orders থেকে হতো,
+        // কমেন্ট: "✅ FIX: taken_qty এখন orders থেকে নয়, ledger balance থেকে")
         query
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [{ id: 'o1', items: JSON.stringify(orderItems), total_amount: 5000 }] })
-            .mockResolvedValueOnce({ rows: [{ total_sales: 3000, cash_collected: 3000, credit_given: 0, replacement_value: 1000, old_credit_collected: 0 }] })
-            .mockResolvedValueOnce({ rows: [{ product_id: 'product-a', qty: '6' }] })
-            .mockResolvedValueOnce({ rows: [{ product_id: 'product-a', qty: '2' }] });
+            .mockResolvedValueOnce({ rows: [] })   // existing settlement check
+            .mockResolvedValueOnce({ rows: [] })   // ordersResult (reference only, শুধু order_id সংরক্ষণে ব্যবহার হয়)
+            .mockResolvedValueOnce({ rows: [{ product_id: 'product-a', product_name: 'পণ্য-A', in_hand_qty: 10 }] }) // ledgerRes — taken_qty=10
+            .mockResolvedValueOnce({ rows: [{ product_id: 'product-a', product_name: 'পণ্য-A', effective_price: 500 }] }) // priceRes
+            .mockResolvedValueOnce({ rows: [{ total_sales: 3000, cash_collected: 3000, credit_given: 0, replacement_value: 1000, old_credit_collected: 0 }] }) // salesData
+            .mockResolvedValueOnce({ rows: [{ product_id: 'product-a', qty: '6' }] })  // soldBulkRes
+            .mockResolvedValueOnce({ rows: [{ product_id: 'product-a', qty: '2' }] }); // replacedBulkRes
 
         let capturedShortageValue;
         withTransaction.mockImplementation(async (cb) => {
@@ -188,21 +188,19 @@ describe('createSettlement — হিসাব জমার নিয়ম', ()
             user: workerUser,
         }, res);
 
+        // taken_qty(10) − (sold 6 + replaced 2) = 2 ঘাটতি × ৳500 = ৳1000
         expect(capturedShortageValue).toBe(1000);
     });
 
     test('সব পণ্য বিক্রয় হলে shortage = 0', async () => {
-        const orderItems = [{
-            product_id: 'product-b', product_name: 'পণ্য-B',
-            approved_qty: 5, price: 200, final_price: 200,
-        }];
-
         query
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [{ id: 'o2', items: JSON.stringify(orderItems), total_amount: 1000 }] })
-            .mockResolvedValueOnce({ rows: [{ total_sales: 1000, cash_collected: 1000, credit_given: 0, replacement_value: 0, old_credit_collected: 0 }] })
-            .mockResolvedValueOnce({ rows: [{ product_id: 'product-b', qty: '5' }] })
-            .mockResolvedValueOnce({ rows: [] });
+            .mockResolvedValueOnce({ rows: [] })   // existing settlement check
+            .mockResolvedValueOnce({ rows: [] })   // ordersResult (reference only)
+            .mockResolvedValueOnce({ rows: [{ product_id: 'product-b', product_name: 'পণ্য-B', in_hand_qty: 5 }] }) // ledgerRes — taken_qty=5
+            .mockResolvedValueOnce({ rows: [{ product_id: 'product-b', product_name: 'পণ্য-B', effective_price: 200 }] }) // priceRes
+            .mockResolvedValueOnce({ rows: [{ total_sales: 1000, cash_collected: 1000, credit_given: 0, replacement_value: 0, old_credit_collected: 0 }] }) // salesData
+            .mockResolvedValueOnce({ rows: [{ product_id: 'product-b', qty: '5' }] })  // soldBulkRes — সব ৫টাই বিক্রি হয়েছে
+            .mockResolvedValueOnce({ rows: [] }); // replacedBulkRes
 
         let capturedShortageValue;
         withTransaction.mockImplementation(async (cb) => {
