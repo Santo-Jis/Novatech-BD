@@ -16,6 +16,7 @@ import InvoiceCard from '../InvoiceCard'
 import InvoicesTab from '../InvoicesTab'
 import PaymentsTab from '../PaymentsTab'
 import CreditTab from '../CreditTab'
+import ComplaintsTab from '../ComplaintsTab'
 import OrderRequestTab from '../OrderRequestTab'
 import CustomerAIChat from '../../CustomerAIChat'
 
@@ -513,7 +514,10 @@ export default function DashboardView({
             )}
 
             {/* ══ অভিযোগ ══ */}
-            {activeTab === 'complaints' && (
+            {/* ✅ REDESIGNED (Session 18): aggregate + company-ট্যাগ প্যাটার্নে, self-contained ComplaintsTab
+                (/all-complaints ইতিহাস + /complaint ফর্ম, connection_id-স্কোপড) */}
+            {activeTab === 'complaints' && <ComplaintsTab portalJWT={portalJWT} />}
+            {false && (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 {!complaintOpen ? (
                   <button onClick={() => setComplaintOpen(true)}

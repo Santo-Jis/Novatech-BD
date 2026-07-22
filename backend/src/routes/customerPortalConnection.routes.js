@@ -22,6 +22,8 @@ const {
     getAllCompanyPaymentHistory,
     getAllCompanyLimitRequests,
     submitCompanyLimitRequest,
+    getAllCompanyComplaints,
+    submitCompanyComplaint,
     switchCompany,
 } = require('../controllers/customerPortalConnection.controller');
 
@@ -39,6 +41,8 @@ router.get('/all-credit-summary', portalAuth, getAllCompanyCreditSummary); // �
 router.get('/all-payment-history', portalAuth, getAllCompanyPaymentHistory); // ✅ NEW (Session 15)
 router.get('/all-limit-requests', portalAuth, getAllCompanyLimitRequests); // ✅ NEW (Session 16)
 router.post('/limit-request',     portalAuth, submitCompanyLimitRequest); // ✅ NEW (Session 16)
+router.get('/all-complaints',     portalAuth, getAllCompanyComplaints); // ✅ NEW (Session 18)
+router.post('/complaint',         portalAuth, submitCompanyComplaint); // ✅ NEW (Session 18)
 router.post('/switch',            portalAuth, switchCompany); // ✅ NEW (Session 11)
 
 module.exports = router;

@@ -629,6 +629,119 @@ const submitCompanyLimitRequest = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET /api/portal/connections/all-complaints
+// ✅ NEW (Session 18) — Complaints ট্যাব redesign
+// সব কোম্পানির অভিযোগ/ফিডব্যাক — এক লিস্টে, company ট্যাগসহ।
+// ============================================================
+const getAllCompanyComplaints = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser.customer_id);
+        const result = await query(
+            `SELECT cc.id, cc.type, cc.subject, cc.description, cc.status,
+                    cc.admin_reply, cc.created_at, cc.resolved_at,
+                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+             FROM customer_complaints cc
+             JOIN customers c ON c.id = cc.customer_id
+             JOIN tenants t   ON t.id = c.tenant_id
+             WHERE c.person_id = $1
+             ORDER BY cc.created_at DESC
+             LIMIT 30`,
+            [personId]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getAllCompanyComplaints error:', err.message);
+        res.status(500).json({ success: false, message: 'অভিযোগের তালিকা আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/portal/connections/complaint
+// ✅ NEW (Session 18) — company-parameterized action, limit-request-এর
+// মতোই প্যাটার্ন: session-switch ছাড়াই connection_id দিয়ে নির্দিষ্ট
+// কোম্পানির জন্য অভিযোগ/ফিডব্যাক জমা দেওয়া যাবে।
+// পুরনো customerPortal.controller.js-এর submitComplaint-এর মতোই ভ্যালিডেশন
+// (subject ≤200, description ≤2000, valid types), কিন্তু duplicate-pending
+// রেস্ট্রিকশন নেই (credit limit-request থেকে ভিন্ন) — একাধিক আলাদা অভিযোগ
+// একসাথে খোলা থাকতে পারা স্বাভাবিক, পুরনো single-company আচরণের মতোই।
+// body: { connection_id, type, subject, description }
+// ============================================================
+const VALID_COMPLAINT_TYPES_AGG = [
+    'complaint', 'feedback', 'delivery_issue',
+    'product_issue', 'payment_issue', 'other'
+];
+
+const submitCompanyComplaint = async (req, res) => {
+    try {
+        const { connection_id, type, subject, description } = req.body;
+
+        if (!connection_id) {
+            return res.status(400).json({ success: false, message: 'কোম্পানি বেছে নিন।' });
+        }
+        if (!subject?.trim() || !description?.trim()) {
+            return res.status(400).json({ success: false, message: 'বিষয় ও বিস্তারিত বিবরণ দিন।' });
+        }
+        if (subject.trim().length > 200) {
+            return res.status(400).json({ success: false, message: 'বিষয় ২০০ অক্ষরের বেশি হবে না।' });
+        }
+        if (description.trim().length > 2000) {
+            return res.status(400).json({ success: false, message: 'বিবরণ ২০০০ অক্ষরের বেশি হবে না।' });
+        }
+        if (type && !VALID_COMPLAINT_TYPES_AGG.includes(type)) {
+            return res.status(400).json({ success: false, message: 'অবৈধ অভিযোগের ধরন।' });
+        }
+
+        const personId = await getPersonId(req.portalUser.customer_id);
+
+        // এই connection সত্যিই এই person-এর এবং connected কিনা যাচাই
+        const conn = await query(
+            `SELECT c.id AS customer_id
+             FROM customer_company_connections ccc
+             JOIN customers c ON c.id = ccc.customer_id
+             WHERE ccc.id = $1 AND ccc.person_id = $2 AND ccc.status = 'connected'`,
+            [connection_id, personId]
+        );
+        if (conn.rows.length === 0) {
+            return res.status(403).json({ success: false, message: 'এই কোম্পানিতে আপনার অ্যাক্সেস নেই।' });
+        }
+        const targetCustomerId = conn.rows[0].customer_id;
+
+        const result = await query(
+            `INSERT INTO customer_complaints
+                 (customer_id, type, subject, description, status)
+             VALUES ($1, $2, $3, $4, 'open')
+             RETURNING id, created_at`,
+            [targetCustomerId, type || 'complaint', subject.trim(), description.trim()]
+        );
+
+        await query(
+            `INSERT INTO customer_notifications (customer_id, title, body, type)
+             VALUES ($1, $2, $3, 'complaint')`,
+            [
+                targetCustomerId,
+                '✅ আপনার অভিযোগ গ্রহণ হয়েছে',
+                `"${subject.trim()}" — আমরা শীঘ্রই আপনার সাথে যোগাযোগ করব।`
+            ]
+        );
+
+        res.status(201).json({
+            success: true,
+            message: 'অভিযোগ/ফিডব্যাক সফলভাবে জমা হয়েছে।',
+            data: { id: result.rows[0].id, created_at: result.rows[0].created_at }
+        });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ submitCompanyComplaint error:', err.message);
+        res.status(500).json({ success: false, message: 'অভিযোগ জমা দিতে সমস্যা হয়েছে।' });
+    }
+};
+
 // ── Refresh-cookie helper (Session 11 fix) ──────────────────────
 // customerPortal.controller.js-এ একই নামের helper আছে, কিন্তু সেই ফাইল
 // স্পর্শ না করার নীতি মেনে (portalAuthShared.js-এর মতোই) এখানে আলাদা
@@ -756,5 +869,7 @@ module.exports = {
     getAllCompanyPaymentHistory,
     getAllCompanyLimitRequests,
     submitCompanyLimitRequest,
+    getAllCompanyComplaints,
+    submitCompanyComplaint,
     switchCompany,
 };
