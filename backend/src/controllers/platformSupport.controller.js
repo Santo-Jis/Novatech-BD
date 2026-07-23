@@ -151,13 +151,16 @@ const triggerPasswordReset = async (req, res) => {
     }
 };
 
+const VALID_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
+
 // ─── Tickets ─────────────────────────────────────────────────
 const createTicket = async (req, res) => {
-    const { tenant_id, user_id, subject, description } = req.body;
+    const { tenant_id, user_id, customer_id, subject, description, priority } = req.body;
 
     if (!subject) {
         return res.status(400).json({ success: false, message: 'subject আবশ্যক' });
     }
+    const pr = priority && VALID_PRIORITIES.includes(priority) ? priority : 'normal';
 
     try {
         let attachmentUrls = [];
@@ -167,10 +170,10 @@ const createTicket = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO support_tickets (tenant_id, user_id, subject, description, created_by, assigned_to, attachment_urls)
-             VALUES ($1, $2, $3, $4, $5, $5, $6)
+            `INSERT INTO support_tickets (tenant_id, user_id, customer_id, subject, description, created_by, assigned_to, attachment_urls, priority)
+             VALUES ($1, $2, $3, $4, $5, $6, $6, $7, $8)
              RETURNING *`,
-            [tenant_id || null, user_id || null, subject, description || null, req.platformStaff.id, JSON.stringify(attachmentUrls)]
+            [tenant_id || null, user_id || null, customer_id || null, subject, description || null, req.platformStaff.id, JSON.stringify(attachmentUrls), pr]
         );
         return res.status(201).json({ success: true, data: result.rows[0] });
     } catch (err) {
@@ -207,32 +210,39 @@ const addTicketAttachment = async (req, res) => {
 };
 
 const listTickets = async (req, res) => {
-    const { status, mine, search } = req.query;
+    const { status, mine, search, priority } = req.query;
     const conditions = [];
     const params = [];
 
     if (status) {
         params.push(status);
-        conditions.push(`status = $${params.length}`);
+        conditions.push(`st.status = $${params.length}`);
+    }
+    if (priority) {
+        params.push(priority);
+        conditions.push(`st.priority = $${params.length}`);
     }
     if (mine === 'true') {
         params.push(req.platformStaff.id);
-        conditions.push(`assigned_to = $${params.length}`);
+        conditions.push(`st.assigned_to = $${params.length}`);
     }
     if (search) {
         params.push(`%${search.trim()}%`);
-        conditions.push(`(st.subject ILIKE $${params.length} OR t.company_name ILIKE $${params.length})`);
+        conditions.push(`(st.subject ILIKE $${params.length} OR t.company_name ILIKE $${params.length} OR c.shop_name ILIKE $${params.length})`);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
     try {
         const result = await query(
-            `SELECT st.*, t.company_name
+            `SELECT st.*, t.company_name, c.shop_name AS customer_shop_name
              FROM support_tickets st
              LEFT JOIN tenants t ON t.id = st.tenant_id
+             LEFT JOIN customers c ON c.id = st.customer_id
              ${where}
-             ORDER BY st.created_at DESC
+             ORDER BY
+               CASE st.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END,
+               st.created_at DESC
              LIMIT 100`,
             params
         );
@@ -245,14 +255,25 @@ const listTickets = async (req, res) => {
 
 const updateTicket = async (req, res) => {
     const { id } = req.params;
-    const { status, resolution_note, assigned_to } = req.body;
+    const { status, priority, assigned_to, customer_id } = req.body;
 
     const fields = [];
     const params = [];
 
-    if (status) { params.push(status); fields.push(`status = $${params.length}`); }
-    if (resolution_note !== undefined) { params.push(resolution_note); fields.push(`resolution_note = $${params.length}`); }
+    if (status) {
+        if (!['open', 'in_progress', 'escalated', 'closed'].includes(status)) {
+            return res.status(400).json({ success: false, message: 'অবৈধ status।' });
+        }
+        params.push(status); fields.push(`status = $${params.length}`);
+    }
+    if (priority) {
+        if (!VALID_PRIORITIES.includes(priority)) {
+            return res.status(400).json({ success: false, message: 'অবৈধ priority।' });
+        }
+        params.push(priority); fields.push(`priority = $${params.length}`);
+    }
     if (assigned_to !== undefined) { params.push(assigned_to); fields.push(`assigned_to = $${params.length}`); }
+    if (customer_id !== undefined) { params.push(customer_id); fields.push(`customer_id = $${params.length}`); }
     if (status === 'closed') { fields.push(`closed_at = NOW()`); }
 
     if (fields.length === 0) {
@@ -272,6 +293,54 @@ const updateTicket = async (req, res) => {
         return res.json({ success: true, data: result.rows[0] });
     } catch (err) {
         logger.error('❌ platformSupport.updateTicket Error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+// ─── Ticket Notes — সঠিক append-only timeline (আলাদা টেবিল) ───
+// ⚠️ আগে resolution_note কলাম সরাসরি overwrite হতো — দুইজন Support
+// staff একই ticket-এ কাজ করলে একজনের নোট আরেকজনের মুছে যেত। এখন
+// প্রতিটা নোট আলাদা row হিসেবে জমা হয়, কখনো মুছে/ওভাররাইট হয় না।
+const listTicketNotes = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await query(
+            `SELECT id, staff_id, staff_name, note, created_at
+             FROM support_ticket_notes
+             WHERE ticket_id = $1
+             ORDER BY created_at ASC`,
+            [id]
+        );
+        return res.json({ success: true, data: result.rows });
+    } catch (err) {
+        logger.error('❌ platformSupport.listTicketNotes Error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+const addTicketNote = async (req, res) => {
+    const { id } = req.params;
+    const { note } = req.body;
+
+    if (!note?.trim()) {
+        return res.status(400).json({ success: false, message: 'নোট খালি রাখা যাবে না।' });
+    }
+
+    try {
+        const ticketCheck = await query('SELECT id FROM support_tickets WHERE id = $1', [id]);
+        if (ticketCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Ticket পাওয়া যায়নি।' });
+        }
+
+        const result = await query(
+            `INSERT INTO support_ticket_notes (ticket_id, staff_id, staff_name, note)
+             VALUES ($1, $2, $3, $4)
+             RETURNING id, staff_id, staff_name, note, created_at`,
+            [id, req.platformStaff.id, req.platformStaff.name, note.trim()]
+        );
+        return res.status(201).json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        logger.error('❌ platformSupport.addTicketNote Error:', err.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -457,6 +526,8 @@ module.exports = {
     addTicketAttachment,
     listTickets,
     updateTicket,
+    listTicketNotes,
+    addTicketNote,
     lookupCustomer,
     reactivateCustomer,
     clearGmailLock,

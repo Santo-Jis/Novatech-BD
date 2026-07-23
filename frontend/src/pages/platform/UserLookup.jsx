@@ -1,8 +1,9 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   FiSearch, FiUnlock, FiKey, FiLoader, FiCheckCircle,
-  FiMail as FiMailIcon, FiSmartphone, FiUser, FiShoppingBag, FiFileText, FiChevronDown, FiChevronUp,
+  FiMail as FiMailIcon, FiSmartphone, FiUser, FiShoppingBag, FiFileText, FiChevronDown, FiChevronUp, FiLifeBuoy,
 } from 'react-icons/fi'
 import platformApi from './api/platformApi'
 import StatusBadge from './components/StatusBadge'
@@ -313,6 +314,14 @@ export default function UserLookup() {
                       কেনাকাটার ইতিহাস
                       {act.invoicesOpen ? <FiChevronUp /> : <FiChevronDown />}
                     </button>
+
+                    <Link
+                      to={`/platform/tickets?new=1&customer_id=${c.id}&tenant_id=${c.tenant_id || ''}`}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-pf-border
+                        text-pf-text-primary hover:border-pf-primary-500"
+                    >
+                      <FiLifeBuoy /> টিকেট তৈরি করুন
+                    </Link>
 
                     {(act.reactivatedAt || act.lockClearedAt || act.revokedAt) && (
                       <span className="flex items-center gap-1 text-xs text-pf-success">

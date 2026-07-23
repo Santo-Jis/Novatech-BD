@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { FiPlus, FiX, FiLoader, FiArrowUpCircle, FiSearch, FiPaperclip, FiImage } from 'react-icons/fi'
+import { FiPlus, FiX, FiLoader, FiArrowUpCircle, FiSearch, FiPaperclip, FiImage, FiSend } from 'react-icons/fi'
 import platformApi from './api/platformApi'
 import StatusBadge from './components/StatusBadge'
 import { LoadingState, ErrorState, EmptyState } from './components/PanelStates'
@@ -11,6 +11,22 @@ const FILTERS = [
   { value: 'unassigned', label: 'অবরাদ্দকৃত' },
   { value: '', label: 'সব' },
 ]
+
+const PRIORITY_OPTIONS = [
+  { value: 'urgent', label: 'জরুরি', cls: 'bg-pf-error-bg text-pf-error' },
+  { value: 'high', label: 'উচ্চ', cls: 'bg-pf-warning-bg text-pf-warning' },
+  { value: 'normal', label: 'সাধারণ', cls: 'bg-pf-bg-sunken text-pf-text-muted' },
+  { value: 'low', label: 'কম', cls: 'bg-pf-info-bg text-pf-info' },
+]
+
+function PriorityBadge({ priority }) {
+  const p = PRIORITY_OPTIONS.find((x) => x.value === priority) || PRIORITY_OPTIONS[2]
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${p.cls}`}>
+      {p.label}
+    </span>
+  )
+}
 
 export default function Tickets() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -82,7 +98,7 @@ export default function Tickets() {
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="subject বা টেন্যান্ট নাম দিয়ে খুঁজুন"
+            placeholder="subject, টেন্যান্ট বা কাস্টমার নাম দিয়ে খুঁজুন"
             className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-pf-border bg-pf-bg-surface text-sm
               focus:outline-none focus:ring-2 focus:ring-pf-primary-700/20 focus:border-pf-primary-700"
           />
@@ -126,8 +142,13 @@ export default function Tickets() {
                   <FiPaperclip className="text-pf-text-muted flex-shrink-0" />
                 )}
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-pf-text-primary truncate">{t.subject}</p>
-                  <p className="text-xs text-pf-text-muted truncate">{t.company_name || 'কোনো টেন্যান্ট যুক্ত নেই'}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-pf-text-primary truncate">{t.subject}</p>
+                    <PriorityBadge priority={t.priority} />
+                  </div>
+                  <p className="text-xs text-pf-text-muted truncate">
+                    {t.customer_shop_name || t.company_name || 'কোনো টেন্যান্ট/কাস্টমার যুক্ত নেই'}
+                  </p>
                 </div>
               </div>
               <StatusBadge status={t.status} />
@@ -142,7 +163,7 @@ export default function Tickets() {
           onClose={() => setSelected(null)}
           onUpdated={(updated) => {
             setTickets((prev) => prev.map((t) => (t.id === updated.id ? { ...t, ...updated } : t)))
-            setSelected(updated)
+            setSelected((prev) => ({ ...prev, ...updated }))
           }}
         />
       )}
@@ -150,6 +171,7 @@ export default function Tickets() {
       {showCreate && (
         <CreateTicketModal
           defaultTenantId={searchParams.get('tenant_id') || ''}
+          defaultCustomerId={searchParams.get('customer_id') || ''}
           onClose={closeCreate}
           onCreated={(t) => {
             closeCreate()
@@ -166,19 +188,35 @@ const STATUS_OPTIONS = ['open', 'in_progress', 'escalated', 'closed']
 
 function TicketDetailModal({ ticket, onClose, onUpdated }) {
   const [status, setStatus] = useState(ticket.status)
-  const [note, setNote] = useState(ticket.resolution_note || '')
+  const [priority, setPriority] = useState(ticket.priority || 'normal')
   const [saving, setSaving] = useState(false)
   const [escalating, setEscalating] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [notes, setNotes] = useState(null)
+  const [notesLoading, setNotesLoading] = useState(true)
+  const [newNote, setNewNote] = useState('')
+  const [addingNote, setAddingNote] = useState(false)
   const attachments = Array.isArray(ticket.attachment_urls) ? ticket.attachment_urls : []
+
+  useEffect(() => {
+    const loadNotes = async () => {
+      setNotesLoading(true)
+      try {
+        const res = await platformApi.get(`/support/tickets/${ticket.id}/notes`)
+        setNotes(res.data.data)
+      } catch {
+        setNotes([])
+      } finally {
+        setNotesLoading(false)
+      }
+    }
+    loadNotes()
+  }, [ticket.id])
 
   const save = async () => {
     setSaving(true)
     try {
-      const res = await platformApi.patch(`/support/tickets/${ticket.id}`, {
-        status,
-        resolution_note: note,
-      })
+      const res = await platformApi.patch(`/support/tickets/${ticket.id}`, { status, priority })
       onUpdated(res.data.data)
       toast.success('আপডেট হয়েছে।')
     } catch (err) {
@@ -225,13 +263,30 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
     }
   }
 
+  const submitNote = async (e) => {
+    e.preventDefault()
+    if (!newNote.trim()) return
+    setAddingNote(true)
+    try {
+      const res = await platformApi.post(`/support/tickets/${ticket.id}/notes`, { note: newNote.trim() })
+      setNotes((prev) => [...(prev || []), res.data.data])
+      setNewNote('')
+    } catch (err) {
+      if (!err._toastShown) toast.error('নোট যোগ করা যায়নি।')
+    } finally {
+      setAddingNote(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="bg-pf-bg-surface w-full sm:max-w-lg sm:rounded-xl rounded-t-xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between px-5 py-4 border-b border-pf-border">
           <div>
             <h2 className="font-pf-head font-semibold text-pf-primary-700">{ticket.subject}</h2>
-            <p className="text-xs text-pf-text-muted mt-0.5">{ticket.company_name || 'কোনো টেন্যান্ট যুক্ত নেই'}</p>
+            <p className="text-xs text-pf-text-muted mt-0.5">
+              {ticket.customer_shop_name || ticket.company_name || 'কোনো টেন্যান্ট/কাস্টমার যুক্ত নেই'}
+            </p>
           </div>
           <button onClick={onClose} className="text-pf-text-muted hover:text-pf-text-primary p-1">
             <FiX className="text-lg" />
@@ -264,33 +319,34 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
             </label>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">স্ট্যাটাস</label>
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg border border-pf-border bg-pf-bg-surface text-sm"
-            >
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">স্ট্যাটাস</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg border border-pf-border bg-pf-bg-surface text-sm"
+              >
+                {STATUS_OPTIONS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">অগ্রাধিকার</label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg border border-pf-border bg-pf-bg-surface text-sm"
+              >
+                {PRIORITY_OPTIONS.map((p) => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">নোট (append-only timeline)</label>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={3}
-              className="w-full px-3 py-2.5 rounded-lg border border-pf-border bg-pf-bg-surface text-sm resize-none"
-              placeholder="কী করা হলো লিখুন..."
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-2 pt-1">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={save}
               disabled={saving}
@@ -310,16 +366,61 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
               Escalate to Full
             </button>
           </div>
+
+          {/* ── Notes timeline (append-only) ── */}
+          <div className="pt-2 border-t border-pf-border">
+            <label className="block text-xs font-semibold text-pf-text-secondary mb-2">
+              কাজের নোট (timeline — কখনো মুছে যায় না)
+            </label>
+
+            {notesLoading && <p className="text-xs text-pf-text-muted">লোড হচ্ছে...</p>}
+
+            {!notesLoading && notes && notes.length === 0 && (
+              <p className="text-xs text-pf-text-muted">এখনো কোনো নোট নেই।</p>
+            )}
+
+            {!notesLoading && notes && notes.length > 0 && (
+              <div className="space-y-2 max-h-48 overflow-y-auto mb-3">
+                {notes.map((n) => (
+                  <div key={n.id} className="bg-pf-bg-alt rounded-lg px-3 py-2">
+                    <p className="text-sm text-pf-text-primary whitespace-pre-wrap">{n.note}</p>
+                    <p className="text-[11px] text-pf-text-muted mt-1">
+                      {n.staff_name || 'Staff'} · {new Date(n.created_at).toLocaleString('bn-BD')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={submitNote} className="flex gap-2">
+              <input
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                placeholder="নতুন নোট লিখুন..."
+                className="flex-1 px-3 py-2 rounded-lg border border-pf-border bg-pf-bg-surface text-sm"
+              />
+              <button
+                type="submit"
+                disabled={addingNote || !newNote.trim()}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-pf-primary-700 text-white text-sm font-semibold
+                  hover:brightness-110 disabled:opacity-50"
+              >
+                {addingNote ? <FiLoader className="animate-spin" /> : <FiSend />}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
   )
 }
 
-function CreateTicketModal({ defaultTenantId, onClose, onCreated }) {
+function CreateTicketModal({ defaultTenantId, defaultCustomerId, onClose, onCreated }) {
   const [subject, setSubject] = useState('')
   const [description, setDescription] = useState('')
   const [tenantId, setTenantId] = useState(defaultTenantId)
+  const [customerId, setCustomerId] = useState(defaultCustomerId)
+  const [priority, setPriority] = useState('normal')
   const [file, setFile] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -337,6 +438,8 @@ function CreateTicketModal({ defaultTenantId, onClose, onCreated }) {
       formData.append('subject', subject.trim())
       if (description.trim()) formData.append('description', description.trim())
       if (tenantId) formData.append('tenant_id', tenantId)
+      if (customerId) formData.append('customer_id', customerId)
+      formData.append('priority', priority)
       if (file) formData.append('attachment', file)
 
       const res = await platformApi.post('/support/tickets', formData, {
@@ -388,13 +491,37 @@ function CreateTicketModal({ defaultTenantId, onClose, onCreated }) {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">Tenant ID (ঐচ্ছিক)</label>
-            <input
-              value={tenantId}
-              onChange={(e) => setTenantId(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg border border-pf-border bg-pf-bg-surface text-sm font-pf-mono"
-              placeholder="টেন্যান্ট পেজ থেকে এলে অটো-ফিল থাকবে"
-            />
+            <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">অগ্রাধিকার</label>
+            <select
+              value={priority}
+              onChange={(e) => setPriority(e.target.value)}
+              className="w-full px-3 py-2.5 rounded-lg border border-pf-border bg-pf-bg-surface text-sm"
+            >
+              {PRIORITY_OPTIONS.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">Tenant ID (ঐচ্ছিক)</label>
+              <input
+                value={tenantId}
+                onChange={(e) => setTenantId(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg border border-pf-border bg-pf-bg-surface text-sm font-pf-mono"
+                placeholder="টেন্যান্ট পেজ থেকে এলে অটো-ফিল"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">Customer ID (ঐচ্ছিক)</label>
+              <input
+                value={customerId}
+                onChange={(e) => setCustomerId(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-lg border border-pf-border bg-pf-bg-surface text-sm font-pf-mono"
+                placeholder="User Lookup থেকে এলে অটো-ফিল"
+              />
+            </div>
           </div>
 
           <div>

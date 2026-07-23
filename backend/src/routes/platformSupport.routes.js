@@ -99,6 +99,19 @@ router.patch(
     ctrl.updateTicket
 );
 
+router.get(
+    '/tickets/:id/notes',
+    requireScope('full', 'support'),
+    ctrl.listTicketNotes
+);
+
+router.post(
+    '/tickets/:id/notes',
+    requireScope('full', 'support'),
+    auditLog('ticket.add_note', 'ticket'),
+    ctrl.addTicketNote
+);
+
 // ─── কাস্টমারের Invoice/Payment/Statement হিস্ট্রি (রিড-অনলি) ──
 router.get(
     '/customers/:id/invoices',
