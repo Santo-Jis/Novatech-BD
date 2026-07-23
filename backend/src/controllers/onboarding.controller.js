@@ -17,7 +17,7 @@
  */
 
 const bcrypt   = require('bcryptjs');
-const { query } = require('../config/db');
+const { query, withTransaction } = require('../config/db');
 
 // Slug valid কিনা চেক করো (company identifier, future branding/reporting-এ কাজে লাগবে)
 const isValidSlug = (slug) => /^[a-z0-9-]{3,30}$/.test(slug);
@@ -77,42 +77,53 @@ const registerCompany = async (req, res) => {
       }
     }
 
-    // ১. Tenant তৈরি (৩ মাসের trial)
-    const tenantResult = await query(
-      `INSERT INTO tenants
-         (slug, company_name, company_name_bn, status, plan,
-          trial_ends_at, max_employees, max_customers)
-       VALUES ($1, $2, $3, 'trial', 'basic',
-               NOW() + INTERVAL '3 months', 10, 200)
-       RETURNING *`,
-      [slug, company_name, company_name_bn || null]
-    );
-    const tenant = tenantResult.rows[0];
+    // ⚠️ নিচের ৩টা INSERT একটা transaction-এ wrap করা — কোনো একটা fail করলে
+    //    সব rollback হবে, তাই কখনো "orphaned" tenant (admin user ছাড়া)
+    //    তৈরি হবে না, আর সেই slug আটকে থাকবে না।
+    const tenant = await withTransaction(async (client) => {
+      // ১. Tenant তৈরি (৩ মাসের trial)
+      const tenantResult = await client.query(
+        `INSERT INTO tenants
+           (slug, company_name, company_name_bn, status, plan,
+            trial_ends_at, max_employees, max_customers)
+         VALUES ($1, $2, $3, 'trial', 'basic',
+                 NOW() + INTERVAL '3 months', 10, 200)
+         RETURNING *`,
+        [slug, company_name, company_name_bn || null]
+      );
+      const newTenant = tenantResult.rows[0];
 
-    // ২. Admin user তৈরি — users টেবিলের actual column অনুযায়ী
-    const hashedPass = await bcrypt.hash(password, 10);
-    await query(
-      `INSERT INTO users
-         (tenant_id, role, name_bn, name_en, email, phone, password_hash, status, join_date)
-       VALUES ($1, 'admin', $2, $3, $4, $5, $6, 'active', CURRENT_DATE)`,
-      [
-        tenant.id,
-        admin_name || company_name,   // name_bn — null হতে পারবে না
-        admin_name || null,           // name_en
-        admin_email || null,
-        admin_phone,
-        hashedPass,
-      ]
-    );
+      // ২. Admin user তৈরি — users টেবিলের actual column অনুযায়ী
+      // emergency_contact explicit NULL — column-এর DB-level check
+      // constraint (chk_emergency_contact_not_object) default ভ্যালুতে
+      // fail করে, তাই বাকি user-creation flow-গুলোর মতোই explicit NULL।
+      const hashedPass = await bcrypt.hash(password, 10);
+      await client.query(
+        `INSERT INTO users
+           (tenant_id, role, name_bn, name_en, email, phone, password_hash, status, join_date, emergency_contact)
+         VALUES ($1, 'admin', $2, $3, $4, $5, $6, 'active', CURRENT_DATE, $7)`,
+        [
+          newTenant.id,
+          admin_name || company_name,   // name_bn — null হতে পারবে না
+          admin_name || null,           // name_en
+          admin_email || null,
+          admin_phone,
+          hashedPass,
+          null,                        // emergency_contact
+        ]
+      );
 
-    // ৩. Default system_settings copy (default tenant থেকে)
-    await query(
-      `INSERT INTO system_settings (tenant_id, key, value)
-       SELECT $1, key, value FROM system_settings
-       WHERE tenant_id = '00000000-0000-0000-0000-000000000001'
-       ON CONFLICT (tenant_id, key) DO NOTHING`,
-      [tenant.id]
-    );
+      // ৩. Default system_settings copy (default tenant থেকে)
+      await client.query(
+        `INSERT INTO system_settings (tenant_id, key, value)
+         SELECT $1, key, value FROM system_settings
+         WHERE tenant_id = '00000000-0000-0000-0000-000000000001'
+         ON CONFLICT (tenant_id, key) DO NOTHING`,
+        [newTenant.id]
+      );
+
+      return newTenant;
+    });
 
     return res.status(201).json({
       success: true,
