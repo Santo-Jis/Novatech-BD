@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { FiPlus, FiX, FiLoader, FiArrowUpCircle, FiSearch, FiPaperclip, FiImage, FiSend } from 'react-icons/fi'
+import { FiPlus, FiX, FiLoader, FiArrowUpCircle, FiSearch, FiPaperclip, FiImage, FiSend, FiBookOpen, FiDownload } from 'react-icons/fi'
 import platformApi from './api/platformApi'
 import StatusBadge from './components/StatusBadge'
 import { LoadingState, ErrorState, EmptyState } from './components/PanelStates'
@@ -18,6 +18,27 @@ const PRIORITY_OPTIONS = [
   { value: 'normal', label: 'সাধারণ', cls: 'bg-pf-bg-sunken text-pf-text-muted' },
   { value: 'low', label: 'কম', cls: 'bg-pf-info-bg text-pf-info' },
 ]
+
+// সাধারণ CSV export helper — কোনো ব্যাকএন্ড কল লাগে না, বর্তমানে
+// লোড হওয়া (ফিল্টার করা) ডেটা থেকেই সরাসরি ডাউনলোড হয়ে যায়।
+function downloadCSV(rows, columns, filename) {
+  const escape = (val) => {
+    const s = val === null || val === undefined ? '' : String(val)
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const header = columns.map((c) => c.label).join(',')
+  const lines = rows.map((row) => columns.map((c) => escape(c.get(row))).join(','))
+  const csv = '\uFEFF' + [header, ...lines].join('\n') // BOM যোগ — Excel-এ বাংলা ঠিকভাবে দেখাবে
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 
 function PriorityBadge({ priority }) {
   const p = PRIORITY_OPTIONS.find((x) => x.value === priority) || PRIORITY_OPTIONS[2]
@@ -84,12 +105,34 @@ export default function Tickets() {
           <h1 className="font-pf-head text-2xl font-semibold text-pf-primary-700">সাপোর্ট টিকেট</h1>
           <p className="text-pf-text-secondary text-sm mt-1">কাস্টমার/টেন্যান্ট সংক্রান্ত সাপোর্ট টিকেট পরিচালনা</p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-pf-primary-700 text-white text-sm font-semibold hover:brightness-110"
-        >
-          <FiPlus /> নতুন টিকেট
-        </button>
+        <div className="flex items-center gap-2">
+          {tickets && tickets.length > 0 && (
+            <button
+              onClick={() =>
+                downloadCSV(
+                  tickets,
+                  [
+                    { label: 'Subject', get: (t) => t.subject },
+                    { label: 'Tenant/Customer', get: (t) => t.customer_shop_name || t.company_name || '' },
+                    { label: 'Status', get: (t) => t.status },
+                    { label: 'Priority', get: (t) => t.priority },
+                    { label: 'Created At', get: (t) => new Date(t.created_at).toISOString() },
+                  ],
+                  `support-tickets-${new Date().toISOString().slice(0, 10)}.csv`
+                )
+              }
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg border border-pf-border text-pf-text-primary text-sm font-semibold hover:border-pf-primary-500"
+            >
+              <FiDownload /> CSV
+            </button>
+          )}
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-pf-primary-700 text-white text-sm font-semibold hover:brightness-110"
+          >
+            <FiPlus /> নতুন টিকেট
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -196,6 +239,7 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
   const [notesLoading, setNotesLoading] = useState(true)
   const [newNote, setNewNote] = useState('')
   const [addingNote, setAddingNote] = useState(false)
+  const [canned, setCanned] = useState(null)
   const attachments = Array.isArray(ticket.attachment_urls) ? ticket.attachment_urls : []
 
   useEffect(() => {
@@ -211,7 +255,26 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
       }
     }
     loadNotes()
+
+    platformApi.get('/support/canned-responses').then(
+      (res) => setCanned(res.data.data),
+      () => setCanned([])
+    )
   }, [ticket.id])
+
+  const addNewTemplate = async () => {
+    const title = window.prompt('টেমপ্লেটের নাম (যেমন: "পাসওয়ার্ড রিসেট নির্দেশনা")')
+    if (!title?.trim()) return
+    const body = window.prompt('টেমপ্লেটের লেখা:')
+    if (!body?.trim()) return
+    try {
+      const res = await platformApi.post('/support/canned-responses', { title: title.trim(), body: body.trim() })
+      setCanned((prev) => [...(prev || []), res.data.data])
+      toast.success('টেমপ্লেট যোগ হয়েছে।')
+    } catch {
+      toast.error('টেমপ্লেট যোগ করা যায়নি।')
+    }
+  }
 
   const save = async () => {
     setSaving(true)
@@ -392,21 +455,46 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
               </div>
             )}
 
-            <form onSubmit={submitNote} className="flex gap-2">
-              <input
-                value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                placeholder="নতুন নোট লিখুন..."
-                className="flex-1 px-3 py-2 rounded-lg border border-pf-border bg-pf-bg-surface text-sm"
-              />
-              <button
-                type="submit"
-                disabled={addingNote || !newNote.trim()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-pf-primary-700 text-white text-sm font-semibold
-                  hover:brightness-110 disabled:opacity-50"
-              >
-                {addingNote ? <FiLoader className="animate-spin" /> : <FiSend />}
-              </button>
+            <form onSubmit={submitNote} className="space-y-2">
+              <div className="flex items-center gap-2">
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const tpl = canned?.find((c) => c.id === e.target.value)
+                    if (tpl) setNewNote((prev) => (prev ? `${prev}\n${tpl.body}` : tpl.body))
+                  }}
+                  className="flex-1 px-2.5 py-1.5 rounded-lg border border-pf-border bg-pf-bg-surface text-xs"
+                >
+                  <option value="">টেমপ্লেট বেছে নিন...</option>
+                  {(canned || []).map((c) => (
+                    <option key={c.id} value={c.id}>{c.title}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={addNewTemplate}
+                  title="নতুন টেমপ্লেট যোগ করুন"
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-pf-border text-xs text-pf-text-secondary hover:border-pf-primary-500 flex-shrink-0"
+                >
+                  <FiBookOpen /> +
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  placeholder="নতুন নোট লিখুন..."
+                  className="flex-1 px-3 py-2 rounded-lg border border-pf-border bg-pf-bg-surface text-sm"
+                />
+                <button
+                  type="submit"
+                  disabled={addingNote || !newNote.trim()}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-pf-primary-700 text-white text-sm font-semibold
+                    hover:brightness-110 disabled:opacity-50"
+                >
+                  {addingNote ? <FiLoader className="animate-spin" /> : <FiSend />}
+                </button>
+              </div>
             </form>
           </div>
         </div>

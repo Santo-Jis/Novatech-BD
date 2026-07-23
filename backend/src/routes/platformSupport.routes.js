@@ -138,4 +138,32 @@ router.get(
     ctrl.listAuditLog
 );
 
+// ─── নোটিফিকেশন পোলিং ─────────────────────────────────────────
+router.get(
+    '/notifications-check',
+    requireScope('full', 'support'),
+    ctrl.checkNotifications
+);
+
+// ─── Canned Responses (টেমপ্লেট উত্তর) ────────────────────────
+router.get(
+    '/canned-responses',
+    requireScope('full', 'support'),
+    ctrl.listCannedResponses
+);
+
+router.post(
+    '/canned-responses',
+    requireScope('full', 'support'),
+    auditLog('canned_response.create', 'canned_response'),
+    ctrl.createCannedResponse
+);
+
+router.delete(
+    '/canned-responses/:id',
+    requireScope('full', 'support'),
+    auditLog('canned_response.delete', 'canned_response'),
+    ctrl.deleteCannedResponse
+);
+
 module.exports = router;

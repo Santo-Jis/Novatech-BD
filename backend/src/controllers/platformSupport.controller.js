@@ -274,11 +274,13 @@ const updateTicket = async (req, res) => {
     }
     if (assigned_to !== undefined) { params.push(assigned_to); fields.push(`assigned_to = $${params.length}`); }
     if (customer_id !== undefined) { params.push(customer_id); fields.push(`customer_id = $${params.length}`); }
-    if (status === 'closed') { fields.push(`closed_at = NOW()`); }
 
     if (fields.length === 0) {
         return res.status(400).json({ success: false, message: 'কোনো পরিবর্তনযোগ্য ফিল্ড দেওয়া হয়নি।' });
     }
+
+    if (status === 'closed') { fields.push(`closed_at = NOW()`); }
+    fields.push(`updated_at = NOW()`);
 
     params.push(id);
 
@@ -338,6 +340,7 @@ const addTicketNote = async (req, res) => {
              RETURNING id, staff_id, staff_name, note, created_at`,
             [id, req.platformStaff.id, req.platformStaff.name, note.trim()]
         );
+        await query('UPDATE support_tickets SET updated_at = NOW() WHERE id = $1', [id]);
         return res.status(201).json({ success: true, data: result.rows[0] });
     } catch (err) {
         logger.error('❌ platformSupport.addTicketNote Error:', err.message);
@@ -518,6 +521,89 @@ const listAuditLog = async (req, res) => {
     }
 };
 
+// ─── নোটিফিকেশন চেক (polling — সত্যিকার push/websocket না) ────
+// ⚠️ সততার সাথে: এটা প্রকৃত রিয়েল-টাইম push notification না (তার জন্য
+// FCM device registration লাগত, যেটা platform_staff-এর জন্য নেই)। এটা
+// ফ্রন্টএন্ড প্রতি ~২৫-৩০ সেকেন্ডে poll করে নতুন escalation/unassigned
+// ticket আছে কিনা চেক করবে — কার্যত near-real-time।
+const checkNotifications = async (req, res) => {
+    const { since } = req.query;
+    if (!since) {
+        return res.status(400).json({ success: false, message: 'since (ISO timestamp) আবশ্যক' });
+    }
+
+    try {
+        const escalatedResult = await query(
+            `SELECT id, subject FROM support_tickets
+             WHERE status = 'escalated' AND updated_at > $1
+             ORDER BY updated_at DESC LIMIT 10`,
+            [since]
+        );
+        const unassignedResult = await query(
+            `SELECT id, subject FROM support_tickets
+             WHERE assigned_to IS NULL AND created_at > $1
+             ORDER BY created_at DESC LIMIT 10`,
+            [since]
+        );
+
+        return res.json({
+            success: true,
+            data: {
+                escalated: escalatedResult.rows,
+                unassigned: unassignedResult.rows,
+                checked_at: new Date().toISOString(),
+            },
+        });
+    } catch (err) {
+        logger.error('❌ platformSupport.checkNotifications Error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+// ─── Canned Responses (টেমপ্লেট উত্তর) ────────────────────────
+const listCannedResponses = async (req, res) => {
+    try {
+        const result = await query(
+            `SELECT id, title, body, created_by, created_at FROM support_canned_responses ORDER BY title ASC`
+        );
+        return res.json({ success: true, data: result.rows });
+    } catch (err) {
+        logger.error('❌ platformSupport.listCannedResponses Error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+const createCannedResponse = async (req, res) => {
+    const { title, body } = req.body;
+    if (!title?.trim() || !body?.trim()) {
+        return res.status(400).json({ success: false, message: 'title ও body দুটোই দিতে হবে।' });
+    }
+    try {
+        const result = await query(
+            `INSERT INTO support_canned_responses (title, body, created_by) VALUES ($1, $2, $3) RETURNING *`,
+            [title.trim(), body.trim(), req.platformStaff.id]
+        );
+        return res.status(201).json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        logger.error('❌ platformSupport.createCannedResponse Error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+const deleteCannedResponse = async (req, res) => {
+    const { id } = req.params;
+    try {
+        const result = await query('DELETE FROM support_canned_responses WHERE id = $1 RETURNING id', [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'টেমপ্লেট পাওয়া যায়নি।' });
+        }
+        return res.json({ success: true });
+    } catch (err) {
+        logger.error('❌ platformSupport.deleteCannedResponse Error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     lookupUser,
     unblockUserAccount,
@@ -536,4 +622,8 @@ module.exports = {
     getCustomerPaymentHistory,
     getCustomerStatementHistory,
     listAuditLog,
+    checkNotifications,
+    listCannedResponses,
+    createCannedResponse,
+    deleteCannedResponse,
 };

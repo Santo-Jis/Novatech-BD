@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { FiClock, FiChevronLeft, FiChevronRight, FiFilter } from 'react-icons/fi'
+import { FiClock, FiChevronLeft, FiChevronRight, FiFilter, FiDownload, FiLoader } from 'react-icons/fi'
 import platformApi from './api/platformApi'
 import { usePlatformAuthStore } from './store/platformAuth.store'
 import { LoadingState, ErrorState, EmptyState } from './components/PanelStates'
@@ -12,6 +12,27 @@ const TARGET_TYPES = [
   { value: 'platform_staff', label: 'Platform Staff' },
 ]
 
+// কোনো ব্যাকএন্ড এন্ডপয়েন্ট লাগে না — বর্তমান ফিল্টার অনুযায়ী একটা
+// বড় ব্যাচ (সর্বোচ্চ ১০০০) ফেচ করে ব্রাউজারেই CSV বানিয়ে ডাউনলোড হয়।
+function downloadCSV(rows, columns, filename) {
+  const escape = (val) => {
+    const s = val === null || val === undefined ? '' : String(val)
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  }
+  const header = columns.map((c) => c.label).join(',')
+  const lines = rows.map((row) => columns.map((c) => escape(c.get(row))).join(','))
+  const csv = '\uFEFF' + [header, ...lines].join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 export default function AuditLog() {
   const staff = usePlatformAuthStore((s) => s.staff)
   const isFull = staff?.scope === 'full'
@@ -23,6 +44,7 @@ export default function AuditLog() {
   const [pagination, setPagination] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -44,13 +66,49 @@ export default function AuditLog() {
     load()
   }, [load])
 
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const res = await platformApi.get('/support/audit-log', {
+        params: { page: 1, limit: 1000, action: action || undefined, target_type: targetType || undefined },
+      })
+      downloadCSV(
+        res.data.data,
+        [
+          { label: 'Staff Email', get: (r) => r.staff_email },
+          { label: 'Action', get: (r) => r.action },
+          { label: 'Target Type', get: (r) => r.target_type },
+          { label: 'Target ID', get: (r) => r.target_id },
+          { label: 'Created At', get: (r) => new Date(r.created_at).toISOString() },
+        ],
+        `audit-log-${new Date().toISOString().slice(0, 10)}.csv`
+      )
+    } catch {
+      setError('Export করা যায়নি।')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="font-pf-head text-2xl font-semibold text-pf-primary-700">Audit Log</h1>
-        <p className="text-pf-text-secondary text-sm mt-1">
-          {isFull ? 'সব Platform Staff-এর অ্যাকশন হিস্ট্রি' : 'আপনার নিজের অ্যাকশন হিস্ট্রি'}
-        </p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="font-pf-head text-2xl font-semibold text-pf-primary-700">Audit Log</h1>
+          <p className="text-pf-text-secondary text-sm mt-1">
+            {isFull ? 'সব Platform Staff-এর অ্যাকশন হিস্ট্রি' : 'আপনার নিজের অ্যাকশন হিস্ট্রি'}
+          </p>
+        </div>
+        {rows && rows.length > 0 && (
+          <button
+            onClick={handleExport}
+            disabled={exporting}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-lg border border-pf-border text-pf-text-primary text-sm font-semibold hover:border-pf-primary-500 disabled:opacity-60"
+          >
+            {exporting ? <FiLoader className="animate-spin" /> : <FiDownload />}
+            CSV Export
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">

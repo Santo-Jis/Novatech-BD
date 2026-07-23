@@ -1,7 +1,9 @@
-import { useState } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
+import toast from 'react-hot-toast'
 import { FiHome, FiBriefcase, FiSearch, FiLifeBuoy, FiMenu, FiX, FiLogOut, FiShield, FiClock, FiUsers } from 'react-icons/fi'
 import { usePlatformAuthStore } from '../store/platformAuth.store'
+import platformApi from '../api/platformApi'
 import ErrorBoundary from '../../../components/ErrorBoundary'
 
 const baseNavItems = [
@@ -16,15 +18,68 @@ const fullOnlyNavItems = [
   { path: '/platform/staff', icon: <FiUsers />, label: 'Staff ম্যানেজমেন্ট' },
 ]
 
+const NOTIF_STORAGE_KEY = 'pf_notif_last_checked'
+const POLL_INTERVAL_MS = 25000
+
 export default function PlatformLayout() {
   const { staff, logout } = usePlatformAuthStore()
   const navigate = useNavigate()
+  const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const seenIdsRef = useRef(new Set())
 
   const handleLogout = () => {
     logout()
     navigate('/platform/login', { replace: true })
   }
+
+  // ── Notification polling ──────────────────────────────────
+  // ⚠️ এটা true push/websocket না — প্রতি ২৫ সেকেন্ডে backend poll
+  // করে নতুন escalation/unassigned ticket চেক করে (near-real-time)।
+  useEffect(() => {
+    const poll = async () => {
+      const since = localStorage.getItem(NOTIF_STORAGE_KEY) || new Date(Date.now() - 60000).toISOString()
+      try {
+        const res = await platformApi.get('/support/notifications-check', { params: { since } })
+        const { escalated, unassigned, checked_at } = res.data.data
+
+        let newCount = 0
+        escalated.forEach((t) => {
+          if (!seenIdsRef.current.has(`esc_${t.id}`)) {
+            seenIdsRef.current.add(`esc_${t.id}`)
+            newCount++
+            toast(`এসকেলেটেড: ${t.subject}`, { icon: '⬆️' })
+          }
+        })
+        unassigned.forEach((t) => {
+          if (!seenIdsRef.current.has(`una_${t.id}`)) {
+            seenIdsRef.current.add(`una_${t.id}`)
+            newCount++
+            toast(`নতুন টিকেট (অবরাদ্দকৃত): ${t.subject}`, { icon: '🎫' })
+          }
+        })
+
+        if (newCount > 0 && !location.pathname.startsWith('/platform/tickets')) {
+          setUnreadCount((c) => c + newCount)
+        }
+        localStorage.setItem(NOTIF_STORAGE_KEY, checked_at)
+      } catch {
+        // নীরবে ব্যর্থ — নোটিফিকেশন miss হওয়া critical না, toast দিয়ে বিরক্ত করার দরকার নেই
+      }
+    }
+
+    poll()
+    const interval = setInterval(poll, POLL_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tickets পেজে গেলে badge ক্লিয়ার
+  useEffect(() => {
+    if (location.pathname.startsWith('/platform/tickets')) {
+      setUnreadCount(0)
+    }
+  }, [location.pathname])
 
   return (
     <div className="min-h-screen w-full bg-pf-bg-base font-pf-body text-pf-text-primary">
@@ -63,6 +118,11 @@ export default function PlatformLayout() {
             >
               <span className="text-lg flex-shrink-0">{item.icon}</span>
               <span>{item.label}</span>
+              {item.path === '/platform/tickets' && unreadCount > 0 && (
+                <span className="ml-auto flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-pf-accent-600 text-white text-[10px] font-bold">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
