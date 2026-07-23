@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
+import { useCheckinStore } from '../../store/checkin.store'
 import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
 import {
@@ -163,6 +165,14 @@ function ItemRow({ item, returnedQty, carryQty, onReturn, onCarry }) {
 
 // ─── Main Component ───────────────────────────────────────────
 export default function Settlement() {
+  const navigate = useNavigate()
+
+  // ✅ F1: সেটেলমেন্ট পেজ checkin ছাড়াও দেখা যায় (view সবসময় allowed) —
+  // কিন্তু জমা দেওয়া (যা ব্যাকএন্ডে requireCheckin দিয়ে গার্ডেড, F2 দ্রষ্টব্য) checkin ছাড়া করা যাবে না।
+  const checkedIn          = useCheckinStore(s => s.checkedIn)
+  const fetchCheckinStatus = useCheckinStore(s => s.fetchStatus)
+  useEffect(() => { fetchCheckinStatus() }, [])
+
   const [stockItems,    setStockItems]    = useState([])
   const [returnedQtys,  setReturnedQtys]  = useState({})
   const [carryQtys,     setCarryQtys]     = useState({})
@@ -284,6 +294,7 @@ export default function Settlement() {
 
   const handleSubmit = async () => {
     if (submitting || alreadySubmitted) return
+    if (checkedIn === false) { toast.error('আগে আজকের চেক-ইন করুন — তারপর হিসাব জমা দেওয়া যাবে।'); setShowConfirm(false); return }
     if (!cashAmount) { toast.error('নগদ জমার পরিমাণ দিন'); return }
     if (livePreview.cashBlocked && !mismatchExplanation.trim()) {
       toast.error('নগদ পার্থক্যের কারণ অবশ্যই লিখুন')
@@ -386,6 +397,22 @@ export default function Settlement() {
           <span className="text-xs text-gray-600 font-medium">{dateLabel}</span>
         </div>
       </div>
+
+      {/* ─── Checkin Required Banner ─── */}
+      {checkedIn === false && (
+        <div
+          onClick={() => navigate('/worker/attendance')}
+          className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-center gap-2.5 cursor-pointer active:scale-[0.98] transition-transform"
+        >
+          <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+            <FiLock size={14} className="text-amber-600" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-amber-800 text-xs font-bold">হিসাব দেখা যাচ্ছে, কিন্তু জমা দিতে checkin লাগবে</p>
+            <p className="text-amber-600 text-[11px]">এখনই চেক-ইন করুন 👆</p>
+          </div>
+        </div>
+      )}
 
       {/* ─── Section 1: আজকের বিক্রয় ─── */}
       <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
@@ -553,6 +580,7 @@ export default function Settlement() {
       {/* ─── Submit Button ─── */}
       <button
         onClick={() => {
+          if (checkedIn === false) return toast.error('আগে আজকের চেক-ইন করুন — তারপর হিসাব জমা দেওয়া যাবে।')
           if (!cashAmount) return toast.error('নগদ জমার পরিমাণ দিন')
           setShowConfirm(true)
         }}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
+import { useCheckinStore } from '../../store/checkin.store'
 import Camera from '../../components/Camera'
 import toast from 'react-hot-toast'
 
@@ -162,6 +163,10 @@ function StatusBadge({ status }) {
 export default function WorkerAttendance() {
   const navigate = useNavigate()
 
+  // ✅ F1 সহায়ক: checkin সফল হলে শেয়ার্ড স্টোরকে সাথে সাথে জানাও —
+  // যাতে WorkerLayout/CustomerList/Settlement রিলোড ছাড়াই আপডেট হয়ে যায়
+  const markCheckedIn = useCheckinStore(s => s.markCheckedIn)
+
   const [mode,        setMode]        = useState(null)   // 'checkin' | 'checkout'
   const [step,        setStep]        = useState('hold') // 'hold' | 'selfie' | 'loading' | 'done'
   const [todayAtt,    setTodayAtt]    = useState(null)
@@ -298,6 +303,10 @@ export default function WorkerAttendance() {
       if (mode === 'checkin' && res.data.data?.isLate) setLateInfo(res.data.data)
       toast.success(res.data.message)
       setStep('done')
+
+      // ✅ F1: checkin সফল — শেয়ার্ড স্টোরকে সাথে সাথে আপডেট করো (নতুন API কল ছাড়াই)
+      // যাতে Customers/Settlement পেজের ব্যানার/অ্যাকশন-গার্ড সাথে সাথে unlock হয়ে যায়
+      if (mode === 'checkin') markCheckedIn()
 
       const m = new Date().getMonth() + 1
       const y = new Date().getFullYear()

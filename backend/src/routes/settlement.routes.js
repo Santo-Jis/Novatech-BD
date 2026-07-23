@@ -1,11 +1,12 @@
-const express  = require('express');
-const router   = express.Router();
-const { auth } = require('../middlewares/auth');
+const express         = require('express');
+const router          = express.Router();
+const { auth }        = require('../middlewares/auth');
 const {
     allowRoles,
     canApproveSettlement,
     checkTeamAccess
 } = require('../middlewares/roleCheck');
+const requireCheckin  = require('../middlewares/requireCheckin'); // ✅ নতুন — F2: checkin ছাড়া settlement submit বন্ধ
 
 const {
     createSettlement,
@@ -26,9 +27,11 @@ const {
 // ============================================================
 
 // SR হিসাব জমা দেবে
+// ✅ requireCheckin: চেক-ইন না করলে সেটেলমেন্ট জমা দেওয়া যাবে না (view/GET রুটগুলো অপরিবর্তিত — checkin ছাড়াও দেখা যাবে)
 router.post('/',
     auth,
     allowRoles('worker'),
+    requireCheckin,
     createSettlement
 );
 

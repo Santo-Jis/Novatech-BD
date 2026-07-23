@@ -19,6 +19,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useAppStore } from '../../store/app.store'
+import { useCheckinStore } from '../../store/checkin.store'
 import api, { isNetworkError } from '../../api/axios'
 import { saveCache, getCache } from '../../api/offlineQueue'
 import {
@@ -160,6 +161,21 @@ export default function CustomerList() {
   const [activePin,    setActivePin]    = useState(null)   // map pin tap → highlight card
   const fileRef    = useRef()
   const cardRefs   = useRef({})   // customer id → DOM ref (scroll করতে)
+
+  // ✅ F1: কাস্টমার লিস্ট checkin ছাড়াও দেখা যায় (view সবসময় allowed) —
+  // কিন্তু ভিজিট/সেল শুরু করা (যা ব্যাকএন্ডে requireCheckin দিয়ে গার্ডেড) checkin ছাড়া করা যাবে না।
+  const checkedIn          = useCheckinStore(s => s.checkedIn)
+  const fetchCheckinStatus = useCheckinStore(s => s.fetchStatus)
+  useEffect(() => { fetchCheckinStatus() }, [])
+
+  // ভিজিটে যাওয়ার আগে checkin যাচাই — checkin না থাকলে navigate না করে বার্তা দেখাও
+  const goToVisit = (customerId) => {
+    if (checkedIn === false) {
+      toast.error('আগে আজকের চেক-ইন করুন — তারপর ভিজিট/বিক্রয় করা যাবে।')
+      return
+    }
+    navigate(`/worker/visit/${customerId}`)
+  }
 
   // ── Haversine ────────────────────────────────────────────────
   const calcDistance = (lat1, lng1, lat2, lng2) => {
@@ -648,12 +664,28 @@ export default function CustomerList() {
           </button>
         </div>
 
+        {/* ── Checkin Required Banner ──────────────────────── */}
+        {checkedIn === false && (
+          <div
+            onClick={() => navigate('/worker/attendance')}
+            className="bg-amber-50 border border-amber-200 rounded-2xl p-3 flex items-center gap-2.5 cursor-pointer active:scale-[0.98] transition-transform"
+          >
+            <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+              <FiTarget size={15} className="text-amber-600" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-amber-800 text-xs font-bold">তালিকা দেখা যাচ্ছে, কিন্তু ভিজিট/বিক্রয় করতে checkin লাগবে</p>
+              <p className="text-amber-600 text-[11px]">এখনই চেক-ইন করুন 👆</p>
+            </div>
+          </div>
+        )}
+
         {/* ── Next Stop Banner ─────────────────────────────── */}
         {nextStop && (
           <div
             className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-4 shadow-md flex items-center gap-3 cursor-pointer active:scale-[0.98] transition-transform"
             onClick={() => {
-              navigate(`/worker/visit/${nextStop.customer._id || nextStop.customer.id}`)
+              goToVisit(nextStop.customer._id || nextStop.customer.id)
             }}
           >
             {/* Icon */}
@@ -725,7 +757,7 @@ export default function CustomerList() {
                 </div>
               )}
               <div className="flex justify-between items-start">
-                <div className="flex-1 min-w-0" onClick={() => navigate(`/worker/visit/${c._id || c.id}`)}>
+                <div className="flex-1 min-w-0" onClick={() => goToVisit(c._id || c.id)}>
                   <div className="flex items-center gap-2 flex-wrap">
                     {c.visit_order != null && (
                       <span className="w-6 h-6 rounded-full bg-primary/10 text-primary

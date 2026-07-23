@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/app.store'
-import api from '../../api/axios'
+import api, { isNetworkError } from '../../api/axios'
+import { enqueue, saveCache, getCache } from '../../api/offlineQueue'
 import { FiShoppingCart, FiPlus, FiMinus, FiSend, FiPackage, FiChevronDown, FiChevronUp } from 'react-icons/fi'
 import toast from 'react-hot-toast'
 
@@ -128,11 +129,41 @@ export default function OrderForm() {
   const [loading,    setLoading]    = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
+  // ✅ F3: পণ্য তালিকা cache-first — অফলাইনে থাকলে আজকের সংরক্ষিত তালিকা দেখাও
+  // (এটা ছাড়া অফলাইনে Order পেজ খুললে পণ্য তালিকা খালি থাকতো, queue করার মতো কিছুই বাছাই করা যেত না)
   useEffect(() => {
-    api.get('/products')
-      .then(res => setProducts(res.data.data || []))
-      .finally(() => setLoading(false))
+    loadProducts()
   }, [])
+
+  const loadProducts = async () => {
+    if (!navigator.onLine) {
+      const cached = await getCache('products_catalog')
+      if (cached?.isToday) {
+        setProducts(cached.data)
+      } else {
+        toast.error('পণ্যের তালিকা সংরক্ষিত নেই। একবার অনলাইনে থাকা অবস্থায় এই পেজ খুলুন।', { duration: 5000 })
+      }
+      setLoading(false)
+      return
+    }
+
+    try {
+      const res  = await api.get('/products')
+      const data = res.data.data || []
+      setProducts(data)
+      saveCache('products_catalog', data)
+    } catch (err) {
+      if (isNetworkError(err)) {
+        const cached = await getCache('products_catalog')
+        if (cached?.isToday) {
+          setProducts(cached.data)
+          toast('নেটওয়ার্ক ধীর — সংরক্ষিত পণ্য তালিকা দেখানো হচ্ছে', { icon: '📶', duration: 3000 })
+        }
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const updateQty = (id, delta) => {
     setQuantities(prev => ({
@@ -152,13 +183,33 @@ export default function OrderForm() {
 
     if (items.length === 0) return toast.error('কোনো পণ্য সিলেক্ট করুন')
 
+    const payload = {
+      route_id:     selectedRoute?.id,
+      items,
+      total_amount: totalAmount,
+    }
+
     setSubmitting(true)
+
+    // ✅ F3: অফলাইনে থাকলে queue-তে জমা রাখো — নেটওয়ার্ক ফিরলে syncService.js
+    // (ORDER case আগে থেকেই রেডি ছিল) নিজে থেকে সার্ভারে পাঠাবে
+    if (!navigator.onLine) {
+      try {
+        await enqueue({ type: 'ORDER', payload })
+        toast.success('✅ অর্ডার offline এ সংরক্ষিত! নেটওয়ার্ক ফিরলে sync হবে।', {
+          duration: 5000, icon: '📶',
+        })
+        navigate('/worker/dashboard')
+      } catch {
+        toast.error('Offline save ব্যর্থ হয়েছে।')
+      } finally {
+        setSubmitting(false)
+      }
+      return
+    }
+
     try {
-      await api.post('/orders', {
-        route_id:     selectedRoute?.id,
-        items,
-        total_amount: totalAmount
-      })
+      await api.post('/orders', payload)
       toast.success('অর্ডার পাঠানো হয়েছে ✅')
       navigate('/worker/dashboard')
     } catch (err) {

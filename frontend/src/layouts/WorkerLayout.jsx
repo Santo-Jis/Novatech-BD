@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import ErrorBoundary from '../components/ErrorBoundary'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore }  from '../store/app.store'
+import { useCheckinStore } from '../store/checkin.store'
 import {
   FiHome, FiMapPin, FiShoppingBag, FiDollarSign, FiUser,
   FiBell, FiMoon, FiSun, FiUsers, FiMenu, FiX, FiLogOut,
@@ -27,37 +28,82 @@ const bottomNav = [
   { path: '/worker/profile',    icon: <FiUser />,         label: 'প্রোফাইল' },
 ]
 
-// ─── Hamburger Menu Items (গৌণ পৃষ্ঠা) — বিভাগ অনুযায়ী গ্রুপ করা ──────
-const menuGroups = [
+// ─── Hamburger Menu Items (গৌণ পৃষ্ঠা) ──────────────────────
+const menuItems = [
   {
-    label: 'বিক্রয় ও স্টক',
-    items: [
-      { icon: <FiMapPin />,     label: 'রুট সিলেক্ট করুন', path: '/worker/route' },
-      { icon: <FiPackage />,    label: 'স্টক স্ট্যাটাস',   path: '/worker/stock-status' },
-      { icon: <FiClipboard />,  label: 'অর্ডার দিন',       path: '/worker/order' },
-      { icon: <FiTrendingUp />, label: 'বিক্রয় ইতিহাস',    path: '/worker/sales-history' },
-      { icon: <FiTruck />,      label: 'ডেলিভারি টাস্ক',   path: '/worker/deliveries' },
-    ],
+    icon: <FiMapPin />,
+    label: 'রুট সিলেক্ট করুন',
+    path: '/worker/route',
   },
   {
-    label: 'হিসাব ও বেতন',
-    items: [
-      { icon: <FiDollarSign />, label: 'কমিশন',            path: '/worker/commission' },
-      { icon: <FiCreditCard />, label: 'বেতন ইতিহাস',      path: '/worker/salary-history' },
-      { icon: <FiFileText />,   label: 'মাসিক স্টেটমেন্ট', path: '/worker/statement' },
-      { icon: <FiFileText />,   label: 'দৈনিক খরচ জমা',    path: '/worker/expense' },
-      { icon: <FiFileText />,   label: 'খরচের ইতিহাস',     path: '/worker/expense-history' },
-    ],
+    icon: <FiPackage />,
+    label: 'স্টক স্ট্যাটাস',
+    path: '/worker/stock-status',
   },
   {
-    label: 'অন্যান্য',
-    items: [
-      { icon: <FiRefreshCw />, label: 'রিটার্ন / রিপ্লেসমেন্ট', path: '/worker/return-history' },
-      { icon: <FiInbox />,     label: 'অনুমোদিত রিটার্ন',       path: '/worker/my-return-requests' },
-      { icon: <FiBell />,      label: 'নোটিশ বোর্ড',            path: '/worker/notices' },
-      { icon: <FiTag />,       label: 'চলমান অফার',             path: '/worker/offers' },
-      { icon: <FiAward />,     label: 'লিডারবোর্ড',             path: '/worker/leaderboard' },
-    ],
+    icon: <FiClipboard />,
+    label: 'অর্ডার দিন',
+    path: '/worker/order',
+  },
+  {
+    icon: <FiDollarSign />,
+    label: 'কমিশন',
+    path: '/worker/commission',
+  },
+  {
+    icon: <FiCreditCard />,
+    label: 'বেতন ইতিহাস',
+    path: '/worker/salary-history',
+  },
+  {
+    icon: <FiFileText />,
+    label: 'মাসিক স্টেটমেন্ট',
+    path: '/worker/statement',
+  },
+  {
+    icon: <FiTrendingUp />,
+    label: 'বিক্রয় ইতিহাস',
+    path: '/worker/sales-history',
+  },
+  {
+    icon: <FiRefreshCw />,
+    label: 'রিটার্ন / রিপ্লেসমেন্ট',
+    path: '/worker/return-history',
+  },
+  {
+    icon: <FiInbox />,
+    label: 'অনুমোদিত রিটার্ন',
+    path: '/worker/my-return-requests',
+  },
+  {
+    icon: <FiFileText />,
+    label: 'দৈনিক খরচ জমা',
+    path: '/worker/expense',
+  },
+  {
+    icon: <FiFileText />,
+    label: 'খরচের ইতিহাস',
+    path: '/worker/expense-history',
+  },
+  {
+    icon: <FiBell />,
+    label: 'নোটিশ বোর্ড',
+    path: '/worker/notices',
+  },
+  {
+    icon: <FiTag />,
+    label: 'চলমান অফার',
+    path: '/worker/offers',
+  },
+  {
+    icon: <FiTruck />,
+    label: 'ডেলিভারি টাস্ক',
+    path: '/worker/deliveries',
+  },
+  {
+    icon: <FiAward />,
+    label: 'লিডারবোর্ড',
+    path: '/worker/leaderboard',
   },
 ]
 
@@ -81,54 +127,17 @@ export default function WorkerLayout() {
   // ✅ লাইভ GPS ট্র্যাকিং — ব্যাকগ্রাউন্ডে চলে
   useLiveTracking()
 
-  // ✅ চেক-ইন স্ট্যাটাস
-  const [checkedIn,        setCheckedIn]        = useState(null)  // null = loading
+  // ✅ চেক-ইন স্ট্যাটাস — শেয়ার্ড store থেকে (WorkerLayout/CustomerList/Settlement সবাই একই cache পড়ে)
+  const checkedIn         = useCheckinStore(s => s.checkedIn)
+  const fetchCheckinStatus = useCheckinStore(s => s.fetchStatus)
   const [showCheckinPopup, setShowCheckinPopup]  = useState(false)
 
-  // চেক-ইন-সুরক্ষিত route গুলো
+  // চেক-ইন-সুরক্ষিত route — ✅ F1: শুধু Order লাইভ-অনলি (checkin ছাড়া পুরো পেজ ব্লক)।
+  // Customers ও Settlement আগে এখানে ছিল — এখন দুটোই view-allowed, action-blocked
+  // (ওই পেজগুলোর ভেতরেই checkedIn চেক করে শুধু action বাটন disable করা হয়, পুরো পেজ না)।
   const PROTECTED_PATHS = [
-    '/worker/customers',
     '/worker/order',
-    '/worker/settlement',
   ]
-
-  // ─── Check-in Smart Cache ───────────────────────────────────────
-  // সমস্যা: আগে প্রতিটা route change-এ API call হত (দিনে ৫০+ navigation = ৫০+ call)
-  //
-  // সমাধান: in-memory cache — একই দিনে একবারই API call, তারপর cache থেকে পড়া।
-  // Cache invalidation:
-  //   ১. নতুন দিন হলে (তারিখ বদলালে) — স্বয়ংক্রিয়ভাবে expire
-  //   ২. User চেক-ইন করলে — checkinCache.set(true) দিয়ে force update
-  //   ৩. Logout হলে — module reload হয় তাই auto-clear
-  //
-  // Module-level রাখা হয়েছে যাতে re-render-এ reset না হয়।
-  // ─────────────────────────────────────────────────────────────────
-  const checkinCacheRef = useRef(null)  // { value: bool, date: 'YYYY-MM-DD' }
-
-  const getTodayDate = () => new Date().toISOString().slice(0, 10)
-
-  // Cache থেকে পড়ো, না থাকলে API call করো
-  const fetchCheckinStatus = async (forceRefresh = false) => {
-    const today = getTodayDate()
-    const cache = checkinCacheRef.current
-
-    // Cache hit: একই দিনের data আছে এবং force refresh নয়
-    if (!forceRefresh && cache && cache.date === today) {
-      setCheckedIn(cache.value)
-      return
-    }
-
-    // Cache miss: API call করো
-    setCheckedIn(null)  // loading state
-    try {
-      const res = await api.get('/sales/today-summary')
-      const value = res.data.data?.checked_in ?? false
-      checkinCacheRef.current = { value, date: today }
-      setCheckedIn(value)
-    } catch {
-      setCheckedIn(false)
-    }
-  }
 
   // ✅ Sync engine চালু করো — একবারই, worker login করার পরে
   // online হলে auto-sync, stuck 'syncing' items reset, app open-এ pending check
@@ -136,14 +145,7 @@ export default function WorkerLayout() {
     initAutoSync()
   }, [])
 
-  // ✅ Expose করা হচ্ছে যাতে চেক-ইন page থেকে cache clear করতে পারে
-  // ব্যবহার: window.__refreshCheckin?.() — AttendancePage-এ চেক-ইন সফল হলে call করুন
-  useEffect(() => {
-    window.__refreshCheckin = () => fetchCheckinStatus(true)
-    return () => { delete window.__refreshCheckin }
-  }, [])
-
-  // Route change-এ শুধু cache check — API call শুধু দরকার হলে
+  // Route change-এ শুধু cache check — API call শুধু দরকার হলে (store নিজেই cache করে)
   useEffect(() => {
     fetchCheckinStatus()
   }, [location.pathname])
@@ -334,24 +336,17 @@ export default function WorkerLayout() {
               </button>
             </div>
 
-            {/* Menu items — বিভাগ অনুযায়ী গ্রুপ করা */}
-            <nav className="flex-1 py-2 overflow-y-auto">
-              {menuGroups.map((group, gi) => (
-                <div key={group.label} className={gi > 0 ? 'mt-2 pt-2 border-t border-gray-100 dark:border-slate-700' : ''}>
-                  <p className="px-5 pt-2 pb-1 text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                    {group.label}
-                  </p>
-                  {group.items.map((item) => (
-                    <button
-                      key={item.path}
-                      onClick={() => handleNavigate(item.path)}
-                      className="w-full flex items-center gap-4 px-5 py-3.5 text-gray-700 dark:text-gray-200 hover:bg-primary/5 dark:hover:bg-slate-700 transition-colors text-left"
-                    >
-                      <span className="text-xl text-primary dark:text-blue-400">{item.icon}</span>
-                      <span className="font-medium text-sm">{item.label}</span>
-                    </button>
-                  ))}
-                </div>
+            {/* Menu items */}
+            <nav className="flex-1 py-3 overflow-y-auto">
+              {menuItems.map((item) => (
+                <button
+                  key={item.path}
+                  onClick={() => handleNavigate(item.path)}
+                  className="w-full flex items-center gap-4 px-5 py-3.5 text-gray-700 dark:text-gray-200 hover:bg-primary/5 dark:hover:bg-slate-700 transition-colors text-left"
+                >
+                  <span className="text-xl text-primary dark:text-blue-400">{item.icon}</span>
+                  <span className="font-medium text-sm">{item.label}</span>
+                </button>
               ))}
             </nav>
 
