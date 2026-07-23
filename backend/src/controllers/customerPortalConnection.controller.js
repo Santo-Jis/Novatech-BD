@@ -742,6 +742,256 @@ const submitCompanyComplaint = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET /api/portal/connections/all-return-requests
+// ✅ NEW (Session 19) — Returns ট্যাব redesign, "আমার অনুরোধ" সাব-ট্যাব
+// সব কোম্পানির পণ্য ফেরত/রিপ্লেসমেন্ট অনুরোধ — এক লিস্টে, company ট্যাগসহ।
+// পুরনো getMyReturnRequests (customerOrderRequest.controller.js)-এর মতোই
+// কলাম/স্ট্যাটাস-লেবেল, কিন্তু person_id দিয়ে সব কানেক্টেড কোম্পানি জুড়ে।
+// query params: status (pending|approved|rejected|completed|all)
+// ============================================================
+const RETURN_STATUS_BN = { pending: 'অপেক্ষমাণ', approved: 'অনুমোদিত', rejected: 'প্রত্যাখ্যাত', completed: 'সম্পন্ন' };
+const RETURN_TYPE_BN   = { return: 'পণ্য ফেরত', replacement: 'রিপ্লেসমেন্ট' };
+
+const getAllCompanyReturnRequests = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser.customer_id);
+        const status = req.query.status || 'all';
+        const validStatuses = ['pending', 'approved', 'rejected', 'completed'];
+
+        const params = [personId];
+        let statusClause = '';
+        if (validStatuses.includes(status)) {
+            params.push(status);
+            statusClause = `AND crr.status = $${params.length}`;
+        }
+
+        const result = await query(
+            `SELECT crr.id, crr.invoice_number, crr.type, crr.items, crr.total_return_value,
+                    crr.note, crr.status, crr.admin_note, crr.exchange_items, crr.total_exchange_value,
+                    crr.created_at, crr.updated_at, crr.reviewed_at, crr.completed_at,
+                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+             FROM customer_return_requests crr
+             JOIN customers c ON c.id = crr.customer_id
+             JOIN tenants t   ON t.id = c.tenant_id
+             WHERE c.person_id = $1 ${statusClause}
+             ORDER BY crr.created_at DESC
+             LIMIT 30`,
+            params
+        );
+
+        const enriched = result.rows.map(r => ({
+            ...r,
+            status_bn:    RETURN_STATUS_BN[r.status] || r.status,
+            type_bn:      RETURN_TYPE_BN[r.type]     || r.type,
+            extra_credit: r.total_exchange_value && r.total_return_value
+                ? Math.max(0, parseFloat(r.total_exchange_value) - parseFloat(r.total_return_value))
+                : 0,
+        }));
+
+        res.json({ success: true, data: enriched });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getAllCompanyReturnRequests error:', err.message);
+        res.status(500).json({ success: false, message: 'ফেরত অনুরোধের তালিকা আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/portal/connections/return-request
+// ✅ NEW (Session 19) — company-parameterized action, complaint/limit-request-এর
+// মতোই প্যাটার্ন: session-switch ছাড়াই connection_id দিয়ে নির্দিষ্ট কোম্পানির
+// জন্য পণ্য ফেরত/রিপ্লেসমেন্ট অনুরোধ জমা দেওয়া যাবে।
+// পুরনো createReturnRequest-এর মতোই ভ্যালিডেশন + product price lookup +
+// duplicate-pending (একই invoice+type) চেক — কিন্তু ইনভয়েস মালিকানা এখন
+// connection_id দিয়ে resolve করা customer_id-এর বিপরীতে যাচাই হয়।
+// body: { connection_id, invoice_number, type, items, note }
+// ============================================================
+const submitCompanyReturnRequest = async (req, res) => {
+    try {
+        const { connection_id, invoice_number, note } = req.body;
+        let { items } = req.body;
+        const VALID_TYPES = ['return', 'replacement'];
+        const type = VALID_TYPES.includes(req.body.type) ? req.body.type : 'return';
+
+        if (!connection_id) {
+            return res.status(400).json({ success: false, message: 'কোম্পানি বেছে নিন।' });
+        }
+        if (!invoice_number || !invoice_number.trim()) {
+            return res.status(400).json({ success: false, message: 'ইনভয়েস নম্বর দিন।' });
+        }
+        if (typeof items === 'string') { try { items = JSON.parse(items); } catch { items = []; } }
+        if (!items || !Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ success: false, message: 'কমপক্ষে একটি পণ্য দিন।' });
+        }
+        for (const item of items) {
+            if (!item.product_name || !item.qty || parseInt(item.qty) <= 0) {
+                return res.status(400).json({ success: false, message: 'পণ্যের তথ্য সঠিক নয়।' });
+            }
+            if (!item.reason || !item.reason.trim()) {
+                return res.status(400).json({ success: false, message: 'প্রতিটি পণ্যের কারণ দিন।' });
+            }
+        }
+
+        const personId = await getPersonId(req.portalUser.customer_id);
+
+        // এই connection সত্যিই এই person-এর এবং connected কিনা যাচাই
+        const conn = await query(
+            `SELECT c.id AS customer_id, c.tenant_id
+             FROM customer_company_connections ccc
+             JOIN customers c ON c.id = ccc.customer_id
+             WHERE ccc.id = $1 AND ccc.person_id = $2 AND ccc.status = 'connected'`,
+            [connection_id, personId]
+        );
+        if (conn.rows.length === 0) {
+            return res.status(403).json({ success: false, message: 'এই কোম্পানিতে আপনার অ্যাক্সেস নেই।' });
+        }
+        const targetCustomerId = conn.rows[0].customer_id;
+        const targetTenantId   = conn.rows[0].tenant_id;
+
+        // ── ইনভয়েস যাচাই (এই নির্দিষ্ট কোম্পানির কাস্টমার আইডির বিপরীতে) ──
+        const invoiceCheck = await query(
+            `SELECT invoice_number FROM sales_transactions
+             WHERE invoice_number = $1 AND customer_id = $2
+               AND (otp_verified = true OR otp_skipped = true)`,
+            [invoice_number.trim(), targetCustomerId]
+        );
+        if (invoiceCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'এই ইনভয়েস পাওয়া যায়নি বা এটি আপনার নয়।' });
+        }
+
+        // ── Duplicate check — একই invoice + type pending নেই? ──
+        const dupCheck = await query(
+            `SELECT id FROM customer_return_requests
+             WHERE customer_id = $1 AND invoice_number = $2 AND type = $3 AND status = 'pending'`,
+            [targetCustomerId, invoice_number.trim(), type]
+        );
+        if (dupCheck.rows.length > 0) {
+            const typeBn = RETURN_TYPE_BN[type];
+            return res.status(400).json({
+                success: false,
+                message: `এই ইনভয়েসে ইতোমধ্যে একটি ${typeBn} অনুরোধ প্রক্রিয়াধীন আছে।`,
+                error_code: 'DUPLICATE_RETURN_REQUEST',
+            });
+        }
+
+        // ── product_id থাকলে DB থেকে মূল্য নিয়ে subtotal হিসাব ──
+        const productIds = [...new Set(items.map(i => i.product_id).filter(Boolean))];
+        const productMap = {};
+        if (productIds.length > 0) {
+            const pRes = await query(
+                `SELECT id, price, vat, tax FROM products WHERE id = ANY($1) AND is_active = true`,
+                [productIds]
+            );
+            pRes.rows.forEach(p => { productMap[p.id] = p; });
+        }
+
+        let totalReturnValue = 0;
+        const sanitizedItems = items.map(item => {
+            const prod = productMap[item.product_id] || null;
+            let unitPrice = 0;
+            let subtotal  = 0;
+            if (prod) {
+                const base = parseFloat(prod.price) || 0;
+                const vat  = parseFloat(prod.vat)   || 0;
+                const tax  = parseFloat(prod.tax)   || 0;
+                unitPrice  = parseFloat((base + base * vat / 100 + base * tax / 100).toFixed(2));
+                subtotal   = parseFloat((unitPrice * parseInt(item.qty)).toFixed(2));
+                totalReturnValue += subtotal;
+            }
+            return {
+                product_id:   item.product_id || null,
+                product_name: item.product_name,
+                qty:          parseInt(item.qty),
+                unit_price:   unitPrice,
+                subtotal,
+                reason:       item.reason.trim(),
+            };
+        });
+
+        const result = await query(
+            `INSERT INTO customer_return_requests
+                 (customer_id, invoice_number, type, items, total_return_value, note, status, tenant_id)
+             VALUES ($1, $2, $3, $4::jsonb, $5, $6, 'pending', $7)
+             RETURNING id, created_at`,
+            [
+                targetCustomerId, invoice_number.trim(), type,
+                JSON.stringify(sanitizedItems),
+                parseFloat(totalReturnValue.toFixed(2)),
+                note || null, targetTenantId,
+            ]
+        );
+
+        await query(
+            `INSERT INTO customer_notifications (customer_id, title, body, type)
+             VALUES ($1, $2, $3, 'return_request')`,
+            [
+                targetCustomerId,
+                type === 'replacement' ? '🔄 রিপ্লেসমেন্ট অনুরোধ জমা হয়েছে' : '↩️ পণ্য ফেরত অনুরোধ জমা হয়েছে',
+                `ইনভয়েস ${invoice_number.trim()} — শীঘ্রই SR যোগাযোগ করবে।`,
+            ]
+        );
+
+        const typeBn = RETURN_TYPE_BN[type];
+        res.status(201).json({
+            success: true,
+            message: `${typeBn} অনুরোধ পাঠানো হয়েছে। শীঘ্রই SR যোগাযোগ করবে।`,
+            data: {
+                id: result.rows[0].id,
+                created_at: result.rows[0].created_at,
+                items_count: sanitizedItems.length,
+                total_return_value: parseFloat(totalReturnValue.toFixed(2)),
+            },
+        });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ submitCompanyReturnRequest error:', err.message);
+        res.status(500).json({ success: false, message: 'অনুরোধ পাঠাতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/connections/all-sr-returns
+// ✅ NEW (Session 19) — Returns ট্যাব redesign, "SR রেকর্ড" সাব-ট্যাব
+// SR কর্তৃক বিক্রির সময়েই প্রসেস করা রিপ্লেসমেন্ট রেকর্ড (sales_transactions.
+// replacement_value > 0) — এটা customer_return_requests থেকে আলাদা টেবিল/
+// সোর্স (কাস্টমারের নিজের অনুরোধ না, SR-এর ঘটনাস্থলেই এন্ট্রি)। পুরনো
+// dashboard-এর "returns" CTE-এর মতোই কলাম, কিন্তু person_id দিয়ে সব
+// কানেক্টেড কোম্পানি জুড়ে অ্যাগ্রিগেট, company ট্যাগসহ।
+// ============================================================
+const getAllCompanySrReturnRecords = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser.customer_id);
+        const result = await query(
+            `SELECT st.invoice_number, st.replacement_items, st.replacement_value,
+                    st.credit_balance_added, st.created_at,
+                    u.name_bn AS sr_name,
+                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+             FROM sales_transactions st
+             JOIN customers c ON c.id = st.customer_id
+             JOIN tenants t   ON t.id = c.tenant_id
+             LEFT JOIN users u ON u.id = st.worker_id
+             WHERE c.person_id = $1
+               AND (st.otp_verified = true OR st.otp_skipped = true)
+               AND st.replacement_value > 0
+             ORDER BY st.created_at DESC
+             LIMIT 30`,
+            [personId]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getAllCompanySrReturnRecords error:', err.message);
+        res.status(500).json({ success: false, message: 'SR রেকর্ড আনতে সমস্যা হয়েছে।' });
+    }
+};
+
 // ── Refresh-cookie helper (Session 11 fix) ──────────────────────
 // customerPortal.controller.js-এ একই নামের helper আছে, কিন্তু সেই ফাইল
 // স্পর্শ না করার নীতি মেনে (portalAuthShared.js-এর মতোই) এখানে আলাদা
@@ -871,5 +1121,8 @@ module.exports = {
     submitCompanyLimitRequest,
     getAllCompanyComplaints,
     submitCompanyComplaint,
+    getAllCompanyReturnRequests,
+    submitCompanyReturnRequest,
+    getAllCompanySrReturnRecords,
     switchCompany,
 };

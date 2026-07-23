@@ -17,6 +17,7 @@ import InvoicesTab from '../InvoicesTab'
 import PaymentsTab from '../PaymentsTab'
 import CreditTab from '../CreditTab'
 import ComplaintsTab from '../ComplaintsTab'
+import ReturnsTab from '../ReturnsTab'
 import OrderRequestTab from '../OrderRequestTab'
 import CustomerAIChat from '../../CustomerAIChat'
 
@@ -598,7 +599,10 @@ export default function DashboardView({
             )}
 
             {/* ══ রিটার্ন ══ */}
-            {activeTab === 'returns' && (
+            {/* ✅ REDESIGNED (Session 19): aggregate + company-ট্যাগ প্যাটার্নে, self-contained ReturnsTab
+                (/all-return-requests + /return-request ফর্ম + /all-sr-returns) */}
+            {activeTab === 'returns' && <ReturnsTab portalJWT={portalJWT} />}
+            {false && (
               <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8 }}>
                   <div style={{ display:'flex', gap:4, background:'#f1f5f9', borderRadius:14, padding:4, flex:1 }}>

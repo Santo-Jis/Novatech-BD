@@ -24,6 +24,9 @@ const {
     submitCompanyLimitRequest,
     getAllCompanyComplaints,
     submitCompanyComplaint,
+    getAllCompanyReturnRequests,
+    submitCompanyReturnRequest,
+    getAllCompanySrReturnRecords,
     switchCompany,
 } = require('../controllers/customerPortalConnection.controller');
 
@@ -43,6 +46,9 @@ router.get('/all-limit-requests', portalAuth, getAllCompanyLimitRequests); // �
 router.post('/limit-request',     portalAuth, submitCompanyLimitRequest); // ✅ NEW (Session 16)
 router.get('/all-complaints',     portalAuth, getAllCompanyComplaints); // ✅ NEW (Session 18)
 router.post('/complaint',         portalAuth, submitCompanyComplaint); // ✅ NEW (Session 18)
+router.get('/all-return-requests', portalAuth, getAllCompanyReturnRequests); // ✅ NEW (Session 19)
+router.post('/return-request',    portalAuth, submitCompanyReturnRequest); // ✅ NEW (Session 19)
+router.get('/all-sr-returns',     portalAuth, getAllCompanySrReturnRecords); // ✅ NEW (Session 19)
 router.post('/switch',            portalAuth, switchCompany); // ✅ NEW (Session 11)
 
 module.exports = router;
