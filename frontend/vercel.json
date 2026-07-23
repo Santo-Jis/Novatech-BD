@@ -6,6 +6,7 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "https://novatechbd-backend.onrender.com/api/$1" },
     { "source": "/platform/api/(.*)", "destination": "https://novatechbd-backend.onrender.com/platform/api/$1" },
+    { "source": "/superadmin/api/(.*)", "destination": "https://novatechbd-backend.onrender.com/superadmin/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [

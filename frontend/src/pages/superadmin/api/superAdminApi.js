@@ -41,7 +41,20 @@ superAdminApi.interceptors.request.use(
 )
 
 superAdminApi.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // vercel.json-এ rewrite rule miss হলে SPA-এর index.html (text/html)
+    // 200 status-সহ ফেরত আসতে পারে — axios সেটাকে "সফল" ধরে নেয়, ফলে
+    // ডেটা silently খালি/undefined দেখায় কোনো error ছাড়াই। এখানে
+    // স্পষ্টভাবে ধরে ফেলা হচ্ছে যাতে ভুল rewrite config ভবিষ্যতে
+    // নীরবে "০" দেখানোর বদলে স্পষ্ট error দেখায়।
+    const contentType = response.headers?.['content-type'] || ''
+    if (contentType.includes('text/html')) {
+      const err = new Error('Backend rewrite ভুল/মিসিং — API call SPA-তে পড়ে গেছে (vercel.json চেক করুন)')
+      err.isRewriteMisconfig = true
+      return Promise.reject(err)
+    }
+    return response
+  },
   (error) => {
     const status = error.response?.status
 
