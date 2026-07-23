@@ -6,6 +6,7 @@ import {
 } from 'react-icons/fi'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
+import SEO from '../components/SEO'
 
 // ============================================================
 // Contact Us — ZovoriX
@@ -88,6 +89,11 @@ export default function ContactUs() {
 
   return (
     <div style={{ minHeight: '100vh', background: T.bgBase, fontFamily: T.fontBody, color: T.textPrimary, overflowX: 'hidden' }}>
+      <SEO
+        title="যোগাযোগ করুন"
+        description="ZovoriX টিমের সাথে যোগাযোগ করুন — ফোন, ইমেইল বা WhatsApp-এ। আপনার ব্যবসার জন্য ডেমো বুক করুন বা যেকোনো প্রশ্নের উত্তর জানুন।"
+        path="/contact"
+      />
       {/* Navbar */}
       <style>{`
         @media (max-width: 480px) {

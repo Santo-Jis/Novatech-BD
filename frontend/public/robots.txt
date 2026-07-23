@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /manager
+Disallow: /platform
+Disallow: /superadmin
+Disallow: /customer/
+Disallow: /worker
+
+Sitemap: https://zovorix.com/sitemap.xml

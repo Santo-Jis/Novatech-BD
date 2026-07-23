@@ -7,6 +7,7 @@ import {
 } from 'react-icons/fi'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
+import SEO from '../components/SEO'
 
 // ============================================================
 // About Us — ZovoriX
@@ -64,6 +65,11 @@ export default function AboutUs() {
 
   return (
     <div style={{ minHeight: '100vh', background: T.bgBase, fontFamily: T.fontBody, color: T.textPrimary, overflowX: 'hidden' }}>
+      <SEO
+        title="আমাদের সম্পর্কে"
+        description="ZovoriX-এর মিশন, ভিশন ও টিম সম্পর্কে জানুন — বিক্রয় ও ব্যবসা ব্যবস্থাপনায় আমরা কীভাবে বিশ্বাসযোগ্য প্ল্যাটফর্ম তৈরি করছি।"
+        path="/about"
+      />
       {/* Navbar */}
       <style>{`
         @media (max-width: 480px) {

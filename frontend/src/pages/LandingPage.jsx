@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSettings, FiPhone, FiMail, FiMessageCircle } from 'react-icons/fi'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
+import SEO from '../components/SEO'
 
 // ============================================================
 // Landing Page — ZovoriX
@@ -93,6 +94,11 @@ export default function LandingPage() {
       color: T.textPrimary,
       overflowX: 'hidden',
     }}>
+      <SEO
+        title="ZovoriX — আপনার ব্যবসাকে স্মার্ট করে তুলুন"
+        description="বিক্রয়, কর্মী ও কাস্টমার — সব কিছু একটি প্ল্যাটফর্মে পরিচালনা করুন। রিয়েল-টাইম ডেটা দিয়ে সঠিক সিদ্ধান্ত নিন। আজই ডেমো বুক করুন।"
+        path="/"
+      />
       {/* Navbar */}
       <style>{`
         /* মোবাইল স্ক্রিনে নেভবার — লোগোর পাশে বাটনগুলো ছোট হয়ে একই লাইনে থাকবে, নিচে wrap করবে না।
@@ -363,6 +369,54 @@ export default function LandingPage() {
           বিক্রয়, কর্মী ও কাস্টমার — সব কিছু একটি প্ল্যাটফর্মে পরিচালনা করুন।
           রিয়েল-টাইম ডেটা দিয়ে সঠিক সিদ্ধান্ত নিন।
         </p>
+
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '14px',
+          flexWrap: 'wrap',
+        }}>
+          <button
+            onClick={() => navigate('/contact')}
+            style={{
+              padding: '13px 28px',
+              background: T.primary700,
+              border: `1px solid ${T.primary700}`,
+              borderRadius: '9px',
+              color: '#fff',
+              fontSize: '14.5px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: T.fontBody,
+              transition: 'background 0.15s, transform 0.15s',
+              boxShadow: '0 8px 20px rgba(15,27,46,0.18)',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = T.primary900; e.currentTarget.style.transform = 'translateY(-1px)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = T.primary700; e.currentTarget.style.transform = 'translateY(0)' }}
+          >
+            ডেমো বুক করুন
+          </button>
+          <button
+            onClick={() => navigate('/about')}
+            style={{
+              padding: '13px 28px',
+              background: 'transparent',
+              border: `1px solid ${T.borderStrong}`,
+              borderRadius: '9px',
+              color: T.primary700,
+              fontSize: '14.5px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: T.fontBody,
+              transition: 'background 0.15s, border-color 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = T.bgSurface; e.currentTarget.style.borderColor = T.primary500 }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = T.borderStrong }}
+          >
+            আরও জানুন
+          </button>
+        </div>
 
       </section>
 

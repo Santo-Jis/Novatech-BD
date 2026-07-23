@@ -6,6 +6,7 @@ import {
 } from 'react-icons/fi'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
+import SEO from '../components/SEO'
 
 // ============================================================
 // Terms & Conditions — ZovoriX
@@ -678,6 +679,11 @@ export default function TermsConditions() {
 
   return (
     <div style={{ minHeight: '100vh', background: T.bgBase, fontFamily: T.fontBody, color: T.textPrimary, overflowX: 'hidden' }}>
+      <SEO
+        title="Terms & Conditions"
+        description="ZovoriX প্ল্যাটফর্ম ব্যবহারের শর্তাবলী — ব্যবহারকারীর দায়িত্ব, অ্যাকাউন্ট নিয়ম ও সেবার শর্তাবলী সম্পর্কে বিস্তারিত জানুন।"
+        path="/terms-conditions"
+      />
       {/* Navbar */}
       <nav style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
