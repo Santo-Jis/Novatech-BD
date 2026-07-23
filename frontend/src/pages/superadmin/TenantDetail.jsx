@@ -97,6 +97,7 @@ export default function TenantDetail() {
       <StatusChangeCard tenant={tenant} onUpdated={load} />
       <PlanChangeCard tenant={tenant} onUpdated={load} />
       <ResetPasswordCard tenantId={tenant.id} />
+      <SettingsCard tenantId={tenant.id} />
       {tenant.id !== DEFAULT_TENANT_ID && <DeleteTenantCard tenant={tenant} />}
     </div>
   )
@@ -310,7 +311,110 @@ function ResetPasswordCard({ tenantId }) {
   )
 }
 
-// ─── Tenant ডিলিট (বিপজ্জনক) ────────────────────────────────────
+// ─── System Settings (company info বাদে) ───────────────────────
+// ⚠️ company_name/address/phone/email এই ৪টা key backend থেকেই
+// filter হয়ে বাদ যায় (GET-এ আসে না, PATCH-এ 403 দেয়) — সেটা tenant-এর
+// নিজস্ব ব্যবসায়িক পরিচয়/যোগাযোগ তথ্য, শুধু tenant-এর নিজের local
+// admin panel থেকেই বদলানো উচিত।
+function SettingsCard({ tenantId }) {
+  const [settings, setSettings] = useState(null)
+  const [edited, setEdited] = useState({})
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [expanded, setExpanded] = useState(false)
+
+  const load = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await superAdminApi.get(`/tenants/${tenantId}/settings`)
+      setSettings(res.data.data)
+      setEdited({})
+    } catch (err) {
+      setError(err.response?.data?.message || 'সেটিংস লোড করা যায়নি।')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (expanded && settings === null) load()
+  }, [expanded])
+
+  const save = async () => {
+    const changedKeys = Object.keys(edited)
+    if (changedKeys.length === 0) {
+      setMsg('কোনো পরিবর্তন নেই।')
+      return
+    }
+    setSaving(true)
+    setMsg('')
+    try {
+      await superAdminApi.patch(`/tenants/${tenantId}/settings`, {
+        settings: changedKeys.map((key) => ({ key, value: edited[key] })),
+      })
+      setMsg('✅ সেটিংস আপডেট হয়েছে।')
+      load()
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'আপডেট করা যায়নি।')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card title="System Settings (company info ছাড়া)">
+      {!expanded ? (
+        <button
+          onClick={() => setExpanded(true)}
+          className="text-sm font-medium text-pf-primary-700 hover:underline"
+        >
+          দেখতে ক্লিক করুন →
+        </button>
+      ) : (
+        <div className="space-y-3">
+          {loading && <p className="text-sm text-pf-text-muted">লোড হচ্ছে...</p>}
+          {error && <p className="text-sm text-pf-error">{error}</p>}
+
+          {settings && settings.length === 0 && (
+            <p className="text-sm text-pf-text-muted">এই টেন্যান্টের জন্য কোনো (edit-যোগ্য) সেটিংস পাওয়া যায়নি।</p>
+          )}
+
+          {settings && settings.length > 0 && (
+            <div className="space-y-2.5">
+              {settings.map((s) => (
+                <div key={s.key} className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3">
+                  <label className="w-full sm:w-48 flex-shrink-0 text-xs font-medium text-pf-text-secondary">
+                    {s.key}
+                    {s.description && <span className="block text-[10px] text-pf-text-muted font-normal">{s.description}</span>}
+                  </label>
+                  <input
+                    defaultValue={s.value}
+                    onChange={(e) => setEdited((prev) => ({ ...prev, [s.key]: e.target.value }))}
+                    className={`${inputCls} flex-1`}
+                  />
+                </div>
+              ))}
+              <button
+                onClick={save}
+                disabled={saving}
+                className="mt-2 flex items-center gap-2 px-4 py-2 rounded-lg bg-pf-primary-700 text-white text-sm font-semibold hover:brightness-110 disabled:opacity-60"
+              >
+                {saving ? <FiLoader className="animate-spin" /> : null}
+                সেভ করুন
+              </button>
+            </div>
+          )}
+
+          {msg && <p className="text-sm text-pf-text-secondary">{msg}</p>}
+        </div>
+      )}
+    </Card>
+  )
+}
+
 function DeleteTenantCard({ tenant }) {
   const navigate = useNavigate()
   const [confirmText, setConfirmText] = useState('')

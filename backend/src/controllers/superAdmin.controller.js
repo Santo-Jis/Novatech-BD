@@ -417,6 +417,301 @@ const verifyPlanPayment = async (paymentReference) => {
   return { verified: true, reason: 'placeholder — manual verification assumed OK, real gateway যুক্ত হলে বদলাবে' };
 };
 
+// ============================================================
+// ✅ Phase 4 (Super Admin Frontend follow-up): Dashboard aggregate stats
+// — একটামাত্র query, tenant সংখ্যা যতই বাড়ুক না কেন cost একই থাকে।
+// আগে Dashboard.jsx client-side এ limit=100 টেন্যান্ট টেনে aggregate
+// করত, যেটা ১০০+ টেন্যান্ট হলে ভুল সংখ্যা দেখাত — এই endpoint সেটা
+// প্রতিস্থাপন করে।
+// ============================================================
+const getDashboardStats = async (req, res) => {
+  try {
+    const [tenantStats, usageStats] = await Promise.all([
+      query(`
+        SELECT
+          COUNT(*)                                     AS total_tenants,
+          COUNT(*) FILTER (WHERE status = 'active')    AS active,
+          COUNT(*) FILTER (WHERE status = 'trial')     AS trial,
+          COUNT(*) FILTER (WHERE status = 'suspended') AS suspended,
+          COUNT(*) FILTER (WHERE status = 'cancelled') AS cancelled
+        FROM tenants
+      `),
+      query(`
+        SELECT
+          (SELECT COUNT(*) FROM users)              AS total_employees,
+          (SELECT COUNT(*) FROM customers)          AS total_customers,
+          (SELECT COUNT(*) FROM sales_transactions) AS total_sales,
+          (SELECT COALESCE(SUM(net_amount), 0) FROM sales_transactions) AS total_revenue
+      `),
+    ]);
+
+    return res.json({
+      success: true,
+      data: { ...tenantStats.rows[0], ...usageStats.rows[0] },
+    });
+  } catch (err) {
+    console.error('[superAdmin.getDashboardStats]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ============================================================
+// ✅ Phase 4: প্ল্যাটফর্ম-ওয়াইড Audit Log viewer
+// platform_audit_log-এ platform_staff (Support Panel) আর super-admin
+// (staff_email='super-admin-key') দুই ধরনের action-ই একসাথে থাকে —
+// এই endpoint দুটোই একসাথে দেখায়, filter দিয়ে আলাদা করা যায়।
+// ============================================================
+const getAuditLog = async (req, res) => {
+  try {
+    let page  = parseInt(req.query.page, 10);
+    let limit = parseInt(req.query.limit, 10);
+    if (!Number.isInteger(page)  || page  < 1) page  = 1;
+    if (!Number.isInteger(limit) || limit < 1) limit = 30;
+    if (limit > 100) limit = 100;
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+    const params = [];
+    if (req.query.action) {
+      params.push(`%${req.query.action.trim()}%`);
+      conditions.push(`action ILIKE $${params.length}`);
+    }
+    if (req.query.staff_email) {
+      params.push(`%${req.query.staff_email.trim()}%`);
+      conditions.push(`staff_email ILIKE $${params.length}`);
+    }
+    if (req.query.target_type) {
+      params.push(req.query.target_type.trim());
+      conditions.push(`target_type = $${params.length}`);
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const countResult = await query(`SELECT COUNT(*) AS total FROM platform_audit_log ${whereClause}`, params);
+    const total = parseInt(countResult.rows[0].total, 10);
+
+    params.push(limit);
+    params.push(offset);
+    const result = await query(`
+      SELECT id, staff_id, staff_email, action, target_type, target_id, details, ip_address, created_at
+      FROM platform_audit_log
+      ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT $${params.length - 1} OFFSET $${params.length}
+    `, params);
+
+    return res.json({
+      success: true,
+      data: result.rows,
+      pagination: { page, limit, total, total_pages: Math.max(1, Math.ceil(total / limit)) },
+    });
+  } catch (err) {
+    console.error('[superAdmin.getAuditLog]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ============================================================
+// ✅ Phase 4: Platform Staff (Support Panel-এর মানুষ) ম্যানেজমেন্ট।
+// ⚠️ এটা tenant-এর নিজস্ব ইউজার/কাস্টমার থেকে সম্পূর্ণ আলাদা বিষয় —
+// প্ল্যাটফর্মের নিজস্ব সাপোর্ট স্টাফ অ্যাকাউন্ট, platform_staff টেবিলে
+// কোনো self-registration নেই, তাই এদের তৈরি/পরিবর্তনের একমাত্র বৈধ
+// জায়গা এটাই (Super Admin)। Tenant-এর ভেতরের user/customer কখনোই এখান
+// থেকে touch করা হয় না।
+// ============================================================
+const VALID_STAFF_SCOPES = ['full', 'support'];
+
+const getAllStaff = async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT id, name, email, scope, status, last_login_at, created_at
+      FROM platform_staff
+      ORDER BY created_at DESC
+    `);
+    return res.json({ success: true, data: result.rows });
+  } catch (err) {
+    console.error('[superAdmin.getAllStaff]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const createStaff = async (req, res) => {
+  try {
+    const { name, email, password, scope } = req.body;
+    if (!name || !email || !password) {
+      return res.status(400).json({ success: false, message: 'name, email, password আবশ্যক' });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ success: false, message: 'পাসওয়ার্ড কমপক্ষে ৮ ক্যারেক্টার হতে হবে' });
+    }
+    const finalScope = VALID_STAFF_SCOPES.includes(scope) ? scope : 'support';
+
+    const existing = await query(`SELECT id FROM platform_staff WHERE email = $1`, [email]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ success: false, message: 'এই email দিয়ে আগেই একটা স্টাফ অ্যাকাউন্ট আছে' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const result = await query(`
+      INSERT INTO platform_staff (name, email, password_hash, scope, status)
+      VALUES ($1, $2, $3, $4, 'active')
+      RETURNING id, name, email, scope, status, created_at
+    `, [name, email, passwordHash, finalScope]);
+
+    await logAudit(req, 'staff.create', result.rows[0].id, { name, email, scope: finalScope });
+
+    return res.status(201).json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    if (err.code === '23505') {
+      return res.status(409).json({ success: false, message: 'এই email দিয়ে আগেই একটা স্টাফ অ্যাকাউন্ট আছে' });
+    }
+    console.error('[superAdmin.createStaff]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const updateStaff = async (req, res) => {
+  try {
+    const { staffId } = req.params;
+    const { name, scope, status } = req.body;
+
+    if (scope && !VALID_STAFF_SCOPES.includes(scope)) {
+      return res.status(400).json({ success: false, message: `scope অবশ্যই এইগুলোর একটা হতে হবে: ${VALID_STAFF_SCOPES.join(', ')}` });
+    }
+    if (status && !['active', 'suspended'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'status অবশ্যই active বা suspended হতে হবে' });
+    }
+    if (!name && !scope && !status) {
+      return res.status(400).json({ success: false, message: 'name, scope, বা status — অন্তত একটা দিন' });
+    }
+
+    const existing = await query(`SELECT id, name, scope, status FROM platform_staff WHERE id = $1`, [staffId]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'স্টাফ পাওয়া যায়নি' });
+    }
+    const before = existing.rows[0];
+
+    const result = await query(`
+      UPDATE platform_staff
+      SET name = $1, scope = $2, status = $3, updated_at = NOW()
+      WHERE id = $4
+      RETURNING id, name, email, scope, status, updated_at
+    `, [name || before.name, scope || before.scope, status || before.status, staffId]);
+
+    await logAudit(req, 'staff.update', staffId, { before, after: result.rows[0] });
+
+    return res.json({ success: true, data: result.rows[0] });
+  } catch (err) {
+    console.error('[superAdmin.updateStaff]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const resetStaffPassword = async (req, res) => {
+  try {
+    const { staffId } = req.params;
+    const existing = await query(`SELECT id, name, email FROM platform_staff WHERE id = $1`, [staffId]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'স্টাফ পাওয়া যায়নি' });
+    }
+    const staff = existing.rows[0];
+
+    // resetTenantAdminPassword-এ ধরা পড়া bug-fix pattern পুনঃব্যবহার:
+    // বেশি বাইট নিয়ে strip-এর পরও ঠিক ১২ ক্যারেক্টার নিশ্চিত করা।
+    const tempPassword = crypto.randomBytes(16).toString('base64').replace(/[+/=]/g, '').slice(0, 12);
+    const passwordHash = await bcrypt.hash(tempPassword, 10);
+
+    await query(`UPDATE platform_staff SET password_hash = $1, updated_at = NOW() WHERE id = $2`, [passwordHash, staffId]);
+    await logAudit(req, 'staff.reset_password', staffId, { staff_email: staff.email }); // প্লেইনটেক্সট পাসওয়ার্ড কখনো লগ হয় না
+
+    return res.json({
+      success: true,
+      data: { staff_name: staff.name, staff_email: staff.email, temp_password: tempPassword },
+    });
+  } catch (err) {
+    console.error('[superAdmin.resetStaffPassword]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ============================================================
+// ✅ Phase 4: Tenant System Settings (view/edit)
+// ⚠️ ইচ্ছাকৃতভাবে "company" গ্রুপ (company_name/address/phone/email)
+// বাদ দেওয়া হয়েছে — এগুলো tenant-এর নিজস্ব ব্যবসায়িক পরিচয়/যোগাযোগ
+// তথ্য, শুধু তাদের নিজের local admin panel থেকেই বদলানো উচিত।
+// বাকি অপারেশনাল সেটিংস (attendance/expense/credit/sales/vat/notice/sms)
+// support প্রয়োজনে Super Admin থেকে বদলানো যুক্তিসঙ্গত।
+// ============================================================
+const SETTINGS_EXCLUDED_KEYS = ['company_name', 'company_address', 'company_phone', 'company_email'];
+const SETTINGS_MASKED_KEYS   = ['sms_api_key'];
+
+const getTenantSettings = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const tenantCheck = await query(`SELECT id FROM tenants WHERE id = $1`, [tenantId]);
+    if (tenantCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Tenant পাওয়া যায়নি' });
+    }
+
+    const result = await query(
+      `SELECT id, key, value, description, updated_at FROM system_settings WHERE tenant_id = $1 ORDER BY key`,
+      [tenantId]
+    );
+
+    const data = result.rows
+      .filter((s) => !SETTINGS_EXCLUDED_KEYS.includes(s.key))
+      .map((s) => ({
+        ...s,
+        value: SETTINGS_MASKED_KEYS.includes(s.key) && s.value ? s.value.slice(0, 4) + '****' : s.value,
+      }));
+
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[superAdmin.getTenantSettings]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const updateTenantSettings = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const { settings } = req.body;
+
+    if (!settings || !Array.isArray(settings) || settings.length === 0) {
+      return res.status(400).json({ success: false, message: 'settings array দিন: [{key, value}]' });
+    }
+
+    const blocked = settings.filter((s) => SETTINGS_EXCLUDED_KEYS.includes(s.key));
+    if (blocked.length > 0) {
+      return res.status(403).json({
+        success: false,
+        message: `কোম্পানির তথ্য (${blocked.map((b) => b.key).join(', ')}) Super Admin থেকে বদলানো যাবে না — এটা tenant-এর নিজস্ব admin panel থেকে করতে হবে।`,
+      });
+    }
+
+    const tenantCheck = await query(`SELECT id FROM tenants WHERE id = $1`, [tenantId]);
+    if (tenantCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Tenant পাওয়া যায়নি' });
+    }
+
+    for (const s of settings) {
+      if (!s.key || s.value === undefined) continue;
+      await query(
+        `UPDATE system_settings SET value = $1, updated_at = NOW() WHERE tenant_id = $2 AND key = $3`,
+        [String(s.value), tenantId, s.key]
+      );
+    }
+
+    await logAudit(req, 'tenant.settings_update', tenantId, {
+      settings: settings.map((s) => ({ key: s.key, value: SETTINGS_MASKED_KEYS.includes(s.key) ? '***' : s.value })),
+    });
+
+    return res.json({ success: true, message: 'সেটিংস আপডেট হয়েছে' });
+  } catch (err) {
+    console.error('[superAdmin.updateTenantSettings]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   getAllTenants,
   createTenant,
@@ -426,4 +721,12 @@ module.exports = {
   deleteTenant,
   resetTenantAdminPassword,
   verifyPlanPayment,
+  getDashboardStats,
+  getAuditLog,
+  getAllStaff,
+  createStaff,
+  updateStaff,
+  resetStaffPassword,
+  getTenantSettings,
+  updateTenantSettings,
 };
