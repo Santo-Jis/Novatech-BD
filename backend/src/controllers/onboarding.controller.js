@@ -77,13 +77,13 @@ const registerCompany = async (req, res) => {
       }
     }
 
-    // ১. Tenant তৈরি (14-day trial)
+    // ১. Tenant তৈরি (৩ মাসের trial)
     const tenantResult = await query(
       `INSERT INTO tenants
          (slug, company_name, company_name_bn, status, plan,
           trial_ends_at, max_employees, max_customers)
        VALUES ($1, $2, $3, 'trial', 'basic',
-               NOW() + INTERVAL '14 days', 10, 200)
+               NOW() + INTERVAL '3 months', 10, 200)
        RETURNING *`,
       [slug, company_name, company_name_bn || null]
     );
@@ -116,7 +116,7 @@ const registerCompany = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: '14 দিনের free trial শুরু হয়েছে! এখন App-এর login screen থেকে phone ও password দিয়ে লগইন করো।',
+      message: '৩ মাসের free trial শুরু হয়েছে! এখন App-এর login screen থেকে phone ও password দিয়ে লগইন করো।',
       data: {
         tenantId:  tenant.id,
         slug:      tenant.slug,

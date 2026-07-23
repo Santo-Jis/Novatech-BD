@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useAuthStore } from './store/auth.store'
 import { usePlatformAuthStore } from './pages/platform/store/platformAuth.store'
+import { useSuperAdminAuthStore } from './pages/superadmin/store/superAdminAuth.store'
 import { FirebaseProvider } from './firebase/notifications'
 import PermissionSetup, { usePermissionSetup } from './components/PermissionSetup'
 import AppUpdateDialog from './components/AppUpdateDialog'
@@ -48,6 +49,9 @@ const TermsConditions = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/Term
 // SR Application — Customer APK-এ নেই
 const SRApplicationForm = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/SRApplicationForm'))
 
+// Start Trial — নতুন company self-signup (৩ মাসের ফ্রি ট্রায়াল) — Customer APK-এ নেই
+const StartTrial = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/StartTrial'))
+
 // ── Platform Support & Admin Panel — Customer APK-এ নেই ──────
 // (platform_staff login, tenant-user auth থেকে সম্পূর্ণ আলাদা সিস্টেম)
 const PlatformLayout   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/layouts/PlatformLayout'))
@@ -57,8 +61,14 @@ const PlatformTenantList   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages
 const PlatformTenantDetail = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/TenantDetail'))
 const PlatformUserLookup   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/UserLookup'))
 const PlatformTickets      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/Tickets'))
-const PlatformAuditLog     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/AuditLog'))
-const PlatformStaffManagement = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/StaffManagement'))
+
+// ── Super Admin Panel — platform owner-এর জন্য, secret-key auth (JWT না) ──
+const SuperAdminLayout      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/layouts/SuperAdminLayout'))
+const SuperAdminLogin       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/Login'))
+const SuperAdminDashboard   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/Dashboard'))
+const SuperAdminTenantList  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/TenantList'))
+const SuperAdminCreateTenant = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/CreateTenant'))
+const SuperAdminTenantDetail = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/TenantDetail'))
 
 // Shared — Customer APK-এ নেই
 const AIChat      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/AIChat'))
@@ -216,6 +226,20 @@ const PlatformProtectedRoute = ({ children }) => {
 }
 
 // ============================================================
+// Super Admin Protected Route — secret-key auth, platform_staff/
+// tenant-user auth থেকে সম্পূর্ণ আলাদা (backend: X-Super-Admin-Key header)
+// ============================================================
+
+const SuperAdminProtectedRoute = ({ children }) => {
+  const isAuthed = useSuperAdminAuthStore((s) => s.isAuthenticated())
+
+  if (!isAuthed) {
+    return <Navigate to="/superadmin/login" replace />
+  }
+  return children
+}
+
+// ============================================================
 // Role-based Home redirect
 // ============================================================
 
@@ -350,6 +374,11 @@ function AppWithPermissions() {
             <Route path="/apply/sr" element={<SRApplicationForm />} />
           )}
 
+          {/* Start Trial — নতুন company self-signup — Customer APK-এ নেই */}
+          {!IS_CUSTOMER_APP && (
+            <Route path="/start-trial" element={<StartTrial />} />
+          )}
+
           {/* About Us / Contact Us — Customer APK-এ নেই, শুধু মূল ল্যান্ডিং সাইটে */}
           {!IS_CUSTOMER_APP && (
             <>
@@ -391,8 +420,20 @@ function AppWithPermissions() {
                 <Route path="tenants/:tenantId" element={<PlatformTenantDetail />} />
                 <Route path="users"        element={<PlatformUserLookup />} />
                 <Route path="tickets"      element={<PlatformTickets />} />
-                <Route path="audit-log"    element={<PlatformAuditLog />} />
-                <Route path="staff"        element={<PlatformStaffManagement />} />
+              </Route>
+
+              {/* ── SUPER ADMIN PANEL — secret-key auth, শুধু platform owner ── */}
+              <Route path="/superadmin/login" element={<SuperAdminLogin />} />
+              <Route path="/superadmin" element={
+                <SuperAdminProtectedRoute>
+                  <SuperAdminLayout />
+                </SuperAdminProtectedRoute>
+              }>
+                <Route index               element={<Navigate to="dashboard" replace />} />
+                <Route path="dashboard"    element={<SuperAdminDashboard />} />
+                <Route path="tenants"      element={<SuperAdminTenantList />} />
+                <Route path="tenants/new"  element={<SuperAdminCreateTenant />} />
+                <Route path="tenants/:tenantId" element={<SuperAdminTenantDetail />} />
               </Route>
 
               {/* Unauthorized */}

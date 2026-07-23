@@ -378,7 +378,7 @@ export default function LandingPage() {
           flexWrap: 'wrap',
         }}>
           <button
-            onClick={() => navigate('/contact')}
+            onClick={() => navigate('/start-trial')}
             style={{
               padding: '13px 28px',
               background: T.primary700,
@@ -395,7 +395,7 @@ export default function LandingPage() {
             onMouseEnter={e => { e.currentTarget.style.background = T.primary900; e.currentTarget.style.transform = 'translateY(-1px)' }}
             onMouseLeave={e => { e.currentTarget.style.background = T.primary700; e.currentTarget.style.transform = 'translateY(0)' }}
           >
-            ডেমো বুক করুন
+            ৩ মাসের ফ্রি ট্রায়াল শুরু করুন
           </button>
           <button
             onClick={() => navigate('/about')}
