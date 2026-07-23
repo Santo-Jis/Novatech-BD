@@ -279,7 +279,12 @@ const updateTicket = async (req, res) => {
         return res.status(400).json({ success: false, message: 'কোনো পরিবর্তনযোগ্য ফিল্ড দেওয়া হয়নি।' });
     }
 
-    if (status === 'closed') { fields.push(`closed_at = NOW()`); }
+    if (status === 'closed') {
+        fields.push(`closed_at = NOW()`);
+    } else if (status) {
+        // reopen হলে পুরনো closed_at পরিষ্কার — নাহলে stale timestamp থেকে যায়
+        fields.push(`closed_at = NULL`);
+    }
     fields.push(`updated_at = NOW()`);
 
     params.push(id);

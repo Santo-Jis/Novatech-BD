@@ -4,6 +4,7 @@ import { FiBriefcase, FiSearch, FiPlusCircle, FiLifeBuoy } from 'react-icons/fi'
 import platformApi from './api/platformApi'
 import { usePlatformAuthStore } from './store/platformAuth.store'
 import StatusBadge from './components/StatusBadge'
+import PriorityBadge from './components/PriorityBadge'
 import { LoadingState, ErrorState, EmptyState } from './components/PanelStates'
 
 const QUICK_ACTIONS = [
@@ -120,8 +121,13 @@ export default function PlatformDashboard() {
                 className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-pf-bg-alt transition-colors"
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-pf-text-primary truncate">{t.subject}</p>
-                  <p className="text-xs text-pf-text-muted truncate">{t.company_name || 'কোনো টেন্যান্ট যুক্ত নেই'}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-pf-text-primary truncate">{t.subject}</p>
+                    <PriorityBadge priority={t.priority} />
+                  </div>
+                  <p className="text-xs text-pf-text-muted truncate">
+                    {t.customer_shop_name || t.company_name || 'কোনো টেন্যান্ট যুক্ত নেই'}
+                  </p>
                 </div>
                 <StatusBadge status={t.status} />
               </Link>

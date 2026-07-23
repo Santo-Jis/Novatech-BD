@@ -4,19 +4,13 @@ import toast from 'react-hot-toast'
 import { FiPlus, FiX, FiLoader, FiArrowUpCircle, FiSearch, FiPaperclip, FiImage, FiSend, FiBookOpen, FiDownload } from 'react-icons/fi'
 import platformApi from './api/platformApi'
 import StatusBadge from './components/StatusBadge'
+import PriorityBadge, { PRIORITY_OPTIONS } from './components/PriorityBadge'
 import { LoadingState, ErrorState, EmptyState } from './components/PanelStates'
 
 const FILTERS = [
   { value: 'mine', label: 'আমার বরাদ্দ' },
   { value: 'unassigned', label: 'অবরাদ্দকৃত' },
   { value: '', label: 'সব' },
-]
-
-const PRIORITY_OPTIONS = [
-  { value: 'urgent', label: 'জরুরি', cls: 'bg-pf-error-bg text-pf-error' },
-  { value: 'high', label: 'উচ্চ', cls: 'bg-pf-warning-bg text-pf-warning' },
-  { value: 'normal', label: 'সাধারণ', cls: 'bg-pf-bg-sunken text-pf-text-muted' },
-  { value: 'low', label: 'কম', cls: 'bg-pf-info-bg text-pf-info' },
 ]
 
 // সাধারণ CSV export helper — কোনো ব্যাকএন্ড কল লাগে না, বর্তমানে
@@ -40,14 +34,6 @@ function downloadCSV(rows, columns, filename) {
   URL.revokeObjectURL(url)
 }
 
-function PriorityBadge({ priority }) {
-  const p = PRIORITY_OPTIONS.find((x) => x.value === priority) || PRIORITY_OPTIONS[2]
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wide ${p.cls}`}>
-      {p.label}
-    </span>
-  )
-}
 
 export default function Tickets() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -240,6 +226,7 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
   const [newNote, setNewNote] = useState('')
   const [addingNote, setAddingNote] = useState(false)
   const [canned, setCanned] = useState(null)
+  const [selectedTemplateId, setSelectedTemplateId] = useState('')
   const attachments = Array.isArray(ticket.attachment_urls) ? ticket.attachment_urls : []
 
   useEffect(() => {
@@ -273,6 +260,23 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
       toast.success('টেমপ্লেট যোগ হয়েছে।')
     } catch {
       toast.error('টেমপ্লেট যোগ করা যায়নি।')
+    }
+  }
+
+  const deleteSelectedTemplate = async () => {
+    if (!selectedTemplateId) {
+      toast.error('আগে ড্রপডাউন থেকে একটা টেমপ্লেট বেছে নিন।')
+      return
+    }
+    const tpl = canned?.find((c) => c.id === selectedTemplateId)
+    if (!window.confirm(`"${tpl?.title}" টেমপ্লেটটা মুছে ফেলতে চান?`)) return
+    try {
+      await platformApi.delete(`/support/canned-responses/${selectedTemplateId}`)
+      setCanned((prev) => prev.filter((c) => c.id !== selectedTemplateId))
+      setSelectedTemplateId('')
+      toast.success('টেমপ্লেট মুছে ফেলা হয়েছে।')
+    } catch {
+      toast.error('মুছে ফেলা যায়নি।')
     }
   }
 
@@ -458,8 +462,9 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
             <form onSubmit={submitNote} className="space-y-2">
               <div className="flex items-center gap-2">
                 <select
-                  value=""
+                  value={selectedTemplateId}
                   onChange={(e) => {
+                    setSelectedTemplateId(e.target.value)
                     const tpl = canned?.find((c) => c.id === e.target.value)
                     if (tpl) setNewNote((prev) => (prev ? `${prev}\n${tpl.body}` : tpl.body))
                   }}
@@ -477,6 +482,15 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
                   className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border border-pf-border text-xs text-pf-text-secondary hover:border-pf-primary-500 flex-shrink-0"
                 >
                   <FiBookOpen /> +
+                </button>
+                <button
+                  type="button"
+                  onClick={deleteSelectedTemplate}
+                  disabled={!selectedTemplateId}
+                  title="বেছে নেওয়া টেমপ্লেট মুছুন"
+                  className="flex items-center px-2.5 py-1.5 rounded-lg border border-pf-border text-xs text-pf-error hover:border-pf-error disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                >
+                  <FiX />
                 </button>
               </div>
               <div className="flex gap-2">

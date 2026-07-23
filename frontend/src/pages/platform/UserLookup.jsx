@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   FiSearch, FiUnlock, FiKey, FiLoader, FiCheckCircle,
@@ -10,24 +10,24 @@ import StatusBadge from './components/StatusBadge'
 import { EmptyState, ErrorState } from './components/PanelStates'
 
 export default function UserLookup() {
-  const [q, setQ] = useState('')
+  const [searchParams] = useSearchParams()
+  const [q, setQ] = useState(searchParams.get('q') || '')
   const [staffResults, setStaffResults] = useState(null)
   const [customerResults, setCustomerResults] = useState(null)
   const [error, setError] = useState('')
   const [searching, setSearching] = useState(false)
   const [actionState, setActionState] = useState({}) // { [id]: { ...flags } }
 
-  const handleSearch = async (e) => {
-    e.preventDefault()
-    if (!q.trim()) return
+  const runSearch = useCallback(async (query) => {
+    if (!query.trim()) return
     setSearching(true)
     setError('')
     setStaffResults(null)
     setCustomerResults(null)
 
     const [staffRes, custRes] = await Promise.allSettled([
-      platformApi.get('/support/users/search', { params: { q: q.trim() } }),
-      platformApi.get('/support/customers/search', { params: { q: q.trim() } }),
+      platformApi.get('/support/users/search', { params: { q: query.trim() } }),
+      platformApi.get('/support/customers/search', { params: { q: query.trim() } }),
     ])
 
     if (staffRes.status === 'fulfilled') setStaffResults(staffRes.value.data.data)
@@ -39,6 +39,17 @@ export default function UserLookup() {
     else if (!custRes.reason?._toastShown) setError((e) => e || 'কাস্টমার সার্চ করা যায়নি।')
 
     setSearching(false)
+  }, [])
+
+  // ?q=... দিয়ে ডিপ-লিংক করা হলে (যেমন Global Search থেকে) অটো-সার্চ
+  useEffect(() => {
+    const initialQ = searchParams.get('q')
+    if (initialQ) runSearch(initialQ)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSearch = (e) => {
+    e.preventDefault()
+    runSearch(q)
   }
 
   const setAction = (id, patch) =>

@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { FiHome, FiBriefcase, FiSearch, FiLifeBuoy, FiMenu, FiX, FiLogOut, FiShield, FiClock, FiUsers } from 'react-icons/fi'
 import { usePlatformAuthStore } from '../store/platformAuth.store'
 import platformApi from '../api/platformApi'
+import GlobalSearch from '../components/GlobalSearch'
 import ErrorBoundary from '../../../components/ErrorBoundary'
 
 const baseNavItems = [
@@ -27,6 +28,7 @@ export default function PlatformLayout() {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [unreadCount, setUnreadCount] = useState(0)
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
   const seenIdsRef = useRef(new Set())
 
   const handleLogout = () => {
@@ -97,9 +99,18 @@ export default function PlatformLayout() {
             <p className="font-pf-head font-semibold text-white text-base leading-tight">ZovoriX</p>
             <p className="text-pf-primary-300 text-xs">Platform Support Panel</p>
           </div>
-          <button onClick={() => setSidebarOpen(false)} className="text-white/70 p-1 lg:hidden">
-            <FiX className="text-xl" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setGlobalSearchOpen(true)}
+              title="সব জায়গায় খুঁজুন"
+              className="text-white/70 hover:text-white p-1.5 rounded-lg hover:bg-white/10"
+            >
+              <FiSearch className="text-lg" />
+            </button>
+            <button onClick={() => setSidebarOpen(false)} className="text-white/70 p-1 lg:hidden">
+              <FiX className="text-xl" />
+            </button>
+          </div>
         </div>
 
         <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
@@ -155,8 +166,12 @@ export default function PlatformLayout() {
           <FiMenu className="text-xl" />
         </button>
         <p className="font-pf-head font-semibold text-white text-sm">ZovoriX Platform</p>
-        <div className="w-7" />
+        <button onClick={() => setGlobalSearchOpen(true)} className="text-white p-1">
+          <FiSearch className="text-lg" />
+        </button>
       </header>
+
+      {globalSearchOpen && <GlobalSearch onClose={() => setGlobalSearchOpen(false)} />}
 
       <main className="lg:pl-64">
         <div className="p-4 lg:p-8 max-w-6xl mx-auto">
