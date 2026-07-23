@@ -1,14 +1,19 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { FiHome, FiBriefcase, FiSearch, FiLifeBuoy, FiMenu, FiX, FiLogOut, FiShield } from 'react-icons/fi'
+import { FiHome, FiBriefcase, FiSearch, FiLifeBuoy, FiMenu, FiX, FiLogOut, FiShield, FiClock, FiUsers } from 'react-icons/fi'
 import { usePlatformAuthStore } from '../store/platformAuth.store'
 import ErrorBoundary from '../../../components/ErrorBoundary'
 
-const navItems = [
+const baseNavItems = [
   { path: '/platform/dashboard', icon: <FiHome />, label: 'ড্যাশবোর্ড' },
   { path: '/platform/tenants', icon: <FiBriefcase />, label: 'টেন্যান্ট তালিকা' },
   { path: '/platform/users', icon: <FiSearch />, label: 'ইউজার লুকআপ' },
   { path: '/platform/tickets', icon: <FiLifeBuoy />, label: 'সাপোর্ট টিকেট' },
+  { path: '/platform/audit-log', icon: <FiClock />, label: 'Audit Log' },
+]
+
+const fullOnlyNavItems = [
+  { path: '/platform/staff', icon: <FiUsers />, label: 'Staff ম্যানেজমেন্ট' },
 ]
 
 export default function PlatformLayout() {
@@ -43,7 +48,7 @@ export default function PlatformLayout() {
         </div>
 
         <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto">
-          {navItems.map((item) => (
+          {[...baseNavItems, ...(staff?.scope === 'full' ? fullOnlyNavItems : [])].map((item) => (
             <NavLink
               key={item.path}
               to={item.path}

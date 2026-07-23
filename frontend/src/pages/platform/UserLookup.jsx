@@ -2,7 +2,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import {
   FiSearch, FiUnlock, FiKey, FiLoader, FiCheckCircle,
-  FiMail as FiMailIcon, FiSmartphone, FiUser, FiShoppingBag,
+  FiMail as FiMailIcon, FiSmartphone, FiUser, FiShoppingBag, FiFileText, FiChevronDown, FiChevronUp,
 } from 'react-icons/fi'
 import platformApi from './api/platformApi'
 import StatusBadge from './components/StatusBadge'
@@ -57,15 +57,15 @@ export default function UserLookup() {
     }
   }
 
-  const handleResetLink = async (user) => {
-    setAction(user.id, { resetting: true })
+  const handleResetLink = async (user, channel) => {
+    setAction(user.id, { resetting: channel })
     try {
-      const res = await platformApi.post(`/support/users/${user.id}/reset-password-link`)
-      toast.success(res.data.message || 'Reset link পাঠানো হয়েছে।')
+      const res = await platformApi.post(`/support/users/${user.id}/reset-password-link`, { channel })
+      toast.success(res.data.message || 'OTP পাঠানো হয়েছে।')
       setAction(user.id, { resetting: false, resetAt: Date.now() })
     } catch (err) {
       setAction(user.id, { resetting: false })
-      if (!err._toastShown) toast.error('Reset link পাঠানো যায়নি।')
+      if (!err._toastShown) toast.error(err.response?.data?.message || 'পাঠানো যায়নি।')
     }
   }
 
@@ -105,6 +105,26 @@ export default function UserLookup() {
     } catch (err) {
       setAction(cust.id, { revoking: false })
       if (!err._toastShown) toast.error('Revoke করা যায়নি।')
+    }
+  }
+
+  const toggleInvoices = async (cust) => {
+    const current = actionState[cust.id] || {}
+    if (current.invoicesOpen) {
+      setAction(cust.id, { invoicesOpen: false })
+      return
+    }
+    if (current.invoices) {
+      setAction(cust.id, { invoicesOpen: true })
+      return
+    }
+    setAction(cust.id, { loadingInvoices: true, invoicesOpen: true })
+    try {
+      const res = await platformApi.get(`/support/customers/${cust.id}/invoices`, { params: { limit: 8 } })
+      setAction(cust.id, { loadingInvoices: false, invoices: res.data.data })
+    } catch (err) {
+      setAction(cust.id, { loadingInvoices: false, invoicesOpen: false })
+      if (!err._toastShown) toast.error('কেনাকাটার ইতিহাস লোড করা যায়নি।')
     }
   }
 
@@ -188,14 +208,25 @@ export default function UserLookup() {
                     </button>
 
                     <button
-                      onClick={() => handleResetLink(u)}
-                      disabled={!u.email || act.resetting}
+                      onClick={() => handleResetLink(u, 'email')}
+                      disabled={!u.email || !!act.resetting}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-pf-border
                         text-pf-text-primary hover:border-pf-primary-500 disabled:opacity-40 disabled:cursor-not-allowed"
                       title={!u.email ? 'এই ইউজারের ইমেইল নেই' : undefined}
                     >
-                      {act.resetting ? <FiLoader className="animate-spin" /> : <FiKey />}
-                      Password Reset Link
+                      {act.resetting === 'email' ? <FiLoader className="animate-spin" /> : <FiKey />}
+                      Email এ OTP
+                    </button>
+
+                    <button
+                      onClick={() => handleResetLink(u, 'sms')}
+                      disabled={!u.phone || !!act.resetting}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-pf-border
+                        text-pf-text-primary hover:border-pf-primary-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={!u.phone ? 'এই ইউজারের ফোন নম্বর নেই' : undefined}
+                    >
+                      {act.resetting === 'sms' ? <FiLoader className="animate-spin" /> : <FiKey />}
+                      SMS এ OTP
                     </button>
 
                     {(act.unblockedAt || act.resetAt) && (
@@ -273,12 +304,44 @@ export default function UserLookup() {
                       সব ডিভাইস Revoke
                     </button>
 
+                    <button
+                      onClick={() => toggleInvoices(c)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-pf-border
+                        text-pf-text-primary hover:border-pf-primary-500"
+                    >
+                      {act.loadingInvoices ? <FiLoader className="animate-spin" /> : <FiFileText />}
+                      কেনাকাটার ইতিহাস
+                      {act.invoicesOpen ? <FiChevronUp /> : <FiChevronDown />}
+                    </button>
+
                     {(act.reactivatedAt || act.lockClearedAt || act.revokedAt) && (
                       <span className="flex items-center gap-1 text-xs text-pf-success">
                         <FiCheckCircle /> লগ করা হয়েছে ✓
                       </span>
                     )}
                   </div>
+
+                  {act.invoicesOpen && !act.loadingInvoices && (
+                    <div className="mt-3 pt-3 border-t border-pf-border">
+                      {(!act.invoices || act.invoices.length === 0) ? (
+                        <p className="text-xs text-pf-text-muted">কোনো ইনভয়েস পাওয়া যায়নি।</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {act.invoices.map((inv) => (
+                            <div key={inv.invoice_number} className="flex items-center justify-between text-xs bg-pf-bg-alt rounded-lg px-3 py-2">
+                              <div className="min-w-0">
+                                <p className="font-medium text-pf-text-primary font-pf-mono">{inv.invoice_number}</p>
+                                <p className="text-pf-text-muted">{new Date(inv.created_at).toLocaleDateString('bn-BD')} · {inv.sr_name}</p>
+                              </div>
+                              <p className="font-pf-mono font-semibold text-pf-primary-700 flex-shrink-0">
+                                ৳{Number(inv.net_amount).toLocaleString('bn-BD')}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}

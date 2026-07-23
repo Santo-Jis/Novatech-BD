@@ -5,12 +5,19 @@ const { isUserBlocked, unblockUser } = require('../config/redis');
 const { generateOTP } = require('../config/encryption');
 const { logPlatformAction } = require('../services/platformAudit.service');
 const { invalidatePortalAuthCache } = require('../services/portalCache.service');
-// ✅ কাস্টমার (রিটেইলার) portal-এর device revoke লজিক হুবহু কাস্টমার
-// পোর্টাল কন্ট্রোলার থেকেই reuse করা হচ্ছে (ডুপ্লিকেট করা হয়নি) —
-// ওখানকার ফাংশন শুধু req.params.customerId, query, cache নির্ভর করে,
-// কোনো tenant-user role/session-নির্দিষ্ট কিছুর ওপর না, তাই platform_staff
-// context থেকে সরাসরি নিরাপদে কল করা যায়।
-const { revokeAllDevices: revokeCustomerPortalDevices } = require('./customerPortal.controller');
+const { sendSMS } = require('../services/sms.service');
+const { uploadToCloudinary } = require('../services/employee.service');
+// ✅ কাস্টমার (রিটেইলার) portal-এর device revoke ও invoice/payment history
+// লজিক হুবহু কাস্টমার পোর্টাল কন্ট্রোলার থেকেই reuse করা হচ্ছে (ডুপ্লিকেট
+// করা হয়নি) — ওই ফাংশনগুলো শুধু req.portalUser.customer_id/req.params,
+// query, cache নির্ভর করে, tenant-user role/session-নির্দিষ্ট কিছুর ওপর
+// না, তাই platform_staff context থেকে thin wrapper দিয়ে নিরাপদে কল করা যায়।
+const {
+    revokeAllDevices: revokeCustomerPortalDevices,
+    getCustomerInvoices: getPortalCustomerInvoices,
+    getPaymentHistory: getPortalPaymentHistory,
+    getCustomerStatement: getPortalCustomerStatement,
+} = require('./customerPortal.controller');
 
 // ============================================================
 // Support Panel — User Lookup / Unblock / Reset-Link / Tickets
@@ -79,20 +86,28 @@ const unblockUserAccount = async (req, res) => {
     }
 };
 
-// ─── Password Reset Link Trigger (OTP email পাঠায়, Support নিজে পাসওয়ার্ড সেট করতে পারে না) ───
+// ─── Password Reset OTP পাঠানো (email অথবা SMS — Support নিজে পাসওয়ার্ড সেট করতে পারে না) ───
 const triggerPasswordReset = async (req, res) => {
     const { id } = req.params;
+    const channel = (req.body?.channel || 'email').toLowerCase(); // 'email' | 'sms'
+
+    if (!['email', 'sms'].includes(channel)) {
+        return res.status(400).json({ success: false, message: `channel অবশ্যই 'email' অথবা 'sms' হতে হবে।` });
+    }
 
     try {
-        const result = await query('SELECT id, name_bn, email, status FROM users WHERE id = $1', [id]);
+        const result = await query('SELECT id, name_bn, email, phone, status FROM users WHERE id = $1', [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'ইউজার পাওয়া যায়নি।' });
         }
 
         const user = result.rows[0];
 
-        if (!user.email) {
-            return res.status(400).json({ success: false, message: 'এই ইউজারের কোনো ইমেইল সেট নেই, reset link পাঠানো যাচ্ছে না।' });
+        if (channel === 'email' && !user.email) {
+            return res.status(400).json({ success: false, message: 'এই ইউজারের কোনো ইমেইল সেট নেই, email এ পাঠানো যাচ্ছে না — SMS ব্যবহার করুন।' });
+        }
+        if (channel === 'sms' && !user.phone) {
+            return res.status(400).json({ success: false, message: 'এই ইউজারের কোনো ফোন নম্বর সেট নেই, SMS পাঠানো যাচ্ছে না।' });
         }
 
         const otp       = generateOTP(6);
@@ -104,6 +119,15 @@ const triggerPasswordReset = async (req, res) => {
             'INSERT INTO password_reset_otps (user_id, otp, expires_at) VALUES ($1, $2, $3)',
             [user.id, otpHash, expiresAt]
         );
+
+        if (channel === 'sms') {
+            const msg = `ZovoriX\nOTP: ${otp}\nমেয়াদ: ১০ মিনিট\nSupport সহায়তায় পাঠানো — কাউকে শেয়ার করবেন না।`;
+            const smsResult = await sendSMS(user.phone, msg, { type: 'otp', sent_by: req.platformStaff.id });
+            if (smsResult.success === false) {
+                return res.status(502).json({ success: false, message: 'SMS পাঠানো যায়নি, আবার চেষ্টা করুন।' });
+            }
+            return res.json({ success: true, message: `${user.name_bn}-এর ফোনে SMS-এ reset OTP পাঠানো হয়েছে।` });
+        }
 
         const { sendEmail } = require('../services/email.service');
         const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden">
@@ -136,11 +160,17 @@ const createTicket = async (req, res) => {
     }
 
     try {
+        let attachmentUrls = [];
+        if (req.file) {
+            const url = await uploadToCloudinary(req.file.buffer, 'support_tickets', `ticket_${Date.now()}`);
+            attachmentUrls = [url];
+        }
+
         const result = await query(
-            `INSERT INTO support_tickets (tenant_id, user_id, subject, description, created_by, assigned_to)
-             VALUES ($1, $2, $3, $4, $5, $5)
+            `INSERT INTO support_tickets (tenant_id, user_id, subject, description, created_by, assigned_to, attachment_urls)
+             VALUES ($1, $2, $3, $4, $5, $5, $6)
              RETURNING *`,
-            [tenant_id || null, user_id || null, subject, description || null, req.platformStaff.id]
+            [tenant_id || null, user_id || null, subject, description || null, req.platformStaff.id, JSON.stringify(attachmentUrls)]
         );
         return res.status(201).json({ success: true, data: result.rows[0] });
     } catch (err) {
@@ -149,8 +179,35 @@ const createTicket = async (req, res) => {
     }
 };
 
+// ─── টিকেটে পরে Attachment (screenshot) যোগ করা ───────────────
+const addTicketAttachment = async (req, res) => {
+    const { id } = req.params;
+
+    if (!req.file) {
+        return res.status(400).json({ success: false, message: 'কোনো ফাইল পাওয়া যায়নি।' });
+    }
+
+    try {
+        const url = await uploadToCloudinary(req.file.buffer, 'support_tickets', `ticket_${id}_${Date.now()}`);
+        const result = await query(
+            `UPDATE support_tickets
+             SET attachment_urls = COALESCE(attachment_urls, '[]'::jsonb) || to_jsonb($1::text)
+             WHERE id = $2
+             RETURNING *`,
+            [url, id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Ticket পাওয়া যায়নি।' });
+        }
+        return res.json({ success: true, data: result.rows[0] });
+    } catch (err) {
+        logger.error('❌ platformSupport.addTicketAttachment Error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
 const listTickets = async (req, res) => {
-    const { status, mine } = req.query;
+    const { status, mine, search } = req.query;
     const conditions = [];
     const params = [];
 
@@ -161,6 +218,10 @@ const listTickets = async (req, res) => {
     if (mine === 'true') {
         params.push(req.platformStaff.id);
         conditions.push(`assigned_to = $${params.length}`);
+    }
+    if (search) {
+        params.push(`%${search.trim()}%`);
+        conditions.push(`(st.subject ILIKE $${params.length} OR t.company_name ILIKE $${params.length})`);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -310,15 +371,98 @@ const revokeCustomerDevices = (req, res) => {
     return revokeCustomerPortalDevices(req, res);
 };
 
+// ─── কাস্টমারের Invoice/Payment/Statement হিস্ট্রি (রিড-অনলি) ──
+// customerPortal.controller.js-এর ফাংশনগুলো req.portalUser.customer_id
+// থেকে পড়ে — platform_staff context-এ সেটা নেই, তাই এখানে সাময়িকভাবে
+// req.portalUser বসিয়ে দেওয়া হচ্ছে (শুধু customer_id, অন্য কিছু না)।
+// এই ফাংশনগুলো read-only, তাই এটা নিরাপদ।
+const getCustomerInvoiceHistory = (req, res) => {
+    req.portalUser = { customer_id: req.params.id };
+    return getPortalCustomerInvoices(req, res);
+};
+
+const getCustomerPaymentHistory = (req, res) => {
+    req.portalUser = { customer_id: req.params.id };
+    return getPortalPaymentHistory(req, res);
+};
+
+const getCustomerStatementHistory = (req, res) => {
+    req.portalUser = { customer_id: req.params.id };
+    return getPortalCustomerStatement(req, res);
+};
+
+// ─── Audit Log দেখা ───────────────────────────────────────────
+// support scope: শুধু নিজের action দেখতে পারবে (self-accountability)
+// full scope: সব staff-এর action দেখতে পারবে, staff_id দিয়ে filter-ও করতে পারবে
+const listAuditLog = async (req, res) => {
+    const { action, target_type, staff_id, page, limit } = req.query;
+
+    const pg  = Math.max(1, parseInt(page)  || 1);
+    const lim = Math.min(100, parseInt(limit) || 30);
+    const offset = (pg - 1) * lim;
+
+    const conditions = [];
+    const params = [];
+
+    if (req.platformStaff.scope !== 'full') {
+        // support scope নিজের বাইরে কিছু দেখতে পারবে না
+        params.push(req.platformStaff.id);
+        conditions.push(`staff_id = $${params.length}`);
+    } else if (staff_id) {
+        params.push(staff_id);
+        conditions.push(`staff_id = $${params.length}`);
+    }
+
+    if (action) {
+        params.push(`%${action.trim()}%`);
+        conditions.push(`action ILIKE $${params.length}`);
+    }
+    if (target_type) {
+        params.push(target_type.trim());
+        conditions.push(`target_type = $${params.length}`);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    try {
+        const countResult = await query(`SELECT COUNT(*) AS total FROM platform_audit_log ${where}`, params);
+        const total = parseInt(countResult.rows[0].total, 10);
+
+        params.push(lim, offset);
+        const result = await query(
+            `SELECT id, staff_id, staff_email, action, target_type, target_id, details, ip_address, created_at
+             FROM platform_audit_log
+             ${where}
+             ORDER BY created_at DESC
+             LIMIT $${params.length - 1} OFFSET $${params.length}`,
+            params
+        );
+
+        return res.json({
+            success: true,
+            data: result.rows,
+            pagination: { page: pg, limit: lim, total, total_pages: Math.max(1, Math.ceil(total / lim)) },
+        });
+    } catch (err) {
+        logger.error('❌ platformSupport.listAuditLog Error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     lookupUser,
     unblockUserAccount,
     triggerPasswordReset,
     createTicket,
+    addTicketAttachment,
     listTickets,
     updateTicket,
     lookupCustomer,
     reactivateCustomer,
     clearGmailLock,
     revokeCustomerDevices,
+    getCustomerInvoiceHistory,
+    getCustomerPaymentHistory,
+    getCustomerStatementHistory,
+    listAuditLog,
 };

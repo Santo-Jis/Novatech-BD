@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { FiPlus, FiX, FiLoader, FiArrowUpCircle } from 'react-icons/fi'
+import { FiPlus, FiX, FiLoader, FiArrowUpCircle, FiSearch, FiPaperclip, FiImage } from 'react-icons/fi'
 import platformApi from './api/platformApi'
 import StatusBadge from './components/StatusBadge'
 import { LoadingState, ErrorState, EmptyState } from './components/PanelStates'
@@ -15,6 +15,7 @@ const FILTERS = [
 export default function Tickets() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [filter, setFilter] = useState('mine')
+  const [search, setSearch] = useState('')
   const [tickets, setTickets] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -27,7 +28,8 @@ export default function Tickets() {
     try {
       const params = {}
       if (filter === 'mine') params.mine = true
-      // 'unassigned' filtering happens client-side since backend has no explicit flag for it
+      if (search.trim()) params.search = search.trim()
+      // 'unassigned' filtering হয় client-side, backend-এ explicit flag নেই
       const res = await platformApi.get('/support/tickets', { params })
       let rows = res.data.data
       if (filter === 'unassigned') rows = rows.filter((t) => !t.assigned_to)
@@ -37,7 +39,7 @@ export default function Tickets() {
     } finally {
       setLoading(false)
     }
-  }, [filter])
+  }, [filter, search])
 
   useEffect(() => {
     load()
@@ -74,20 +76,32 @@ export default function Tickets() {
         </button>
       </div>
 
-      <div className="flex gap-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.value || 'all'}
-            onClick={() => setFilter(f.value)}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors ${
-              filter === f.value
-                ? 'bg-pf-primary-700 text-white'
-                : 'bg-pf-bg-surface border border-pf-border text-pf-text-secondary hover:border-pf-primary-500'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <FiSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-pf-text-muted text-sm" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="subject বা টেন্যান্ট নাম দিয়ে খুঁজুন"
+            className="w-full pl-9 pr-3 py-2.5 rounded-lg border border-pf-border bg-pf-bg-surface text-sm
+              focus:outline-none focus:ring-2 focus:ring-pf-primary-700/20 focus:border-pf-primary-700"
+          />
+        </div>
+        <div className="flex gap-2">
+          {FILTERS.map((f) => (
+            <button
+              key={f.value || 'all'}
+              onClick={() => setFilter(f.value)}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-colors whitespace-nowrap ${
+                filter === f.value
+                  ? 'bg-pf-primary-700 text-white'
+                  : 'bg-pf-bg-surface border border-pf-border text-pf-text-secondary hover:border-pf-primary-500'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && <LoadingState label="টিকেট লোড হচ্ছে..." />}
@@ -107,9 +121,14 @@ export default function Tickets() {
               onClick={() => setSelected(t)}
               className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-pf-bg-alt transition-colors text-left"
             >
-              <div className="min-w-0">
-                <p className="text-sm font-medium text-pf-text-primary truncate">{t.subject}</p>
-                <p className="text-xs text-pf-text-muted truncate">{t.company_name || 'কোনো টেন্যান্ট যুক্ত নেই'}</p>
+              <div className="min-w-0 flex items-center gap-2">
+                {Array.isArray(t.attachment_urls) && t.attachment_urls.length > 0 && (
+                  <FiPaperclip className="text-pf-text-muted flex-shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-pf-text-primary truncate">{t.subject}</p>
+                  <p className="text-xs text-pf-text-muted truncate">{t.company_name || 'কোনো টেন্যান্ট যুক্ত নেই'}</p>
+                </div>
               </div>
               <StatusBadge status={t.status} />
             </button>
@@ -150,6 +169,8 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
   const [note, setNote] = useState(ticket.resolution_note || '')
   const [saving, setSaving] = useState(false)
   const [escalating, setEscalating] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const attachments = Array.isArray(ticket.attachment_urls) ? ticket.attachment_urls : []
 
   const save = async () => {
     setSaving(true)
@@ -184,6 +205,26 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
     }
   }
 
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('attachment', file)
+      const res = await platformApi.post(`/support/tickets/${ticket.id}/attachment`, formData, {
+        headers: { 'Content-Type': undefined },
+      })
+      onUpdated(res.data.data)
+      toast.success('স্ক্রিনশট যোগ হয়েছে।')
+    } catch (err) {
+      if (!err._toastShown) toast.error('আপলোড করা যায়নি।')
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="bg-pf-bg-surface w-full sm:max-w-lg sm:rounded-xl rounded-t-xl max-h-[90vh] overflow-y-auto">
@@ -201,6 +242,27 @@ function TicketDetailModal({ ticket, onClose, onUpdated }) {
           {ticket.description && (
             <p className="text-sm text-pf-text-secondary bg-pf-bg-alt rounded-lg p-3">{ticket.description}</p>
           )}
+
+          {attachments.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">স্ক্রিনশট/সংযুক্তি</label>
+              <div className="flex flex-wrap gap-2">
+                {attachments.map((url, i) => (
+                  <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                    <img src={url} alt={`attachment-${i}`} className="w-16 h-16 object-cover rounded-lg border border-pf-border" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-pf-primary-700 cursor-pointer w-fit">
+              {uploading ? <FiLoader className="animate-spin" /> : <FiImage />}
+              স্ক্রিনশট যোগ করুন
+              <input type="file" accept="image/*" onChange={handleFileSelect} disabled={uploading} className="hidden" />
+            </label>
+          </div>
 
           <div>
             <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">স্ট্যাটাস</label>
@@ -258,6 +320,7 @@ function CreateTicketModal({ defaultTenantId, onClose, onCreated }) {
   const [subject, setSubject] = useState('')
   const [description, setDescription] = useState('')
   const [tenantId, setTenantId] = useState(defaultTenantId)
+  const [file, setFile] = useState(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -270,10 +333,14 @@ function CreateTicketModal({ defaultTenantId, onClose, onCreated }) {
     setSaving(true)
     setError('')
     try {
-      const res = await platformApi.post('/support/tickets', {
-        subject: subject.trim(),
-        description: description.trim() || undefined,
-        tenant_id: tenantId || undefined,
+      const formData = new FormData()
+      formData.append('subject', subject.trim())
+      if (description.trim()) formData.append('description', description.trim())
+      if (tenantId) formData.append('tenant_id', tenantId)
+      if (file) formData.append('attachment', file)
+
+      const res = await platformApi.post('/support/tickets', formData, {
+        headers: { 'Content-Type': undefined },
       })
       onCreated(res.data.data)
     } catch (err) {
@@ -328,6 +395,19 @@ function CreateTicketModal({ defaultTenantId, onClose, onCreated }) {
               className="w-full px-3 py-2.5 rounded-lg border border-pf-border bg-pf-bg-surface text-sm font-pf-mono"
               placeholder="টেন্যান্ট পেজ থেকে এলে অটো-ফিল থাকবে"
             />
+          </div>
+
+          <div>
+            <label className="flex items-center gap-1.5 text-xs font-semibold text-pf-primary-700 cursor-pointer w-fit">
+              <FiImage />
+              {file ? file.name : 'স্ক্রিনশট যোগ করুন (ঐচ্ছিক)'}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                className="hidden"
+              />
+            </label>
           </div>
 
           <button

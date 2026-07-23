@@ -1,8 +1,21 @@
 const express = require('express');
 const router  = express.Router();
+const multer  = require('multer');
 const ctrl    = require('../controllers/platformSupport.controller');
 const { platformAuth, requireScope } = require('../middlewares/platformAuth');
 const { auditLog } = require('../services/platformAudit.service');
+
+// ─── Ticket attachment upload (screenshot ইত্যাদি) ───────────
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits:  { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+            return cb(new Error('শুধু ছবি আপলোড করা যাবে।'));
+        }
+        cb(null, true);
+    }
+});
 
 // সব রুট platform_staff login বাধ্যতামূলক
 router.use(platformAuth);
@@ -66,8 +79,17 @@ router.get(
 router.post(
     '/tickets',
     requireScope('full', 'support'),
+    upload.single('attachment'),
     auditLog('ticket.create', 'ticket'),
     ctrl.createTicket
+);
+
+router.post(
+    '/tickets/:id/attachment',
+    requireScope('full', 'support'),
+    upload.single('attachment'),
+    auditLog('ticket.add_attachment', 'ticket'),
+    ctrl.addTicketAttachment
 );
 
 router.patch(
@@ -75,6 +97,32 @@ router.patch(
     requireScope('full', 'support'),
     auditLog('ticket.update', 'ticket'),
     ctrl.updateTicket
+);
+
+// ─── কাস্টমারের Invoice/Payment/Statement হিস্ট্রি (রিড-অনলি) ──
+router.get(
+    '/customers/:id/invoices',
+    requireScope('full', 'support'),
+    ctrl.getCustomerInvoiceHistory
+);
+
+router.get(
+    '/customers/:id/payments',
+    requireScope('full', 'support'),
+    ctrl.getCustomerPaymentHistory
+);
+
+router.get(
+    '/customers/:id/statement',
+    requireScope('full', 'support'),
+    ctrl.getCustomerStatementHistory
+);
+
+// ─── Audit Log (support: শুধু নিজের, full: সবার) ──────────────
+router.get(
+    '/audit-log',
+    requireScope('full', 'support'),
+    ctrl.listAuditLog
 );
 
 module.exports = router;
