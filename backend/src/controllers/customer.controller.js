@@ -97,7 +97,7 @@ const getCustomers = async (req, res) => {
             orderBy = 'ca.visit_order ASC NULLS LAST, distance_meters ASC NULLS LAST';
         }
 
-        conditions.unshift(`tenant_id = $1`); // SaaS: tenant isolation
+        conditions.unshift(`c.tenant_id = $1`); // SaaS: tenant isolation — ✅ ফিক্স: c. দিয়ে qualify করা হয়েছে, কারণ routes ও customer_assignments টেবিলেও tenant_id কলাম আছে ও এই query দুটোই JOIN করে (আগে bare "tenant_id" থাকায় Postgres ambiguous column error দিত: code 42702)
     const whereClause = conditions.join(' AND ');
 
         paramCount++;

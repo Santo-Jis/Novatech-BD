@@ -301,7 +301,9 @@ export default function CustomerList() {
         })
         .catch(() => {})
 
-      api.get('/routes')
+      // ✅ ফিক্স: /routes ম্যানেজমেন্ট-অনলি এন্ডপয়েন্ট (isManagement গার্ড) — SR/worker এর জন্য
+      // ৪০৩ দিত। /routes/worker-list হলো SR-দের জন্য বিশেষভাবে বানানো এন্ডপয়েন্ট (isWorker গার্ড)।
+      api.get('/routes/worker-list')
         .then(res => {
           const data = res.data.data || []
           setRoutes(data)

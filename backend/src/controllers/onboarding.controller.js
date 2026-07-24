@@ -22,6 +22,42 @@ const { query, withTransaction } = require('../config/db');
 // Slug valid কিনা চেক করো (company identifier, future branding/reporting-এ কাজে লাগবে)
 const isValidSlug = (slug) => /^[a-z0-9-]{3,30}$/.test(slug);
 
+// ─── Per-seat rate (৳/মাস) — NovaTechBD_Pricing_Policy.docx সংস্করণ ১.০ ───
+// ⚠️ Draft/internal নীতিমালা — বাজার-যাচাই সাপেক্ষে বদলাতে পারে (docx §১০)।
+//    বদলালে frontend/src/constants/pricing.js-ও একসাথে আপডেট করতে হবে,
+//    কারণ দুই জায়গায় আলাদাভাবে রাখা আছে (ভবিষ্যতে একটা shared config/API
+//    এন্ডপয়েন্ট দিয়ে একীভূত করা উচিত)।
+const SEAT_RATES = {
+  admin:        1699,
+  manager:      1299,
+  worker:       899,   // SR
+  shop_keeper:  799,   // এখনো live না (roleCheck.js-এ নেই) — সিট বুক করা যায়, ব্যবহার এখনো না
+  stock_keeper: 499,   // এখনো live না
+};
+
+// এখনো ফিচার-হিসেবে বাস্তবায়িত হয়নি এমন role — client যাই পাঠাক, backend জোর করে ০
+const NOT_YET_LIVE_ROLES = ['shop_keeper', 'stock_keeper'];
+
+const MAX_SEATS_PER_ROLE = 50; // ট্রায়াল সাইনআপে reasonable ceiling — এর বেশি হলে sales-এর সাথে কথা বলা উচিত
+
+// ইনকামিং seats object normalize + validate করো
+// ইনপুট: { manager: 1, worker: 4, shop_keeper: 2, stock_keeper: 2 } (admin বাদে, কারণ admin সবসময় ১ — যে সাইনআপ করছে সে নিজেই)
+// আউটপুট: প্রতিটা role-এর জন্য একটা safe non-negative integer, cap সহ, not-yet-live role জোর করে ০
+const normalizeSeats = (seatsInput = {}) => {
+  const normalized = {};
+  for (const role of Object.keys(SEAT_RATES)) {
+    if (role === 'admin') continue; // admin আলাদাভাবে হ্যান্ডেল হয়, নিচে দেখো
+    if (NOT_YET_LIVE_ROLES.includes(role)) {
+      normalized[role] = 0; // ফিচার রেডি না হওয়া পর্যন্ত জোর করে ০, client override করতে পারবে না
+      continue;
+    }
+    const raw = Number(seatsInput?.[role]);
+    const safe = Number.isFinite(raw) ? Math.trunc(raw) : 0;
+    normalized[role] = Math.min(Math.max(safe, 0), MAX_SEATS_PER_ROLE);
+  }
+  return normalized;
+};
+
 // ─── নতুন Company Register ──────────────────────────────────
 const registerCompany = async (req, res) => {
   const {
@@ -32,7 +68,10 @@ const registerCompany = async (req, res) => {
     admin_phone,
     admin_email,
     password,
+    seats,           // { manager, worker, shop_keeper, stock_keeper } — ঐচ্ছিক, না দিলে সব ০ ধরা হয় (শুধু admin seat = ১)
   } = req.body;
+
+  const normalizedSeats = normalizeSeats(seats);
 
   // Validation
   if (!company_name || !slug || !admin_phone || !password) {
@@ -113,7 +152,21 @@ const registerCompany = async (req, res) => {
         ]
       );
 
-      // ৩. Default system_settings copy (default tenant থেকে)
+      // ৩. Seat allocation সেভ করো — trial সাইনআপে গ্রাহক নিজে যে role-মিক্স
+      //    বেছে নিয়েছে সেটা রেকর্ড থাকলো (policy doc §৮: "সিট নির্বাচন")।
+      //    rate_locked = সাইনআপের দিনের rate, পরে policy বদলালেও এই
+      //    tenant-এর জন্য এই rate-ই থাকবে।
+      const seatRows = [['admin', 1], ...Object.entries(normalizedSeats)];
+      for (const [role, count] of seatRows) {
+        await client.query(
+          `INSERT INTO tenant_seats (tenant_id, role, seat_count, rate_locked)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (tenant_id, role) DO UPDATE SET seat_count = EXCLUDED.seat_count`,
+          [newTenant.id, role, count, SEAT_RATES[role]]
+        );
+      }
+
+      // ৪. Default system_settings copy (default tenant থেকে)
       await client.query(
         `INSERT INTO system_settings (tenant_id, key, value)
          SELECT $1, key, value FROM system_settings
@@ -132,6 +185,7 @@ const registerCompany = async (req, res) => {
         tenantId:  tenant.id,
         slug:      tenant.slug,
         trialEnds: tenant.trial_ends_at,
+        seats:     { admin: 1, ...normalizedSeats },
       },
     });
   } catch (err) {
@@ -155,4 +209,4 @@ const checkSlugAvailability = async (req, res) => {
   return res.json({ available: result.rows.length === 0 });
 };
 
-module.exports = { registerCompany, checkSlugAvailability };
+module.exports = { registerCompany, checkSlugAvailability, SEAT_RATES };

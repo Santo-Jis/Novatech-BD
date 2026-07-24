@@ -9,6 +9,7 @@ import {
 } from 'react-icons/fi'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
+import { SEAT_RATES, MAX_SEATS_PER_ROLE, calculateMonthlyTotal, formatTaka } from '../constants/pricing'
 
 // ============================================================
 // Start Trial — ZovoriX
@@ -77,6 +78,59 @@ const iconWrapStyle = {
   pointerEvents: 'none',
 }
 
+const stepBtnStyle = (disabled) => ({
+  width: '28px', height: '28px', borderRadius: '8px', flexShrink: 0,
+  border: `1px solid ${T.borderDefault}`, background: disabled ? T.bgSunken : T.bgAlt,
+  color: disabled ? T.textMuted : T.primary700, fontSize: '16px', fontWeight: 700,
+  cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center',
+  justifyContent: 'center', lineHeight: 1, padding: 0,
+})
+
+const totalBoxStyle = {
+  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+  padding: '13px 16px', borderRadius: '10px', background: T.primary900, marginTop: '2px',
+}
+
+// প্রতিটা role-এর জন্য এক লাইনের সিট-স্টেপার (− সংখ্যা +)
+// admin/fixed role-এ স্টেপার না দেখিয়ে শুধু "১ (তুমি)" দেখানো হয়
+function SeatStepper({ config, value, onChange }) {
+  const disabled = config.comingSoon || config.fixed
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      padding: '11px 14px', borderRadius: '10px', border: `1px solid ${T.borderDefault}`,
+      background: config.comingSoon ? T.bgAlt : T.bgSurface, marginBottom: '8px',
+      opacity: config.comingSoon ? 0.7 : 1,
+    }}>
+      <div>
+        <div style={{ fontSize: '13.5px', fontWeight: 600, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: '7px' }}>
+          {config.labelBn}
+          {config.comingSoon && (
+            <span style={{
+              fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '10px',
+              background: T.accent100, color: T.accent600, fontFamily: T.fontMono, whiteSpace: 'nowrap',
+            }}>শীঘ্রই আসছে</span>
+          )}
+        </div>
+        <div style={{ fontSize: '11.5px', color: T.textMuted, marginTop: '2px', fontFamily: T.fontMono }}>
+          {formatTaka(config.price)}/সিট/মাস
+        </div>
+      </div>
+      {config.fixed ? (
+        <div style={{ fontSize: '13px', fontWeight: 700, color: T.textSecondary, padding: '0 6px', whiteSpace: 'nowrap' }}>১ (তুমি)</div>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <button type="button" disabled={disabled || value <= 0} style={stepBtnStyle(disabled || value <= 0)}
+            onClick={() => onChange(Math.max(0, value - 1))}>−</button>
+          <span style={{ minWidth: '18px', textAlign: 'center', fontSize: '14px', fontWeight: 700, color: T.primary700 }}>{value}</span>
+          <button type="button" disabled={disabled || value >= MAX_SEATS_PER_ROLE} style={stepBtnStyle(disabled || value >= MAX_SEATS_PER_ROLE)}
+            onClick={() => onChange(Math.min(MAX_SEATS_PER_ROLE, value + 1))}>+</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function slugify(str) {
   return (str || '')
     .toLowerCase()
@@ -96,6 +150,10 @@ export default function StartTrial() {
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false)
   const [slugStatus, setSlugStatus] = useState(null) // null | 'checking' | 'available' | 'taken' | 'invalid'
   const slugCheckTimer = useRef(null)
+
+  // সিট নির্বাচন — একটা ছোট SR + ম্যানেজার টিম দিয়ে শুরু, চাইলে বাড়ানো/কমানো যাবে
+  const [seats, setSeats] = useState({ manager: 1, worker: 2, shop_keeper: 0, stock_keeper: 0 })
+  const monthlyTotal = calculateMonthlyTotal({ admin: 1, ...seats })
 
   const {
     register, handleSubmit, watch, setValue, formState: { errors },
@@ -158,6 +216,7 @@ export default function StartTrial() {
         admin_phone: data.admin_phone,
         admin_email: data.admin_email || undefined,
         password: data.password,
+        seats,
       })
       setResult(res.data?.data || {})
       toast.success('ট্রায়াল শুরু হয়েছে! 🎉')
@@ -340,6 +399,35 @@ export default function StartTrial() {
                 )}
               </div>
 
+              {/* সিট নির্বাচন */}
+              <div style={{ marginBottom: '20px' }}>
+                <label style={labelStyle}>তোমার টিমে কে কে থাকবে?</label>
+                <p style={{ fontSize: '12px', color: T.textMuted, margin: '-2px 0 10px', lineHeight: 1.6 }}>
+                  ট্রায়ালে যেকোনো সংখ্যা বেছে নাও, পুরোটাই ৩ মাস ফ্রি
+                </p>
+
+                {Object.values(SEAT_RATES).map((config) => (
+                  <SeatStepper
+                    key={config.role}
+                    config={config}
+                    value={config.fixed ? 1 : seats[config.role]}
+                    onChange={(v) => setSeats((s) => ({ ...s, [config.role]: v }))}
+                  />
+                ))}
+
+                <div style={totalBoxStyle}>
+                  <span style={{ fontSize: '12.5px', color: T.primary100, lineHeight: 1.5 }}>
+                    ট্রায়াল শেষে সম্ভাব্য<br />মাসিক খরচ*
+                  </span>
+                  <span style={{ fontSize: '17px', fontWeight: 700, color: T.accent300, fontFamily: T.fontMono }}>
+                    {formatTaka(monthlyTotal)}/মাস
+                  </span>
+                </div>
+                <p style={{ fontSize: '11px', color: T.textMuted, margin: '6px 0 0' }}>
+                  *শুধু হিসাব দেখানোর জন্য — এখন কোনো টাকা কাটা হবে না, ৩ মাস পুরো ফ্রি
+                </p>
+              </div>
+
               {/* Terms checkbox */}
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: '9px', marginBottom: '22px', fontSize: '12.5px', color: T.textSecondary, cursor: 'pointer' }}>
                 <input type="checkbox" required style={{ marginTop: '2px' }} />
@@ -390,9 +478,22 @@ export default function StartTrial() {
               তোমার ৩ মাসের ফ্রি ট্রায়াল চলবে
             </p>
             {trialEndDate && (
-              <p style={{ color: T.primary700, fontSize: '15px', fontWeight: 700, marginBottom: '24px' }}>
+              <p style={{ color: T.primary700, fontSize: '15px', fontWeight: 700, marginBottom: '20px' }}>
                 {trialEndDate} পর্যন্ত
               </p>
+            )}
+            {result?.seats && (
+              <div style={{ background: T.bgAlt, borderRadius: '10px', padding: '14px 16px', margin: '0 0 24px', textAlign: 'left' }}>
+                <p style={{ fontSize: '12px', fontWeight: 700, color: T.textSecondary, margin: '0 0 8px' }}>তোমার সিট (ট্রায়ালে ফ্রি):</p>
+                {Object.entries(result.seats)
+                  .filter(([, count]) => count > 0)
+                  .map(([role, count]) => (
+                    <p key={role} style={{ fontSize: '13px', color: T.textPrimary, margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{SEAT_RATES[role]?.labelBn || role}</span>
+                      <span style={{ fontWeight: 700 }}>× {count}</span>
+                    </p>
+                  ))}
+              </div>
             )}
             <button
               onClick={() => navigate('/login')}
