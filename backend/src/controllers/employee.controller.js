@@ -53,8 +53,11 @@ const assertSeatAvailable = async (client, tenantId, role) => {
     const limit = seatRow.rows[0]?.seat_count ?? 0;
 
     const usedRow = await client.query(
+        // role::text — একই কারণে (দেখো getSeatStatus-এর কমেন্ট) users.role
+        // ENUM হওয়ায় সরাসরি তুলনা করলে shop_keeper/stock_keeper-এর মতো
+        // এখনো-লাইভ-না role-এর জন্য "invalid input value for enum" এরর হতে পারে
         `SELECT COUNT(*)::int AS used FROM users
-         WHERE tenant_id = $1 AND role = $2 AND status != 'archived'`,
+         WHERE tenant_id = $1 AND role::text = $2 AND status != 'archived'`,
         [tenantId, role]
     );
     const used = usedRow.rows[0]?.used ?? 0;
@@ -94,10 +97,17 @@ const getSeatStatus = async (req, res) => {
         seatRows.rows.forEach((r) => { limitByRole[r.role] = r.seat_count; });
 
         const usedRows = await query(
-            `SELECT role, COUNT(*)::int AS used FROM users
-             WHERE tenant_id = $1 AND status != 'archived' AND role = ANY($2)
-             GROUP BY role`,
-            [req.tenantId, roles]
+            // ⚠️ role::text cast করা জরুরি — users.role আসলে একটা Postgres
+            // ENUM (user_role), আর সেই enum-এ এখনো 'shop_keeper'/'stock_keeper'
+            // value যোগ করা হয়নি (এই role গুলো এখনো লাইভ না)। ANY($2)-এ ওই
+            // দুইটা role থাকলে Postgres পুরো array-টা enum-এ cast করার
+            // চেষ্টা করে, আর সেটা fail করে পুরো query-ই ভেঙে দিতো
+            // (22P02: invalid input value for enum) — role::text দিয়ে
+            // সেটা এড়ানো হলো
+            `SELECT role::text AS role, COUNT(*)::int AS used FROM users
+             WHERE tenant_id = $1 AND status != 'archived'
+             GROUP BY role::text`,
+            [req.tenantId]
         );
         const usedByRole = {};
         usedRows.rows.forEach((r) => { usedByRole[r.role] = r.used; });
