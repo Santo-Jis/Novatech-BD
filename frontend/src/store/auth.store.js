@@ -36,10 +36,16 @@ export const useAuthStore = create((set, get) => ({
   authReady: false,
 
   // ── LOGIN ──
-  login: async (identifier, password) => {
+  // companyId ঐচ্ছিক — নতুন (ফ্রি ট্রায়াল) কোম্পানির ইউজারদের জন্য দরকার,
+  // পুরনো/single-tenant ইউজারদের জন্য খালি রাখলেও চলবে (backend fallback আছে)।
+  login: async (identifier, password, companyId) => {
     set({ loading: true })
     try {
-      const response = await api.post('/auth/login', { identifier, password })
+      const response = await api.post('/auth/login', {
+        identifier,
+        password,
+        company_id: companyId ? companyId.trim().toLowerCase() : undefined,
+      })
       const { user, accessToken } = response.data.data
       // refreshToken: server HttpOnly cookie-তে সেট করেছে — JS-এ দেখা যাবে না
 

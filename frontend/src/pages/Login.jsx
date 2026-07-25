@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import toast from 'react-hot-toast'
-import { FiUser, FiLock, FiEye, FiEyeOff, FiLogIn } from 'react-icons/fi'
+import { FiUser, FiLock, FiEye, FiEyeOff, FiLogIn, FiBriefcase } from 'react-icons/fi'
 import logo from '../assets/zovorix-logo.png'
 
 // ============================================================
@@ -36,8 +36,13 @@ const FONT_BODY = "'IBM Plex Sans','Noto Sans Bengali','Hind Siliguri',Arial,san
 
 export default function Login() {
   const navigate            = useNavigate()
+  const location             = useLocation()
   const { login, user, loading } = useAuthStore()
 
+  // ট্রায়াল সাইনআপের পর success screen থেকে "এখন লগইন করুন" চাপলে
+  // navigate() এর state-এ companyId (slug) পাঠানো হয় — সেটা থাকলে
+  // এখানে auto-fill হয়ে যাবে, নতুন ইউজারকে আবার টাইপ করতে হবে না।
+  const [companyId,  setCompanyId]  = useState(location.state?.companyId || '')
   const [identifier, setIdentifier] = useState('')
   const [password,   setPassword]   = useState('')
   const [showPass,   setShowPass]   = useState(false)
@@ -68,7 +73,7 @@ export default function Login() {
       toast.error('সকল তথ্য পূরণ করুন।')
       return
     }
-    const result = await login(identifier.trim(), password)
+    const result = await login(identifier.trim(), password, companyId.trim())
     if (result.success) {
       // useEffect-এ redirect হবে
     }
@@ -164,6 +169,34 @@ export default function Login() {
 
         {/* Form */}
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+
+          {/* Company ID — নতুন (ফ্রি ট্রায়াল) কোম্পানির জন্য দরকার, না দিলেও চলবে */}
+          <div>
+            <label style={{
+              color: COLORS.textSecondary, fontSize: '13px', fontWeight: 500,
+              display: 'block', marginBottom: '7px',
+            }}>
+              Company ID <span style={{ color: COLORS.textMuted, fontWeight: 400 }}>(ফ্রি ট্রায়াল সাইনআপ থাকলে)</span>
+            </label>
+            <div style={{ position: 'relative' }}>
+              <span style={{
+                position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)',
+                color: COLORS.textMuted, fontSize: '16px', display: 'flex',
+              }}>
+                <FiBriefcase />
+              </span>
+              <input
+                type="text"
+                value={companyId}
+                onChange={e => setCompanyId(e.target.value)}
+                onFocus={() => setFocusField('company')}
+                onBlur={() => setFocusField(null)}
+                placeholder="যেমন: acmebd"
+                autoComplete="organization"
+                style={inputStyle('company')}
+              />
+            </div>
+          </div>
 
           {/* Identifier */}
           <div>

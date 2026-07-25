@@ -824,7 +824,7 @@ export default function StartTrial() {
               </div>
             )}
             <button
-              onClick={() => navigate('/login')}
+              onClick={() => navigate('/login', { state: { companyId: result?.slug || '' } })}
               style={{
                 padding: '13px 28px', background: T.primary700, border: 'none', borderRadius: '9px',
                 color: '#fff', fontSize: '14.5px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody,

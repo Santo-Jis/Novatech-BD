@@ -18,6 +18,11 @@
 
 const { query } = require('../config/db');
 
+// অন্যান্য ফাইলের (auth.js, auth.service.js) মতো একই fallback default —
+// যেসব pre-auth request-এ company_id দেওয়া হয় না (পুরনো/single-tenant
+// client), তাদের জন্য backward-compat।
+const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+
 // Tenant cache (memory) — বারবার DB hit কমাতে
 const tenantCache = new Map();
 const CACHE_TTL   = 5 * 60 * 1000; // 5 মিনিট
@@ -137,4 +142,59 @@ const tenantResolver = async (req, res, next) => {
   }
 };
 
-module.exports = { tenantResolver, getTenantBySlug, getTenantById, clearTenantCache };
+// ─── Pre-auth রুটের জন্য (login, forgot-password, verify-otp, ────
+// reset-password, check-email, customer-login) — bug fix (26 July 2026):
+// আগে এই রুটগুলো সবসময় DEFAULT_TENANT_ID দিয়ে user খুঁজতো, তাই free
+// trial-এ সাইনআপ করা নতুন tenant-এর কেউ (নতুন, আলাদা tenant_id) কখনো
+// লগইন করতে পারতো না — credentials ঠিক থাকলেও "ভুল" বলতো।
+//
+// এখন req.body.company_id (সাইনআপের সময় বেছে নেওয়া slug) দিয়ে
+// tenant resolve করা হয়। company_id না দিলে backward-compat হিসেবে
+// DEFAULT_TENANT_ID ধরে নেওয়া হয় — তাই আগে থেকে থাকা (single-tenant)
+// ইউজারদের লগইন ভাঙবে না।
+const resolveTenantFromCompanyId = async (req, res, next) => {
+  try {
+    const companyId = String(req.body?.company_id || '').trim().toLowerCase();
+
+    if (!companyId) {
+      req.tenantId = DEFAULT_TENANT_ID;
+      return next();
+    }
+
+    const tenant = await getTenantBySlug(companyId);
+
+    if (!tenant) {
+      return res.status(404).json({
+        success: false,
+        message: 'ভুল Company ID। আবার চেক করে দাও।',
+        code: 'TENANT_NOT_FOUND',
+      });
+    }
+
+    if (tenant.status === 'suspended') {
+      return res.status(403).json({
+        success: false,
+        message: 'এই প্রতিষ্ঠানের অ্যাকাউন্ট সাময়িকভাবে বন্ধ। সাপোর্টের সাথে যোগাযোগ করো।',
+        code: 'TENANT_INACTIVE',
+      });
+    }
+
+    if (tenant.status === 'cancelled') {
+      return res.status(403).json({
+        success: false,
+        message: 'এই প্রতিষ্ঠানের সাবস্ক্রিপশন বাতিল হয়ে গেছে।',
+        code: 'TENANT_INACTIVE',
+      });
+    }
+
+    req.tenantId   = tenant.id;
+    req.tenantSlug = tenant.slug;
+    req.tenant     = tenant;
+    next();
+  } catch (err) {
+    console.error('[resolveTenantFromCompanyId]', err.message);
+    return res.status(500).json({ success: false, message: 'Tenant resolution failed.' });
+  }
+};
+
+module.exports = { tenantResolver, getTenantBySlug, getTenantById, clearTenantCache, resolveTenantFromCompanyId };

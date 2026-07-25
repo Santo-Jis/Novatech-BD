@@ -210,7 +210,7 @@ const registerCompany = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: '৩ মাসের free trial শুরু হয়েছে! এখন App-এর login screen থেকে phone ও password দিয়ে লগইন করো।',
+      message: `৩ মাসের free trial শুরু হয়েছে! এখন App-এর login screen থেকে Company ID (${tenant.slug}), phone ও password দিয়ে লগইন করো।`,
       data: {
         tenantId:  tenant.id,
         slug:      tenant.slug,
