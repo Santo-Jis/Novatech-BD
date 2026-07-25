@@ -11,9 +11,13 @@
  *   (name → name_bn/name_en, is_active → status='active', + join_date)
  * ✅ subdomain-based loginUrl বাদ দেওয়া হলো — এই app subdomain
  *   routing ব্যবহার করছে না। নতুন admin existing app/login screen-এ
- *   গিয়ে phone + password দিয়ে লগইন করবে (identifier লগইন globally
- *   unique phone/email/employee_code দিয়ে কাজ করে, tenant জানার
- *   দরকার নেই)।
+ *   গিয়ে phone + password দিয়ে লগইন করবে।
+ * ⚠️ users.phone/email এখন আর globally unique না (tenant-scoped composite
+ *   unique — migration: tenant_scoped_phone_email_uniqueness)। Login-এ তাই
+ *   এখন Company ID (slug) লাগবে tenant resolve করার জন্য — দেখো
+ *   routes/auth.routes.js ও middlewares/tenantResolver.js। ফ্রি ট্রায়াল
+ *   "এক ব্যক্তি একবার" নিয়মটা এখন trial_signups টেবিল দিয়ে ট্র্যাক হয়
+ *   (users টেবিলের uniqueness দিয়ে না)।
  */
 
 const bcrypt   = require('bcryptjs');
@@ -112,17 +116,19 @@ const registerCompany = async (req, res) => {
       return res.status(409).json({ success: false, message: 'এই Company ID (slug) আগেই ব্যবহার হয়েছে' });
     }
 
-    // Phone আগে register হয়েছে কিনা (global — login phone/email/code দিয়ে হয়,
-    // tenant জানা থাকে না, তাই এগুলো সব tenant-এ unique হতে হবে)
-    const existingPhone = await query(`SELECT id FROM users WHERE phone = $1`, [admin_phone]);
-    if (existingPhone.rows.length > 0) {
-      return res.status(409).json({ success: false, message: 'এই Phone Number আগেই register করা আছে' });
+    // ✅ trial_signups চেক — এক ব্যক্তি (phone/email দিয়ে চেনা যায়) জীবনে
+    // একবারই ফ্রি ট্রায়াল নিতে পারবে, তিনি ইতিমধ্যে অন্য কোনো কোম্পানিতে
+    // owner/employee থাকুন বা না থাকুন তাতে কিছু যায় আসে না (users টেবিল
+    // এখন tenant-scoped unique — সেই check এখানে ইচ্ছাকৃতভাবে করা হচ্ছে না)।
+    const existingTrialPhone = await query(`SELECT id FROM trial_signups WHERE phone = $1`, [admin_phone]);
+    if (existingTrialPhone.rows.length > 0) {
+      return res.status(409).json({ success: false, message: 'এই Phone Number দিয়ে ইতিমধ্যে একটি ফ্রি ট্রায়াল ব্যবহার করা হয়েছে' });
     }
 
     if (admin_email) {
-      const existingEmail = await query(`SELECT id FROM users WHERE email = $1`, [admin_email]);
-      if (existingEmail.rows.length > 0) {
-        return res.status(409).json({ success: false, message: 'এই Email আগেই register করা আছে' });
+      const existingTrialEmail = await query(`SELECT id FROM trial_signups WHERE email = $1`, [admin_email]);
+      if (existingTrialEmail.rows.length > 0) {
+        return res.status(409).json({ success: false, message: 'এই Email দিয়ে ইতিমধ্যে একটি ফ্রি ট্রায়াল ব্যবহার করা হয়েছে' });
       }
     }
 
@@ -166,6 +172,14 @@ const registerCompany = async (req, res) => {
           hashedPass,
           null,                        // emergency_contact
         ]
+      );
+
+      // ২.৫ trial_signups-এ রেকর্ড করা — এই phone/email দিয়ে ভবিষ্যতে
+      // আর কোনো নতুন কোম্পানি ফ্রি ট্রায়াল নিতে পারবে না।
+      await client.query(
+        `INSERT INTO trial_signups (phone, email, tenant_id)
+         VALUES ($1, $2, $3)`,
+        [admin_phone, admin_email || null, newTenant.id]
       );
 
       // ৩. Seat allocation সেভ করো — trial সাইনআপে গ্রাহক নিজে যে role-মিক্স
