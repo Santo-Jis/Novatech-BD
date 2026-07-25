@@ -13,6 +13,63 @@ const {
 const { deleteAllUserSessions } = require('../services/auth.service');
 
 // ============================================================
+// SEAT LIMIT (রোল-ভিত্তিক সীমা) — trial/paid প্ল্যান অনুযায়ী
+// signup-এর সময় (onboarding.controller.js) role অনুযায়ী seat_count
+// tenant_seats টেবিলে সেভ হয় (যেমন: worker=4, manager=1)। এতদিন সেটা
+// শুধু রেকর্ড হিসেবে থাকত, বাস্তবে কর্মচারী তৈরির সময় চেক হতো না —
+// এখানে সেটাই enforce করা হচ্ছে।
+// ============================================================
+const ROLE_LABELS = {
+    admin:        'Admin',
+    manager:      'Manager',
+    worker:       'Sr (Worker)',
+    shop_keeper:  'Shop Keeper',
+    stock_keeper: 'Stock Keeper',
+};
+
+// admin-এর জন্য tenant_seats-এ কোনো row থাকে না (onboarding.controller.js-এ
+// admin আলাদাভাবে হ্যান্ডেল হয়, সবসময় ১টা — যে সাইনআপ করেছে), তাই এখানেও
+// admin-কে seat-limit চেকের বাইরে রাখা হলো
+const SEAT_EXEMPT_ROLES = ['admin'];
+
+/**
+ * নতুন কর্মচারী তৈরির আগে (বা archived কর্মচারী reactivate করার আগে)
+ * চেক করে যে এই role-এ tenant-এর কেনা সিট এখনো খালি আছে কিনা।
+ *
+ * অবশ্যই withTransaction-এর ভেতরের `client` দিয়ে কল করতে হবে —
+ * FOR UPDATE দিয়ে tenant_seats row লক করা হয়, যাতে দুইটা request
+ * একসাথে এলেও (race condition) সীমার বেশি সিট বুক না হয়ে যায়।
+ *
+ * সিট না থাকলে থ্রো করে একটা Error যার { code: 'SEAT_LIMIT_REACHED',
+ * role, used, limit } থাকে — ক্যাচ ব্লকে সেটা ধরে 403 রিটার্ন করতে হবে।
+ */
+const assertSeatAvailable = async (client, tenantId, role) => {
+    if (SEAT_EXEMPT_ROLES.includes(role)) return;
+
+    const seatRow = await client.query(
+        `SELECT seat_count FROM tenant_seats WHERE tenant_id = $1 AND role = $2 FOR UPDATE`,
+        [tenantId, role]
+    );
+    const limit = seatRow.rows[0]?.seat_count ?? 0;
+
+    const usedRow = await client.query(
+        `SELECT COUNT(*)::int AS used FROM users
+         WHERE tenant_id = $1 AND role = $2 AND status != 'archived'`,
+        [tenantId, role]
+    );
+    const used = usedRow.rows[0]?.used ?? 0;
+
+    if (used >= limit) {
+        const err = new Error('SEAT_LIMIT_REACHED');
+        err.code  = 'SEAT_LIMIT_REACHED';
+        err.role  = role;
+        err.used  = used;
+        err.limit = limit;
+        throw err;
+    }
+};
+
+// ============================================================
 // GET ALL EMPLOYEES
 // GET /api/employees
 // Admin → সব, Manager → নিজের টিম
@@ -210,41 +267,46 @@ const createEmployee = async (req, res) => {
         const tempPassword = generateTempPassword();
         const passwordHash = await bcrypt.hash(tempPassword, 10) // 12→10: Render free CPU অপ্টিমাইজড;
 
-        // DB তে সেভ (pending status)
-        const result = await query(
-            `INSERT INTO users (
-                role, name_bn, name_en, father_name, mother_name,
-                email, phone, phone2, dob, gender, marital_status, nid,
-                permanent_address, current_address, district, thana,
-                skills, education, experience, emergency_contact,
-                profile_photo, basic_salary, manager_id,
-                password_hash, status, join_date, tenant_id) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                $11, $12, $13, $14, $15, $16, $17, $18, $19,
-                $20, $21, $22, $23, $24, 'pending', CURRENT_DATE
-             , $25) RETURNING id, name_bn, phone, role, status`,
-            [
-                role, name_bn, name_en, father_name || null, mother_name || null,
-                email || null, phone, phone2 || null,
-                dob || null, gender || null, marital_status || null, nid || null,
-                permanent_address || null, current_address || null,
-                district || null, thana || null,
-                skills ? JSON.stringify(skills) : '{}',
-                education ? JSON.stringify(education) : '[]',
-                experience ? JSON.stringify(experience) : '[]',
-                // emergency_contact সবসময় plain string/phone হিসেবে store করো
-                typeof emergency_contact === 'object'
-                    ? (emergency_contact?.number || emergency_contact?.phone || emergency_contact?.value || null)
-                    : (emergency_contact ? String(emergency_contact).trim() : null),
-                profilePhotoUrl,
-                basic_salary || 0,
-                manager_id || req.user.manager_id || null,
-                passwordHash,
-                req.tenantId  // SaaS: tenant_id = $25
-            ]
-        );
+        // DB তে সেভ (pending status) — seat-limit চেক ও insert একই
+        // transaction-এ (row-lock সহ), যাতে race condition-এ কেউ সীমার
+        // বেশি কর্মচারী তৈরি করতে না পারে
+        const newEmployee = await withTransaction(async (client) => {
+            await assertSeatAvailable(client, req.tenantId, role);
 
-        const newEmployee = result.rows[0];
+            const result = await client.query(
+                `INSERT INTO users (
+                    role, name_bn, name_en, father_name, mother_name,
+                    email, phone, phone2, dob, gender, marital_status, nid,
+                    permanent_address, current_address, district, thana,
+                    skills, education, experience, emergency_contact,
+                    profile_photo, basic_salary, manager_id,
+                    password_hash, status, join_date, tenant_id) VALUES (
+                    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+                    $11, $12, $13, $14, $15, $16, $17, $18, $19,
+                    $20, $21, $22, $23, $24, 'pending', CURRENT_DATE
+                 , $25) RETURNING id, name_bn, phone, role, status`,
+                [
+                    role, name_bn, name_en, father_name || null, mother_name || null,
+                    email || null, phone, phone2 || null,
+                    dob || null, gender || null, marital_status || null, nid || null,
+                    permanent_address || null, current_address || null,
+                    district || null, thana || null,
+                    skills ? JSON.stringify(skills) : '{}',
+                    education ? JSON.stringify(education) : '[]',
+                    experience ? JSON.stringify(experience) : '[]',
+                    typeof emergency_contact === 'object'
+                        ? (emergency_contact?.number || emergency_contact?.phone || emergency_contact?.value || null)
+                        : (emergency_contact ? String(emergency_contact).trim() : null),
+                    profilePhotoUrl,
+                    basic_salary || 0,
+                    manager_id || req.user.manager_id || null,
+                    passwordHash,
+                    req.tenantId  // SaaS: tenant_id = $25
+                ]
+            );
+
+            return result.rows[0];
+        });
 
         // temp password সাময়িক সংরক্ষণ (approval এর পরে SMS যাবে)
         // এখন শুধু response এ দেখাচ্ছি (Admin দেখবে)
@@ -259,6 +321,15 @@ const createEmployee = async (req, res) => {
         });
 
     } catch (error) {
+        if (error.code === 'SEAT_LIMIT_REACHED') {
+            const label = ROLE_LABELS[error.role] || error.role;
+            return res.status(403).json({
+                success: false,
+                code: 'SEAT_LIMIT_REACHED',
+                message: `"${label}" রোলের সব সিট (${error.used}/${error.limit}) ব্যবহার হয়ে গেছে। নতুন কর্মচারী যোগ করতে হলে আগে সিট বাড়াতে হবে।`,
+                data: { role: error.role, used: error.used, limit: error.limit }
+            });
+        }
         logger.error('❌ Create Employee Error:', error.message);
         if (error.code === '23505') {
             return res.status(400).json({ success: false, message: 'এই তথ্য আগে থেকেই আছে।' });
@@ -937,15 +1008,20 @@ const reactivateEmployee = async (req, res) => {
         const { generateEmployeeCode } = require('../services/employee.service');
         const newCode = await generateEmployeeCode(employee.role, new Date());
 
-        // reactivate
-        await query(
-            `UPDATE users
-             SET status = 'active', employee_code = $1, password_hash = $2,
-                 join_date = CURRENT_DATE, updated_at = NOW()
-             WHERE id = $3
-             AND tenant_id = $4`,
-            [newCode, passwordHash, id, req.tenantId]
-        );
+        // reactivate — এটাও একটা সিট আবার দখল করে, তাই এখানেও seat-limit
+        // চেক করা হচ্ছে (নাহলে archive/reactivate দিয়ে সীমা এড়ানো যেত)
+        await withTransaction(async (client) => {
+            await assertSeatAvailable(client, req.tenantId, employee.role);
+
+            await client.query(
+                `UPDATE users
+                 SET status = 'active', employee_code = $1, password_hash = $2,
+                     join_date = CURRENT_DATE, updated_at = NOW()
+                 WHERE id = $3
+                 AND tenant_id = $4`,
+                [newCode, passwordHash, id, req.tenantId]
+            );
+        });
 
         // ✅ FIX: reactivate হলে blocklist থেকে সরাও (আগে suspend ছিল)
         await deleteAllUserSessions(id, { reactivating: true });
@@ -987,6 +1063,15 @@ const reactivateEmployee = async (req, res) => {
         });
 
     } catch (error) {
+        if (error.code === 'SEAT_LIMIT_REACHED') {
+            const label = ROLE_LABELS[error.role] || error.role;
+            return res.status(403).json({
+                success: false,
+                code: 'SEAT_LIMIT_REACHED',
+                message: `"${label}" রোলের সব সিট (${error.used}/${error.limit}) ব্যবহার হয়ে গেছে। পুনরায় যুক্ত করতে হলে আগে সিট বাড়াতে হবে।`,
+                data: { role: error.role, used: error.used, limit: error.limit }
+            });
+        }
         logger.error('❌ Reactivate Error:', error.message);
         return res.status(500).json({ success: false, message: 'পুনরায় যুক্ত করতে সমস্যা হয়েছে।' });
     }
