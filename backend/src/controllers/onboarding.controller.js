@@ -73,7 +73,8 @@ const registerCompany = async (req, res) => {
     industry,
     company_size,
     country,
-    city,
+    division,        // বাংলাদেশের বিভাগ (Dhaka, Chattogram, ...)
+    city,            // নির্বাচিত জেলা (district) — কলামের নাম city রাখা হয়েছে backward-compat-এর জন্য
     timezone,
     website,
     // ─── রেফারেল (সাইনআপ ফর্মের ধাপ ৩) — ঐচ্ছিক ───
@@ -134,14 +135,14 @@ const registerCompany = async (req, res) => {
         `INSERT INTO tenants
            (slug, company_name, company_name_bn, status, plan,
             trial_ends_at, max_employees, max_customers,
-            industry, company_size, country, city, timezone, website, referral_source)
+            industry, company_size, country, division, city, timezone, website, referral_source)
          VALUES ($1, $2, $3, 'trial', 'basic',
                  NOW() + INTERVAL '3 months', 10, 200,
-                 $4, $5, $6, $7, $8, $9, $10)
+                 $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING *`,
         [
           slug, company_name, company_name_bn || null,
-          industry || null, company_size || null, country || null,
+          industry || null, company_size || null, country || null, division || null,
           city || null, timezone || null, website || null, referral_source || null,
         ]
       );

@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import {
   FiCheck, FiCheckCircle, FiXCircle, FiLoader, FiArrowRight, FiArrowLeft,
   FiBriefcase, FiUser, FiPhone, FiMail, FiLock, FiShield, FiEye, FiEyeOff,
-  FiGrid, FiUsers, FiMapPin, FiGlobe, FiLink, FiMessageCircle,
+  FiGrid, FiUsers, FiMapPin, FiGlobe, FiLink, FiMessageCircle, FiLayers,
 } from 'react-icons/fi'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
@@ -21,7 +21,7 @@ import { SEAT_RATES, MAX_SEATS_PER_ROLE, calculateMonthlyTotal, formatTaka } fro
 //
 // ✅ v2 — মাল্টি-স্টেপ ফর্মে রিডিজাইন (৩ ধাপ):
 //    ধাপ ১ — অ্যাকাউন্ট (কোম্পানি নাম, ID, নাম, ফোন, ইমেইল, পাসওয়ার্ড)
-//    ধাপ ২ — কোম্পানি প্রোফাইল (ইন্ডাস্ট্রি, আকার, দেশ/শহর/টাইমজোন, ওয়েবসাইট)
+//    ধাপ ২ — কোম্পানি প্রোফাইল (ইন্ডাস্ট্রি, আকার, দেশ/বিভাগ/জেলা/টাইমজোন, ওয়েবসাইট)
 //    ধাপ ৩ — টিম, রেফারেল সোর্স ও প্রাইসিং সামারি + সাবমিট
 // ============================================================
 
@@ -144,6 +144,18 @@ const INDUSTRY_OPTIONS = [
 ]
 
 const COMPANY_SIZE_OPTIONS = ['১-৫ জন', '৬-২০ জন', '২১-৫০ জন', '৫১-১০০ জন', '১০০+ জন']
+
+// বাংলাদেশের ৮টা বিভাগ ও প্রতিটার অধীনে জেলাসমূহ — বিভাগ বেছে নিলে জেলার লিস্ট আপডেট হবে
+const BD_DIVISIONS_DISTRICTS = {
+  ঢাকা: ['ঢাকা', 'গাজীপুর', 'নারায়ণগঞ্জ', 'নরসিংদী', 'মানিকগঞ্জ', 'মুন্সিগঞ্জ', 'ফরিদপুর', 'গোপালগঞ্জ', 'মাদারীপুর', 'রাজবাড়ী', 'শরীয়তপুর', 'টাঙ্গাইল', 'কিশোরগঞ্জ'],
+  চট্টগ্রাম: ['চট্টগ্রাম', 'কক্সবাজার', 'রাঙামাটি', 'বান্দরবান', 'খাগড়াছড়ি', 'ফেনী', 'নোয়াখালী', 'লক্ষ্মীপুর', 'চাঁদপুর', 'কুমিল্লা', 'ব্রাহ্মণবাড়িয়া'],
+  রাজশাহী: ['রাজশাহী', 'চাঁপাইনবাবগঞ্জ', 'নাটোর', 'নওগাঁ', 'পাবনা', 'সিরাজগঞ্জ', 'বগুড়া', 'জয়পুরহাট'],
+  খুলনা: ['খুলনা', 'বাগেরহাট', 'সাতক্ষীরা', 'যশোর', 'ঝিনাইদহ', 'মাগুরা', 'নড়াইল', 'কুষ্টিয়া', 'চুয়াডাঙ্গা', 'মেহেরপুর'],
+  বরিশাল: ['বরিশাল', 'ভোলা', 'পটুয়াখালী', 'পিরোজপুর', 'ঝালকাঠি', 'বরগুনা'],
+  সিলেট: ['সিলেট', 'মৌলভীবাজার', 'হবিগঞ্জ', 'সুনামগঞ্জ'],
+  রংপুর: ['রংপুর', 'দিনাজপুর', 'ঠাকুরগাঁও', 'পঞ্চগড়', 'নীলফামারী', 'লালমনিরহাট', 'কুড়িগ্রাম', 'গাইবান্ধা'],
+  ময়মনসিংহ: ['ময়মনসিংহ', 'জামালপুর', 'শেরপুর', 'নেত্রকোণা'],
+}
 
 const REFERRAL_OPTIONS = [
   'Facebook',
@@ -272,6 +284,8 @@ export default function StartTrial() {
   const slug = watch('slug')
   const password = watch('password')
   const country = watch('country')
+  const division = watch('division')
+  const isFirstDivisionRender = useRef(true)
 
   // কোম্পানির নাম থেকে slug অটো-জেনারেট (যতক্ষণ ইউজার নিজে slug এডিট না করে)
   useEffect(() => {
@@ -286,6 +300,15 @@ export default function StartTrial() {
       setValue('timezone', COUNTRY_TIMEZONES[country])
     }
   }, [country, setValue])
+
+  // বিভাগ বদলালে আগের জেলা রিসেট করো (কিন্তু প্রথমবার লোড হওয়ার সময় না)
+  useEffect(() => {
+    if (isFirstDivisionRender.current) {
+      isFirstDivisionRender.current = false
+      return
+    }
+    setValue('city', '')
+  }, [division, setValue])
 
   // Slug availability — 500ms debounce
   const checkSlug = useCallback((value) => {
@@ -332,7 +355,7 @@ export default function StartTrial() {
 
   // ধাপ ২ → ৩: কোম্পানি প্রোফাইল ভ্যালিড কিনা চেক করো (ওয়েবসাইট ঐচ্ছিক)
   const goToStep3 = async () => {
-    const valid = await trigger(['industry', 'company_size', 'country', 'city'])
+    const valid = await trigger(['industry', 'company_size', 'country', 'division', 'city'])
     if (!valid) return
     setStep(3)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -367,7 +390,8 @@ export default function StartTrial() {
         industry: data.industry,
         company_size: data.company_size,
         country: data.country,
-        city: data.city,
+        division: data.division,
+        city: data.city, // এখানে নির্বাচিত জেলার (district) নাম যায়
         timezone: data.timezone || undefined,
         website: data.website || undefined,
         // রেফারেল (ধাপ ৩)
@@ -623,16 +647,33 @@ export default function StartTrial() {
                     {errors.country && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>দেশ বেছে নিন</p>}
                   </div>
 
-                  {/* City */}
+                  {/* Division */}
                   <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>শহর *</label>
+                    <label style={labelStyle}>বিভাগ *</label>
+                    <FiLayers style={iconWrapStyle} />
+                    <select {...register('division', { required: true })} style={selectStyle} defaultValue="">
+                      <option value="" disabled>বেছে নিন</option>
+                      {Object.keys(BD_DIVISIONS_DISTRICTS).map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                    <span style={selectArrowStyle}>▾</span>
+                    {errors.division && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>বিভাগ বেছে নিন</p>}
+                  </div>
+
+                  {/* District — বিভাগের উপর নির্ভরশীল, বিভাগ না বাছা পর্যন্ত ডিসেবল থাকবে */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>জেলা *</label>
                     <FiMapPin style={iconWrapStyle} />
-                    <input
+                    <select
                       {...register('city', { required: true })}
-                      style={inputStyle}
-                      placeholder="যেমন: ঢাকা"
-                    />
-                    {errors.city && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>শহরের নাম দিন</p>}
+                      style={{ ...selectStyle, opacity: division ? 1 : 0.6, cursor: division ? 'pointer' : 'not-allowed' }}
+                      defaultValue=""
+                      disabled={!division}
+                    >
+                      <option value="" disabled>{division ? 'বেছে নিন' : 'আগে বিভাগ বেছে নিন'}</option>
+                      {(BD_DIVISIONS_DISTRICTS[division] || []).map((dist) => <option key={dist} value={dist}>{dist}</option>)}
+                    </select>
+                    <span style={selectArrowStyle}>▾</span>
+                    {errors.city && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>জেলা বেছে নিন</p>}
                   </div>
 
                   {/* Timezone (auto-suggested, editable) */}

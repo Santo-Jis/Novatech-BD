@@ -91,3 +91,11 @@ ALTER TABLE tenants ADD COLUMN IF NOT EXISTS city             VARCHAR(100);
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS timezone         VARCHAR(50);
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS website          VARCHAR(200);
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS referral_source  VARCHAR(100);
+
+-- ============================================================
+-- ✅ v3 — সাইনআপ ফর্মে "শহর" ফ্রি-টেক্সট ফিল্ডকে বিভাগ→জেলা
+--    (cascading dropdown)-এ পরিবর্তন করা হয়েছে। district-এর মান
+--    এখনো বিদ্যমান `city` কলামেই যাবে (backward-compat), শুধু
+--    নতুন `division` কলাম যোগ হলো।
+-- ============================================================
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS division VARCHAR(50);
