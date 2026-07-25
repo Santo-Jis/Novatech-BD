@@ -29,7 +29,8 @@ const {
     uploadProfilePhoto,
     reactivateEmployee,
     broadcastEmail,
-    resetPassword
+    resetPassword,
+    getSeatStatus
 } = require('../controllers/employee.controller');
 
 // ============================================================
@@ -71,6 +72,10 @@ router.post('/broadcast-email', auth, isAdmin, broadcastEmail);
 
 // পেন্ডিং অনুমোদন (Admin)
 router.get('/pending',  auth, canApproveEmployee, getPendingEmployees);
+
+// সিট ব্যবহার — কোন role-এ কতজন নেওয়া যাবে (Admin dashboard)
+// ⚠️ অবশ্যই '/:id'-এর আগে রাখতে হবে, নাহলে Express সেটাকে :id='seats' ধরে নেবে
+router.get('/seats',    auth, isAdmin, getSeatStatus);
 
 // পেন্ডিং এডিট তালিকা
 router.get('/audit',    auth, canApproveOrder, getPendingEdits);

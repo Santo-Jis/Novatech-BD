@@ -1,4 +1,5 @@
 import BroadcastEmailModal from '../../components/BroadcastEmailModal';
+import SeatUsage from '../../components/SeatUsage';
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
@@ -112,6 +113,9 @@ export default function AdminDashboard() {
           </button>
         </div>
       )}
+
+      {/* সিট ব্যবহার */}
+      <SeatUsage />
 
       {/* KPI Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

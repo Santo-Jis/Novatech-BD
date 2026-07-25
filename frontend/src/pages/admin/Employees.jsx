@@ -1,4 +1,5 @@
 import ResetPasswordModal from '../../components/ResetPasswordModal';
+import SeatUsage from '../../components/SeatUsage';
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
@@ -290,6 +291,9 @@ ${emergency_contact?.name ? `
           নতুন কর্মচারী
         </Button>
       </div>
+
+      {/* সিট ব্যবহার */}
+      <SeatUsage />
 
       {/* Filters */}
       <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
