@@ -69,6 +69,15 @@ const registerCompany = async (req, res) => {
     admin_email,
     password,
     seats,           // { manager, worker, shop_keeper, stock_keeper } — ঐচ্ছিক, না দিলে সব ০ ধরা হয় (শুধু admin seat = ১)
+    // ─── কোম্পানি প্রোফাইল (সাইনআপ ফর্মের ধাপ ২) — সবগুলো ঐচ্ছিক, missing হলে NULL ───
+    industry,
+    company_size,
+    country,
+    city,
+    timezone,
+    website,
+    // ─── রেফারেল (সাইনআপ ফর্মের ধাপ ৩) — ঐচ্ছিক ───
+    referral_source,
   } = req.body;
 
   const normalizedSeats = normalizeSeats(seats);
@@ -124,11 +133,17 @@ const registerCompany = async (req, res) => {
       const tenantResult = await client.query(
         `INSERT INTO tenants
            (slug, company_name, company_name_bn, status, plan,
-            trial_ends_at, max_employees, max_customers)
+            trial_ends_at, max_employees, max_customers,
+            industry, company_size, country, city, timezone, website, referral_source)
          VALUES ($1, $2, $3, 'trial', 'basic',
-                 NOW() + INTERVAL '3 months', 10, 200)
+                 NOW() + INTERVAL '3 months', 10, 200,
+                 $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
-        [slug, company_name, company_name_bn || null]
+        [
+          slug, company_name, company_name_bn || null,
+          industry || null, company_size || null, country || null,
+          city || null, timezone || null, website || null, referral_source || null,
+        ]
       );
       const newTenant = tenantResult.rows[0];
 

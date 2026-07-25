@@ -4,8 +4,9 @@ import { useForm } from 'react-hook-form'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import {
-  FiCheck, FiCheckCircle, FiXCircle, FiLoader, FiArrowRight,
-  FiBriefcase, FiUser, FiPhone, FiMail, FiLock, FiShield,
+  FiCheck, FiCheckCircle, FiXCircle, FiLoader, FiArrowRight, FiArrowLeft,
+  FiBriefcase, FiUser, FiPhone, FiMail, FiLock, FiShield, FiEye, FiEyeOff,
+  FiGrid, FiUsers, FiMapPin, FiGlobe, FiLink, FiMessageCircle,
 } from 'react-icons/fi'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
@@ -17,6 +18,11 @@ import { SEAT_RATES, MAX_SEATS_PER_ROLE, calculateMonthlyTotal, formatTaka } fro
 // করে backend-এর বিদ্যমান POST /api/register এন্ডপয়েন্টে (onboarding
 // controller) — কোনো ম্যানুয়াল approval লাগে না, সাথে সাথে trial শুরু হয়।
 // ল্যান্ডিং পেইজের সাথে সামঞ্জস্যপূর্ণ ডিজাইন সিস্টেম ব্যবহার করা হয়েছে
+//
+// ✅ v2 — মাল্টি-স্টেপ ফর্মে রিডিজাইন (৩ ধাপ):
+//    ধাপ ১ — অ্যাকাউন্ট (কোম্পানি নাম, ID, নাম, ফোন, ইমেইল, পাসওয়ার্ড)
+//    ধাপ ২ — কোম্পানি প্রোফাইল (ইন্ডাস্ট্রি, আকার, দেশ/শহর/টাইমজোন, ওয়েবসাইট)
+//    ধাপ ৩ — টিম, রেফারেল সোর্স ও প্রাইসিং সামারি + সাবমিট
 // ============================================================
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/api$/, '')
@@ -57,7 +63,10 @@ const inputStyle = {
   background: T.bgSurface,
   outline: 'none',
   boxSizing: 'border-box',
+  appearance: 'none',
 }
+
+const selectStyle = { ...inputStyle, paddingRight: '36px' }
 
 const labelStyle = {
   display: 'block',
@@ -78,6 +87,15 @@ const iconWrapStyle = {
   pointerEvents: 'none',
 }
 
+const selectArrowStyle = {
+  position: 'absolute',
+  right: '13px',
+  top: '38px',
+  color: T.textMuted,
+  fontSize: '11px',
+  pointerEvents: 'none',
+}
+
 const stepBtnStyle = (disabled) => ({
   width: '28px', height: '28px', borderRadius: '8px', flexShrink: 0,
   border: `1px solid ${T.borderDefault}`, background: disabled ? T.bgSunken : T.bgAlt,
@@ -90,6 +108,57 @@ const totalBoxStyle = {
   display: 'flex', alignItems: 'center', justifyContent: 'space-between',
   padding: '13px 16px', borderRadius: '10px', background: T.primary900, marginTop: '2px',
 }
+
+const navBtnStyle = (primary, disabled) => ({
+  padding: '13px 22px',
+  background: disabled ? T.primary300 : (primary ? T.primary700 : 'transparent'),
+  border: primary ? 'none' : `1px solid ${T.borderDefault}`,
+  borderRadius: '10px',
+  color: primary ? '#fff' : T.textSecondary,
+  fontSize: '14.5px', fontWeight: 700,
+  cursor: disabled ? 'not-allowed' : 'pointer',
+  fontFamily: T.fontBody,
+  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+})
+
+// ─── দেশ অনুযায়ী ডিফল্ট টাইমজোন সাজেশন ───
+const COUNTRY_TIMEZONES = {
+  বাংলাদেশ: 'Asia/Dhaka (GMT+6)',
+  ভারত: 'Asia/Kolkata (GMT+5:30)',
+  'যুক্তরাজ্য': 'Europe/London (GMT+0/+1)',
+  'যুক্তরাষ্ট্র': 'America/New_York (GMT-5)',
+  অন্যান্য: '',
+}
+
+const INDUSTRY_OPTIONS = [
+  'খুচরা ব্যবসা (Retail)',
+  'পাইকারি/ডিস্ট্রিবিউশন (Wholesale)',
+  'উৎপাদন (Manufacturing)',
+  'খাদ্য ও পানীয় (Food & Beverage)',
+  'ফার্মাসিউটিক্যাল (Pharma)',
+  'ইলেকট্রনিক্স (Electronics)',
+  'পোশাক/ফ্যাশন (Apparel)',
+  'আইটি/সফটওয়্যার (IT/Software)',
+  'নির্মাণ (Construction)',
+  'অন্যান্য (Other)',
+]
+
+const COMPANY_SIZE_OPTIONS = ['১-৫ জন', '৬-২০ জন', '২১-৫০ জন', '৫১-১০০ জন', '১০০+ জন']
+
+const REFERRAL_OPTIONS = [
+  'Facebook',
+  'Google সার্চ',
+  'বন্ধু/সহকর্মীর মাধ্যমে',
+  'বিজ্ঞাপন/মার্কেটিং',
+  'ইভেন্ট/সেমিনার',
+  'অন্যান্য',
+]
+
+const STEPS = [
+  { n: 1, labelBn: 'অ্যাকাউন্ট' },
+  { n: 2, labelBn: 'কোম্পানি প্রোফাইল' },
+  { n: 3, labelBn: 'টিম ও প্ল্যান' },
+]
 
 // প্রতিটা role-এর জন্য এক লাইনের সিট-স্টেপার (− সংখ্যা +)
 // admin/fixed role-এ স্টেপার না দেখিয়ে শুধু "১ (তুমি)" দেখানো হয়
@@ -131,6 +200,43 @@ function SeatStepper({ config, value, onChange }) {
   )
 }
 
+// ধাপ নির্দেশক — উপরে ১-২-৩ প্রোগ্রেস দেখায়
+function StepIndicator({ current }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '28px' }}>
+      {STEPS.map((s, i) => (
+        <div key={s.n} style={{ display: 'flex', alignItems: 'center', flex: i < STEPS.length - 1 ? 1 : 'unset' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+            <div style={{
+              width: '30px', height: '30px', borderRadius: '50%',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: '13px', fontWeight: 700, fontFamily: T.fontMono,
+              background: s.n < current ? T.primary700 : (s.n === current ? T.primary700 : T.bgAlt),
+              color: s.n <= current ? '#fff' : T.textMuted,
+              border: s.n === current ? `2px solid ${T.accent300}` : 'none',
+              boxSizing: 'border-box',
+              transition: 'all 0.2s',
+            }}>
+              {s.n < current ? <FiCheck size={14} /> : s.n}
+            </div>
+            <span style={{
+              fontSize: '10.5px', fontWeight: 600, whiteSpace: 'nowrap',
+              color: s.n === current ? T.primary700 : T.textMuted,
+            }}>{s.labelBn}</span>
+          </div>
+          {i < STEPS.length - 1 && (
+            <div style={{
+              flex: 1, height: '2px', margin: '0 6px 18px',
+              background: s.n < current ? T.primary700 : T.borderDefault,
+              transition: 'all 0.2s',
+            }} />
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function slugify(str) {
   return (str || '')
     .toLowerCase()
@@ -146,6 +252,9 @@ export default function StartTrial() {
   const navigate = useNavigate()
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState(null) // { slug, trialEnds } after success
+  const [step, setStep] = useState(1)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false)
   const [slugStatus, setSlugStatus] = useState(null) // null | 'checking' | 'available' | 'taken' | 'invalid'
@@ -156,12 +265,13 @@ export default function StartTrial() {
   const monthlyTotal = calculateMonthlyTotal({ admin: 1, ...seats })
 
   const {
-    register, handleSubmit, watch, setValue, formState: { errors },
+    register, handleSubmit, watch, setValue, trigger, formState: { errors },
   } = useForm({ mode: 'onBlur' })
 
   const companyName = watch('company_name')
   const slug = watch('slug')
   const password = watch('password')
+  const country = watch('country')
 
   // কোম্পানির নাম থেকে slug অটো-জেনারেট (যতক্ষণ ইউজার নিজে slug এডিট না করে)
   useEffect(() => {
@@ -169,6 +279,13 @@ export default function StartTrial() {
       setValue('slug', slugify(companyName))
     }
   }, [companyName, slugManuallyEdited, setValue])
+
+  // দেশ বাছাই করলে টাইমজোন অটো-সাজেস্ট করো (ইউজার চাইলে ম্যানুয়ালি বদলাতে পারবে)
+  useEffect(() => {
+    if (country && COUNTRY_TIMEZONES[country] !== undefined) {
+      setValue('timezone', COUNTRY_TIMEZONES[country])
+    }
+  }, [country, setValue])
 
   // Slug availability — 500ms debounce
   const checkSlug = useCallback((value) => {
@@ -197,6 +314,35 @@ export default function StartTrial() {
     return () => { if (slugCheckTimer.current) clearTimeout(slugCheckTimer.current) }
   }, [slug, checkSlug])
 
+  // ধাপ ১ → ২: অ্যাকাউন্ট তথ্য ভ্যালিড কিনা চেক করো
+  const goToStep2 = async () => {
+    const valid = await trigger(['company_name', 'slug', 'admin_name', 'admin_phone', 'password', 'confirm_password'])
+    if (!valid) return
+    if (slugStatus === 'taken' || slugStatus === 'invalid') {
+      toast.error('Company ID ঠিক করে আবার চেষ্টা করো।')
+      return
+    }
+    if (password !== watch('confirm_password')) {
+      toast.error('Password দুটো মিলছে না।')
+      return
+    }
+    setStep(2)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // ধাপ ২ → ৩: কোম্পানি প্রোফাইল ভ্যালিড কিনা চেক করো (ওয়েবসাইট ঐচ্ছিক)
+  const goToStep3 = async () => {
+    const valid = await trigger(['industry', 'company_size', 'country', 'city'])
+    if (!valid) return
+    setStep(3)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const goBack = () => {
+    setStep((s) => Math.max(1, s - 1))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
   const onSubmit = async (data) => {
     if (slugStatus === 'taken' || slugStatus === 'invalid') {
       toast.error('Company ID ঠিক করে আবার চেষ্টা করো।')
@@ -217,6 +363,15 @@ export default function StartTrial() {
         admin_email: data.admin_email || undefined,
         password: data.password,
         seats,
+        // কোম্পানি প্রোফাইল (ধাপ ২)
+        industry: data.industry,
+        company_size: data.company_size,
+        country: data.country,
+        city: data.city,
+        timezone: data.timezone || undefined,
+        website: data.website || undefined,
+        // রেফারেল (ধাপ ৩)
+        referral_source: data.referral_source || undefined,
       })
       setResult(res.data?.data || {})
       toast.success('ট্রায়াল শুরু হয়েছে! 🎉')
@@ -272,7 +427,7 @@ export default function StartTrial() {
         {!result ? (
           <>
             {/* Header */}
-            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+            <div style={{ textAlign: 'center', marginBottom: '28px' }}>
               <div style={{
                 display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px',
                 background: T.accent100, borderRadius: '20px', fontSize: '12px', fontWeight: 700,
@@ -291,6 +446,8 @@ export default function StartTrial() {
               </p>
             </div>
 
+            <StepIndicator current={step} />
+
             {/* Form Card */}
             <form
               onSubmit={handleSubmit(onSubmit)}
@@ -299,159 +456,289 @@ export default function StartTrial() {
                 padding: '28px 24px', boxShadow: '0 8px 32px rgba(15,27,46,0.06)',
               }}
             >
-              {/* Company name */}
-              <div style={fieldWrapStyle}>
-                <label style={labelStyle}>কোম্পানির নাম *</label>
-                <FiBriefcase style={iconWrapStyle} />
-                <input
-                  {...register('company_name', { required: true, minLength: 2 })}
-                  style={inputStyle}
-                  placeholder="যেমন: আকাশ ট্রেডার্স"
-                />
-                {errors.company_name && (
-                  <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>কোম্পানির নাম আবশ্যক</p>
-                )}
-              </div>
+              {/* ─────────────── ধাপ ১ — অ্যাকাউন্ট ─────────────── */}
+              {step === 1 && (
+                <>
+                  {/* Company name */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>কোম্পানির নাম *</label>
+                    <FiBriefcase style={iconWrapStyle} />
+                    <input
+                      {...register('company_name', { required: true, minLength: 2 })}
+                      style={inputStyle}
+                      placeholder="যেমন: আকাশ ট্রেডার্স"
+                    />
+                    {errors.company_name && (
+                      <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>কোম্পানির নাম আবশ্যক</p>
+                    )}
+                  </div>
 
-              {/* Slug */}
-              <div style={fieldWrapStyle}>
-                <label style={labelStyle}>Company ID (URL/লগইনে ব্যবহৃত হবে) *</label>
-                <span style={{ ...iconWrapStyle, fontFamily: T.fontMono, fontSize: '13px', left: '13px' }}>#</span>
-                <input
-                  {...register('slug', { required: true })}
-                  onChange={(e) => { setSlugManuallyEdited(true); setValue('slug', slugify(e.target.value)) }}
-                  style={{ ...inputStyle, paddingRight: '38px', fontFamily: T.fontMono }}
-                  placeholder="akash-traders"
-                />
-                <span style={{ position: 'absolute', right: '13px', top: '38px', fontSize: '15px' }}>
-                  {slugStatus === 'checking' && <FiLoader style={{ color: T.textMuted, animation: 'spin 0.8s linear infinite' }} />}
-                  {slugStatus === 'available' && <FiCheckCircle style={{ color: T.success }} />}
-                  {(slugStatus === 'taken' || slugStatus === 'invalid') && <FiXCircle style={{ color: T.danger }} />}
-                </span>
-                <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
-                {slugStatus === 'taken' && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>এই Company ID আগেই ব্যবহার হয়েছে</p>}
-                {slugStatus === 'invalid' && slug?.length > 0 && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>শুধু ছোট হাতের অক্ষর, সংখ্যা ও হাইফেন (৩-৩০ ক্যারেক্টার)</p>}
-                {slugStatus === 'available' && <p style={{ color: T.success, fontSize: '12px', marginTop: '5px' }}>এই Company ID পাওয়া যাচ্ছে</p>}
-              </div>
+                  {/* Slug */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>Company ID (URL/লগইনে ব্যবহৃত হবে) *</label>
+                    <span style={{ ...iconWrapStyle, fontFamily: T.fontMono, fontSize: '13px', left: '13px' }}>#</span>
+                    <input
+                      {...register('slug', { required: true })}
+                      onChange={(e) => { setSlugManuallyEdited(true); setValue('slug', slugify(e.target.value)) }}
+                      style={{ ...inputStyle, paddingRight: '38px', fontFamily: T.fontMono }}
+                      placeholder="akash-traders"
+                    />
+                    <span style={{ position: 'absolute', right: '13px', top: '38px', fontSize: '15px' }}>
+                      {slugStatus === 'checking' && <FiLoader style={{ color: T.textMuted, animation: 'spin 0.8s linear infinite' }} />}
+                      {slugStatus === 'available' && <FiCheckCircle style={{ color: T.success }} />}
+                      {(slugStatus === 'taken' || slugStatus === 'invalid') && <FiXCircle style={{ color: T.danger }} />}
+                    </span>
+                    <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
+                    {slugStatus === 'taken' && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>এই Company ID আগেই ব্যবহার হয়েছে</p>}
+                    {slugStatus === 'invalid' && slug?.length > 0 && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>শুধু ছোট হাতের অক্ষর, সংখ্যা ও হাইফেন (৩-৩০ ক্যারেক্টার)</p>}
+                    {slugStatus === 'available' && <p style={{ color: T.success, fontSize: '12px', marginTop: '5px' }}>এই Company ID পাওয়া যাচ্ছে</p>}
+                  </div>
 
-              {/* Admin name */}
-              <div style={fieldWrapStyle}>
-                <label style={labelStyle}>আপনার নাম *</label>
-                <FiUser style={iconWrapStyle} />
-                <input
-                  {...register('admin_name', { required: true })}
-                  style={inputStyle}
-                  placeholder="যেমন: রহিম উদ্দিন"
-                />
-                {errors.admin_name && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>নাম আবশ্যক</p>}
-              </div>
+                  {/* Admin name */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>আপনার নাম *</label>
+                    <FiUser style={iconWrapStyle} />
+                    <input
+                      {...register('admin_name', { required: true })}
+                      style={inputStyle}
+                      placeholder="যেমন: রহিম উদ্দিন"
+                    />
+                    {errors.admin_name && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>নাম আবশ্যক</p>}
+                  </div>
 
-              {/* Phone */}
-              <div style={fieldWrapStyle}>
-                <label style={labelStyle}>ফোন নম্বর * (লগইনের জন্য ব্যবহৃত হবে)</label>
-                <FiPhone style={iconWrapStyle} />
-                <input
-                  {...register('admin_phone', { required: true, pattern: /^[0-9+\-\s]{6,15}$/ })}
-                  type="tel"
-                  style={inputStyle}
-                  placeholder="01XXXXXXXXX"
-                />
-                {errors.admin_phone && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>সঠিক ফোন নম্বর দিন</p>}
-              </div>
+                  {/* Phone */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>ফোন নম্বর * (লগইনের জন্য ব্যবহৃত হবে)</label>
+                    <FiPhone style={iconWrapStyle} />
+                    <input
+                      {...register('admin_phone', { required: true, pattern: /^[0-9+\-\s]{6,15}$/ })}
+                      type="tel"
+                      style={inputStyle}
+                      placeholder="01XXXXXXXXX"
+                    />
+                    {errors.admin_phone && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>সঠিক ফোন নম্বর দিন</p>}
+                  </div>
 
-              {/* Email (optional) */}
-              <div style={fieldWrapStyle}>
-                <label style={labelStyle}>ইমেইল (ঐচ্ছিক)</label>
-                <FiMail style={iconWrapStyle} />
-                <input
-                  {...register('admin_email')}
-                  type="email"
-                  style={inputStyle}
-                  placeholder="you@example.com"
-                />
-              </div>
+                  {/* Email (optional) */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>ইমেইল (ঐচ্ছিক)</label>
+                    <FiMail style={iconWrapStyle} />
+                    <input
+                      {...register('admin_email')}
+                      type="email"
+                      style={inputStyle}
+                      placeholder="you@example.com"
+                    />
+                  </div>
 
-              {/* Password */}
-              <div style={fieldWrapStyle}>
-                <label style={labelStyle}>Password * (কমপক্ষে ৬ ক্যারেক্টার)</label>
-                <FiLock style={iconWrapStyle} />
-                <input
-                  {...register('password', { required: true, minLength: 6 })}
-                  type="password"
-                  style={inputStyle}
-                  placeholder="••••••••"
-                />
-                {errors.password && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>কমপক্ষে ৬ ক্যারেক্টার দিন</p>}
-              </div>
+                  {/* Password */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>Password * (কমপক্ষে ৬ ক্যারেক্টার)</label>
+                    <FiLock style={iconWrapStyle} />
+                    <input
+                      {...register('password', { required: true, minLength: 6 })}
+                      type={showPassword ? 'text' : 'password'}
+                      style={{ ...inputStyle, paddingRight: '38px' }}
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      style={{ position: 'absolute', right: '13px', top: '36px', background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', padding: '2px' }}
+                      aria-label="Password দেখান/লুকান"
+                    >
+                      {showPassword ? <FiEyeOff /> : <FiEye />}
+                    </button>
+                    {errors.password && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>কমপক্ষে ৬ ক্যারেক্টার দিন</p>}
+                  </div>
 
-              {/* Confirm Password */}
-              <div style={{ ...fieldWrapStyle, marginBottom: '20px' }}>
-                <label style={labelStyle}>Password আবার লিখুন *</label>
-                <FiLock style={iconWrapStyle} />
-                <input
-                  {...register('confirm_password', { required: true })}
-                  type="password"
-                  style={inputStyle}
-                  placeholder="••••••••"
-                />
-                {password && watch('confirm_password') && password !== watch('confirm_password') && (
-                  <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>Password মিলছে না</p>
-                )}
-              </div>
+                  {/* Confirm Password */}
+                  <div style={{ ...fieldWrapStyle, marginBottom: '6px' }}>
+                    <label style={labelStyle}>Password আবার লিখুন *</label>
+                    <FiLock style={iconWrapStyle} />
+                    <input
+                      {...register('confirm_password', { required: true })}
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      style={{ ...inputStyle, paddingRight: '38px' }}
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((v) => !v)}
+                      style={{ position: 'absolute', right: '13px', top: '36px', background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', padding: '2px' }}
+                      aria-label="Password দেখান/লুকান"
+                    >
+                      {showConfirmPassword ? <FiEyeOff /> : <FiEye />}
+                    </button>
+                    {password && watch('confirm_password') && password !== watch('confirm_password') && (
+                      <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>Password মিলছে না</p>
+                    )}
+                  </div>
 
-              {/* সিট নির্বাচন */}
-              <div style={{ marginBottom: '20px' }}>
-                <label style={labelStyle}>তোমার টিমে কে কে থাকবে?</label>
-                <p style={{ fontSize: '12px', color: T.textMuted, margin: '-2px 0 10px', lineHeight: 1.6 }}>
-                  ট্রায়ালে যেকোনো সংখ্যা বেছে নাও, পুরোটাই ৩ মাস ফ্রি
-                </p>
+                  <button
+                    type="button"
+                    onClick={goToStep2}
+                    style={{ ...navBtnStyle(true, false), width: '100%', marginTop: '18px' }}
+                  >
+                    পরবর্তী ধাপ <FiArrowRight />
+                  </button>
+                </>
+              )}
 
-                {Object.values(SEAT_RATES).map((config) => (
-                  <SeatStepper
-                    key={config.role}
-                    config={config}
-                    value={config.fixed ? 1 : seats[config.role]}
-                    onChange={(v) => setSeats((s) => ({ ...s, [config.role]: v }))}
-                  />
-                ))}
+              {/* ─────────────── ধাপ ২ — কোম্পানি প্রোফাইল ─────────────── */}
+              {step === 2 && (
+                <>
+                  {/* Industry */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>ব্যবসার ধরন *</label>
+                    <FiGrid style={iconWrapStyle} />
+                    <select {...register('industry', { required: true })} style={selectStyle} defaultValue="">
+                      <option value="" disabled>বেছে নিন</option>
+                      {INDUSTRY_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                    <span style={selectArrowStyle}>▾</span>
+                    {errors.industry && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>ব্যবসার ধরন বেছে নিন</p>}
+                  </div>
 
-                <div style={totalBoxStyle}>
-                  <span style={{ fontSize: '12.5px', color: T.primary100, lineHeight: 1.5 }}>
-                    ট্রায়াল শেষে সম্ভাব্য<br />মাসিক খরচ*
-                  </span>
-                  <span style={{ fontSize: '17px', fontWeight: 700, color: T.accent300, fontFamily: T.fontMono }}>
-                    {formatTaka(monthlyTotal)}/মাস
-                  </span>
-                </div>
-                <p style={{ fontSize: '11px', color: T.textMuted, margin: '6px 0 0' }}>
-                  *শুধু হিসাব দেখানোর জন্য — এখন কোনো টাকা কাটা হবে না, ৩ মাস পুরো ফ্রি
-                </p>
-              </div>
+                  {/* Company size */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>কোম্পানির আকার (মোট এমপ্লয়ি) *</label>
+                    <FiUsers style={iconWrapStyle} />
+                    <select {...register('company_size', { required: true })} style={selectStyle} defaultValue="">
+                      <option value="" disabled>বেছে নিন</option>
+                      {COMPANY_SIZE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                    <span style={selectArrowStyle}>▾</span>
+                    {errors.company_size && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>কোম্পানির আকার বেছে নিন</p>}
+                  </div>
 
-              {/* Terms checkbox */}
-              <label style={{ display: 'flex', alignItems: 'flex-start', gap: '9px', marginBottom: '22px', fontSize: '12.5px', color: T.textSecondary, cursor: 'pointer' }}>
-                <input type="checkbox" required style={{ marginTop: '2px' }} />
-                <span>
-                  আমি{' '}
-                  <a href="/terms-conditions" target="_blank" rel="noopener noreferrer" style={{ color: T.primary700, fontWeight: 600 }}>Terms & Conditions</a>
-                  {' '}এবং{' '}
-                  <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: T.primary700, fontWeight: 600 }}>Privacy Policy</a>
-                  {' '}-এর সাথে সম্মত
-                </span>
-              </label>
+                  {/* Country */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>দেশ *</label>
+                    <FiGlobe style={iconWrapStyle} />
+                    <select {...register('country', { required: true })} style={selectStyle} defaultValue="বাংলাদেশ">
+                      {Object.keys(COUNTRY_TIMEZONES).map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    <span style={selectArrowStyle}>▾</span>
+                    {errors.country && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>দেশ বেছে নিন</p>}
+                  </div>
 
-              <button
-                type="submit"
-                disabled={submitting}
-                style={{
-                  width: '100%', padding: '14px', background: submitting ? T.primary300 : T.primary700,
-                  border: 'none', borderRadius: '10px', color: '#fff', fontSize: '15px', fontWeight: 700,
-                  cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: T.fontBody,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                }}
-              >
-                {submitting ? 'সাইনআপ হচ্ছে...' : <>ফ্রি ট্রায়াল শুরু করুন <FiArrowRight /></>}
-              </button>
+                  {/* City */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>শহর *</label>
+                    <FiMapPin style={iconWrapStyle} />
+                    <input
+                      {...register('city', { required: true })}
+                      style={inputStyle}
+                      placeholder="যেমন: ঢাকা"
+                    />
+                    {errors.city && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>শহরের নাম দিন</p>}
+                  </div>
+
+                  {/* Timezone (auto-suggested, editable) */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>টাইমজোন</label>
+                    <FiGlobe style={iconWrapStyle} />
+                    <input
+                      {...register('timezone')}
+                      style={inputStyle}
+                      placeholder="যেমন: Asia/Dhaka (GMT+6)"
+                    />
+                    <p style={{ fontSize: '11px', color: T.textMuted, marginTop: '5px' }}>দেশ অনুযায়ী অটো-বসানো হয়েছে, দরকার হলে বদলে দিন</p>
+                  </div>
+
+                  {/* Website (optional) */}
+                  <div style={{ ...fieldWrapStyle, marginBottom: '6px' }}>
+                    <label style={labelStyle}>ওয়েবসাইট (ঐচ্ছিক)</label>
+                    <FiLink style={iconWrapStyle} />
+                    <input
+                      {...register('website')}
+                      type="url"
+                      style={inputStyle}
+                      placeholder="https://example.com"
+                    />
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', marginTop: '18px' }}>
+                    <button type="button" onClick={goBack} style={navBtnStyle(false, false)}>
+                      <FiArrowLeft /> পেছনে
+                    </button>
+                    <button type="button" onClick={goToStep3} style={{ ...navBtnStyle(true, false), flex: 1 }}>
+                      পরবর্তী ধাপ <FiArrowRight />
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* ─────────────── ধাপ ৩ — টিম, রেফারেল ও প্ল্যান ─────────────── */}
+              {step === 3 && (
+                <>
+                  {/* সিট নির্বাচন */}
+                  <div style={{ marginBottom: '20px' }}>
+                    <label style={labelStyle}>তোমার টিমে কে কে থাকবে?</label>
+                    <p style={{ fontSize: '12px', color: T.textMuted, margin: '-2px 0 10px', lineHeight: 1.6 }}>
+                      ট্রায়ালে যেকোনো সংখ্যা বেছে নাও, পুরোটাই ৩ মাস ফ্রি
+                    </p>
+
+                    {Object.values(SEAT_RATES).map((config) => (
+                      <SeatStepper
+                        key={config.role}
+                        config={config}
+                        value={config.fixed ? 1 : seats[config.role]}
+                        onChange={(v) => setSeats((s) => ({ ...s, [config.role]: v }))}
+                      />
+                    ))}
+
+                    <div style={totalBoxStyle}>
+                      <span style={{ fontSize: '12.5px', color: T.primary100, lineHeight: 1.5 }}>
+                        ট্রায়াল শেষে সম্ভাব্য<br />মাসিক খরচ*
+                      </span>
+                      <span style={{ fontSize: '17px', fontWeight: 700, color: T.accent300, fontFamily: T.fontMono }}>
+                        {formatTaka(monthlyTotal)}/মাস
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '11px', color: T.textMuted, margin: '6px 0 0' }}>
+                      *শুধু হিসাব দেখানোর জন্য — এখন কোনো টাকা কাটা হবে না, ৩ মাস পুরো ফ্রি
+                    </p>
+                  </div>
+
+                  {/* Referral source */}
+                  <div style={fieldWrapStyle}>
+                    <label style={labelStyle}>আমাদের সম্পর্কে কীভাবে জানলেন?</label>
+                    <FiMessageCircle style={iconWrapStyle} />
+                    <select {...register('referral_source')} style={selectStyle} defaultValue="">
+                      <option value="" disabled>বেছে নিন (ঐচ্ছিক)</option>
+                      {REFERRAL_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                    <span style={selectArrowStyle}>▾</span>
+                  </div>
+
+                  {/* Terms checkbox */}
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '9px', margin: '18px 0 22px', fontSize: '12.5px', color: T.textSecondary, cursor: 'pointer' }}>
+                    <input type="checkbox" required style={{ marginTop: '2px' }} />
+                    <span>
+                      আমি{' '}
+                      <a href="/terms-conditions" target="_blank" rel="noopener noreferrer" style={{ color: T.primary700, fontWeight: 600 }}>Terms & Conditions</a>
+                      {' '}এবং{' '}
+                      <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: T.primary700, fontWeight: 600 }}>Privacy Policy</a>
+                      {' '}-এর সাথে সম্মত
+                    </span>
+                  </label>
+
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <button type="button" onClick={goBack} style={navBtnStyle(false, false)}>
+                      <FiArrowLeft /> পেছনে
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      style={{ ...navBtnStyle(true, submitting), flex: 1 }}
+                    >
+                      {submitting ? 'সাইনআপ হচ্ছে...' : <>ফ্রি ট্রায়াল শুরু করুন <FiArrowRight /></>}
+                    </button>
+                  </div>
+                </>
+              )}
             </form>
 
             <p style={{ textAlign: 'center', fontSize: '12.5px', color: T.textMuted, marginTop: '18px' }}>

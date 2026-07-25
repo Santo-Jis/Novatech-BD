@@ -77,3 +77,17 @@ ON CONFLICT (id) DO NOTHING;
 -- CREATE INDEX IF NOT EXISTS idx_tenants_status ON tenants(status);
 -- CREATE INDEX IF NOT EXISTS idx_tenants_plan   ON tenants(plan);
 -- ============================================================
+
+-- ============================================================
+-- ✅ v2 — সাইনআপ ফর্মে (StartTrial.jsx) ধাপ ২/৩-এ যোগ হওয়া
+--    কোম্পানি প্রোফাইল ফিল্ডের জন্য নতুন কলাম।
+--    IF NOT EXISTS দিয়ে করা — এটা production-এ রান করলে বিদ্যমান
+--    কোনো ডেটা/রো নষ্ট হবে না, শুধু নতুন কলাম (সব রো-তে NULL দিয়ে) যোগ হবে।
+-- ============================================================
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS industry         VARCHAR(100);
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS company_size     VARCHAR(30);
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS country          VARCHAR(100);
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS city             VARCHAR(100);
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS timezone         VARCHAR(50);
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS website          VARCHAR(200);
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS referral_source  VARCHAR(100);
