@@ -100,7 +100,8 @@ const AUDIT_CATEGORIES = {
 const getSettings = async (req, res) => {
     try {
         const result = await query(
-            'SELECT id, key, value, description FROM system_settings ORDER BY key'
+            'SELECT id, key, value, description FROM system_settings WHERE tenant_id = $1 ORDER BY key',
+            [req.tenantId]
         );
 
         // সংবেদনশীল keys মাস্ক করো
@@ -282,7 +283,7 @@ const testSmsGateway = async (req, res) => {
 
         // provider override হলে সাময়িকভাবে cache বাতিল করে নতুন config লোড হবে
         if (provider) {
-            await query(`UPDATE system_settings SET value = $1 WHERE key = 'sms_provider'`, [provider]);
+            await query(`UPDATE system_settings SET value = $1 WHERE key = 'sms_provider' AND tenant_id = $2`, [provider, req.tenantId]);
             smsService.clearSmsConfigCache();
         }
 
@@ -489,8 +490,9 @@ const getAuditLogs = async (req, res) => {
 const getSystemStats = async (req, res) => {
     try {
         // ── তারিখ নির্ধারণ ──────────────────────────────────────────────
-        const from = req.query.from || new Date().toISOString().split('T')[0];
-        const to   = req.query.to   || from;
+        const from     = req.query.from || new Date().toISOString().split('T')[0];
+        const to       = req.query.to   || from;
+        const tenantId = req.tenantId;
 
         const [
             workers,
@@ -510,8 +512,8 @@ const getSystemStats = async (req, res) => {
                     COUNT(*) FILTER (WHERE status = 'active')    AS active,
                     COUNT(*) FILTER (WHERE status = 'pending')   AS pending,
                     COUNT(*) FILTER (WHERE status = 'suspended') AS suspended
-                FROM users WHERE role = 'worker'
-            `),
+                FROM users WHERE role = 'worker' AND tenant_id = $1
+            `, [tenantId]),
 
             // ── কাস্টমার ─────────────────────────────────────────────────
             query(`
@@ -519,8 +521,8 @@ const getSystemStats = async (req, res) => {
                     COUNT(*) FILTER (WHERE is_active = true)               AS active,
                     COALESCE(SUM(current_credit), 0)                        AS total_outstanding,
                     COUNT(*) FILTER (WHERE current_credit > 0)              AS customers_with_dues
-                FROM customers
-            `),
+                FROM customers WHERE tenant_id = $1
+            `, [tenantId]),
 
             // ── পণ্য ──────────────────────────────────────────────────────
             query(`
@@ -528,31 +530,38 @@ const getSystemStats = async (req, res) => {
                     COUNT(*) FILTER (WHERE is_active = true) AS active,
                     COALESCE(SUM(stock), 0)                   AS total_stock,
                     COUNT(*) FILTER (WHERE stock = 0 AND is_active = true) AS out_of_stock
-                FROM products
-            `),
+                FROM products WHERE tenant_id = $1
+            `, [tenantId]),
 
             // ── নির্বাচিত দিনের বিক্রয় (cash vs credit) ─────────────────
+            // ✅ FIX: sales_transactions-এর আসল column নাম payment_method
+            // (ENUM: cash/credit/replacement) — payment_type কখনোই ছিল না,
+            // তাই এই query সবসময় "column payment_type does not exist" দিয়ে
+            // fail করতো (পুরো /api/admin/stats 500 দিতো)।
             query(`
                 SELECT
                     COUNT(id)                                                    AS invoice_count,
                     COALESCE(SUM(total_amount), 0)                               AS total_sales,
-                    COALESCE(SUM(CASE WHEN payment_type = 'cash'   THEN total_amount ELSE 0 END), 0) AS cash_sales,
-                    COALESCE(SUM(CASE WHEN payment_type = 'credit' THEN total_amount ELSE 0 END), 0) AS credit_sales,
-                    COALESCE(SUM(CASE WHEN payment_type = 'credit' THEN total_amount ELSE 0 END), 0) AS credit_given,
+                    COALESCE(SUM(CASE WHEN payment_method = 'cash'   THEN total_amount ELSE 0 END), 0) AS cash_sales,
+                    COALESCE(SUM(CASE WHEN payment_method = 'credit' THEN total_amount ELSE 0 END), 0) AS credit_sales,
+                    COALESCE(SUM(CASE WHEN payment_method = 'credit' THEN total_amount ELSE 0 END), 0) AS credit_given,
                     COUNT(DISTINCT worker_id)                                     AS active_workers
                 FROM sales_transactions
-                WHERE date BETWEEN $1 AND $2
-            `, [from, to]),
+                WHERE date BETWEEN $1 AND $2 AND tenant_id = $3
+            `, [from, to, tenantId]),
 
             // ── পেন্ডিং আইটেম ────────────────────────────────────────────
+            // employees_audit-এ tenant_id নেই (user_id দিয়ে users-এর সাথে join করে scope করা হলো)
             query(`
                 SELECT
-                    (SELECT COUNT(*) FROM orders             WHERE status = 'pending')  AS pending_orders,
-                    (SELECT COUNT(*) FROM daily_settlements  WHERE status = 'pending')  AS pending_settlements,
-                    (SELECT COUNT(*) FROM employees_audit    WHERE status = 'pending')  AS pending_edits,
-                    (SELECT COUNT(*) FROM users              WHERE status = 'pending')  AS pending_employees,
-                    (SELECT COUNT(*) FROM customer_return_requests WHERE status = 'pending') AS pending_returns
-            `),
+                    (SELECT COUNT(*) FROM orders             WHERE status = 'pending' AND tenant_id = $1)  AS pending_orders,
+                    (SELECT COUNT(*) FROM daily_settlements  WHERE status = 'pending' AND tenant_id = $1)  AS pending_settlements,
+                    (SELECT COUNT(*) FROM employees_audit ea
+                        JOIN users u ON u.id = ea.user_id
+                        WHERE ea.status = 'pending' AND u.tenant_id = $1)                                   AS pending_edits,
+                    (SELECT COUNT(*) FROM users              WHERE status = 'pending' AND tenant_id = $1)  AS pending_employees,
+                    (SELECT COUNT(*) FROM customer_return_requests WHERE status = 'pending' AND tenant_id = $1) AS pending_returns
+            `, [tenantId]),
 
             // ── হাজিরা (নির্বাচিত দিনের) ────────────────────────────────
             query(`
@@ -562,8 +571,8 @@ const getSystemStats = async (req, res) => {
                     COUNT(*) FILTER (WHERE status = 'late')    AS late,
                     COUNT(*)                                    AS total_marked
                 FROM attendance
-                WHERE date BETWEEN $1 AND $2
-            `, [from, to]),
+                WHERE date BETWEEN $1 AND $2 AND tenant_id = $3
+            `, [from, to, tenantId]),
 
             // ── শীর্ষ ৫ SR (নির্বাচিত দিনের বিক্রয় অনুযায়ী) ───────────
             query(`
@@ -574,22 +583,24 @@ const getSystemStats = async (req, res) => {
                     COALESCE(SUM(s.total_amount), 0)         AS total_sales
                 FROM sales_transactions s
                 JOIN users u ON u.id = s.worker_id
-                WHERE s.date BETWEEN $1 AND $2
+                WHERE s.date BETWEEN $1 AND $2 AND s.tenant_id = $3
                 GROUP BY u.id, u.name_bn, u.employee_code
                 ORDER BY total_sales DESC
                 LIMIT 5
-            `, [from, to]),
+            `, [from, to, tenantId]),
 
             // ── খরচ (নির্বাচিত দিনের) ────────────────────────────────────
+            // ✅ FIX: expenses টেবিলে status column-ই নেই (approval workflow
+            // DB-level এ implement হয়নি), তাই pending/approved breakdown
+            // বাদ দেওয়া হলো — এই query সবসময় "column status does not exist"
+            // দিয়ে fail করতো। Frontend (Dashboard.jsx) এই breakdown ব্যবহারও
+            // করে না, শুধু total_expense-ই যথেষ্ট।
             query(`
                 SELECT
-                    COALESCE(SUM(amount), 0)                                            AS total_expense,
-                    COALESCE(SUM(CASE WHEN status = 'pending'  THEN amount END), 0)     AS pending_expense,
-                    COALESCE(SUM(CASE WHEN status = 'approved' THEN amount END), 0)     AS approved_expense,
-                    COUNT(*) FILTER (WHERE status = 'pending')                          AS pending_expense_count
+                    COALESCE(SUM(amount), 0) AS total_expense
                 FROM expenses
-                WHERE date BETWEEN $1 AND $2
-            `, [from, to]),
+                WHERE date BETWEEN $1 AND $2 AND tenant_id = $3
+            `, [from, to, tenantId]),
 
             // ── Return Request সংখ্যা ─────────────────────────────────────
             query(`
@@ -600,8 +611,8 @@ const getSystemStats = async (req, res) => {
                     COALESCE(SUM(CASE WHEN status != 'rejected'
                         THEN total_return_value END), 0)         AS total_value
                 FROM customer_return_requests
-                WHERE created_at::date BETWEEN $1 AND $2
-            `, [from, to]),
+                WHERE created_at::date BETWEEN $1 AND $2 AND tenant_id = $3
+            `, [from, to, tenantId]),
         ]);
 
         return res.status(200).json({
@@ -650,11 +661,11 @@ const PUBLIC_SETTINGS_KEYS = [
 
 const getPublicSettings = async (req, res) => {
     try {
-        const placeholders = PUBLIC_SETTINGS_KEYS.map((_, i) => `$${i + 1}`).join(', ');
+        const placeholders = PUBLIC_SETTINGS_KEYS.map((_, i) => `$${i + 2}`).join(', ');
 
         const result = await query(
-            `SELECT key, value FROM system_settings WHERE key IN (${placeholders}) ORDER BY key`,
-            PUBLIC_SETTINGS_KEYS
+            `SELECT key, value FROM system_settings WHERE tenant_id = $1 AND key IN (${placeholders}) ORDER BY key`,
+            [req.tenantId, ...PUBLIC_SETTINGS_KEYS]
         );
 
         // Array → Object: { expense_daily_limit: '500', ... }
