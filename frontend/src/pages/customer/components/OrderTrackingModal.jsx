@@ -1,8 +1,12 @@
 // components/OrderTrackingModal.jsx
-// অর্ডার ট্র্যাকিং detail modal (bottom sheet)
+// ✅ REDESIGNED — অর্ডার ট্র্যাকিং detail bottom sheet (cp- design system)
+// একই props (orderId, jwt, onClose), একই API কল — শুধু UI redesign।
 
 import { useState, useEffect } from 'react'
+import { FiX, FiPhoneCall } from 'react-icons/fi'
 import { portalFetch } from '../utils/api'
+
+const STEP_ICON = { pending: '⏳', confirmed: '✅', assigned: '🚶', delivered: '📦' }
 
 export default function OrderTrackingModal({ orderId, jwt, onClose }) {
   const [data, setData] = useState(null)
@@ -10,6 +14,7 @@ export default function OrderTrackingModal({ orderId, jwt, onClose }) {
 
   useEffect(() => {
     if (!orderId) return
+    setLoading(true)
     portalFetch(`/portal/order-requests/${orderId}/tracking`, {
       headers: { Authorization: `Bearer ${jwt}` }
     }).then(r => setData(r.data)).catch(console.error).finally(() => setLoading(false))
@@ -17,58 +22,58 @@ export default function OrderTrackingModal({ orderId, jwt, onClose }) {
 
   if (!orderId) return null
 
-  const stepIcons = { pending: '⏳', confirmed: '✅', assigned: '🚶', delivered: '📦' }
-
   return (
     <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+      className="fixed inset-0 bg-black/55 z-[200] flex items-end justify-center"
       onClick={onClose}
     >
       <div
-        style={{ background: 'white', borderRadius: '20px 20px 0 0', width: '100%', maxWidth: 480, maxHeight: '80vh', overflowY: 'auto', padding: 20 }}
+        className="bg-cp-bg-surface rounded-t-3xl w-full max-w-[480px] max-h-[80vh] overflow-y-auto p-5"
         onClick={e => e.stopPropagation()}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-          <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: '#1e1e1e' }}>📦 অর্ডার ট্র্যাকিং</h3>
-          <button onClick={onClose} style={{ background: '#f3f4f6', border: 'none', borderRadius: 8, padding: '4px 10px', cursor: 'pointer', fontSize: 16, color: '#555' }}>✕</button>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-[16px] font-bold font-cp-head text-cp-text-primary">📦 অর্ডার ট্র্যাকিং</h3>
+          <button onClick={onClose} className="bg-cp-bg-alt rounded-lg px-2.5 py-1.5 text-cp-text-secondary">
+            <FiX className="w-4 h-4" />
+          </button>
         </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '32px 0' }}>
-            <div style={{ width: 32, height: 32, border: '4px solid #e0e7ff', borderTopColor: '#4f46e5', borderRadius: '50%', animation: 'spin 0.7s linear infinite', margin: '0 auto 12px' }} />
-            <p style={{ color: '#aaa', fontSize: 13 }}>লোড হচ্ছে...</p>
+          <div className="text-center py-8">
+            <div className="w-8 h-8 border-4 border-cp-trust-300 border-t-cp-trust-500 rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-cp-text-muted text-[13px]">লোড হচ্ছে...</p>
           </div>
         ) : data ? (
-          <div>
+          <div className="flex flex-col gap-3">
             {/* Progress Steps */}
             {!data.is_cancelled && (
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, marginBottom: 20 }}>
+              <div className="flex items-start mb-2">
                 {data.steps.map((step, idx) => (
-                  <div key={step.step} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                  <div key={step.step} className="flex-1 flex flex-col items-center">
+                    <div className="flex items-center w-full">
                       {idx > 0 && (
-                        <div style={{ flex: 1, height: 3, background: step.completed ? '#4f46e5' : '#e5e7eb', transition: 'background 0.3s' }} />
+                        <div className={`flex-1 h-[3px] transition-colors ${step.completed ? 'bg-cp-trust-500' : 'bg-cp-border'}`} />
                       )}
-                      <div style={{
-                        width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
-                        background: step.active ? '#4f46e5' : step.completed ? '#6366f1' : '#f3f4f6',
-                        color: step.completed || step.active ? 'white' : '#9ca3af',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: 16, border: step.active ? '3px solid #818cf8' : 'none',
-                        boxShadow: step.active ? '0 0 0 4px #e0e7ff' : 'none',
-                        transition: 'all 0.3s'
-                      }}>
-                        {stepIcons[step.step] || '•'}
+                      <div
+                        className={`w-9 h-9 rounded-full flex-shrink-0 flex items-center justify-center text-[16px] transition-all ${
+                          step.active
+                            ? 'bg-cp-trust-500 text-white ring-4 ring-cp-trust-100'
+                            : step.completed
+                              ? 'bg-cp-trust-700 text-white'
+                              : 'bg-cp-bg-alt text-cp-text-muted'
+                        }`}
+                      >
+                        {STEP_ICON[step.step] || '•'}
                       </div>
                       {idx < data.steps.length - 1 && (
-                        <div style={{ flex: 1, height: 3, background: data.steps[idx+1]?.completed ? '#4f46e5' : '#e5e7eb' }} />
+                        <div className={`flex-1 h-[3px] ${data.steps[idx + 1]?.completed ? 'bg-cp-trust-500' : 'bg-cp-border'}`} />
                       )}
                     </div>
-                    <p style={{ fontSize: 9, color: step.active ? '#4f46e5' : step.completed ? '#6b7280' : '#9ca3af', textAlign: 'center', marginTop: 6, fontWeight: step.active ? 700 : 400, lineHeight: 1.3 }}>
+                    <p className={`text-[9px] text-center mt-1.5 leading-tight ${step.active ? 'font-bold text-cp-trust-700' : step.completed ? 'text-cp-text-secondary' : 'text-cp-text-muted'}`}>
                       {step.label}
                     </p>
                     {step.completed_at && (
-                      <p style={{ fontSize: 8, color: '#aaa', textAlign: 'center' }}>
+                      <p className="text-[8px] text-cp-text-muted text-center">
                         {new Date(step.completed_at).toLocaleDateString('bn-BD', { day: '2-digit', month: 'short' })}
                       </p>
                     )}
@@ -78,21 +83,21 @@ export default function OrderTrackingModal({ orderId, jwt, onClose }) {
             )}
 
             {data.is_cancelled && (
-              <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
-                <p style={{ margin: 0, color: '#be123c', fontWeight: 700 }}>❌ অর্ডার বাতিল</p>
-                {data.admin_note && <p style={{ margin: '4px 0 0', color: '#9f1239', fontSize: 13 }}>{data.admin_note}</p>}
+              <div className="bg-cp-error/5 border border-cp-error/20 rounded-xl px-4 py-3">
+                <p className="text-cp-error font-bold text-[13px]">❌ অর্ডার বাতিল</p>
+                {data.admin_note && <p className="text-cp-error/80 text-[12px] mt-1">{data.admin_note}</p>}
               </div>
             )}
 
             {/* SR Info */}
             {data.assigned_sr && (
-              <div style={{ background: '#f5f3ff', borderRadius: 12, padding: '10px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 20 }}>🚶</span>
+              <div className="bg-cp-trust-100 rounded-xl px-3.5 py-2.5 flex items-center gap-2.5">
+                <span className="text-[20px]">🚶</span>
                 <div>
-                  <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#3b0764' }}>SR: {data.assigned_sr.name}</p>
+                  <p className="font-bold text-[13px] text-cp-trust-900">SR: {data.assigned_sr.name}</p>
                   {data.assigned_sr.phone && (
-                    <a href={`tel:${data.assigned_sr.phone}`} style={{ color: '#7c3aed', fontSize: 12, textDecoration: 'none' }}>
-                      📞 {data.assigned_sr.phone}
+                    <a href={`tel:${data.assigned_sr.phone}`} className="text-cp-trust-700 text-[12px] flex items-center gap-1 mt-0.5">
+                      <FiPhoneCall className="w-3 h-3" /> {data.assigned_sr.phone}
                     </a>
                   )}
                 </div>
@@ -101,25 +106,25 @@ export default function OrderTrackingModal({ orderId, jwt, onClose }) {
 
             {/* Items */}
             {data.items?.length > 0 && (
-              <div style={{ background: '#f9fafb', borderRadius: 12, padding: '12px 14px' }}>
-                <p style={{ margin: '0 0 8px', fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.5 }}>অর্ডার করা পণ্য</p>
+              <div className="bg-cp-bg-alt rounded-xl px-3.5 py-3">
+                <p className="text-[11px] font-bold text-cp-text-secondary uppercase tracking-wide mb-2">অর্ডার করা পণ্য</p>
                 {data.items.map((item, i) => (
-                  <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: '#374151', padding: '3px 0' }}>
+                  <div key={i} className="flex justify-between text-[13px] text-cp-text-primary py-0.5">
                     <span>{item.product_name || item.name}</span>
-                    <span style={{ fontWeight: 600 }}>× {item.qty}</span>
+                    <span className="font-semibold">× {item.qty}</span>
                   </div>
                 ))}
               </div>
             )}
 
             {data.note && (
-              <div style={{ background: '#eff6ff', borderRadius: 10, padding: '8px 12px', marginTop: 10 }}>
-                <p style={{ margin: 0, fontSize: 12, color: '#3b82f6' }}>💬 আপনার নোট: {data.note}</p>
+              <div className="bg-cp-info/5 rounded-lg px-3 py-2">
+                <p className="text-[12px] text-cp-info">💬 আপনার নোট: {data.note}</p>
               </div>
             )}
           </div>
         ) : (
-          <p style={{ textAlign: 'center', color: '#aaa', fontSize: 13, padding: 20 }}>তথ্য আনতে সমস্যা হয়েছে।</p>
+          <p className="text-center text-cp-text-muted text-[13px] py-5">তথ্য আনতে সমস্যা হয়েছে।</p>
         )}
       </div>
     </div>

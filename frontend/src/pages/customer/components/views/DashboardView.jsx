@@ -2,9 +2,10 @@
 // ✅ REDESIGNED (ধাপে ধাপে চলছে) — same props, same imports, same backend logic
 //
 // এই ফাইল এখন শুধু "শেল/অর্কেস্ট্রেটর" — header, tab navigation, আর নতুন করে
-// রিডিজাইন-হওয়া ট্যাবগুলো (Summary) আলাদা ফাইল থেকে import করে বসায়।
-// এখনো রিডিজাইন না-হওয়া ট্যাবগুলো (Invoices/Payments/Credit/Complaints/Returns/AI Chat)
-// আপাতত অবিকৃত আছে (নিচে) — একে একে পরের ধাপে এভাবেই আলাদা ফাইলে বের করে রিডিজাইন হবে।
+// রিডিজাইন-হওয়া ট্যাবগুলো আলাদা ফাইল থেকে import করে বসায়।
+// ✅ রিডিজাইন সম্পূর্ণ: Summary, Invoices, Payments, Credit, Complaints, Returns, Orders
+// ❌ বাকি: AI Chat ট্যাব + শেল-এর কিছু অংশ (toast, statement download, return
+// bottom sheet) এখনো নিচের পুরনো `C` অবজেক্ট/ইনলাইন-স্টাইল ব্যবহার করছে।
 //
 // নতুন ফাইল স্ট্রাকচার (dashboard/ ফোল্ডার):
 //   DashboardHeader.jsx, NotificationBell.jsx, CreditRing.jsx,
