@@ -19,13 +19,14 @@ import { portalFetch, BACKEND } from '../utils/api'
 import { getDeviceFingerprint, webGoogleLogin } from '../utils/fingerprint'
 import { initializeApp, getApps } from 'firebase/app'
 import { getMessaging, getToken } from 'firebase/messaging'
-import { getCustomerCode, setCustomerCode } from '../utils/helpers'
+import { getCustomerCode, setCustomerCode, getPersonId, setPersonId } from '../utils/helpers'
 import { portalTokenStore } from '../utils/portalTokenStore'
 
 export function usePortalAuth(defaultTab = 'summary') {
   const [searchParams] = useSearchParams()
   const location = useLocation()
-  const customerCodeFromURL = searchParams.get('c')  // SR link-এ থাকে, প্রথমবার login এ
+  const customerCodeFromURL = searchParams.get('c')    // SR link-এ থাকে, প্রথমবার login এ
+  const personIdFromURL      = searchParams.get('pid')  // ✅ নতুন — self-register-এর পর প্রথমবার Gmail bind
 
   // ✅ নতুন সেলফ-রেজিস্ট্রেশনের পর CustomerSelfRegister.jsx navigate() করার সময়
   // state হিসেবে দোকানের নাম/মালিকের নাম/কোড পাঠায় — এখান থেকে Welcome স্ক্রিনে
@@ -39,11 +40,12 @@ export function usePortalAuth(defaultTab = 'summary') {
   const toastTimerRef = useRef(null)
   const [tokenInfo,   setTokenInfo]   = useState(
     justRegistered
-      ? { shop_name: regState.shopName, owner_name: regState.ownerName, customer_code: regState.customerCode }
+      ? { shop_name: regState.shopName, owner_name: regState.ownerName }
       : null
   )
   const [portalJWT,   setPortalJWT]   = useState(null)
   const [dashboard,   setDashboard]   = useState(null)
+  const [personProfile, setPersonProfile] = useState(null) // ✅ নতুন — company-বিহীন person-এর basic info
   const [activeTab,   setActiveTab]   = useState(defaultTab)
   const [error,       setError]       = useState('')
   const [loggingIn,   setLoggingIn]   = useState(false)
@@ -529,23 +531,36 @@ export function usePortalAuth(defaultTab = 'summary') {
 
       const deviceId     = await getDeviceFingerprint()
       const customerCode = getCustomerCode()  // প্রথমবার SR link থেকে save হওয়া code
+      const personId      = getPersonId()      // ✅ নতুন — self-register-এর পর save হওয়া person_id
 
       const data = await portalFetch('/portal/direct-auth', {
         method: 'POST',
         body:   JSON.stringify({
           google_token:  access_token,
           device_id:     deviceId,
-          ...(customerCode ? { customer_code: customerCode } : {}),  // optional
+          // customer_code ও person_id পারস্পরিক exclusive — customer_code
+          // থাকলে সেটাই আগে ব্যবহার হবে (বিদ্যমান customer-এর প্রথম bind),
+          // না থাকলে person_id (নতুন self-register person-এর প্রথম bind)।
+          ...(customerCode ? { customer_code: customerCode } : personId ? { person_id: personId } : {}),
         }),
       })
 
       // ✅ access token  → memory (15 মিনিট)
       // ✅ refresh token → HttpOnly cookie (backend set করেছে, JS জানে না)
-      const { portal_jwt, expires_in = 900 } = data.data
+      const { portal_jwt, expires_in = 900, has_company, person } = data.data
       portalTokenStore.set(portal_jwt, expires_in)
       portalJWTRef.current = portal_jwt
       setPortalJWT(portal_jwt)
-      await loadDashboard()
+
+      // ⚠️ FIX: company-বিহীন person (নতুন self-register) হলে dashboard
+      // fetch করলে 404 আসবে (কোনো customers row নেই) — সেই ভুল
+      // "Session শেষ হয়েছে" এরর এড়াতে আলাদা phase দেখানো হচ্ছে।
+      if (has_company === false) {
+        setPersonProfile(person || null)
+        setPhase('no-company')
+      } else {
+        await loadDashboard()
+      }
 
     } catch (err) {
       if (!err?.message?.includes('cancel') && !err?.message?.includes('dismissed'))
@@ -576,26 +591,34 @@ export function usePortalAuth(defaultTab = 'summary') {
       // ✅ SR link-এ customer_code থাকলে save করো (প্রথমবার login এর জন্য)
       if (customerCodeFromURL) setCustomerCode(customerCodeFromURL)
 
+      // ✅ নতুন: self-register-এর পর pid থাকলে save করো (প্রথমবার Gmail bind-এর জন্য)
+      if (personIdFromURL) setPersonId(personIdFromURL)
+
       // HttpOnly cookie দিয়ে silent re-auth চেষ্টা করো
       // সফল হলে → dashboard, ব্যর্থ হলে → Google login screen
       // ❌ আগের মতো invalid phase নেই — customer_code ছাড়াও login screen দেখাবে
       try {
         const data = await portalFetch('/portal/refresh', { method: 'POST' })
-        const { portal_jwt, expires_in = 900 } = data.data
+        const { portal_jwt, expires_in = 900, has_company } = data.data
         portalTokenStore.set(portal_jwt, expires_in)
         portalJWTRef.current = portal_jwt
         setPortalJWT(portal_jwt)
-        await loadDashboard()
+
+        if (has_company === false) {
+          setPhase('no-company')
+        } else {
+          await loadDashboard()
+        }
       } catch {
         // Cookie নেই বা মেয়াদোত্তীর্ণ → Google login screen
         setPhase('welcome')
       }
     }
     init()
-  }, [customerCodeFromURL])
+  }, [customerCodeFromURL, personIdFromURL])
 
   return {
-    phase, tokenInfo, justRegistered, portalJWT, dashboard,
+    phase, tokenInfo, justRegistered, portalJWT, dashboard, personProfile,
     activeTab, error, loggingIn,
     googleLogin, handleLogout, handleTabChange, switchCompany,
     toast,

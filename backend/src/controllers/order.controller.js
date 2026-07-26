@@ -472,6 +472,7 @@ const approveOrder = async (req, res) => {
                         reference_type: 'order',
                         note:           `অর্ডার #${id} অনুমোদন`,
                         created_by:     req.user.id,
+                        tenantId:       req.tenantId,
                     });
                 }
             }

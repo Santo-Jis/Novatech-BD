@@ -16,6 +16,13 @@ export const fmtDate = (d) =>
 export const getCustomerCode = () => localStorage.getItem('portal_customer_code')
 export const setCustomerCode = (code) => localStorage.setItem('portal_customer_code', code)
 
+// ── Person ID storage (company-বিহীন self-register প্রোফাইল) ──
+// person_id-ও sensitive না (UUID, auth token না) — একই কারণে localStorage-এ রাখা নিরাপদ।
+// self-register-এর পর প্রথমবার Gmail bind করার জন্য directGoogleAuth-এ পাঠানো হয়।
+export const getPersonId = () => localStorage.getItem('portal_person_id')
+export const setPersonId = (id) => localStorage.setItem('portal_person_id', id)
+export const clearPersonId = () => localStorage.removeItem('portal_person_id')
+
 // ── সরানো হয়েছে ──────────────────────────────────────────────
 // getStorageKey, storageGet, storageSet, storageRemove, storageKeys, isJWTValid
 //

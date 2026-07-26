@@ -291,6 +291,7 @@ const createSettlement = async (req, res) => {
                         reference_type: 'settlement',
                         note:           `Settlement ফেরত — ${today}`,
                         created_by:     workerId,
+                        tenantId:       req.tenantId,
                     });
                 }
                 // ঘাটতি পণ্যও OUT হিসেবে রেকর্ড (হারিয়ে গেছে বা দায় নেওয়া হয়েছে)
@@ -306,6 +307,7 @@ const createSettlement = async (req, res) => {
                         reference_type: 'settlement',
                         note:           `ঘাটতি — ${today}`,
                         created_by:     workerId,
+                        tenantId:       req.tenantId,
                     });
                 }
             }

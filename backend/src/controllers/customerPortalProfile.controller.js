@@ -6,8 +6,16 @@
 const { query } = require('../config/db');
 const logger    = require('../config/logger');
 
-async function getPersonId(customerId) {
-    const r = await query(`SELECT person_id FROM customers WHERE id = $1`, [customerId]);
+// ⚠️ FIX: person_id সরাসরি JWT-তে থাকলে (নতুন token) সেটাই ব্যবহার করে,
+// না থাকলে (পুরনো token) customer_id দিয়ে DB lookup fallback করে।
+async function getPersonId(portalUser) {
+    if (portalUser?.person_id) {
+        return portalUser.person_id;
+    }
+    if (!portalUser?.customer_id) {
+        throw new Error('PERSON_NOT_LINKED');
+    }
+    const r = await query(`SELECT person_id FROM customers WHERE id = $1`, [portalUser.customer_id]);
     if (r.rows.length === 0 || !r.rows[0].person_id) {
         throw new Error('PERSON_NOT_LINKED');
     }
@@ -19,7 +27,7 @@ async function getPersonId(customerId) {
 // ============================================================
 const getMyAreaAndField = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
 
         const p = await query(
             `SELECT shop_name, address, division_id, district_id, discoverable
@@ -52,7 +60,7 @@ const getMyAreaAndField = async (req, res) => {
 // ============================================================
 const updateMyAreaAndField = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
         const { shop_name, address, division_id, district_id, discoverable, business_field_ids } = req.body;
 
         await query(

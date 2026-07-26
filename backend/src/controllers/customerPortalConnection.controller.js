@@ -11,8 +11,19 @@ const logger    = require('../config/logger');
 const jwt       = require('jsonwebtoken');
 
 // ── Helper: portal customer_id থেকে person_id বের করো ──
-async function getPersonId(customerId) {
-    const r = await query(`SELECT person_id FROM customers WHERE id = $1`, [customerId]);
+// ⚠️ FIX: আগে শুধু customerId নিয়ে DB থেকে person_id বের করতো — কিন্তু
+// company-বিহীন person-only session-এ customer_id-ই থাকে না (chicken-egg
+// সমস্যা)। এখন portalUser অবজেক্ট নেয়: person_id সরাসরি JWT-তে থাকলে
+// (নতুন token) সেটাই ব্যবহার করে, না থাকলে (পুরনো token) আগের মতো
+// customer_id দিয়ে DB lookup fallback করে — backward-compatible।
+async function getPersonId(portalUser) {
+    if (portalUser?.person_id) {
+        return portalUser.person_id;
+    }
+    if (!portalUser?.customer_id) {
+        throw new Error('PERSON_NOT_LINKED');
+    }
+    const r = await query(`SELECT person_id FROM customers WHERE id = $1`, [portalUser.customer_id]);
     if (r.rows.length === 0 || !r.rows[0].person_id) {
         throw new Error('PERSON_NOT_LINKED');
     }
@@ -25,7 +36,7 @@ async function getPersonId(customerId) {
 // ============================================================
 const getMyQrCode = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
         const p = await query(`SELECT qr_code, full_name, discoverable FROM persons WHERE id = $1`, [personId]);
         res.json({ success: true, data: p.rows[0] });
     } catch (err) {
@@ -43,7 +54,7 @@ const getMyQrCode = async (req, res) => {
 // ============================================================
 const getMyCompanies = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
         const result = await query(
             `SELECT ccc.id AS connection_id, ccc.customer_id, ccc.created_at AS connected_since,
                     t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url,
@@ -71,7 +82,7 @@ const getMyCompanies = async (req, res) => {
 // ============================================================
 const getPendingForMe = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
         const result = await query(
             `SELECT ccc.id AS connection_id, ccc.created_at, ccc.initiated_by,
                     t.company_name, t.company_name_bn, t.logo_url
@@ -127,7 +138,7 @@ const requestConnectionToCompany = async (req, res) => {
         if (!tenant_id) {
             return res.status(400).json({ success: false, message: 'tenant_id দিন।' });
         }
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
 
         const dup = await query(
             `SELECT id, status FROM customer_company_connections
@@ -163,7 +174,7 @@ const requestConnectionToCompany = async (req, res) => {
 const acceptCompanyRequest = async (req, res) => {
     try {
         const { id } = req.params;
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
 
         const conn = await query(
             `SELECT * FROM customer_company_connections
@@ -221,7 +232,7 @@ const acceptCompanyRequest = async (req, res) => {
 const rejectCompanyRequest = async (req, res) => {
     try {
         const { id } = req.params;
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
         const updated = await query(
             `UPDATE customer_company_connections
              SET status = 'rejected', responded_at = NOW()
@@ -248,7 +259,7 @@ const rejectCompanyRequest = async (req, res) => {
 const disconnectCompany = async (req, res) => {
     try {
         const { id } = req.params;
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
         const updated = await query(
             `UPDATE customer_company_connections
              SET status = 'disconnected', disconnected_at = NOW()
@@ -275,7 +286,7 @@ const disconnectCompany = async (req, res) => {
 // ============================================================
 const getAllCompanyOrders = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
         const result = await query(
             `SELECT st.id, st.invoice_number, st.total_amount, st.net_amount,
                     st.payment_method, st.created_at,
@@ -312,7 +323,7 @@ const getAllCompanyOrders = async (req, res) => {
 // ============================================================
 const getAllCompanyInvoices = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
 
         const page  = Math.max(parseInt(req.query.page)  || 1, 1);
         const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 50);
@@ -388,7 +399,7 @@ const getAllCompanyInvoices = async (req, res) => {
 // ============================================================
 const getAllCompanyCreditSummary = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
         const result = await query(
             `SELECT c.id AS customer_id, c.customer_code, c.credit_limit, c.current_credit,
                     t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
@@ -419,7 +430,7 @@ const getAllCompanyCreditSummary = async (req, res) => {
 // ============================================================
 const getAllCompanyPaymentHistory = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
 
         const page  = Math.max(parseInt(req.query.page)  || 1, 1);
         const limit = Math.min(Math.max(parseInt(req.query.limit) || 10, 1), 50);
@@ -523,7 +534,7 @@ const getAllCompanyPaymentHistory = async (req, res) => {
 // ============================================================
 const getAllCompanyLimitRequests = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
         const result = await query(
             `SELECT clr.id, clr.current_limit, clr.requested_amount, clr.reason,
                     clr.status, clr.admin_note, clr.created_at, clr.resolved_at,
@@ -579,7 +590,7 @@ const submitCompanyLimitRequest = async (req, res) => {
             return res.status(400).json({ success: false, message: 'কারণ ৫০০ অক্ষরের বেশি হবে না।' });
         }
 
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
 
         // এই connection সত্যিই এই person-এর এবং connected কিনা যাচাই
         const conn = await query(
@@ -636,7 +647,7 @@ const submitCompanyLimitRequest = async (req, res) => {
 // ============================================================
 const getAllCompanyComplaints = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
         const result = await query(
             `SELECT cc.id, cc.type, cc.subject, cc.description, cc.status,
                     cc.admin_reply, cc.created_at, cc.resolved_at,
@@ -695,7 +706,7 @@ const submitCompanyComplaint = async (req, res) => {
             return res.status(400).json({ success: false, message: 'অবৈধ অভিযোগের ধরন।' });
         }
 
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
 
         // এই connection সত্যিই এই person-এর এবং connected কিনা যাচাই
         const conn = await query(
@@ -755,7 +766,7 @@ const RETURN_TYPE_BN   = { return: 'পণ্য ফেরত', replacement: '�
 
 const getAllCompanyReturnRequests = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
         const status = req.query.status || 'all';
         const validStatuses = ['pending', 'approved', 'rejected', 'completed'];
 
@@ -835,7 +846,7 @@ const submitCompanyReturnRequest = async (req, res) => {
             }
         }
 
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
 
         // এই connection সত্যিই এই person-এর এবং connected কিনা যাচাই
         const conn = await query(
@@ -965,7 +976,7 @@ const submitCompanyReturnRequest = async (req, res) => {
 // ============================================================
 const getAllCompanySrReturnRecords = async (req, res) => {
     try {
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
         const result = await query(
             `SELECT st.invoice_number, st.replacement_items, st.replacement_value,
                     st.credit_balance_added, st.created_at,
@@ -1034,7 +1045,7 @@ const switchCompany = async (req, res) => {
             return res.status(400).json({ success: false, message: 'connection_id প্রয়োজন।' });
         }
 
-        const personId = await getPersonId(req.portalUser.customer_id);
+        const personId = await getPersonId(req.portalUser);
 
         // ✅ নিশ্চিত করা হচ্ছে এই connection সত্যিই এই person-এর, এবং connected অবস্থায় আছে
         const result = await query(

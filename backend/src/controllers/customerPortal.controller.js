@@ -19,7 +19,8 @@ const logger          = require('../config/logger');
 const PDFDocument     = require('pdfkit');
 const { invalidatePortalAuthCache } = require('../services/portalCache.service');
 const { generateCustomerCode, uploadToCloudinary } = require('../services/employee.service');
-const { DEFAULT_TENANT_ID }         = require('../services/auth.service');
+// (DEFAULT_TENANT_ID import সরানো হলো — এখন এই ফাইলে আর দরকার নেই,
+// selfRegisterCustomer এখন tenant-agnostic persons row তৈরি করে)
 
 // ============================================================
 // HELPERS
@@ -161,27 +162,29 @@ const sendPortalLink = async (req, res) => {
 };
 
 // ============================================================
-// 1a. SELF-REGISTER (কাস্টমার নিজেই সাইন-আপ করে)
+// 1a. SELF-REGISTER (ব্যক্তি নিজেই নিজের প্রোফাইল তৈরি করে)
 // POST /api/portal/self-register — Public, কোনো auth লাগে না
 //
-// SR/Manager যে ফর্ম পূরণ করে (customer.controller.js → createCustomer)
-// তার হালকা ভার্সন — GPS, route_id, shop_photo বাদ। GPS পরে যেকোনো
-// SR "Edit Customer" থেকে বসাবে (সেই এন্ডপয়েন্ট আগে থেকেই আছে)।
+// ⚠️ REDESIGN: আগে এখানে সরাসরি DEFAULT_TENANT_ID দিয়ে একটা
+// tenant-bound `customers` row তৈরি হতো (single-tenant ধরে নিয়ে)।
+// কিন্তু বাস্তবে একজন কাস্টমার (রিটেইল শপ) কোনো একটা কোম্পানির
+// exclusive সম্পত্তি না — সে একাধিক কোম্পানির সাথে connect থাকতে
+// পারে (persons + customer_company_connections সিস্টেম দেখুন,
+// connection.controller.js/discovery.controller.js)।
 //
-// is_verified = false দিয়ে শুরু হয় — createSale-এ প্রথম sale রেকর্ড
-// হলে true হয়ে যাবে (sales.controller.js দেখুন)।
+// তাই এখন এটা কোনো tenant_id ছাড়াই একটা global `persons` row
+// তৈরি করে। রেজিস্ট্রেশনের সময় কোনো কোম্পানির সাথে auto-connect
+// হয় না — পরে পোর্টালে ঢুকে ব্যক্তি নিজেই কোম্পানি খুঁজে (searchCompanies)
+// connection request পাঠাবে, অথবা কোনো কোম্পানি তাকে discover করে
+// request পাঠাবে।
 //
-// কোনো কোম্পানি-নির্দিষ্ট লিংক/স্লাগ/কোড লাগে না — সরাসরি
-// DEFAULT_TENANT_ID-এর অধীনে কাস্টমার তৈরি হয় (single-tenant)।
-//
-// সফল হলে শুধু customer_code ফেরত দেয়। JWT/cookie এখানে সেট করা হয়
-// না — frontend সাথে সাথেই এই code দিয়ে বিদ্যমান direct-auth ফ্লো
-// কল করবে, যেটা আগে থেকেই টেস্টেড ও কাজ করছে (Google login → session)।
+// সফল হলে শুধু person_id ফেরত দেয়। JWT/cookie এখানে সেট করা হয় না —
+// frontend সাথে সাথেই এই person_id দিয়ে directGoogleAuth কল করবে
+// (person_id প্যারামিটার — customer_code-এর সমতুল্য, প্রথমবার Gmail bind করার জন্য)।
 // ============================================================
 const selfRegisterCustomer = async (req, res) => {
     try {
         const { shop_name, owner_name, business_type, date_of_birth, whatsapp, sms_phone, email } = req.body;
-        const tenantId = DEFAULT_TENANT_ID;
 
         if (!shop_name || !shop_name.trim()) {
             return res.status(400).json({ success: false, message: 'দোকানের নাম দিন।' });
@@ -218,29 +221,21 @@ const selfRegisterCustomer = async (req, res) => {
             return res.status(400).json({ success: false, message: 'সঠিক জন্মতারিখ দিন।' });
         }
 
-        // একই WhatsApp-এ আগে থেকে সক্রিয় কাস্টমার থাকলে ডুপ্লিকেট আটকাও
+        // ⚠️ FIX: এখন global persons টেবিলে duplicate check — tenant_id
+        // দিয়ে scope করা হয় না, কারণ persons কোনো কোম্পানির অধীনে না।
+        // এক WhatsApp নম্বরে একটাই profile থাকবে, চাই সে যত কোম্পানির
+        // সাথেই পরবর্তীতে connect হোক না কেন।
         const existing = await query(
-            `SELECT id FROM customers WHERE whatsapp = $1 AND is_active = true AND tenant_id = $2 LIMIT 1`,
-            [cleanWhatsapp, tenantId]
+            `SELECT id FROM persons WHERE whatsapp = $1 LIMIT 1`,
+            [cleanWhatsapp]
         );
         if (existing.rows.length > 0) {
             return res.status(409).json({
                 success: false,
                 already_registered: true,
-                message: 'এই WhatsApp নম্বরে আগে থেকেই একটি অ্যাকাউন্ট আছে। লগইন পেজ থেকে Google দিয়ে প্রবেশ করুন।'
+                message: 'এই WhatsApp নম্বরে আগে থেকেই একটি প্রোফাইল আছে। লগইন পেজ থেকে Google দিয়ে প্রবেশ করুন।'
             });
         }
-
-        // ডিফল্ট ক্রেডিট লিমিট — Admin সেটিংস থেকে (createCustomer-এর মতোই)
-        let defaultCreditLimit = 0;
-        try {
-            const settingRes = await query(
-                `SELECT value FROM system_settings WHERE key = 'default_credit_limit' LIMIT 1`
-            );
-            if (settingRes.rows.length > 0) {
-                defaultCreditLimit = parseFloat(settingRes.rows[0].value) || 0;
-            }
-        } catch { /* সমস্যা হলে 0 দিয়ে চলবে */ }
 
         // প্রোফাইল ছবি ও দোকানের ছবি — দুটোই ঐচ্ছিক, দিলে Cloudinary-তে যাবে
         let profilePhotoUrl = null;
@@ -259,28 +254,26 @@ const selfRegisterCustomer = async (req, res) => {
             );
         }
 
-        const customerCode  = await generateCustomerCode(new Date());
-
+        // ✅ কোনো tenant_id ছাড়াই global persons row — এখনো কোনো
+        // কোম্পানির সাথে connect হয়নি (discoverable ডিফল্ট true থাকে,
+        // অর্থাৎ কোম্পানিগুলো discovery.controller.js দিয়ে তাকে খুঁজে পাবে)।
         const result = await query(
-            `INSERT INTO customers (customer_code, shop_name, owner_name, business_type,
-              date_of_birth, profile_photo, shop_photo,
-              whatsapp, sms_phone, email, credit_limit, is_active,
-              is_verified, registration_source, created_by, tenant_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, true, false, 'self', NULL, $12)
-             RETURNING id, customer_code`,
+            `INSERT INTO persons (full_name, shop_name, business_type, date_of_birth,
+              profile_photo, shop_photo, whatsapp, phone, email)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             RETURNING id`,
             [
-                customerCode, shop_name.trim(), owner_name.trim(), business_type.trim(),
-                date_of_birth, profilePhotoUrl, shopPhotoUrl,
-                cleanWhatsapp, (sms_phone || '').trim() || null, (email || '').trim() || null,
-                defaultCreditLimit, tenantId
+                owner_name.trim(), shop_name.trim(), business_type.trim(), date_of_birth,
+                profilePhotoUrl, shopPhotoUrl, cleanWhatsapp,
+                (sms_phone || '').trim() || null, (email || '').trim() || null
             ]
         );
 
-        logger.info(`✅ Self-registered customer: ${customerCode} (${shop_name})`);
+        logger.info(`✅ Self-registered person: ${result.rows[0].id} (${shop_name})`);
 
         return res.status(201).json({
             success: true,
-            customer_code: result.rows[0].customer_code,
+            person_id: result.rows[0].id,
             message: 'রেজিস্ট্রেশন সফল হয়েছে! এখন Google দিয়ে প্রবেশ করুন।'
         });
 
@@ -1777,10 +1770,12 @@ const getCustomerStatement = async (req, res) => {
 // ============================================================
 const directGoogleAuth = async (req, res) => {
     try {
-        // ✅ HYBRID:
-        //   প্রথমবার  → SR link-এ ?c=customer_code থাকে → email auto-save হয়
-        //   পরের বার  → customer_code ছাড়াই Gmail দিয়ে সরাসরি login
-        const { google_token, device_id, customer_code } = req.body;
+        // ✅ HYBRID (৩ পথ):
+        //   customer_code → বিদ্যমান customer-এর প্রথমবার Gmail bind
+        //   person_id     → নতুন self-register person-এর প্রথমবার Gmail bind
+        //                   (কোনো কোম্পানি এখনো নেই)
+        //   কোনোটাই না    → ফিরতি লগইন, Gmail দিয়ে customers অথবা persons-এ খোঁজা
+        const { google_token, device_id, customer_code, person_id } = req.body;
 
         if (!google_token || !device_id) {
             return res.status(400).json({ success: false, message: 'google_token এবং device_id পাঠান।' });
@@ -1815,13 +1810,14 @@ const directGoogleAuth = async (req, res) => {
         }
 
         const { email, name, picture } = googleUser;
-        let customer;
+        let customer   = null; // বিদ্যমান tenant-bound customer (কোনো কোম্পানির সাথে connected)
+        let personOnly = null; // company-বিহীন person (এখনো কোনো connection নেই)
 
         if (customer_code) {
             // ── ২A. প্রথমবার: customer_code দিয়ে customer খোঁজো ──
             const result = await query(
                 `SELECT id, shop_name, owner_name, customer_code, email, whatsapp,
-                        current_credit, credit_limit, credit_balance
+                        current_credit, credit_limit, credit_balance, person_id
                  FROM customers
                  WHERE customer_code = $1 AND is_active = true`,
                 [customer_code]
@@ -1850,11 +1846,42 @@ const directGoogleAuth = async (req, res) => {
                 );
                 customer.email = email.toLowerCase();
             }
+        } else if (person_id) {
+            // ── ২B. প্রথমবার (নতুন মডেল): person_id দিয়ে person খোঁজো ──
+            // এই person-এর এখনো কোনো কোম্পানির customer row নেই।
+            const result = await query(
+                `SELECT id, full_name, shop_name, email, whatsapp FROM persons WHERE id = $1`,
+                [person_id]
+            );
+
+            if (result.rows.length === 0) {
+                return res.status(404).json({ success: false, message: 'প্রোফাইল পাওয়া যায়নি।' });
+            }
+
+            const person = result.rows[0];
+
+            if (person.email && person.email.toLowerCase() !== email.toLowerCase()) {
+                return res.status(403).json({
+                    success: false,
+                    message: `এই প্রোফাইলে অন্য Gmail (${person.email}) দিয়ে আগে login করা আছে।`,
+                    error_code: 'EMAIL_LOCKED',
+                });
+            }
+
+            if (!person.email) {
+                await query(
+                    'UPDATE persons SET email = $1, updated_at = NOW() WHERE id = $2',
+                    [email.toLowerCase(), person.id]
+                );
+                person.email = email.toLowerCase();
+            }
+
+            personOnly = person;
         } else {
-            // ── ২B. পরের বার: Gmail দিয়ে customer খোঁজো ────────
+            // ── ২C. পরের বার: Gmail দিয়ে customer খোঁজো, না পেলে person ──
             const result = await query(
                 `SELECT c.id, c.shop_name, c.owner_name, c.customer_code, c.email, c.whatsapp,
-                        c.current_credit, c.credit_limit, c.credit_balance
+                        c.current_credit, c.credit_limit, c.credit_balance, c.person_id
                  FROM customers c
                  LEFT JOIN customer_portal_tokens cpt ON cpt.customer_id = c.id
                  WHERE (LOWER(c.email) = LOWER($1) OR LOWER(cpt.bound_email) = LOWER($1))
@@ -1863,112 +1890,178 @@ const directGoogleAuth = async (req, res) => {
                 [email]
             );
 
-            if (result.rows.length === 0) {
-                return res.status(404).json({
-                    success: false,
-                    message: `এই Gmail (${email}) দিয়ে কোনো কাস্টমার নেই। SR-এর পাঠানো লিংক থেকে প্রথমবার প্রবেশ করুন।`,
-                });
+            if (result.rows.length > 0) {
+                customer = result.rows[0];
+            } else {
+                // ✅ FIX: কোনো customer না পেলে persons-এও খুঁজো, যাতে
+                // company-বিহীন person-রাও দ্বিতীয়বার Gmail দিয়ে ফিরে আসতে পারে
+                const personResult = await query(
+                    `SELECT id, full_name, shop_name, email, whatsapp FROM persons WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+                    [email]
+                );
+                if (personResult.rows.length === 0) {
+                    return res.status(404).json({
+                        success: false,
+                        message: `এই Gmail (${email}) দিয়ে কোনো প্রোফাইল নেই। প্রথমে রেজিস্ট্রেশন করুন অথবা SR-এর পাঠানো লিংক থেকে প্রবেশ করুন।`,
+                    });
+                }
+                personOnly = personResult.rows[0];
             }
-
-            customer = result.rows[0];
         }
 
-        const userAgent    = req.headers['user-agent'] || '';
-        const hashedDevice = hashDeviceId(`${device_id}::${userAgent}`);
-        const deviceLabel  = guessDeviceLabel(userAgent);
+        // ============================================================
+        // পথ ১: customer আছে (কোনো একটা কোম্পানির সাথে connected) —
+        // device/token bookkeeping ও JWT অপরিবর্তিত (শুধু person_id যোগ হলো)
+        // ============================================================
+        if (customer) {
+            const userAgent    = req.headers['user-agent'] || '';
+            const hashedDevice = hashDeviceId(`${device_id}::${userAgent}`);
+            const deviceLabel  = guessDeviceLabel(userAgent);
 
-        // ── portal_tokens row আছে কিনা চেক ──────────────────
-        const tokenResult = await query(
-            'SELECT bound_email, token_version FROM customer_portal_tokens WHERE customer_id = $1',
-            [customer.id]
-        );
-
-        const existingRow  = tokenResult.rows[0];
-        const boundEmail   = existingRow?.bound_email;
-        const tokenVersion = existingRow?.token_version || 1;
-        const isFirstLogin = !boundEmail;
-
-        // ── Device whitelist-এ add / update ─────────────────
-        await query(
-            `INSERT INTO customer_portal_devices (customer_id, device_hash, google_email, device_label)
-             VALUES ($1, $2, $3, $4)
-             ON CONFLICT (customer_id, device_hash) DO UPDATE SET
-                last_used_at = NOW(), is_active = true, device_label = EXCLUDED.device_label`,
-            [customer.id, hashedDevice, email.toLowerCase(), deviceLabel]
-        );
-
-        // ── portal_tokens row তৈরি বা আপডেট ────────────────
-        if (isFirstLogin) {
-            await query(
-                `INSERT INTO customer_portal_tokens
-                    (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email)
-                 VALUES ($1, $2, $3, NOW() + INTERVAL '10 years', 1, $4, NOW(), $5)
-                 ON CONFLICT (customer_id) DO UPDATE SET
-                    bound_email  = $4,
-                    google_email = $5,
-                    last_login   = NOW()`,
-                [customer.id, generatePortalToken(), generateRedirectId(), email.toLowerCase(), email.toLowerCase()]
-            );
-
-            // customers.email খালি থাকলে সেভ করো
-            if (!customer.email) {
-                await query(
-                    'UPDATE customers SET email = $1, updated_at = NOW() WHERE id = $2',
-                    [email, customer.id]
-                );
-            }
-        } else {
-            await query(
-                'UPDATE customer_portal_tokens SET last_login = NOW() WHERE customer_id = $1',
+            // ── portal_tokens row আছে কিনা চেক ──────────────────
+            const tokenResult = await query(
+                'SELECT bound_email, token_version FROM customer_portal_tokens WHERE customer_id = $1',
                 [customer.id]
             );
+
+            const existingRow  = tokenResult.rows[0];
+            const boundEmail   = existingRow?.bound_email;
+            const tokenVersion = existingRow?.token_version || 1;
+            const isFirstLogin = !boundEmail;
+
+            // ── Device whitelist-এ add / update ─────────────────
+            await query(
+                `INSERT INTO customer_portal_devices (customer_id, device_hash, google_email, device_label)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (customer_id, device_hash) DO UPDATE SET
+                    last_used_at = NOW(), is_active = true, device_label = EXCLUDED.device_label`,
+                [customer.id, hashedDevice, email.toLowerCase(), deviceLabel]
+            );
+
+            // ── portal_tokens row তৈরি বা আপডেট ────────────────
+            if (isFirstLogin) {
+                await query(
+                    `INSERT INTO customer_portal_tokens
+                        (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email)
+                     VALUES ($1, $2, $3, NOW() + INTERVAL '10 years', 1, $4, NOW(), $5)
+                     ON CONFLICT (customer_id) DO UPDATE SET
+                        bound_email  = $4,
+                        google_email = $5,
+                        last_login   = NOW()`,
+                    [customer.id, generatePortalToken(), generateRedirectId(), email.toLowerCase(), email.toLowerCase()]
+                );
+
+                // customers.email খালি থাকলে সেভ করো
+                if (!customer.email) {
+                    await query(
+                        'UPDATE customers SET email = $1, updated_at = NOW() WHERE id = $2',
+                        [email, customer.id]
+                    );
+                }
+            } else {
+                await query(
+                    'UPDATE customer_portal_tokens SET last_login = NOW() WHERE customer_id = $1',
+                    [customer.id]
+                );
+            }
+
+            const jwtPayload_direct = {
+                customer_id:    customer.id,
+                customer_code:  customer.customer_code,
+                person_id:      customer.person_id || null,  // ✅ নতুন — getPersonId lookup সহজ করে
+                email,
+                google_name:    name,
+                google_picture: picture,
+                type:           'customer_portal',
+                token_version:  tokenVersion,
+            };
+
+            // ✅ 15-মিনিট access token → response body → frontend memory
+            const accessJWT_direct = jwt.sign(
+                jwtPayload_direct,
+                process.env.JWT_PORTAL_SECRET,
+                { expiresIn: '15m', algorithm: 'HS256' }
+            );
+
+            // ✅ 30-দিন refresh token → HttpOnly cookie → JS পড়তে পারে না
+            const refreshJWT_direct = jwt.sign(
+                { ...jwtPayload_direct, type: 'customer_portal_refresh' },
+                process.env.JWT_PORTAL_SECRET,
+                { expiresIn: '30d', algorithm: 'HS256' }
+            );
+            setRefreshCookie(res, refreshJWT_direct);
+
+            return res.status(200).json({
+                success: true,
+                message: isFirstLogin
+                    ? 'প্রথমবার লগইন সফল! ৩০ দিন একই লিংকে ঢুকতে পারবেন।'
+                    : 'লগইন সফল!',
+                data: {
+                    portal_jwt: accessJWT_direct,
+                    expires_in: 900,
+                    has_company: true,
+                    customer: {
+                        id:             customer.id,
+                        shop_name:      customer.shop_name,
+                        owner_name:     customer.owner_name,
+                        customer_code:  customer.customer_code,
+                        email,
+                        google_name:    name,
+                        google_picture: picture,
+                        current_credit: customer.current_credit,
+                        credit_limit:   customer.credit_limit,
+                        credit_balance: customer.credit_balance,
+                    }
+                }
+            });
         }
 
-        const jwtPayload_direct = {
-            customer_id:    customer.id,
-            customer_code:  customer.customer_code,
+        // ============================================================
+        // পথ ২: personOnly — এখনো কোনো কোম্পানির সাথে connection নেই।
+        // ⚠️ customer_portal_tokens/customer_portal_devices টেবিলে
+        // customer_id NOT NULL, তাই এখানে সেগুলোতে কিছু লেখা হয় না
+        // (device-revoke সুবিধা এই পর্যায়ে প্রযোজ্য না — প্রথম কোম্পানির
+        // সাথে connect হওয়ার পর switchCompany দিয়ে স্বাভাবিক customer
+        // flow-এ চলে যাবে, তখন থেকে device/token bookkeeping শুরু হবে)।
+        // ============================================================
+        const jwtPayload_person = {
+            customer_id:    null,
+            person_id:      personOnly.id,
             email,
             google_name:    name,
             google_picture: picture,
             type:           'customer_portal',
-            token_version:  tokenVersion,
+            token_version:  1,
         };
 
-        // ✅ 15-মিনিট access token → response body → frontend memory
-        const accessJWT_direct = jwt.sign(
-            jwtPayload_direct,
+        const accessJWT_person = jwt.sign(
+            jwtPayload_person,
             process.env.JWT_PORTAL_SECRET,
             { expiresIn: '15m', algorithm: 'HS256' }
         );
 
-        // ✅ 30-দিন refresh token → HttpOnly cookie → JS পড়তে পারে না
-        const refreshJWT_direct = jwt.sign(
-            { ...jwtPayload_direct, type: 'customer_portal_refresh' },
+        const refreshJWT_person = jwt.sign(
+            { ...jwtPayload_person, type: 'customer_portal_refresh' },
             process.env.JWT_PORTAL_SECRET,
             { expiresIn: '30d', algorithm: 'HS256' }
         );
-        setRefreshCookie(res, refreshJWT_direct);
+        setRefreshCookie(res, refreshJWT_person);
 
         return res.status(200).json({
             success: true,
-            message: isFirstLogin
-                ? 'প্রথমবার লগইন সফল! ৩০ দিন একই লিংকে ঢুকতে পারবেন।'
-                : 'লগইন সফল!',
+            message: 'লগইন সফল! এখন কোম্পানি খুঁজে সংযোগের অনুরোধ পাঠান।',
             data: {
-                portal_jwt: accessJWT_direct,
+                portal_jwt: accessJWT_person,
                 expires_in: 900,
-                customer: {
-                    id:             customer.id,
-                    shop_name:      customer.shop_name,
-                    owner_name:     customer.owner_name,
-                    customer_code:  customer.customer_code,
+                person: {
+                    id:             personOnly.id,
+                    shop_name:      personOnly.shop_name,
+                    full_name:      personOnly.full_name,
                     email,
                     google_name:    name,
                     google_picture: picture,
-                    current_credit: customer.current_credit,
-                    credit_limit:   customer.credit_limit,
-                    credit_balance: customer.credit_balance,
-                }
+                },
+                has_company: false,
             }
         });
 
@@ -2012,10 +2105,48 @@ const refreshPortalToken = async (req, res) => {
         return res.status(401).json({ success: false, message: 'অবৈধ token।' });
     }
 
-    // token_version চেক — নতুন লিংক ইস্যু হলে refresh reject হবে
+    // ⚠️ FIX: আগে শুধু customer_id-ভিত্তিক ছিল — company-বিহীন person-only
+    // refresh token (customer_id: null) হলে ভুলভাবে "অ্যাকাউন্ট নিষ্ক্রিয়"
+    // দেখাতো। এখন দুই path আলাদা করা হলো।
+    let personIdForToken = decoded.person_id || null;
+
+    if (!decoded.customer_id && decoded.person_id) {
+        // ── person-only session — persons টেবিলে সত্যিই আছে কিনা যাচাই ──
+        try {
+            const personCheck = await query(`SELECT id FROM persons WHERE id = $1`, [decoded.person_id]);
+            if (personCheck.rows.length === 0) {
+                res.clearCookie('portal_rt', { path: '/api/portal' });
+                return res.status(403).json({ success: false, message: 'প্রোফাইল পাওয়া যায়নি।' });
+            }
+        } catch (dbErr) {
+            logger.error('❌ refreshPortalToken person check error:', dbErr.message);
+            return res.status(500).json({ success: false, message: 'যাচাই করতে সমস্যা হয়েছে।' });
+        }
+
+        const accessJWT_person = jwt.sign(
+            {
+                customer_id:    null,
+                person_id:      decoded.person_id,
+                email:          decoded.email,
+                google_name:    decoded.google_name,
+                google_picture: decoded.google_picture,
+                type:           'customer_portal',
+                token_version:  1,
+            },
+            process.env.JWT_PORTAL_SECRET,
+            { expiresIn: '15m', algorithm: 'HS256' }
+        );
+
+        return res.status(200).json({
+            success: true,
+            data: { portal_jwt: accessJWT_person, expires_in: 900, has_company: false },
+        });
+    }
+
+    // ── customer-bound session — আগের মতোই, শুধু person_id-ও সাথে আনা হচ্ছে ──
     try {
         const authCheck = await query(
-            `SELECT c.is_active, cpt.token_version AS current_version
+            `SELECT c.is_active, c.person_id, cpt.token_version AS current_version
              FROM customers c
              LEFT JOIN customer_portal_tokens cpt ON cpt.customer_id = c.id
              WHERE c.id = $1`,
@@ -2039,6 +2170,8 @@ const refreshPortalToken = async (req, res) => {
                 error_code: 'TOKEN_REVOKED',
             });
         }
+
+        personIdForToken = authCheck.rows[0].person_id || null;
     } catch (dbErr) {
         logger.error('❌ refreshPortalToken DB error:', dbErr.message);
         return res.status(500).json({ success: false, message: 'যাচাই করতে সমস্যা হয়েছে।' });
@@ -2049,6 +2182,7 @@ const refreshPortalToken = async (req, res) => {
         {
             customer_id:    decoded.customer_id,
             customer_code:  decoded.customer_code,
+            person_id:      personIdForToken,  // ✅ নতুন — getPersonId lookup সহজ করে
             email:          decoded.email,
             google_name:    decoded.google_name,
             google_picture: decoded.google_picture,
@@ -2061,7 +2195,7 @@ const refreshPortalToken = async (req, res) => {
 
     return res.status(200).json({
         success: true,
-        data: { portal_jwt: accessJWT, expires_in: 900 },
+        data: { portal_jwt: accessJWT, expires_in: 900, has_company: true },
     });
 };
 

@@ -66,7 +66,9 @@ export default function WelcomeView({ tokenInfo, justRegistered, error, loggingI
               <p className="text-cp-text-secondary text-[13px] mb-2">
                 {tokenInfo.owner_name}
               </p>
-              <CpBadge variant="info">কোড: {tokenInfo.customer_code}</CpBadge>
+              {tokenInfo.customer_code && (
+                <CpBadge variant="info">কোড: {tokenInfo.customer_code}</CpBadge>
+              )}
             </CpCard>
           )}
 

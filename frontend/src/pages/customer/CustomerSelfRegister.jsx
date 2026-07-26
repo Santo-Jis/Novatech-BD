@@ -10,8 +10,8 @@
 //   ৬. রিভিউ ও সাবমিট     (সব তথ্য দেখিয়ে চূড়ান্ত সাবমিট)
 //
 // সাবমিট হলে POST /portal/self-register (multipart/form-data — ছবিসহ)
-// → নতুন customer_code পায় → /customer-login?c=CODE-এ নিয়ে যায়
-// (পুরনো, টেস্টেড CustomerPortal ফ্লো — Google login → Dashboard)
+// → নতুন person_id পায় → /customer-login?pid=ID-এ নিয়ে যায়
+// (persons/connections মডেল — কোনো tenant/কোম্পানি এখনো assign হয় না)
 //
 // GPS/route_id এখানে নেই — SR পরে "Edit Customer" থেকে বসাবে।
 //
@@ -304,15 +304,15 @@ export default function CustomerSelfRegister() {
       }
 
       // ✅ রেজিস্ট্রেশন সফল — Welcome/Login স্ক্রিনে দোকানের তথ্য ও
-      // সফল-বার্তা দেখানোর জন্য state দিয়ে পাঠানো হচ্ছে (tokenInfo আগে
-      // কখনো সেট হতো না, তাই কার্ডটা দেখাই যেত না — এখন সরাসরি এখান
-      // থেকেই দিয়ে দিচ্ছি, আলাদা API কলের দরকার নেই)
-      navigate(`/customer-login?c=${encodeURIComponent(data.customer_code)}`, {
+      // সফল-বার্তা দেখানোর জন্য state দিয়ে পাঠানো হচ্ছে।
+      // ⚠️ FIX: backend এখন customer_code না, person_id ফেরত দেয়
+      // (persons/connections মডেল — কোনো tenant এখনো assign হয়নি)।
+      navigate(`/customer-login?pid=${encodeURIComponent(data.person_id)}`, {
         state: {
           justRegistered: true,
           shopName: form.shop_name.trim(),
           ownerName: form.owner_name.trim(),
-          customerCode: data.customer_code,
+          personId: data.person_id,
         },
       })
     } catch {

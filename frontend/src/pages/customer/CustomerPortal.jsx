@@ -23,9 +23,10 @@
 //   loading → welcome (Google login বাটন) → dashboard
 
 import { usePortalAuth } from './hooks/usePortalAuth'
-import LoadingView   from './components/views/LoadingView'
-import WelcomeView   from './components/views/WelcomeView'
-import DashboardView from './components/views/DashboardView'
+import LoadingView    from './components/views/LoadingView'
+import WelcomeView    from './components/views/WelcomeView'
+import DashboardView  from './components/views/DashboardView'
+import NoCompanyView  from './components/views/NoCompanyView'
 
 export default function CustomerPortal({ defaultTab = 'summary' }) {
   const auth = usePortalAuth(defaultTab)
@@ -38,6 +39,14 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
       error={auth.error}
       loggingIn={auth.loggingIn}
       onLogin={() => auth.googleLogin()}
+    />
+  )
+
+  // ✅ নতুন: এখনো কোনো কোম্পানির সাথে connection নেই এমন person
+  if (auth.phase === 'no-company') return (
+    <NoCompanyView
+      personProfile={auth.personProfile}
+      onLogout={auth.handleLogout}
     />
   )
 

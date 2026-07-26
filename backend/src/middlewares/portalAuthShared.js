@@ -33,8 +33,30 @@ const portalAuth = async (req, res, next) => {
         if (decoded.type !== 'customer_portal') {
             return res.status(403).json({ success: false, message: 'অবৈধ টোকেন।' });
         }
-        if (!decoded.customer_id) {
-            return res.status(403).json({ success: false, message: 'অবৈধ টোকেন — customer_id নেই।' });
+        // ⚠️ FIX: আগে customer_id বাধ্যতামূলক ছিল — এখন company-বিহীন
+        // person-only token-ও গ্রহণযোগ্য (customer_id: null, person_id উপস্থিত)।
+        if (!decoded.customer_id && !decoded.person_id) {
+            return res.status(403).json({ success: false, message: 'অবৈধ টোকেন — customer_id/person_id নেই।' });
+        }
+
+        // ── person-only session (এখনো কোনো কোম্পানির সাথে connection নেই) ──
+        // customer_portal_tokens/devices টেবিলে customer_id NOT NULL, তাই
+        // এই session-এর জন্য সেই cache/token_version চেক প্রযোজ্য না —
+        // শুধু person সত্যিই আছে কিনা যাচাই করা হয় (short-lived access
+        // token + 30-day refresh নিজেই যথেষ্ট সুরক্ষা এই পর্যায়ে, যেহেতু
+        // কোনো company-ডেটা এখনো অ্যাক্সেসযোগ্য না)।
+        if (!decoded.customer_id && decoded.person_id) {
+            try {
+                const personCheck = await query(`SELECT id FROM persons WHERE id = $1`, [decoded.person_id]);
+                if (personCheck.rows.length === 0) {
+                    return res.status(403).json({ success: false, message: 'প্রোফাইল পাওয়া যায়নি।' });
+                }
+            } catch (dbErr) {
+                logger.error('❌ portalAuthShared person check error:', dbErr.message);
+                return res.status(500).json({ success: false, message: 'যাচাই করতে সমস্যা হয়েছে।' });
+            }
+            req.portalUser = decoded;
+            return next();
         }
 
         const customerId = decoded.customer_id;

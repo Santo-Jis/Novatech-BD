@@ -365,6 +365,7 @@ const completeReturn = async (req, res) => {
                     reference_type: 'return',
                     note:           `কাস্টমার রিটার্ন — ${rr.customer_id}`,
                     created_by:     srId,
+                    tenantId:       req.tenantId,
                 });
 
                 // ৩. warehouse stock-এ পণ্য ফেরত যোগ করো

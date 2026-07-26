@@ -518,6 +518,7 @@ const createSale = async (req, res) => {
                     reference_type: 'sale',
                     note:           `বিক্রয় — Invoice: ${invoiceNumber}`,
                     created_by:     req.user.id,
+                    tenantId:       req.tenantId,
                 });
             }
 
@@ -545,6 +546,7 @@ const createSale = async (req, res) => {
                     reference_type: 'sale',
                     note:           'রিপ্লেসমেন্ট ফেরত',
                     created_by:     req.user.id,
+                    tenantId:       req.tenantId,
                 });
             }
 

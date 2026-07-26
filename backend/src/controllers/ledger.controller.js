@@ -1,6 +1,5 @@
 const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
-const { DEFAULT_TENANT_ID } = require('../middlewares/auth');
 
 // ============================================================
 // SR STOCK LEDGER
@@ -9,6 +8,15 @@ const { DEFAULT_TENANT_ID } = require('../middlewares/auth');
 // ============================================================
 
 const addLedgerEntry = async (clientOrNull, entry) => {
+    // ⚠️ tenantId এখন বাধ্যতামূলক — কোনো silent default নেই।
+    // আগে entry.tenantId না থাকলে চুপচাপ DEFAULT_TENANT_ID বসে যেত, যার ফলে
+    // প্রতিটা sale/return/settlement/order-approval ভুল tenant-এ ledger
+    // entry করত। এখন caller ভুলে tenantId না দিলে সাথে সাথে error থ্রো
+    // হবে, ভুল ডেটা silently না লিখে।
+    if (!entry.tenantId) {
+        throw new Error('addLedgerEntry: tenantId আবশ্যক (req.tenantId পাস করুন)');
+    }
+
     const sql = `
         INSERT INTO sr_stock_ledger (worker_id, product_id, product_name,
            txn_type, direction, qty,
@@ -25,7 +33,7 @@ const addLedgerEntry = async (clientOrNull, entry) => {
         entry.reference_type || null,
         entry.note           || null,
         entry.created_by     || null,     // UUID,
-        entry.tenantId || DEFAULT_TENANT_ID  // $11 tenant_id
+        entry.tenantId                     // $11 tenant_id — এখন সবসময় caller থেকে আসে
     ];
 
     if (clientOrNull) {
@@ -149,9 +157,15 @@ const getLedgerHistory = async (req, res) => {
             return res.status(400).json({ success: false, message: 'worker_id আবশ্যক।' });
         }
 
-        const conditions = ['l.worker_id = $1::uuid'];
-        const params     = [targetWorkerId];
-        let   p          = 1;
+        // ⚠️ FIX: আগে এখানে tenant_id filter ছিল না — শুধু worker_id দিয়ে
+        // filter হতো। ফলে manager/admin role-এর কেউ অন্য tenant-এর worker_id
+        // (guess/leak হলে) দিয়ে call করলেও ledger history দেখতে পেত।
+        // এখন tenant_id বাধ্যতামূলক অংশ হিসেবে যোগ করা হলো (defense-in-depth —
+        // worker_id নিজেই সাধারণত unique, কিন্তু cross-tenant isolation
+        // explicit থাকা উচিত)।
+        const conditions = ['l.worker_id = $1::uuid', 'l.tenant_id = $2'];
+        const params     = [targetWorkerId, req.tenantId];
+        let   p          = 2;
 
         if (from) { p++; conditions.push(`DATE(l.created_at) >= $${p}`); params.push(from); }
         if (to)   { p++; conditions.push(`DATE(l.created_at) <= $${p}`); params.push(to); }
