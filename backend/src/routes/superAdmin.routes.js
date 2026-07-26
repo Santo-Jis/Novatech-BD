@@ -93,4 +93,11 @@ router.post  ('/staff/:staffId/reset-password', ctrl.resetStaffPassword);
 router.get   ('/tenants/:tenantId/settings', ctrl.getTenantSettings);
 router.patch ('/tenants/:tenantId/settings', ctrl.updateTenantSettings);
 
+// ✅ Phase 1 (26 July 2026): Platform Settings — SMS/Email গেটওয়ে
+// (পুরো প্ল্যাটফর্মের জন্য একটাই শেয়ার্ড কনফিগ, tenant admin panel থেকে সরানো হলো)
+router.get   ('/platform-settings',      ctrl.getPlatformSettings);
+router.put   ('/platform-settings',      ctrl.updatePlatformSettings);
+router.get   ('/platform-settings/sms-status', ctrl.getSmsStatus);
+router.post  ('/platform-settings/sms-test',   ctrl.testSmsGateway);
+
 module.exports = router;

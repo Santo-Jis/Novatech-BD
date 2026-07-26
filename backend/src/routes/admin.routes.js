@@ -19,8 +19,6 @@ const {
     updateSettings,
     getAuditLogs,
     getSystemStats,
-    getSmsStatus,
-    testSmsGateway,
     getSmsLogs,
 } = require('../controllers/admin.controller');
 
@@ -52,9 +50,7 @@ router.put('/settings',        auth, isAdmin, updateSettings);
 router.get('/audit-logs',      auth, isAdmin, getAuditLogs);
 router.get('/stats',           auth, isAdmin, getSystemStats);
 
-// ── SMS Gateway (Admin only) ─────────────────────────────────
-router.get('/sms-status',      auth, isAdmin, getSmsStatus);    // বর্তমান config অবস্থা
-router.post('/sms-test',       auth, isAdmin, testSmsGateway);  // test (type + provider)
+// ── SMS Logs (Admin only) — গেটওয়ে config/test এখন Super Admin panel-এ ──
 router.get('/sms-logs',        auth, isAdmin, getSmsLogs);      // SMS ইতিহাস
 
 // ── Portal Device Management (Admin + Manager) ───────────────

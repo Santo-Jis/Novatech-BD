@@ -74,6 +74,7 @@ const SuperAdminCreateTenant = IS_CUSTOMER_APP ? null : lazy(() => import('./pag
 const SuperAdminTenantDetail = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/TenantDetail'))
 const SuperAdminStaffList   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/StaffList'))
 const SuperAdminAuditLog    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/AuditLog'))
+const SuperAdminPlatformSettings = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/PlatformSettings'))
 
 // Shared — Customer APK-এ নেই
 const AIChat      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/AIChat'))
@@ -444,6 +445,7 @@ function AppWithPermissions() {
                 <Route path="tenants/:tenantId" element={<SuperAdminTenantDetail />} />
                 <Route path="staff"        element={<SuperAdminStaffList />} />
                 <Route path="audit-log"    element={<SuperAdminAuditLog />} />
+                <Route path="platform-settings" element={<SuperAdminPlatformSettings />} />
               </Route>
 
               {/* Unauthorized */}

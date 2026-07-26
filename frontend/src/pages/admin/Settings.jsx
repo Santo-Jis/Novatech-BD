@@ -4,11 +4,7 @@ import { Card } from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import toast from 'react-hot-toast'
-import {
-  FiSave, FiPlus, FiTrash2, FiMessageSquare,
-  FiCheckCircle, FiLoader, FiAlertCircle,
-  FiRefreshCw, FiActivity, FiList
-} from 'react-icons/fi'
+import { FiSave, FiPlus, FiTrash2 } from 'react-icons/fi'
 import AdminCreditSettings from './AdminCreditSettings'
 
 export default function AdminSettings() {
@@ -18,21 +14,6 @@ export default function AdminSettings() {
   const [loading,         setLoading]         = useState(true)
   const [saving,          setSaving]          = useState(false)
   const [newHoliday,      setNewHoliday]      = useState('')
-  const [smsApiKey,       setSmsApiKey]       = useState('')
-  const [smsKeyDirty,     setSmsKeyDirty]     = useState(false)
-  const [testPhone,       setTestPhone]       = useState('')
-  const [testType,        setTestType]        = useState('test')          // ✅ নতুন
-  const [testStatus,      setTestStatus]      = useState(null)
-  // ── SMS Status ──────────────────────────────────────────────
-  const [smsStatus,       setSmsStatus]       = useState(null)
-  const [smsStatusLoading,setSmsStatusLoading]= useState(false)
-  // ── SMS Logs ────────────────────────────────────────────────
-  const [smsLogs,         setSmsLogs]         = useState([])
-  const [smsLogsLoading,  setSmsLogsLoading]  = useState(false)
-  const [smsLogsPage,     setSmsLogsPage]     = useState(1)
-  const [smsLogsMeta,     setSmsLogsMeta]     = useState({ total: 0, totalPages: 1 })
-  const [smsLogsFilter,   setSmsLogsFilter]   = useState({ status: '', type: '' })
-  const [logsLoaded,      setLogsLoaded]      = useState(false)
   // ── Commission Slabs ────────────────────────────────────────
   const [commSlabs,       setCommSlabs]       = useState([])
   const [commLoading,     setCommLoading]     = useState(false)
@@ -45,37 +26,9 @@ export default function AdminSettings() {
       res.data.data.forEach(item => { s[item.key] = item.value })
       setSettings(s)
       if (res.data.grouped) setGrouped(res.data.grouped)
-      setSmsApiKey(s.sms_api_key && s.sms_api_key.includes('****') ? '' : (s.sms_api_key || ''))
       try { setHolidays(JSON.parse(s.holidays || '[]')) } catch { setHolidays([]) }
     }).finally(() => setLoading(false))
   }, [])
-
-  // ── SMS Status লোড ──────────────────────────────────────────
-  const loadSmsStatus = useCallback(async () => {
-    setSmsStatusLoading(true)
-    try {
-      const res = await api.get('/admin/sms-status')
-      setSmsStatus(res.data.data)
-    } catch { /* silent */ }
-    finally { setSmsStatusLoading(false) }
-  }, [])
-
-  useEffect(() => { loadSmsStatus() }, [loadSmsStatus])
-
-  // ── SMS Logs লোড ────────────────────────────────────────────
-  const loadSmsLogs = useCallback(async (page = 1) => {
-    setSmsLogsLoading(true)
-    setLogsLoaded(true)
-    try {
-      const res = await api.get('/admin/sms-logs', {
-        params: { page, limit: 20, ...smsLogsFilter }
-      })
-      setSmsLogs(res.data.data || [])
-      setSmsLogsMeta(res.data.pagination || { total: 0, totalPages: 1 })
-      setSmsLogsPage(page)
-    } catch { toast.error('SMS লগ আনতে সমস্যা।') }
-    finally { setSmsLogsLoading(false) }
-  }, [smsLogsFilter])
 
   // ── Commission Settings লোড ─────────────────────────────────
   const loadCommSettings = useCallback(async () => {
@@ -95,15 +48,9 @@ export default function AdminSettings() {
   const save = async () => {
     setSaving(true)
     try {
-      const settingsArray = Object.entries(settings)
-        .filter(([key]) => key !== 'sms_api_key')
-        .map(([key, value]) => ({ key, value }))
+      const settingsArray = Object.entries(settings).map(([key, value]) => ({ key, value }))
       settingsArray.push({ key: 'holidays', value: JSON.stringify(holidays) })
-      if (smsKeyDirty && smsApiKey.trim()) {
-        settingsArray.push({ key: 'sms_api_key', value: smsApiKey.trim() })
-      }
       await api.put('/admin/settings', { settings: settingsArray })
-      setSmsKeyDirty(false)
       toast.success('সেটিংস সেভ হয়েছে।')
     } catch { toast.error('সমস্যা হয়েছে।') }
     finally { setSaving(false) }
@@ -113,23 +60,6 @@ export default function AdminSettings() {
     if (!newHoliday) return
     setHolidays(prev => [...new Set([...prev, newHoliday])].sort())
     setNewHoliday('')
-  }
-
-  // ── SMS Test (type-specific) ─────────────────────────────────
-  const sendTestSms = async () => {
-    if (!testPhone.trim()) { toast.error('ফোন নম্বর দিন।'); return }
-    setTestStatus('sending')
-    try {
-      await api.post('/admin/sms-test', { phone: testPhone.trim(), type: testType })
-      setTestStatus('success')
-      toast.success('টেস্ট SMS পাঠানো হয়েছে।')
-      loadSmsStatus()
-    } catch (err) {
-      setTestStatus('error')
-      toast.error(err?.response?.data?.message || 'SMS পাঠানো ব্যর্থ।')
-    } finally {
-      setTimeout(() => setTestStatus(null), 3000)
-    }
   }
 
   // ── Commission Slab সেভ ─────────────────────────────────────
@@ -274,304 +204,6 @@ export default function AdminSettings() {
             onChange={e => set('default_vat_rate', e.target.value)} />
           <Input label="সর্বোচ্চ ডিসকাউন্ট (%)" type="number" value={settings.max_discount_percent || '20'}
             onChange={e => set('max_discount_percent', e.target.value)} />
-        </div>
-      </Card>
-
-      {/* SMS Gateway */}
-      <Card title="SMS গেটওয়ে কনফিগারেশন">
-        <div className="space-y-4">
-
-          {/* ✅ SMS Status Health Widget */}
-          {smsStatus && (
-            <div className={`rounded-xl p-3 flex items-center gap-3 border ${
-              smsStatus.healthy
-                ? 'bg-green-50 border-green-200'
-                : 'bg-red-50 border-red-200'
-            }`}>
-              <div className={`w-3 h-3 rounded-full flex-shrink-0 ${smsStatus.healthy ? 'bg-green-500' : 'bg-red-500 animate-pulse'}`} />
-              <div className="flex-1 min-w-0">
-                <p className={`text-xs font-semibold ${smsStatus.healthy ? 'text-green-700' : 'text-red-700'}`}>
-                  {smsStatus.healthy ? '✅ SMS সিস্টেম সচল' : '⚠️ SMS সিস্টেম সমস্যা আছে'}
-                </p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  আজ: {smsStatus.today?.sent_today || 0} পাঠানো
-                  {smsStatus.today?.failed_today > 0 && ` · ${smsStatus.today.failed_today} ব্যর্থ`}
-                  {' · '}{smsStatus.provider}
-                </p>
-                {smsStatus.missing_fields?.length > 0 && (
-                  <p className="text-xs text-red-500">❌ Missing: {smsStatus.missing_fields.join(', ')}</p>
-                )}
-              </div>
-              <button onClick={loadSmsStatus}
-                className="p-1.5 rounded-lg bg-white/70 text-gray-400 hover:text-gray-600">
-                <FiRefreshCw size={12} className={smsStatusLoading ? 'animate-spin' : ''} />
-              </button>
-            </div>
-          )}
-
-          {/* Provider Selector */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SMS প্রোভাইডার</label>
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { value: 'textbee',      label: '📲 TextBee',      hint: 'textbee.dev',          badge: 'নতুন' },
-                { value: 'softbarta',    label: '📱 SoftBarta',    hint: 'ms.softbarta.com',     badge: null },
-                { value: 'ssl_wireless', label: 'SSL Wireless',    hint: 'smsc.sslwireless.com', badge: null },
-                { value: 'twilio',       label: 'Twilio',          hint: 'api.twilio.com',       badge: null },
-                { value: 'custom',       label: 'Custom API',      hint: 'নিজস্ব URL',           badge: null },
-              ].map(p => (
-                <label
-                  key={p.value}
-                  className={`relative flex flex-col items-center justify-center border-2 rounded-xl p-3 cursor-pointer transition-all text-center
-                    ${(settings.sms_provider || 'softbarta') === p.value
-                      ? 'border-primary bg-primary/5 dark:bg-primary/10'
-                      : 'border-gray-200 dark:border-slate-600 hover:border-gray-300'}`}
-                >
-                  {p.badge && (
-                    <span className="absolute -top-2 right-2 text-[10px] bg-green-500 text-white px-1.5 py-0.5 rounded-full font-medium">
-                      {p.badge}
-                    </span>
-                  )}
-                  <input type="radio" name="sms_provider" value={p.value}
-                    checked={(settings.sms_provider || 'softbarta') === p.value}
-                    onChange={() => set('sms_provider', p.value)}
-                    className="sr-only"
-                  />
-                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{p.label}</span>
-                  <span className="text-xs text-gray-400 mt-0.5 font-mono">{p.hint}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* TextBee info */}
-          {settings.sms_provider === 'textbee' && (
-            <div className="rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 p-3 text-xs text-indigo-700 space-y-1">
-              <p className="font-semibold">📲 TextBee — Android SMS Gateway</p>
-              <p>API Key ও Device ID: <span className="font-mono">app.textbee.dev → Dashboard</span></p>
-            </div>
-          )}
-          {settings.sms_provider === 'textbee' && (
-            <Input label="Device ID *" placeholder="textbee.dev Dashboard থেকে নিন"
-              value={settings.sms_device_id || ''} onChange={e => set('sms_device_id', e.target.value)} />
-          )}
-          {(settings.sms_provider || 'softbarta') === 'softbarta' && (
-            <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-xs text-blue-700 space-y-1">
-              <p className="font-semibold">📱 SoftBarta Android SMS Gateway</p>
-              <p>API Key: <span className="font-mono">ms.softbarta.com → API মেনু</span></p>
-            </div>
-          )}
-          {(settings.sms_provider || 'softbarta') === 'softbarta' && (
-            <Input label="Device ID (ঐচ্ছিক)" placeholder="খালি রাখলে যেকোনো device"
-              value={settings.sms_device_id || ''} onChange={e => set('sms_device_id', e.target.value)} />
-          )}
-          {settings.sms_provider === 'custom' && (
-            <Input label="Custom API URL" placeholder="https://your-sms-api.com/send"
-              value={settings.sms_custom_url || ''} onChange={e => set('sms_custom_url', e.target.value)}
-              hint="POST request: {api_token, mobile, message}" />
-          )}
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                API Key / Token
-                {!smsKeyDirty && settings.sms_api_key && (
-                  <span className="ml-2 inline-flex items-center gap-1 text-xs text-green-600 font-normal">
-                    <FiCheckCircle className="text-xs" /> সেট করা আছে
-                  </span>
-                )}
-              </label>
-              <input
-                type="password"
-                placeholder={settings.sms_api_key ? '••••••••••••  (অপরিবর্তিত)' : 'আপনার SMS API Key দিন'}
-                value={smsApiKey}
-                onChange={e => { setSmsApiKey(e.target.value); setSmsKeyDirty(true) }}
-                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-primary font-mono"
-              />
-              <p className="mt-1 text-xs text-gray-400">এনক্রিপ্ট করে সংরক্ষণ হয়।</p>
-            </div>
-            <Input label="Sender ID / SID" placeholder="ZovoriX"
-              value={settings.sms_sender_id || ''} onChange={e => set('sms_sender_id', e.target.value)}
-              hint="SSL Wireless-এ অনুমোদিত SID" />
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">SMS সিস্টেম</label>
-              <div className="flex gap-3 mt-1">
-                {['true', 'false'].map(v => (
-                  <label key={v} className="flex items-center gap-2 cursor-pointer">
-                    <input type="radio" name="sms_enabled" value={v}
-                      checked={(settings.sms_enabled ?? 'true') === v}
-                      onChange={() => set('sms_enabled', v)}
-                      className="accent-primary"
-                    />
-                    <span className="text-sm">{v === 'true' ? '✅ চালু' : '⛔ বন্ধ'}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* ✅ Test SMS — type-specific (Problem 4 fix) */}
-          <div className="border-t border-gray-100 pt-4">
-            <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-              <FiMessageSquare /> টেস্ট SMS পাঠান
-            </p>
-            {/* Type Selector */}
-            <div className="mb-3">
-              <p className="text-xs text-gray-500 mb-2">টেস্টের ধরন বেছে নিন:</p>
-              <div className="flex gap-3 flex-wrap">
-                {[
-                  { value: 'test',    label: '📩 সাধারণ' },
-                  { value: 'otp',     label: '🔐 OTP' },
-                  { value: 'invoice', label: '🧾 Invoice' },
-                  { value: 'login',   label: '🔑 Login' },
-                ].map(t => (
-                  <label key={t.value} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border cursor-pointer text-sm transition-all ${
-                    testType === t.value
-                      ? 'border-primary bg-primary/5 text-primary font-semibold'
-                      : 'border-gray-200 text-gray-500'
-                  }`}>
-                    <input type="radio" name="test_type" value={t.value}
-                      checked={testType === t.value}
-                      onChange={() => setTestType(t.value)}
-                      className="sr-only"
-                    />
-                    {t.label}
-                  </label>
-                ))}
-              </div>
-            </div>
-            {/* Phone Input + Send */}
-            <div className="flex gap-2">
-              <input
-                type="tel"
-                placeholder="01XXXXXXXXX"
-                value={testPhone}
-                onChange={e => setTestPhone(e.target.value)}
-                className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:border-primary"
-              />
-              <button
-                onClick={sendTestSms}
-                disabled={testStatus === 'sending'}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all
-                  ${testStatus === 'success' ? 'bg-green-500 text-white'
-                  : testStatus === 'error'   ? 'bg-red-500 text-white'
-                  : 'bg-primary text-white hover:bg-primary/90'} disabled:opacity-60`}
-              >
-                {testStatus === 'sending' && <FiLoader className="animate-spin" />}
-                {testStatus === 'success' && <FiCheckCircle />}
-                {testStatus === 'error'   && <FiAlertCircle />}
-                {!testStatus && <FiMessageSquare />}
-                {testStatus === 'sending' ? 'পাঠানো হচ্ছে...'
-                  : testStatus === 'success' ? 'সফল!'
-                  : testStatus === 'error'   ? 'ব্যর্থ!'
-                  : 'পাঠান'}
-              </button>
-            </div>
-            <p className="mt-1.5 text-xs text-gray-400">সেভ করার পর টেস্ট করুন।</p>
-          </div>
-        </div>
-      </Card>
-
-      {/* ✅ SMS Logs (নতুন) */}
-      <Card title="SMS লগ">
-        <div className="space-y-3">
-          {/* Filters */}
-          <div className="flex gap-2">
-            <select
-              value={smsLogsFilter.status}
-              onChange={e => setSmsLogsFilter(p => ({ ...p, status: e.target.value }))}
-              className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:border-primary"
-            >
-              <option value="">সব স্ট্যাটাস</option>
-              <option value="sent">পাঠানো ✅</option>
-              <option value="failed">ব্যর্থ ❌</option>
-              <option value="disabled">বন্ধ ⛔</option>
-              <option value="dev">Dev Mode</option>
-            </select>
-            <select
-              value={smsLogsFilter.type}
-              onChange={e => setSmsLogsFilter(p => ({ ...p, type: e.target.value }))}
-              className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white focus:outline-none focus:border-primary"
-            >
-              <option value="">সব ধরন</option>
-              <option value="otp">OTP</option>
-              <option value="invoice">Invoice</option>
-              <option value="login">Login</option>
-              <option value="test">Test</option>
-            </select>
-            <button
-              onClick={() => loadSmsLogs(1)}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-white text-sm font-medium"
-            >
-              <FiList size={14} /> দেখুন
-            </button>
-          </div>
-
-          {!logsLoaded ? (
-            <p className="text-center text-sm text-gray-400 py-4">
-              ফিল্টার বেছে "দেখুন" বাটনে ক্লিক করুন।
-            </p>
-          ) : smsLogsLoading ? (
-            <div className="space-y-2">
-              {[...Array(4)].map((_, i) => (
-                <div key={i} className="h-12 bg-gray-100 rounded-xl animate-pulse" />
-              ))}
-            </div>
-          ) : smsLogs.length === 0 ? (
-            <p className="text-center text-sm text-gray-400 py-6">কোনো লগ পাওয়া যায়নি।</p>
-          ) : (
-            <div className="space-y-2">
-              {smsLogs.map(log => (
-                <div key={log.id}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-50 border border-gray-100">
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                    log.status === 'sent' ? 'bg-green-500' :
-                    log.status === 'failed' ? 'bg-red-500' : 'bg-gray-400'
-                  }`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-700">{log.phone}</p>
-                    <p className="text-xs text-gray-400">{log.type} · {log.provider}</p>
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className={`text-xs font-bold ${
-                      log.status === 'sent' ? 'text-green-600' :
-                      log.status === 'failed' ? 'text-red-500' : 'text-gray-400'
-                    }`}>
-                      {log.status === 'sent' ? '✅ সফল' : log.status === 'failed' ? '❌ ব্যর্থ' : log.status}
-                    </p>
-                    <p className="text-[11px] text-gray-400">
-                      {new Date(log.sent_at).toLocaleString('bn-BD', {
-                        hour: '2-digit', minute: '2-digit', month: 'short', day: 'numeric'
-                      })}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {/* Pagination */}
-              {smsLogsMeta.totalPages > 1 && (
-                <div className="flex items-center justify-between pt-2">
-                  <button
-                    disabled={smsLogsPage <= 1}
-                    onClick={() => loadSmsLogs(smsLogsPage - 1)}
-                    className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-medium disabled:opacity-40"
-                  >
-                    ← আগে
-                  </button>
-                  <span className="text-xs text-gray-400">
-                    পৃষ্ঠা {smsLogsPage} / {smsLogsMeta.totalPages}
-                    {' '}({smsLogsMeta.total} টি মোট)
-                  </span>
-                  <button
-                    disabled={smsLogsPage >= smsLogsMeta.totalPages}
-                    onClick={() => loadSmsLogs(smsLogsPage + 1)}
-                    className="px-4 py-2 rounded-xl bg-gray-100 text-gray-600 text-xs font-medium disabled:opacity-40"
-                  >
-                    পরে →
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       </Card>
 

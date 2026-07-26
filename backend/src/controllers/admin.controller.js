@@ -1,6 +1,5 @@
 const { query } = require('../config/db');
 const { encrypt } = require('../config/encryption');
-const smsService = require('../services/sms.service');
 const logger = require('../config/logger');
 
 // ============================================================
@@ -46,14 +45,12 @@ const SETTINGS_GROUPS = {
         label: 'কোম্পানি তথ্য',
         keys: ['company_name', 'company_address', 'company_phone', 'company_email'],
     },
-    sms: {
-        label: 'SMS গেটওয়ে',
-        keys: [
-            'sms_api_key', 'sms_provider', 'sms_sender_id',
-            'sms_device_id', 'sms_enabled', 'sms_custom_url',
-        ],
-    },
 };
+
+// ✅ Phase 1 (26 July 2026): এই key গুলো এখন platform-level (Super Admin
+// panel-এ, platform_settings টেবিলে) — tenant admin আর এগুলো GET/PUT
+// কোনোভাবেই করতে পারবে না, এমনকি সরাসরি API call করলেও।
+const PLATFORM_ONLY_KEY_PREFIXES = ['sms_api_key', 'sms_provider', 'sms_sender_id', 'sms_device_id', 'sms_enabled', 'sms_custom_url', 'email_host', 'email_port', 'email_user', 'email_pass', 'email_from', 'email_enabled'];
 
 // ============================================================
 // AUDIT LOG CATEGORIES — action গুলো বিভাগ অনুযায়ী ভাগ
@@ -104,8 +101,10 @@ const getSettings = async (req, res) => {
             [req.tenantId]
         );
 
-        // সংবেদনশীল keys মাস্ক করো
-        const MASKED_KEYS = ['sms_api_key'];
+        // সংবেদনশীল keys মাস্ক করো (আপাতত tenant-level system_settings-এ
+        // কোনো sensitive key নেই — sms/email gateway platform_settings-এ সরানো
+        // হয়েছে — তবু ভবিষ্যতের জন্য মাস্কিং লজিকটা রাখা হলো)
+        const MASKED_KEYS = [];
         const flat = result.rows.map(s => ({
             ...s,
             value: MASKED_KEYS.includes(s.key) && s.value
@@ -163,11 +162,16 @@ const updateSettings = async (req, res) => {
             });
         }
 
-        // Encrypt করার keys
-        const ENCRYPT_KEYS = ['sms_api_key'];
+        // Encrypt করার keys (আপাতত কোনোটা নেই — sms_api_key platform_settings-এ সরানো হয়েছে)
+        const ENCRYPT_KEYS = [];
 
         for (const setting of settings) {
             if (!setting.key || setting.value === undefined) continue;
+
+            // ✅ Phase 1 (26 July 2026): sms_*/email_* gateway config এখন
+            // Super Admin-only (platform_settings) — tenant admin এই এন্ডপয়েন্ট
+            // দিয়ে সরাসরি POST করলেও চুপচাপ স্কিপ করা হলো।
+            if (PLATFORM_ONLY_KEY_PREFIXES.includes(setting.key)) continue;
 
             let value = setting.value;
 
@@ -190,16 +194,13 @@ const updateSettings = async (req, res) => {
         // Audit log
         const safeSettings = settings.map(s => ({
             ...s,
-            value: ['sms_api_key'].includes(s.key) ? '***' : s.value
+            value: PLATFORM_ONLY_KEY_PREFIXES.includes(s.key) ? '***' : s.value
         }));
 
         await query(
             `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'UPDATE_SETTINGS', 'system_settings', $2, $3)`,
             [req.user.id, JSON.stringify(safeSettings), req.tenantId]
         );
-
-        // SMS config cache বাতিল করো
-        smsService.clearSmsConfigCache();
 
         return res.status(200).json({
             success: true,
@@ -209,120 +210,6 @@ const updateSettings = async (req, res) => {
     } catch (error) {
         logger.error('❌ Update Settings Error:', error.message);
         return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
-    }
-};
-
-// ============================================================
-// TEST SMS GATEWAY
-// POST /api/admin/sms-test
-// ============================================================
-
-// ============================================================
-// SMS STATUS
-// GET /api/admin/sms-status
-// ============================================================
-const getSmsStatus = async (req, res) => {
-    try {
-        const config = await smsService.getSmsConfig();
-
-        const REQUIRED = {
-            softbarta:    ['apiKey'],
-            ssl_wireless: ['apiKey', 'senderId'],
-            twilio:       ['apiKey', 'senderId'],
-            textbee:      ['apiKey', 'deviceId'],
-            custom:       ['apiKey', 'customUrl'],
-        };
-
-        const required  = REQUIRED[config.provider] || ['apiKey'];
-        const missing   = required.filter(f => !config[f]);
-        const isHealthy = config.enabled && missing.length === 0;
-
-        const todayStats = await query(`
-            SELECT
-                COUNT(*)                                     AS total_today,
-                COUNT(*) FILTER (WHERE status = 'sent')     AS sent_today,
-                COUNT(*) FILTER (WHERE status = 'failed')   AS failed_today
-            FROM sms_logs WHERE sent_at::date = CURRENT_DATE
-        `);
-
-        return res.status(200).json({
-            success: true,
-            data: {
-                provider:       config.provider,
-                enabled:        config.enabled,
-                healthy:        isHealthy,
-                has_api_key:    !!config.apiKey,
-                has_device_id:  !!config.deviceId,
-                has_sender_id:  !!config.senderId,
-                has_custom_url: !!config.customUrl,
-                missing_fields: missing,
-                today:          todayStats.rows[0],
-            },
-        });
-
-    } catch (error) {
-        logger.error('❌ SMS Status Error:', error.message);
-        return res.status(500).json({ success: false, message: 'SMS অবস্থা আনতে সমস্যা হয়েছে।' });
-    }
-};
-
-// ============================================================
-// SMS TEST (Enhanced)
-// POST /api/admin/sms-test
-// Body: { phone, type?, provider? }
-// type     → test | otp | invoice | login
-// provider → softbarta | ssl_wireless | twilio | textbee | custom
-// ============================================================
-const testSmsGateway = async (req, res) => {
-    try {
-        const { phone, type = 'test', provider } = req.body;
-
-        if (!phone) {
-            return res.status(400).json({ success: false, message: 'phone নম্বর দিন।' });
-        }
-
-        // provider override হলে সাময়িকভাবে cache বাতিল করে নতুন config লোড হবে
-        if (provider) {
-            await query(`UPDATE system_settings SET value = $1 WHERE key = 'sms_provider' AND tenant_id = $2`, [provider, req.tenantId]);
-            smsService.clearSmsConfigCache();
-        }
-
-        const meta = { type: `test_${type}`, sent_by: req.user.id };
-        let result;
-
-        switch (type) {
-            case 'otp':
-                result = await smsService.sendOTP(phone, '123456', 'টেস্ট দোকান', meta);
-                break;
-            case 'invoice':
-                result = await smsService.sendInvoice(phone, 'INV-TEST-001', 5000, 'টেস্ট দোকান', meta);
-                break;
-            case 'login':
-                result = await smsService.sendLoginCredentials(phone, 'SR-0001', 'Pass@123', 'পরীক্ষার্থী', meta);
-                break;
-            default:
-                result = await smsService.sendSMS(
-                    phone,
-                    `ZovoriX\nটেস্ট SMS সফল!\nSMS গেটওয়ে সঠিকভাবে কাজ করছে।\nসময়: ${new Date().toLocaleTimeString('bn-BD')}`,
-                    meta
-                );
-        }
-
-        const config = await smsService.getSmsConfig();
-
-        return res.status(result.success ? 200 : 502).json({
-            success:       result.success,
-            message:       result.success ? 'SMS পাঠানো সফল।' : 'SMS পাঠানো ব্যর্থ।',
-            provider_used: config.provider,
-            type_sent:     type,
-            disabled:      result.disabled || false,
-            dev_mode:      result.dev      || false,
-            error:         result.error    || null,
-        });
-
-    } catch (error) {
-        logger.error('❌ SMS Test Error:', error.message);
-        return res.status(500).json({ success: false, message: 'সার্ভার সমস্যা।' });
     }
 };
 
@@ -687,8 +574,6 @@ module.exports = {
     updateSettings,
     getAuditLogs,
     getSystemStats,
-    getSmsStatus,
-    testSmsGateway,
     getSmsLogs,
     getPublicSettings
 };

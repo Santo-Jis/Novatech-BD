@@ -24,8 +24,10 @@ const getEmailConfig = async () => {
     ];
 
     try {
+        // ✅ FIX (Phase 1, 26 July 2026): SMS-এর মতোই — email gateway এখন
+        // platform-level shared config, platform_settings (গ্লোবাল) থেকে পড়া হয়।
         const result = await query(
-            `SELECT key, value FROM system_settings WHERE key = ANY($1)`,
+            `SELECT key, value FROM platform_settings WHERE key = ANY($1)`,
             [EMAIL_KEYS]
         );
         const raw = {};

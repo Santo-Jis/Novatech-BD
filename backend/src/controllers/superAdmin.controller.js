@@ -712,6 +712,184 @@ const updateTenantSettings = async (req, res) => {
   }
 };
 
+// ============================================================
+// ✅ Phase 1 (26 July 2026): PLATFORM SETTINGS — SMS/Email গেটওয়ে
+// এখন প্রতি-tenant নয়, পুরো প্ল্যাটফর্মের জন্য একটাই শেয়ার্ড কনফিগ
+// (platform_settings টেবিল, tenant_id নেই)। শুধু Super Admin (owner)
+// এখান থেকে বদলাতে পারবে — tenant admin panel থেকে সরিয়ে ফেলা হয়েছে।
+// ============================================================
+const PLATFORM_SETTINGS_MASKED_KEYS = ['sms_api_key', 'email_pass'];
+
+const getPlatformSettings = async (req, res) => {
+  try {
+    const result = await query(
+      `SELECT id, key, value, description, updated_at FROM platform_settings ORDER BY key`
+    );
+
+    const data = result.rows.map((s) => ({
+      ...s,
+      value: PLATFORM_SETTINGS_MASKED_KEYS.includes(s.key) && s.value
+        ? s.value.slice(0, 4) + '****'
+        : s.value,
+    }));
+
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[superAdmin.getPlatformSettings]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const updatePlatformSettings = async (req, res) => {
+  try {
+    const { settings } = req.body;
+
+    if (!settings || !Array.isArray(settings) || settings.length === 0) {
+      return res.status(400).json({ success: false, message: 'settings array দিন: [{key, value}]' });
+    }
+
+    for (const s of settings) {
+      if (!s.key || s.value === undefined) continue;
+      // masked value (****) এলে সেটা আসল secret না — skip করো, পুরনোটাই থাকুক
+      if (PLATFORM_SETTINGS_MASKED_KEYS.includes(s.key) && String(s.value).includes('****')) continue;
+
+      await query(
+        `INSERT INTO platform_settings (key, value, updated_by, updated_at)
+         VALUES ($1, $2, NULL, NOW())
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+        [s.key, String(s.value)]
+      );
+    }
+
+    // SMS/Email config cache বাতিল — পরের send থেকেই নতুন মান কাজে লাগবে
+    require('../services/sms.service').clearSmsConfigCache();
+
+    await query(
+      `INSERT INTO platform_audit_log (staff_id, staff_email, action, target_type, target_id, details, ip_address)
+       VALUES (NULL, 'super-admin-key', 'platform_settings.update', 'platform_settings', NULL, $1, $2)`,
+      [
+        JSON.stringify(settings.map((s) => ({
+          key: s.key,
+          value: PLATFORM_SETTINGS_MASKED_KEYS.includes(s.key) ? '***' : s.value,
+        }))),
+        req.ip || null,
+      ]
+    );
+
+    return res.json({ success: true, message: 'প্ল্যাটফর্ম সেটিংস আপডেট হয়েছে' });
+  } catch (err) {
+    console.error('[superAdmin.updatePlatformSettings]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ============================================================
+// SMS STATUS / TEST — admin.controller.js থেকে Phase 1-এ সরানো হলো,
+// যেহেতু SMS gateway এখন tenant-নির্ভর না, পুরো প্ল্যাটফর্মের জন্য একটাই।
+// ============================================================
+const getSmsStatus = async (req, res) => {
+  try {
+    const smsService = require('../services/sms.service');
+    const config = await smsService.getSmsConfig();
+
+    const REQUIRED = {
+      softbarta:    ['apiKey'],
+      ssl_wireless: ['apiKey', 'senderId'],
+      twilio:       ['apiKey', 'senderId'],
+      textbee:      ['apiKey', 'deviceId'],
+      custom:       ['apiKey', 'customUrl'],
+    };
+
+    const required  = REQUIRED[config.provider] || ['apiKey'];
+    const missing   = required.filter((f) => !config[f]);
+    const isHealthy = config.enabled && missing.length === 0;
+
+    const todayStats = await query(`
+        SELECT
+            COUNT(*)                                   AS total_today,
+            COUNT(*) FILTER (WHERE status = 'sent')   AS sent_today,
+            COUNT(*) FILTER (WHERE status = 'failed') AS failed_today
+        FROM sms_logs WHERE sent_at::date = CURRENT_DATE
+    `);
+
+    return res.json({
+      success: true,
+      data: {
+        provider:       config.provider,
+        enabled:        config.enabled,
+        healthy:        isHealthy,
+        has_api_key:    !!config.apiKey,
+        has_device_id:  !!config.deviceId,
+        has_sender_id:  !!config.senderId,
+        has_custom_url: !!config.customUrl,
+        missing_fields: missing,
+        today:          todayStats.rows[0],
+      },
+    });
+  } catch (err) {
+    console.error('[superAdmin.getSmsStatus]', err);
+    return res.status(500).json({ success: false, message: 'SMS অবস্থা আনতে সমস্যা হয়েছে।' });
+  }
+};
+
+// Body: { phone, type?: test|otp|invoice|login, provider? }
+const testSmsGateway = async (req, res) => {
+  try {
+    const smsService = require('../services/sms.service');
+    const { phone, type = 'test', provider } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'phone নম্বর দিন।' });
+    }
+
+    // provider override হলে global platform_settings-এ বসিয়ে cache বাতিল
+    if (provider) {
+      await query(
+        `INSERT INTO platform_settings (key, value, updated_at) VALUES ('sms_provider', $1, NOW())
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+        [provider]
+      );
+      smsService.clearSmsConfigCache();
+    }
+
+    const meta = { type: `test_${type}`, sent_by: 'super-admin' };
+    let result;
+
+    switch (type) {
+      case 'otp':
+        result = await smsService.sendOTP(phone, '123456', 'টেস্ট দোকান', meta);
+        break;
+      case 'invoice':
+        result = await smsService.sendInvoice(phone, 'INV-TEST-001', 5000, 'টেস্ট দোকান', meta);
+        break;
+      case 'login':
+        result = await smsService.sendLoginCredentials(phone, 'SR-0001', 'Pass@123', 'পরীক্ষার্থী', meta);
+        break;
+      default:
+        result = await smsService.sendSMS(
+          phone,
+          `ZovoriX\nটেস্ট SMS সফল!\nSMS গেটওয়ে সঠিকভাবে কাজ করছে।\nসময়: ${new Date().toLocaleTimeString('bn-BD')}`,
+          meta
+        );
+    }
+
+    const config = await smsService.getSmsConfig();
+
+    return res.status(result.success ? 200 : 502).json({
+      success:       result.success,
+      message:       result.success ? 'SMS পাঠানো সফল।' : 'SMS পাঠানো ব্যর্থ।',
+      provider_used: config.provider,
+      type_sent:     type,
+      disabled:      result.disabled || false,
+      dev_mode:      result.dev      || false,
+      error:         result.error    || null,
+    });
+  } catch (err) {
+    console.error('[superAdmin.testSmsGateway]', err);
+    return res.status(500).json({ success: false, message: 'সার্ভার সমস্যা।' });
+  }
+};
+
 module.exports = {
   getAllTenants,
   createTenant,
@@ -729,4 +907,8 @@ module.exports = {
   resetStaffPassword,
   getTenantSettings,
   updateTenantSettings,
+  getPlatformSettings,
+  updatePlatformSettings,
+  getSmsStatus,
+  testSmsGateway,
 };

@@ -27,8 +27,12 @@ const getSmsConfig = async () => {
         'sms_api_key', 'sms_sender_id', 'sms_provider',
         'sms_custom_url', 'sms_enabled', 'sms_device_id'
     ];
+    // ✅ FIX (Phase 1, 26 July 2026): sms gateway এখন সব কোম্পানির জন্য
+    // একটাই shared/platform-level config — platform_settings (গ্লোবাল,
+    // tenant_id নেই) থেকে পড়া হয়, আগের মতো প্রতি-tenant system_settings
+    // থেকে না (যেটা একাধিক tenant-এ কপি হয়ে যাওয়ায় অস্পষ্ট হয়ে গিয়েছিল)।
     const result = await query(
-        `SELECT key, value FROM system_settings WHERE key = ANY($1)`,
+        `SELECT key, value FROM platform_settings WHERE key = ANY($1)`,
         [SMS_KEYS]
     );
 
