@@ -205,6 +205,14 @@ const registerCompany = async (req, res) => {
         [newTenant.id]
       );
 
+      // ৫. ওয়ালেট তৈরি (Phase 2, 26 July 2026) — ০ ব্যালেন্সে শুরু,
+      // পরে Super Admin ম্যানুয়ালি রিচার্জ করে দেবে।
+      await client.query(
+        `INSERT INTO tenant_wallets (tenant_id, balance_paisa) VALUES ($1, 0)
+         ON CONFLICT (tenant_id) DO NOTHING`,
+        [newTenant.id]
+      );
+
       return newTenant;
     });
 
