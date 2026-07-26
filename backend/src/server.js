@@ -196,6 +196,7 @@ const batteryRoutes             = require('./routes/battery.routes');          /
 const onboardingRoutes          = require('./routes/onboarding.routes');       // ← নতুন (SaaS: company register)
 const superAdminRoutes          = require('./routes/superAdmin.routes');       // ← নতুন (SaaS: super admin panel)
 const platformAuthRoutes    = require('./routes/platformAuth.routes');
+const platformTwoFactorRoutes = require('./routes/platformTwoFactor.routes');
 const platformSupportRoutes = require('./routes/platformSupport.routes');
 const platformTenantRoutes  = require('./routes/platformTenant.routes');
 const platformStaffRoutes   = require('./routes/platformStaff.routes');
@@ -248,6 +249,7 @@ app.use('/api/battery',                 batteryRoutes);        // ← নতু�
 app.use('/api',          onboardingRoutes);   // ← নতুন (SaaS): POST /api/register, GET /api/register/check-slug/:slug
 app.use('/superadmin/api', superAdminRoutes); // ← নতুন (SaaS): X-Super-Admin-Key দিয়ে protected, /api ও tenant middleware-এর বাইরে
 app.use('/platform/api/auth', platformAuthRoutes);
+app.use('/platform/api/auth/2fa', platformTwoFactorRoutes); // ← নতুন: TOTP 2FA setup/status/disable
 app.use('/platform/api/support', platformSupportRoutes);
 app.use('/platform/api/tenants', platformTenantRoutes); // ← নতুন (Support Panel): read-only tenant list/detail, full+support scope
 app.use('/platform/api/staff', platformStaffRoutes); // ← নতুন: platform_staff account management, full scope only

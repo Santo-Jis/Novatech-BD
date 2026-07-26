@@ -63,6 +63,7 @@ const PlatformUserLookup   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages
 const PlatformTickets      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/Tickets'))
 const PlatformAuditLog     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/AuditLog'))
 const PlatformStaffManagement = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/StaffManagement'))
+const PlatformSecuritySettings = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/SecuritySettings'))
 
 // ── Super Admin Panel — platform owner-এর জন্য, secret-key auth (JWT না) ──
 const SuperAdminLayout      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/layouts/SuperAdminLayout'))
@@ -425,6 +426,7 @@ function AppWithPermissions() {
                 <Route path="users"        element={<PlatformUserLookup />} />
                 <Route path="tickets"      element={<PlatformTickets />} />
                 <Route path="audit-log"    element={<PlatformAuditLog />} />
+                <Route path="security"     element={<PlatformSecuritySettings />} />
                 <Route path="staff"        element={<PlatformStaffManagement />} />
               </Route>
 

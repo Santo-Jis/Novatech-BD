@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { FiHome, FiBriefcase, FiSearch, FiLifeBuoy, FiMenu, FiX, FiLogOut, FiShield, FiClock, FiUsers } from 'react-icons/fi'
+import { FiHome, FiBriefcase, FiSearch, FiLifeBuoy, FiMenu, FiX, FiLogOut, FiShield, FiClock, FiUsers, FiLock } from 'react-icons/fi'
 import { usePlatformAuthStore } from '../store/platformAuth.store'
 import platformApi from '../api/platformApi'
 import GlobalSearch from '../components/GlobalSearch'
@@ -13,6 +13,7 @@ const baseNavItems = [
   { path: '/platform/users', icon: <FiSearch />, label: 'ইউজার লুকআপ' },
   { path: '/platform/tickets', icon: <FiLifeBuoy />, label: 'সাপোর্ট টিকেট' },
   { path: '/platform/audit-log', icon: <FiClock />, label: 'Audit Log' },
+  { path: '/platform/security', icon: <FiLock />, label: 'নিরাপত্তা (2FA)' },
 ]
 
 const fullOnlyNavItems = [

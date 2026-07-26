@@ -12,6 +12,17 @@ const loginLimiter = rateLimit({
     legacyHeaders: false,
 });
 
+// 2FA কোড/recovery code brute-force ঠেকাতে আলাদা (একটু বেশি lenient —
+// টাইপো হতেই পারে, কিন্তু ৬-ডিজিট কোড brute-force করার মতো loose না)
+const twoFactorLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000, // ১০ মিনিট
+    max: 8,
+    message: { success: false, message: 'অনেকবার ভুল কোড চেষ্টা হয়েছে। ১০ মিনিট পর আবার চেষ্টা করুন।' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 router.post('/login', loginLimiter, ctrl.login);
+router.post('/verify-2fa', twoFactorLimiter, ctrl.verify2FA);
 
 module.exports = router;
