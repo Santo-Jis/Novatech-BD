@@ -17,7 +17,19 @@ const {
     executeTool,
     buildSystemPrompt,
     parseToolCall,
+    getConnectedCompanies,
 } = require('../services/customerAiChat.service');
+
+// ── Helper: portal customer_id থেকে person_id বের করো ──
+// ✅ NEW (Session 20): customerPortalConnection.controller.js-এর
+// getPersonId-এর মতোই — multi-company aggregate-এর জন্য দরকার
+const getPersonId = async (customerId) => {
+    const r = await query(`SELECT person_id FROM customers WHERE id = $1`, [customerId]);
+    if (r.rows.length === 0 || !r.rows[0].person_id) {
+        throw new Error('PERSON_NOT_LINKED');
+    }
+    return r.rows[0].person_id;
+};
 
 // ── Save to Firebase (non-critical) ─────────────────────────
 const saveToLog = async (customerId, message, reply) => {
@@ -63,7 +75,22 @@ const customerAiChat = async (req, res) => {
         }
 
         const customerInfo = customerResult.rows[0];
-        const systemPrompt = buildSystemPrompt(customerInfo);
+
+        // ✅ NEW (Session 20): personId + কানেক্টেড কোম্পানি তালিকা —
+        // multi-company aggregate tool executor ও system prompt দুটোতেই লাগবে
+        let personId;
+        let companies = [];
+        try {
+            personId  = await getPersonId(customerId);
+            companies = await getConnectedCompanies(personId);
+        } catch (err) {
+            if (err.message === 'PERSON_NOT_LINKED') {
+                return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+            }
+            throw err;
+        }
+
+        const systemPrompt = buildSystemPrompt(customerInfo, companies);
 
         // ── Pass 1: Tool Detection ────────────────────────────
         const toolListText = CUSTOMER_TOOLS.map(t => `- ${t.name}: ${t.description}`).join('\n');
@@ -87,7 +114,7 @@ const customerAiChat = async (req, res) => {
         // ── Tool Execution ────────────────────────────────────
         if (toolName) {
             try {
-                toolData = await executeTool(toolName, customerId);
+                toolData = await executeTool(toolName, personId);
             } catch (err) {
                 logger.error(`❌ Tool "${toolName}" error:`, err.message);
                 toolData = { error: 'তথ্য আনতে সমস্যা।' };
