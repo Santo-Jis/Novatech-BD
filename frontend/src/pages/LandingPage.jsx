@@ -312,6 +312,14 @@ export default function LandingPage() {
         >
           যোগাযোগ
         </button>
+        <button
+          onClick={() => navigate('/pricing')}
+          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+        >
+          প্রাইসিং
+        </button>
       </div>
 
       {/* Hero */}
@@ -602,6 +610,9 @@ export default function LandingPage() {
                 </button>
                 <button onClick={() => navigate('/apply/sr')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   SR আবেদন করুন
+                </button>
+                <button onClick={() => navigate('/pricing')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  প্রাইসিং
                 </button>
                 <button onClick={() => navigate('/privacy-policy')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   Privacy Policy

@@ -1,17 +1,18 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  FiShoppingBag, FiSettings, FiChevronDown, FiArrowRight,
-  FiPhone, FiMail, FiMessageCircle, FiTarget, FiEye,
-  FiUsers, FiShield, FiTrendingUp, FiMapPin,
+  FiShoppingBag, FiSettings, FiChevronDown, FiCheck, FiX, FiMapPin,
 } from 'react-icons/fi'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
+import { PLAN_ORDER, PLANS, AI_PAY_AS_YOU_GO, COMMITMENT_DISCOUNTS, formatTaka, applyDiscount } from '../constants/planPricing'
+import { FEATURE_CATEGORIES } from '../constants/planFeatures'
 
 // ============================================================
-// About Us — ZovoriX
-// ল্যান্ডিং পেইজের সাথে সামঞ্জস্যপূর্ণ ডিজাইন সিস্টেম ব্যবহার করা হয়েছে
+// Pricing — ZovoriX
+// ল্যান্ডিং পেইজের ডিজাইন সিস্টেমের সাথে সামঞ্জস্যপূর্ণ, লেআউট-অনুপ্রেরণা
+// Claude.com/pricing (Compare features across plans) থেকে নেওয়া।
 // ============================================================
 
 const T = {
@@ -37,10 +38,43 @@ const T = {
   fontMono: "'IBM Plex Mono',monospace",
 }
 
-export default function AboutUs() {
+// true→চেক, false→ক্রস, string→নোট হিসেবে দেখাবে
+function Cell({ value }) {
+  if (value === true) {
+    return <FiCheck style={{ fontSize: '16px', color: T.accent600 }} aria-label="আছে" />
+  }
+  if (value === false) {
+    return <FiX style={{ fontSize: '15px', color: T.textMuted, opacity: 0.5 }} aria-label="নাই" />
+  }
+  return (
+    <span style={{
+      fontSize: '11px', fontFamily: T.fontMono, color: T.textSecondary,
+      background: T.bgAlt, border: `1px solid ${T.borderDefault}`,
+      borderRadius: '6px', padding: '2px 7px', whiteSpace: 'nowrap',
+    }}>
+      {value}
+    </span>
+  )
+}
+
+export default function Pricing() {
   const navigate = useNavigate()
   const [mgmtOpen, setMgmtOpen] = useState(false)
   const dropRef = useRef(null)
+
+  // মাসিক / ১ বছর / ২ বছর বিলিং সাইকেল টগল
+  const [cycle, setCycle] = useState('monthly') // 'monthly' | '1yr' | '2yr'
+  const cycleYears = cycle === '1yr' ? 1 : cycle === '2yr' ? 2 : 0
+
+  // ফিচার-ম্যাট্রিক্সের কোন ক্যাটাগরি খোলা আছে
+  const [openCats, setOpenCats] = useState(() => new Set([FEATURE_CATEGORIES[0].id]))
+  const toggleCat = (id) => {
+    setOpenCats(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
 
   useEffect(() => {
     const handler = (e) => {
@@ -56,20 +90,14 @@ export default function AboutUs() {
     { label: 'Admin লগইন',   role: 'admin',   icon: '⚙️', desc: 'অ্যাডমিন প্যানেল' },
   ]
 
-  const values = [
-    { icon: <FiEye />,        title: 'স্বচ্ছতা',        desc: 'প্রতিটি অর্ডার, পেমেন্ট ও SR-এর কার্যক্রম সবার জন্য স্পষ্ট ও দৃশ্যমান' },
-    { icon: <FiTrendingUp />, title: 'ডেটা-নির্ভর সিদ্ধান্ত', desc: 'অনুমান নয় — সঠিক তথ্য দেখে ব্যবসায়িক সিদ্ধান্ত নেওয়ার সুযোগ' },
-    { icon: <FiUsers />,      title: 'মানুষের জন্য সহজ', desc: 'জটিল সিস্টেম নয় — যে কেউ সহজে শিখে ব্যবহার করতে পারার মতো ডিজাইন' },
-    { icon: <FiShield />,     title: 'বিশ্বাসযোগ্যতা',   desc: 'এনক্রিপ্টেড ডেটা ও নিরাপদ অ্যাক্সেসের মাধ্যমে ব্যবসার তথ্য সুরক্ষিত রাখা' },
-  ]
-
   return (
     <div style={{ minHeight: '100vh', background: T.bgBase, fontFamily: T.fontBody, color: T.textPrimary, overflowX: 'hidden' }}>
       <SEO
-        title="আমাদের সম্পর্কে"
-        description="ZovoriX-এর মিশন, ভিশন ও টিম সম্পর্কে জানুন — বিক্রয় ও ব্যবসা ব্যবস্থাপনায় আমরা কীভাবে বিশ্বাসযোগ্য প্ল্যাটফর্ম তৈরি করছি।"
-        path="/about"
+        title="প্রাইসিং"
+        description="ZovoriX-এর ৪টা প্ল্যান — Standard, Pro, Max ও ERP। যতজন ইউজার দরকার তত নিন, ফিচার দিয়ে প্ল্যান বাছাই করুন, কাস্টমার-কানেকশন লিমিট অনুযায়ী দাম।"
+        path="/pricing"
       />
+
       {/* Navbar */}
       <style>{`
         @media (max-width: 480px) {
@@ -87,6 +115,8 @@ export default function AboutUs() {
           .zx-brand-text { display: none !important; }
           .zx-btn-retailer, .zx-btn-mgmt { padding: 6px 7px !important; }
         }
+        .zx-plan-table th, .zx-plan-table td { vertical-align: middle; }
+        .zx-cat-row:hover { background: ${T.bgAlt}; }
       `}</style>
       <nav className="zx-navbar" style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -177,199 +207,248 @@ export default function AboutUs() {
         </div>
       </nav>
 
-      {/* Utility links bar — Home / About / Contact */}
+      {/* Utility links bar */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '24px',
         padding: '10px 24px', borderBottom: `1px solid ${T.borderDefault}`,
         background: T.bgAlt, flexWrap: 'wrap',
       }}>
-        <button
-          onClick={() => navigate('/landing')}
-          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
-          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
-        >
+        <button onClick={() => navigate('/landing')} style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = T.primary700} onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}>
           হোম
         </button>
-        <button
-          onClick={() => navigate('/about')}
-          style={{ background: 'none', border: 'none', padding: 0, color: T.primary700, fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody }}
-        >
+        <button onClick={() => navigate('/about')} style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = T.primary700} onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}>
           আমাদের সম্পর্কে
         </button>
-        <button
-          onClick={() => navigate('/contact')}
-          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
-          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
-        >
+        <button onClick={() => navigate('/contact')} style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = T.primary700} onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}>
           যোগাযোগ
         </button>
-        <button
-          onClick={() => navigate('/pricing')}
-          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
-          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
-        >
+        <button onClick={() => navigate('/pricing')} style={{ background: 'none', border: 'none', padding: 0, color: T.primary700, fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody }}>
           প্রাইসিং
         </button>
       </div>
 
-
       {/* Hero */}
-      <section style={{ textAlign: 'center', padding: '64px 24px 40px' }}>
+      <section style={{ textAlign: 'center', padding: '56px 24px 32px' }}>
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px',
           background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '20px',
           fontSize: '11px', fontFamily: T.fontMono, letterSpacing: '0.04em', textTransform: 'uppercase',
           color: T.textMuted, marginBottom: '24px',
         }}>
-          আমাদের গল্প
+          প্রাইসিং
         </div>
         <h1 style={{
           fontFamily: T.fontHead, fontSize: 'clamp(28px, 5.5vw, 44px)', fontWeight: 600,
           lineHeight: 1.3, margin: '0 auto 8px', maxWidth: '680px', color: T.primary700,
         }}>
-          ব্যবসাকে অন্ধকার থেকে<br />
-          <span style={{ color: T.accent600 }}>আলোয় আনার গল্প</span>
+          যতজন ইউজার লাগবে, নিন —<br />
+          <span style={{ color: T.accent600 }}>প্ল্যান বাছাই হবে ফিচার দিয়ে</span>
         </h1>
-        <p style={{ color: T.textSecondary, fontSize: '15.5px', maxWidth: '540px', margin: '24px auto 0', lineHeight: 1.8 }}>
-          হাতে-লেখা খাতা আর মুখে-মুখে হিসাব থেকে শুরু করে — একটি প্ল্যাটফর্মে
-          পুরো ব্যবসা দেখার জায়গা পর্যন্ত।
+        <p style={{ color: T.textSecondary, fontSize: '15.5px', maxWidth: '600px', margin: '20px auto 0', lineHeight: 1.8 }}>
+          ইউজার সংখ্যা কোনো লিমিট না — প্রতিটা প্ল্যানে যত ইচ্ছা SR, ম্যানেজার বা অ্যাডমিন যোগ করা যাবে,
+          প্রতি সিটের রেট অনুযায়ী। প্ল্যান আলাদা হয় ফিচার আর সর্বোচ্চ কাস্টমার-কানেকশন দিয়ে।
         </p>
-      </section>
 
-      {/* Story */}
-      <section style={{ padding: '8px 24px 64px', maxWidth: '720px', margin: '0 auto' }}>
+        {/* Billing cycle toggle */}
         <div style={{
-          background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '16px',
-          padding: '36px 32px', boxShadow: '0 1px 2px rgba(15,27,46,0.04)',
+          display: 'inline-flex', marginTop: '28px', background: T.bgSurface,
+          border: `1px solid ${T.borderDefault}`, borderRadius: '999px', padding: '4px',
         }}>
           {[
-            'রাত তখন ১১টা। বরিশালের একজন ডিস্ট্রিবিউটর তার খাতার পাতা উল্টাচ্ছেন — কার কাছে কত টাকা বাকি, কোন SR আজ কোন এলাকায় গিয়েছিল, কোন দোকানে মাল দেওয়া হয়েছে কিন্তু টাকা তোলা হয়নি — সব হিসাব মাথায় নিয়ে ঘুমাতে যান। পরদিন সকালে আবার সেই একই যুদ্ধ। SR ফোন করে বলে "স্যার, আমি মার্কেটে আছি" — কিন্তু আসলে কোথায় আছে, কী করছে, কতজন কাস্টমারের কাছে গিয়েছে — কিছুই জানার উপায় নেই। বিশ্বাসের উপর ভর করেই চলে পুরো ব্যবসা।',
-            'এই দৃশ্যটা কোনো একটা দোকানের একার গল্প না — বাংলাদেশের হাজারো ডিলার আর ডিস্ট্রিবিউটরের প্রতিদিনের বাস্তবতা। হাতে-লেখা খাতা, মুখে-মুখে হিসাব, আর "বিশ্বাস করে দেওয়া" পেমেন্ট — এই তিনটার উপর দাঁড়িয়ে থাকা একটা ব্যবসা যেকোনো সময় হোঁচট খেতে পারে। একটা ভুল এন্ট্রি, একটা ভুলে-যাওয়া কাস্টমার, একটা না-জানা SR-এর গতিবিধি — সব মিলিয়ে ব্যবসাটা বড় হওয়ার বদলে মালিকের ঘুম কেড়ে নেয়।',
-            'এই জায়গা থেকেই Junayet Islam Santo-র মাথায় প্রশ্নটা আসে — "কেন একজন ডিস্ট্রিবিউটরকে এখনো এভাবে অন্ধকারে ব্যবসা চালাতে হবে? কেন তার হাতে রিয়েল-টাইমে তথ্য থাকবে না?" এই একটা প্রশ্ন থেকেই জন্ম নেয় ZovoriX — একটা সিস্টেম, যেখানে প্রতিটা SR-এর অবস্থান, প্রতিটা কাস্টমারের অর্ডার, প্রতিটা পেমেন্টের হিসাব এক জায়গায় থাকবে, স্পষ্ট থাকবে, নিরাপদ থাকবে।',
-          ].map((p, i) => (
-            <p key={i} style={{
-              fontSize: '15px', lineHeight: 1.9, color: T.textPrimary,
-              margin: i === 0 ? '0 0 20px' : (i === 2 ? 0 : '0 0 20px'),
-            }}>
-              {p}
-            </p>
+            { key: 'monthly', label: 'মাসিক' },
+            { key: '1yr',     label: '১ বছর — ১৫% ছাড়' },
+            { key: '2yr',     label: '২ বছর — ২৫% ছাড়' },
+          ].map(opt => (
+            <button
+              key={opt.key}
+              onClick={() => setCycle(opt.key)}
+              style={{
+                padding: '8px 16px', borderRadius: '999px', border: 'none', cursor: 'pointer',
+                fontFamily: T.fontBody, fontSize: '12.5px', fontWeight: 600,
+                background: cycle === opt.key ? T.primary700 : 'transparent',
+                color: cycle === opt.key ? '#fff' : T.textSecondary,
+                transition: 'background 0.15s, color 0.15s', whiteSpace: 'nowrap',
+              }}
+            >
+              {opt.label}
+            </button>
           ))}
         </div>
-
-        {/* Highlight closing line */}
-        <p style={{
-          textAlign: 'center', fontFamily: T.fontHead, fontSize: '17px', fontStyle: 'italic',
-          color: T.primary700, maxWidth: '560px', margin: '28px auto 0', lineHeight: 1.7,
-        }}>
-          আজ ZovoriX-এর হাত ধরে ২৪+ ডিস্ট্রিবিউটর, ৮৪+ SR ও ২৪ জন ম্যানেজার মিলে সামলাচ্ছেন
-          ১৪,৬৮৩টি রিটেইল দোকানের ব্যবসা — প্রতিদিন, একটা স্ক্রিনের মধ্যে।
-        </p>
       </section>
 
-      {/* Founder */}
-      <section style={{ padding: '8px 24px 64px', maxWidth: '720px', margin: '0 auto' }}>
+      {/* Plan cards */}
+      <section style={{ padding: '16px 24px 48px', maxWidth: '1180px', margin: '0 auto' }}>
         <div style={{
-          display: 'flex', alignItems: 'center', gap: '20px', background: T.primary900,
-          borderRadius: '16px', padding: '32px', flexWrap: 'wrap',
+          display: 'grid', gap: '18px',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(255px, 1fr))',
+        }}>
+          {PLAN_ORDER.map(key => {
+            const plan = PLANS[key]
+            return (
+              <div key={key} style={{
+                background: T.bgSurface,
+                border: plan.highlight ? `2px solid ${T.accent600}` : `1px solid ${T.borderDefault}`,
+                borderRadius: '16px', padding: '26px 22px', display: 'flex', flexDirection: 'column',
+                boxShadow: plan.highlight ? '0 12px 32px rgba(156,107,46,0.16)' : '0 1px 2px rgba(15,27,46,0.04)',
+                position: 'relative',
+              }}>
+                {plan.highlight && (
+                  <div style={{
+                    position: 'absolute', top: '-12px', left: '22px', background: T.accent600,
+                    color: '#fff', fontSize: '10.5px', fontWeight: 700, padding: '4px 10px',
+                    borderRadius: '999px', letterSpacing: '0.03em', fontFamily: T.fontMono,
+                  }}>
+                    সবচেয়ে জনপ্রিয়
+                  </div>
+                )}
+                <div style={{ fontFamily: T.fontHead, fontSize: '22px', fontWeight: 700, color: T.primary700 }}>
+                  {plan.name}
+                </div>
+                <div style={{ fontSize: '12.5px', color: T.textMuted, margin: '4px 0 18px', lineHeight: 1.6, minHeight: '34px' }}>
+                  {plan.tagline}
+                </div>
+
+                {/* Per-role pricing */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', borderTop: `1px solid ${T.borderDefault}`, paddingTop: '14px' }}>
+                  {plan.roles.map(r => {
+                    const price = cycleYears ? applyDiscount(r.price, cycleYears) : r.price
+                    return (
+                      <div key={r.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: '8px' }}>
+                        <span style={{ fontSize: '12.5px', color: T.textSecondary }}>{r.label}</span>
+                        <span style={{ fontSize: '13px', fontWeight: 700, color: T.primary700, whiteSpace: 'nowrap' }}>
+                          {r.price === 0 ? 'ফ্রি' : `${formatTaka(price)}/ইউজার`}
+                        </span>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                <div style={{ borderTop: `1px solid ${T.borderDefault}`, paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '7px', fontSize: '12px', color: T.textSecondary, marginBottom: '20px' }}>
+                  <div>🔗 <strong style={{ color: T.textPrimary }}>{plan.maxCustomersLabel}</strong></div>
+                  <div>🎁 ফ্রি {formatTaka(plan.freeCreditTk)} Email/SMS ক্রেডিট/মাস</div>
+                  <div>🤖 ফ্রি AI ক্রেডিট — {plan.freeAiCreditM}M টোকেন/মাস</div>
+                  <div>💳 Pay-as-you-go — {AI_PAY_AS_YOU_GO.min}-{AI_PAY_AS_YOU_GO.max} {AI_PAY_AS_YOU_GO.unit}</div>
+                  <div>✉️ Email ৳{plan.payAsYouGo.emailSms}/পিস · SMS ৳{plan.payAsYouGo.sms}/পিস</div>
+                </div>
+
+                <button
+                  onClick={() => navigate('/start-trial', { state: { planHint: key } })}
+                  style={{
+                    marginTop: 'auto', padding: '11px 16px', borderRadius: '9px', border: 'none',
+                    background: plan.highlight ? T.accent600 : T.primary700, color: '#fff',
+                    fontSize: '13.5px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody,
+                  }}
+                >
+                  {plan.name} দিয়ে শুরু করুন
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Free trial + commitment discount note */}
+        <div style={{
+          marginTop: '22px', display: 'flex', flexWrap: 'wrap', gap: '14px',
+          justifyContent: 'center',
         }}>
           <div style={{
-            width: '64px', height: '64px', borderRadius: '50%', background: T.accent600,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-            fontFamily: T.fontHead, fontSize: '24px', fontWeight: 600, color: '#fff',
+            background: T.accent100, border: `1px solid ${T.borderDefault}`, borderRadius: '10px',
+            padding: '12px 18px', fontSize: '12.5px', color: T.textPrimary, maxWidth: '440px', lineHeight: 1.7,
           }}>
-            JS
+            🎉 <strong>৩ মাস ফ্রি ট্রায়াল</strong> — ৪ SR + ১ ম্যানেজার + ১ অ্যাডমিন + ২ শপ কিপার + ২ স্টক কিপার,
+            সর্বোচ্চ ২,০০০ কাস্টমার পর্যন্ত। ফুল-ফিচার ERP লেভেল অ্যাক্সেসসহ।
           </div>
-          <div>
-            <div style={{ fontSize: '11px', fontFamily: T.fontMono, letterSpacing: '0.05em', textTransform: 'uppercase', color: T.primary300, marginBottom: '4px' }}>
-              প্রতিষ্ঠাতা
-            </div>
-            <div style={{ fontFamily: T.fontHead, fontSize: '19px', fontWeight: 600, color: '#fff' }}>
-              Junayet Islam Santo
-            </div>
-            <p style={{ fontSize: '13.5px', color: T.primary100, margin: '8px 0 0', lineHeight: 1.7, maxWidth: '460px' }}>
-              ডিস্ট্রিবিউটরদের প্রতিদিনের সমস্যা কাছ থেকে দেখে ZovoriX তৈরির সিদ্ধান্ত নেন —
-              লক্ষ্য একটাই, ব্যবসাকে অনুমান নয়, সঠিক তথ্যের উপর দাঁড় করানো।
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Mission */}
-      <section style={{ padding: '8px 24px 64px', maxWidth: '880px', margin: '0 auto' }}>
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px',
-        }}>
-          <div style={{ background: T.accent100, border: `1px solid ${T.borderDefault}`, borderRadius: '14px', padding: '28px' }}>
-            <div style={{ width: '42px', height: '42px', background: T.accent600, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '18px', marginBottom: '14px' }}>
-              <FiTarget />
-            </div>
-            <h3 style={{ fontFamily: T.fontHead, fontSize: '17px', fontWeight: 600, color: T.primary700, margin: '0 0 8px' }}>আমাদের মিশন</h3>
-            <p style={{ fontSize: '14px', color: T.textSecondary, lineHeight: 1.8, margin: 0 }}>
-              ডিস্ট্রিবিউটর ও ব্যবসায়ীদের প্রতিদিনের সমস্যাগুলো সমাধান করা এবং দেশের সকল
-              ব্যবসায়ীকে একটি প্ল্যাটফর্মে যুক্ত করে ব্যবসাকে আরও সহজ ও সুন্দর করে তোলা।
-            </p>
-          </div>
-          <div style={{ background: T.primary100, border: `1px solid ${T.borderDefault}`, borderRadius: '14px', padding: '28px' }}>
-            <div style={{ width: '42px', height: '42px', background: T.primary700, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: '18px', marginBottom: '14px' }}>
-              <FiEye />
-            </div>
-            <h3 style={{ fontFamily: T.fontHead, fontSize: '17px', fontWeight: 600, color: T.primary700, margin: '0 0 8px' }}>আমাদের লক্ষ্য</h3>
-            <p style={{ fontSize: '14px', color: T.textSecondary, lineHeight: 1.8, margin: 0 }}>
-              সঠিক ডেটার মাধ্যমে প্রতিটি ব্যবসায়ীকে তার প্রতিযোগীদের চেয়ে এক ধাপ এগিয়ে
-              রাখা — যাতে সিদ্ধান্ত নেওয়া হয় অনুমানে নয়, তথ্যের আলোয়।
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Values */}
-      <section style={{ padding: '8px 24px 80px', maxWidth: '960px', margin: '0 auto' }}>
-        <h2 style={{ textAlign: 'center', fontFamily: T.fontHead, fontSize: '24px', fontWeight: 600, color: T.primary700, margin: '0 0 36px' }}>
-          আমরা যা বিশ্বাস করি
-        </h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '18px' }}>
-          {values.map((f, i) => (
-            <div key={i} style={{
-              background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '12px',
-              padding: '26px 20px', textAlign: 'center', transition: 'border-color 0.2s, transform 0.2s',
-            }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = T.primary300; e.currentTarget.style.transform = 'translateY(-2px)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = T.borderDefault; e.currentTarget.style.transform = 'translateY(0)' }}
-            >
-              <div style={{ width: '46px', height: '46px', background: T.primary100, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', color: T.primary700, margin: '0 auto 14px' }}>
-                {f.icon}
-              </div>
-              <h3 style={{ fontSize: '15px', fontWeight: 700, color: T.textPrimary, marginBottom: '6px', fontFamily: T.fontBody }}>{f.title}</h3>
-              <p style={{ fontSize: '13px', color: T.textSecondary, lineHeight: 1.6, margin: 0 }}>{f.desc}</p>
+          {COMMITMENT_DISCOUNTS.map(d => (
+            <div key={d.years} style={{
+              background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '10px',
+              padding: '12px 18px', fontSize: '12.5px', color: T.textSecondary, display: 'flex', alignItems: 'center', gap: '8px',
+            }}>
+              <strong style={{ color: T.primary700 }}>{d.discountPct}%</strong> ছাড় — {d.years} বছরের লাইসেন্স
             </div>
           ))}
         </div>
       </section>
 
-      {/* CTA */}
-      <section style={{ padding: '0 24px 80px', textAlign: 'center' }}>
-        <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => navigate('/contact')}
-            style={{
-              padding: '13px 26px', background: T.primary700, border: 'none', borderRadius: '9px',
-              color: '#fff', fontSize: '15px', fontWeight: 600, cursor: 'pointer',
-              display: 'flex', alignItems: 'center', gap: '8px', fontFamily: T.fontBody,
-              boxShadow: '0 10px 24px rgba(15,27,46,0.22)',
-            }}
-          >
-            যোগাযোগ করুন <FiArrowRight style={{ fontSize: '14px' }} />
-          </button>
+      {/* Feature comparison matrix */}
+      <section style={{ padding: '16px 24px 64px', maxWidth: '1040px', margin: '0 auto' }}>
+        <h2 style={{
+          fontFamily: T.fontHead, fontSize: 'clamp(22px, 4vw, 30px)', fontWeight: 600,
+          color: T.primary700, textAlign: 'center', margin: '0 0 6px',
+        }}>
+          সব প্ল্যানের ফিচার তুলনা করুন
+        </h2>
+        <p style={{ textAlign: 'center', color: T.textMuted, fontSize: '13px', margin: '0 0 28px' }}>
+          একটা ক্যাটাগরিতে ক্লিক করে বিস্তারিত ফিচার দেখুন
+        </p>
+
+        <div style={{ background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '14px', overflow: 'hidden' }}>
+          {/* Sticky plan header */}
+          <div style={{
+            display: 'grid', gridTemplateColumns: '1fr repeat(4, 90px)',
+            padding: '14px 18px', background: T.primary900, position: 'sticky', top: '58px', zIndex: 10,
+          }}>
+            <div />
+            {PLAN_ORDER.map(key => (
+              <div key={key} style={{ textAlign: 'center', color: '#fff', fontSize: '12.5px', fontWeight: 700, fontFamily: T.fontHead }}>
+                {PLANS[key].name}
+              </div>
+            ))}
+          </div>
+
+          {FEATURE_CATEGORIES.map((cat, catIdx) => {
+            const isOpen = openCats.has(cat.id)
+            return (
+              <div key={cat.id} style={{ borderTop: catIdx === 0 ? 'none' : `1px solid ${T.borderDefault}` }}>
+                <button
+                  className="zx-cat-row"
+                  onClick={() => toggleCat(cat.id)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '14px 18px', background: 'transparent', border: 'none', cursor: 'pointer',
+                    textAlign: 'left', transition: 'background 0.15s',
+                  }}
+                >
+                  <span style={{ fontSize: '14px', fontWeight: 700, color: T.primary700, fontFamily: T.fontBody }}>
+                    {cat.title} <span style={{ color: T.textMuted, fontWeight: 500, fontSize: '11.5px' }}>({cat.rows.length}টি ফিচার)</span>
+                  </span>
+                  <FiChevronDown style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', color: T.textMuted }} />
+                </button>
+
+                {isOpen && (
+                  <table className="zx-plan-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <tbody>
+                      {cat.rows.map((row, i) => {
+                        const [label, std, pro, max, erp] = row
+                        return (
+                          <tr key={i} style={{ borderTop: `1px solid ${T.bgAlt}` }}>
+                            <td style={{ padding: '10px 18px 10px 34px', fontSize: '13px', color: T.textPrimary }}>{label}</td>
+                            {[std, pro, max, erp].map((v, ci) => (
+                              <td key={ci} style={{ padding: '10px 6px', textAlign: 'center' }}>
+                                <Cell value={v} />
+                              </td>
+                            ))}
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )
+          })}
         </div>
       </section>
 
       {/* Footer */}
       <footer style={{ background: T.primary900, color: T.primary100, padding: '48px 24px 24px' }}>
         <div style={{ maxWidth: '960px', margin: '0 auto' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '32px', paddingBottom: '32px', borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
+          <div style={{
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            gap: '32px', paddingBottom: '32px', borderBottom: '1px solid rgba(255,255,255,0.12)',
+          }}>
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
                 <div style={{ width: '28px', height: '28px', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
@@ -381,20 +460,16 @@ export default function AboutUs() {
                 বিক্রয়, টিম ও কাস্টমার ব্যবস্থাপনার জন্য একটি সম্পূর্ণ প্ল্যাটফর্ম।
               </p>
             </div>
+
             <div>
               <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>যোগাযোগ</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <a href="tel:+8801309540282" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
-                  <FiPhone style={{ fontSize: '14px', color: T.accent300 }} /> +৮৮০ ১৩০৯-৫৪০২৮২
-                </a>
-                <a href="mailto:support@zovorix.com" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
-                  <FiMail style={{ fontSize: '14px', color: T.accent300 }} /> support@zovorix.com
-                </a>
-                <a href="https://wa.me/8801309540282" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
-                  <FiMessageCircle style={{ fontSize: '14px', color: T.accent300 }} /> WhatsApp-এ লিখুন
-                </a>
+                <a href="tel:+8801309540282" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>+৮৮০ ১৩০৯-৫৪০২৮২</a>
+                <a href="mailto:support@zovorix.com" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>support@zovorix.com</a>
+                <a href="https://wa.me/8801309540282" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>WhatsApp-এ লিখুন</a>
               </div>
             </div>
+
             <div>
               <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>সামাজিক যোগাযোগ</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
@@ -416,6 +491,7 @@ export default function AboutUs() {
                 ))}
               </div>
             </div>
+
             <div>
               <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>লিংক</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
