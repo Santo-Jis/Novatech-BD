@@ -443,7 +443,7 @@ const deviceLogin = async (req, res) => {
         // link_token_expires_at চেক করা হচ্ছে (৫ মিনিট TTL)
         const tokenResult = await query(
             `SELECT cpt.customer_id, cpt.token, cpt.token_version, cpt.bound_email,
-                    c.shop_name, c.owner_name, c.customer_code,
+                    c.shop_name, c.owner_name, c.customer_code, c.person_id,
                     c.current_credit, c.credit_limit, c.credit_balance, c.email
              FROM customer_portal_tokens cpt
              JOIN customers c ON cpt.customer_id = c.id
@@ -507,6 +507,7 @@ const deviceLogin = async (req, res) => {
 
         const jwtPayload_device = {
             customer_id:   record.customer_id,
+            person_id:     record.person_id || null,  // ✅ নতুন — getPersonId lookup সহজ করে
             email:         record.bound_email,
             type:          'customer_portal',
             token_version: record.token_version || 1,
@@ -530,6 +531,7 @@ const deviceLogin = async (req, res) => {
             data: {
                 portal_jwt: accessJWT_device,
                 expires_in: 900,
+                has_company: true,
                 customer: {
                     id:             record.customer_id,
                     shop_name:      record.shop_name,
@@ -573,7 +575,7 @@ const googleAuth = async (req, res) => {
         // ✅ FIX: link_token দিয়ে lookup (master portal_token কখনো client-এ যায় না)
         // link_token_expires_at চেক — ৫ মিনিট TTL enforce
         const tokenResult = await query(
-            `SELECT cpt.*, c.id AS cid, c.shop_name, c.owner_name, c.customer_code,
+            `SELECT cpt.*, c.id AS cid, c.shop_name, c.owner_name, c.customer_code, c.person_id,
                     c.email, c.whatsapp, c.current_credit, c.credit_limit, c.credit_balance
              FROM customer_portal_tokens cpt
              JOIN customers c ON cpt.customer_id = c.id
@@ -707,6 +709,7 @@ const googleAuth = async (req, res) => {
 
         const jwtPayload_google = {
             customer_id:    customerData.cid,
+            person_id:      customerData.person_id || null,  // ✅ নতুন — getPersonId lookup সহজ করে
             email,
             google_name:    name,
             google_picture: picture,
@@ -739,6 +742,7 @@ const googleAuth = async (req, res) => {
             data: {
                 portal_jwt:    accessJWT_google,
                 expires_in:    900,
+                has_company:   true,
                 device_added:  true,
                 total_devices: parseInt(deviceCount.rows[0].count),
                 customer: {
