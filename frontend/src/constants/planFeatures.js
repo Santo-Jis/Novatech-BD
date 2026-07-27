@@ -1,7 +1,17 @@
 // ============================================================
-// ফিচার কম্প্যারিজন ম্যাট্রিক্স — Pricing.jsx-এর "সব প্ল্যানে কী কী আছে"
-// সেকশনে ব্যবহৃত হয়। মান: true (আছে) | false (নাই) | string (আংশিক/নোট)
-// ক্যাটাগরিগুলো codebase-এর controller/route মডিউল অনুযায়ী সাজানো।
+// ফিচার কম্প্যারিজন ম্যাট্রিক্স — Pricing.jsx-এর "সব প্ল্যানের ফিচার
+// তুলনা করুন" সেকশনে ব্যবহৃত হয়। মান: true (আছে) | false (নাই) |
+// string (আংশিক/নোট)। কলাম অর্ডার সবসময়: Standard, Pro, Max, ERP।
+//
+// টায়ার-লজিক (রিভিশন ২৭ জুলাই ২০২৬, ইউজার-ফিডব্যাক অনুযায়ী):
+//   Standard — দৈনন্দিন অপারেশনের জন্য যা লাগবেই তার প্রায় সবটাই,
+//              কোনো কৃত্রিম "লিমিটেড" ভার্সন নেই।
+//   Pro      — মাল্টি-লেভেল টিম তদারকির জন্য যা লাগে (রুট, লাইভ
+//              লোকেশন ম্যাপ, প্রমোশন/টার্গেট)।
+//   Max      — গভীর অ্যানালিটিক্স/AI ও হিস্টোরিকাল ডেটা (GPS ট্রেইল,
+//              সেটেলমেন্ট, P&L, AI ইনসাইট)।
+//   ERP      — মাল্টি-টেন্যান্ট/কমপ্লায়েন্স-গ্রেড কন্ট্রোল (2FA,
+//              হোয়াইট-লেবেল অনবোর্ডিং, সুপার-অ্যাডমিন)।
 // ============================================================
 
 export const FEATURE_CATEGORIES = [
@@ -13,10 +23,10 @@ export const FEATURE_CATEGORIES = [
       ['আজকের অর্ডার ও স্টক-স্ট্যাটাস চেক', true, true, true, true],
       ['ভিজিট-লিঙ্কড সেল এন্ট্রি', true, true, true, true],
       ['ইনভয়েস OTP ভেরিফিকেশন', true, true, true, true],
-      ['Skip-OTP (বিশ্বস্ত কাস্টমার)', false, true, true, true],
+      ['Skip-OTP (বিশ্বস্ত কাস্টমার)', true, true, true, true],
       ['রিসিট আপলোড', true, true, true, true],
-      ['মাসিক/টিম সেলস সামারি', 'সীমিত', true, true, true],
-      ['ভিজিট স্ট্যাটস ও ভিজিট-স্ট্যাটাস', false, true, true, true],
+      ['মাসিক/টিম সেলস সামারি', true, true, true, true],
+      ['ভিজিট স্ট্যাটস ও ভিজিট-স্ট্যাটাস', true, true, true, true],
       ['ডেলিভারি টাস্ক অ্যাসাইন/ট্র্যাক', false, true, true, true],
       ['রিজার্ভড-স্টক অটো-সিঙ্ক (ওভারসেল প্রুফ)', true, true, true, true],
     ],
@@ -26,9 +36,9 @@ export const FEATURE_CATEGORIES = [
     title: 'প্রোডাক্ট ও ইনভেন্টরি',
     rows: [
       ['প্রোডাক্ট CRUD', true, true, true, true],
-      ['স্টক অ্যাডজাস্ট + মুভমেন্ট হিস্ট্রি', 'সীমিত', true, true, true],
+      ['স্টক অ্যাডজাস্ট + মুভমেন্ট হিস্ট্রি', true, true, true, true],
       ['রিটার্ন সাবমিট/কমপ্লিট', true, true, true, true],
-      ['রিটার্ন রিভিউ ওয়ার্কফ্লো (টিম-লেভেল)', false, true, true, true],
+      ['রিটার্ন রিভিউ ওয়ার্কফ্লো (টিম-লেভেল)', true, true, true, true],
       ['মাল্টি-ওয়্যারহাউস/স্টোর', false, '২-৩টি', 'মাল্টিপল', 'আনলিমিটেড'],
       ['VAT/Tax ইঞ্জিন (প্রোডাক্ট-ভিত্তিক)', true, true, true, true],
     ],
@@ -39,10 +49,10 @@ export const FEATURE_CATEGORIES = [
     rows: [
       ['কাস্টমার CRUD + শপ-ফটো', true, true, true, true],
       ['কাস্টমার হিস্ট্রি', true, true, true, true],
-      ['কাস্টমার এডিট-রিকোয়েস্ট/অনুমোদন', false, true, true, true],
+      ['কাস্টমার এডিট-রিকোয়েস্ট/অনুমোদন', true, true, true, true],
       ['ক্রেডিট-লিমিট সেট + অ্যালার্ট', true, true, true, true],
       ['ক্রেডিট কালেকশন ট্র্যাকিং', true, true, true, true],
-      ['QR-স্ক্যান কানেকশন', false, true, true, true],
+      ['QR-স্ক্যান কানেকশন', true, true, true, true],
       ['কোম্পানি/পারসন সার্চ-কানেক্ট', false, true, true, true],
       ['সেলফ-রেজিস্ট্রেশন + ভেরিফিকেশন ব্যাজ', false, false, true, true],
     ],
@@ -52,11 +62,11 @@ export const FEATURE_CATEGORIES = [
     title: 'কাস্টমার সেলফ-সার্ভিস পোর্টাল',
     rows: [
       ['বেসিক ড্যাশবোর্ড, ইনভয়েস/পেমেন্ট হিস্ট্রি', true, true, true, true],
-      ['Google/Device লগইন + মাল্টি-ডিভাইস ম্যানেজ', false, true, true, true],
-      ['অর্ডার-রিকোয়েস্ট + ট্র্যাকিং', false, true, true, true],
-      ['রিটার্ন-রিকোয়েস্ট, কমপ্লেইন সাবমিট', false, true, true, true],
-      ['ক্রেডিট-লিমিট রিকোয়েস্ট', false, true, true, true],
-      ['নোটিফিকেশন সেন্টার', false, true, true, true],
+      ['Google/Device লগইন + মাল্টি-ডিভাইস ম্যানেজ', true, true, true, true],
+      ['অর্ডার-রিকোয়েস্ট + ট্র্যাকিং', true, true, true, true],
+      ['রিটার্ন-রিকোয়েস্ট, কমপ্লেইন সাবমিট', true, true, true, true],
+      ['ক্রেডিট-লিমিট রিকোয়েস্ট', true, true, true, true],
+      ['নোটিফিকেশন সেন্টার', true, true, true, true],
       ['মাল্টি-কোম্পানি কানেকশন (এক কাস্টমার একাধিক কোম্পানি)', false, false, false, true],
       ['কাস্টমার AI চ্যাট + হিস্ট্রি', false, false, true, true],
     ],
@@ -77,9 +87,9 @@ export const FEATURE_CATEGORIES = [
     title: 'লোকেশন ও ট্র্যাকিং',
     rows: [
       ['চেক-ইন ভিত্তিক লোকেশন আপডেট', true, true, true, true],
-      ['টিম লাইভ লোকেশন ম্যাপ', false, false, true, true],
+      ['প্রেজেন্স চেক-ইন + ব্যাটারি-লো অ্যালার্ট', true, true, true, true],
+      ['টিম লাইভ লোকেশন ম্যাপ', false, true, true, true],
       ['GPS ট্রেইল/হিস্ট্রি', false, false, true, true],
-      ['প্রেজেন্স চেক-ইন + ব্যাটারি-লো অ্যালার্ট', false, true, true, true],
     ],
   },
   {
@@ -87,12 +97,12 @@ export const FEATURE_CATEGORIES = [
     title: 'ক্রেডিট, লেজার ও সেটেলমেন্ট',
     rows: [
       ['ডেইলি/মাসিক লেজার', true, true, true, true],
-      ['SR লেজার + লেজার রিপোর্ট', 'সীমিত', true, true, true],
+      ['SR লেজার + লেজার রিপোর্ট', true, true, true, true],
+      ['মাসিক আর্কাইভ', true, true, true, true],
       ['ক্রেডিট অ্যাপ্রুভাল ওয়ার্কফ্লো + সেটিংস', false, true, true, true],
       ['ডিউ লিডারবোর্ড', false, true, true, true],
       ['সেটেলমেন্ট (সাবমিট/অ্যাপ্রুভ/ডিসপিউট/শর্টেজ)', false, false, true, true],
       ['P&L স্টেটমেন্ট', false, false, true, true],
-      ['মাসিক আর্কাইভ', false, true, true, true],
     ],
   },
   {
@@ -114,10 +124,10 @@ export const FEATURE_CATEGORIES = [
       ['লিভ অ্যাপ্লাই/অ্যাপ্রুভ/ব্যালেন্স', true, true, true, true],
       ['এমপ্লয়ি CRUD + অ্যাপ্রুভাল/সাসপেন্ড', true, true, true, true],
       ['স্যালারি শিট/পে/স্লিপ', true, true, true, true],
-      ['কমিশন (বেসিক)', 'সীমিত', true, true, true],
+      ['কমিশন (স্ট্যান্ডার্ড ক্যালকুলেশন)', true, true, true, true],
+      ['মাসিক অ্যাটেন্ডেন্স-বোনাস অটো-জব', true, true, true, true],
       ['লাইভ কমিশন + বোনাস অটো-জব', false, false, true, true],
       ['রিক্রুটমেন্ট মডিউল (অ্যাপ্লাই→রিভিউ→হায়ার)', false, false, false, true],
-      ['মাসিক অ্যাটেন্ডেন্স-বোনাস অটো-জব', false, true, true, true],
     ],
   },
   {
@@ -146,9 +156,9 @@ export const FEATURE_CATEGORIES = [
     title: 'রিপোর্ট ও অ্যানালিটিক্স',
     rows: [
       ['KPI ড্যাশবোর্ড, সেলস/অ্যাটেন্ডেন্স রিপোর্ট', true, true, true, true],
-      ['কমিশন/ক্রেডিট/এক্সপেন্স/রিটার্ন রিপোর্ট', 'সীমিত', true, true, true],
-      ['টপ প্রোডাক্টস, টপ শপস', false, true, true, true],
-      ['এমপ্লয়ি PDF রিপোর্ট', false, true, true, true],
+      ['কমিশন/ক্রেডিট/এক্সপেন্স/রিটার্ন রিপোর্ট', true, true, true, true],
+      ['টপ প্রোডাক্টস, টপ শপস', true, true, true, true],
+      ['এমপ্লয়ি PDF রিপোর্ট', true, true, true, true],
       ['কাস্টম/এক্সপোর্ট রিপোর্ট বিল্ডার', false, false, false, true],
     ],
   },
@@ -157,10 +167,10 @@ export const FEATURE_CATEGORIES = [
     title: 'নোটিশ ও কমিউনিকেশন',
     rows: [
       ['নোটিস বোর্ড', true, true, true, true],
-      ['ব্রডকাস্ট ইমেইল', false, true, true, true],
+      ['ব্রডকাস্ট ইমেইল', true, true, true, true],
       ['SMS (ডিফল্ট গেটওয়ে)', true, true, true, true],
+      ['WhatsApp ইনভয়েস ডেলিভারি', true, true, true, true],
       ['SMS গেটওয়ে চয়েস (মাল্টি-প্রোভাইডার)', false, false, true, true],
-      ['WhatsApp ইনভয়েস ডেলিভারি', false, true, true, true],
     ],
   },
   {
@@ -170,7 +180,7 @@ export const FEATURE_CATEGORIES = [
       ['PDF ইনভয়েস অটো-জেনারেট', true, true, true, true],
       ['অটো ইনভয়েস নাম্বারিং', true, true, true, true],
       ['ইমেইল/SMS ইনভয়েস সেন্ড', true, true, true, true],
-      ['WhatsApp ইনভয়েস + ভেরিফাই-লিঙ্ক', false, true, true, true],
+      ['WhatsApp ইনভয়েস + ভেরিফাই-লিঙ্ক', true, true, true, true],
     ],
   },
   {
@@ -180,7 +190,7 @@ export const FEATURE_CATEGORIES = [
       ['ইনস্টলযোগ্য PWA', true, true, true, true],
       ['অফলাইন কিউ (IndexedDB) + অটো-সিঙ্ক', true, true, true, true],
       ['অ্যাপ-আপডেট ডিটেক্ট ডায়ালগ', true, true, true, true],
-      ['নেটিভ অ্যান্ড্রয়েড APK (স্টাফ)', false, true, true, true],
+      ['নেটিভ অ্যান্ড্রয়েড APK (স্টাফ)', true, true, true, true],
       ['নেটিভ কাস্টমার APK', false, false, true, true],
     ],
   },
@@ -189,7 +199,7 @@ export const FEATURE_CATEGORIES = [
     title: 'পুশ নোটিফিকেশন',
     rows: [
       ['ব্যাকগ্রাউন্ড পুশ (Firebase)', true, true, true, true],
-      ['অনলাইন/টিম প্রেজেন্স ট্র্যাকিং', false, true, true, true],
+      ['অনলাইন/টিম প্রেজেন্স ট্র্যাকিং', true, true, true, true],
       ['প্রায়োরিটি পুশ ডেলিভারি', false, false, true, true],
     ],
   },
@@ -200,8 +210,8 @@ export const FEATURE_CATEGORIES = [
       ['রোল-ভিত্তিক লোকেশন/ক্যামেরা/নোটিফিকেশন পারমিশন', true, true, true, true],
       ['সেলফি ক্যামেরা ক্যাপচার (চেক-ইন)', true, true, true, true],
       ['ফিঙ্গারপ্রিন্ট/প্রেস-হোল্ড চেক-ইন', true, true, true, true],
-      ['2FA (TOTP) + রিকভারি কোড', false, false, false, true],
       ['অডিট লগ (ফুল সিস্টেম)', false, false, 'সীমিত', true],
+      ['2FA (TOTP) + রিকভারি কোড', false, false, false, true],
     ],
   },
   {
@@ -209,9 +219,9 @@ export const FEATURE_CATEGORIES = [
     title: 'অ্যাডমিন ও মাল্টি-টেন্যান্ট',
     rows: [
       ['সেটিংস, সিস্টেম স্ট্যাটস', true, true, true, true],
+      ['টিম ম্যানেজমেন্ট + SR রিঅ্যাসাইন', true, true, true, true],
       ['পোর্টাল ডিভাইস ম্যানেজমেন্ট', false, true, true, true],
       ['বাল্ক পোর্টাল-রিটার্ন রিভিউ', false, false, true, true],
-      ['টিম ম্যানেজমেন্ট + SR রিঅ্যাসাইন', true, true, true, true],
       ['কোম্পানি অনবোর্ডিং + সাবডোমেইন/স্লাগ', false, false, false, true],
       ['সুপার অ্যাডমিন/টেন্যান্ট কন্ট্রোল প্যানেল', false, false, false, true],
     ],

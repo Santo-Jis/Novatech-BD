@@ -2,11 +2,12 @@ import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FiShoppingBag, FiSettings, FiChevronDown, FiCheck, FiX, FiMapPin,
+  FiUsers, FiMail, FiCpu,
 } from 'react-icons/fi'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
-import { PLAN_ORDER, PLANS, AI_PAY_AS_YOU_GO, COMMITMENT_DISCOUNTS, formatTaka, applyDiscount } from '../constants/planPricing'
+import { PLAN_ORDER, PLANS, AI_PAY_AS_YOU_GO, COMMITMENT_DISCOUNTS, PRICING_FAQ, formatTaka, applyDiscount } from '../constants/planPricing'
 import { FEATURE_CATEGORIES } from '../constants/planFeatures'
 
 // ============================================================
@@ -38,6 +39,10 @@ const T = {
   fontMono: "'IBM Plex Mono',monospace",
 }
 
+// ফিচার-ম্যাট্রিক্সের হেডার ও প্রতিটা সারি একই grid-template ব্যবহার করে,
+// তাই কলাম কখনো একে অপরের থেকে বেঁকে যায় না।
+const GRID_COLS = 'minmax(0,1fr) repeat(4, 72px)'
+
 // true→চেক, false→ক্রস, string→নোট হিসেবে দেখাবে
 function Cell({ value }) {
   if (value === true) {
@@ -68,6 +73,8 @@ export default function Pricing() {
 
   // ফিচার-ম্যাট্রিক্সের কোন ক্যাটাগরি খোলা আছে
   const [openCats, setOpenCats] = useState(() => new Set([FEATURE_CATEGORIES[0].id]))
+  const [usageOpen, setUsageOpen] = useState(false)
+  const [faqOpen, setFaqOpen] = useState(null)
   const toggleCat = (id) => {
     setOpenCats(prev => {
       const next = new Set(prev)
@@ -231,42 +238,39 @@ export default function Pricing() {
       </div>
 
       {/* Hero */}
-      <section style={{ textAlign: 'center', padding: '56px 24px 32px' }}>
+      <section style={{ textAlign: 'center', padding: '52px 24px 28px' }}>
         <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px',
-          background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '20px',
-          fontSize: '11px', fontFamily: T.fontMono, letterSpacing: '0.04em', textTransform: 'uppercase',
-          color: T.textMuted, marginBottom: '24px',
+          fontSize: '12px', fontFamily: T.fontMono, letterSpacing: '0.08em', textTransform: 'uppercase',
+          color: T.textMuted, marginBottom: '18px',
         }}>
           প্রাইসিং
         </div>
         <h1 style={{
-          fontFamily: T.fontHead, fontSize: 'clamp(28px, 5.5vw, 44px)', fontWeight: 600,
-          lineHeight: 1.3, margin: '0 auto 8px', maxWidth: '680px', color: T.primary700,
+          fontFamily: T.fontHead, fontSize: 'clamp(26px, 5vw, 38px)', fontWeight: 600,
+          lineHeight: 1.35, margin: '0 auto', maxWidth: '620px', color: T.primary700,
         }}>
-          যতজন ইউজার লাগবে, নিন —<br />
-          <span style={{ color: T.accent600 }}>প্ল্যান বাছাই হবে ফিচার দিয়ে</span>
+          যত জন ইউজার দরকার নিন — প্ল্যান বাছাই হবে ফিচার দিয়ে
         </h1>
-        <p style={{ color: T.textSecondary, fontSize: '15.5px', maxWidth: '600px', margin: '20px auto 0', lineHeight: 1.8 }}>
-          ইউজার সংখ্যা কোনো লিমিট না — প্রতিটা প্ল্যানে যত ইচ্ছা SR, ম্যানেজার বা অ্যাডমিন যোগ করা যাবে,
-          প্রতি সিটের রেট অনুযায়ী। প্ল্যান আলাদা হয় ফিচার আর সর্বোচ্চ কাস্টমার-কানেকশন দিয়ে।
+        <p style={{ color: T.textSecondary, fontSize: '15px', maxWidth: '580px', margin: '18px auto 0', lineHeight: 1.8 }}>
+          ইউজার সংখ্যায় কোনো লিমিট নেই — প্রতিটা প্ল্যানে যত ইচ্ছা SR, ম্যানেজার বা অ্যাডমিন যোগ করা যাবে,
+          প্রতি সিটের রেট অনুযায়ী বিল হবে। প্ল্যান আলাদা হয় ফিচার আর সর্বোচ্চ কাস্টমার-কানেকশন সংখ্যা দিয়ে।
         </p>
 
         {/* Billing cycle toggle */}
         <div style={{
-          display: 'inline-flex', marginTop: '28px', background: T.bgSurface,
-          border: `1px solid ${T.borderDefault}`, borderRadius: '999px', padding: '4px',
+          display: 'inline-flex', marginTop: '26px', background: T.bgSurface,
+          border: `1px solid ${T.borderDefault}`, borderRadius: '10px', padding: '4px',
         }}>
           {[
             { key: 'monthly', label: 'মাসিক' },
-            { key: '1yr',     label: '১ বছর — ১৫% ছাড়' },
-            { key: '2yr',     label: '২ বছর — ২৫% ছাড়' },
+            { key: '1yr',     label: '১ বছর · ১৫% ছাড়' },
+            { key: '2yr',     label: '২ বছর · ২৫% ছাড়' },
           ].map(opt => (
             <button
               key={opt.key}
               onClick={() => setCycle(opt.key)}
               style={{
-                padding: '8px 16px', borderRadius: '999px', border: 'none', cursor: 'pointer',
+                padding: '8px 16px', borderRadius: '7px', border: 'none', cursor: 'pointer',
                 fontFamily: T.fontBody, fontSize: '12.5px', fontWeight: 600,
                 background: cycle === opt.key ? T.primary700 : 'transparent',
                 color: cycle === opt.key ? '#fff' : T.textSecondary,
@@ -280,9 +284,9 @@ export default function Pricing() {
       </section>
 
       {/* Plan cards */}
-      <section style={{ padding: '16px 24px 48px', maxWidth: '1180px', margin: '0 auto' }}>
+      <section style={{ padding: '8px 24px 0', maxWidth: '1160px', margin: '0 auto' }}>
         <div style={{
-          display: 'grid', gap: '18px',
+          display: 'grid', gap: '16px',
           gridTemplateColumns: 'repeat(auto-fit, minmax(255px, 1fr))',
         }}>
           {PLAN_ORDER.map(key => {
@@ -290,29 +294,29 @@ export default function Pricing() {
             return (
               <div key={key} style={{
                 background: T.bgSurface,
-                border: plan.highlight ? `2px solid ${T.accent600}` : `1px solid ${T.borderDefault}`,
-                borderRadius: '16px', padding: '26px 22px', display: 'flex', flexDirection: 'column',
-                boxShadow: plan.highlight ? '0 12px 32px rgba(156,107,46,0.16)' : '0 1px 2px rgba(15,27,46,0.04)',
+                border: plan.highlight ? `1.5px solid ${T.accent600}` : `1px solid ${T.borderDefault}`,
+                borderRadius: '12px', padding: '24px 20px', display: 'flex', flexDirection: 'column',
+                boxShadow: plan.highlight ? '0 8px 24px rgba(156,107,46,0.12)' : 'none',
                 position: 'relative',
               }}>
                 {plan.highlight && (
                   <div style={{
-                    position: 'absolute', top: '-12px', left: '22px', background: T.accent600,
-                    color: '#fff', fontSize: '10.5px', fontWeight: 700, padding: '4px 10px',
+                    position: 'absolute', top: '-11px', left: '20px', background: T.accent600,
+                    color: '#fff', fontSize: '10px', fontWeight: 700, padding: '3px 10px',
                     borderRadius: '999px', letterSpacing: '0.03em', fontFamily: T.fontMono,
                   }}>
                     সবচেয়ে জনপ্রিয়
                   </div>
                 )}
-                <div style={{ fontFamily: T.fontHead, fontSize: '22px', fontWeight: 700, color: T.primary700 }}>
+                <div style={{ fontFamily: T.fontHead, fontSize: '21px', fontWeight: 700, color: T.primary700 }}>
                   {plan.name}
                 </div>
-                <div style={{ fontSize: '12.5px', color: T.textMuted, margin: '4px 0 18px', lineHeight: 1.6, minHeight: '34px' }}>
+                <div style={{ fontSize: '12.5px', color: T.textMuted, margin: '4px 0 16px', lineHeight: 1.6, minHeight: '34px' }}>
                   {plan.tagline}
                 </div>
 
                 {/* Per-role pricing */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px', borderTop: `1px solid ${T.borderDefault}`, paddingTop: '14px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginBottom: '16px', borderTop: `1px solid ${T.borderDefault}`, paddingTop: '14px' }}>
                   {plan.roles.map(r => {
                     const price = cycleYears ? applyDiscount(r.price, cycleYears) : r.price
                     return (
@@ -326,18 +330,25 @@ export default function Pricing() {
                   })}
                 </div>
 
-                <div style={{ borderTop: `1px solid ${T.borderDefault}`, paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '7px', fontSize: '12px', color: T.textSecondary, marginBottom: '20px' }}>
-                  <div>🔗 <strong style={{ color: T.textPrimary }}>{plan.maxCustomersLabel}</strong></div>
-                  <div>🎁 ফ্রি {formatTaka(plan.freeCreditTk)} Email/SMS ক্রেডিট/মাস</div>
-                  <div>🤖 ফ্রি AI ক্রেডিট — {plan.freeAiCreditM}M টোকেন/মাস</div>
-                  <div>💳 Pay-as-you-go — {AI_PAY_AS_YOU_GO.min}-{AI_PAY_AS_YOU_GO.max} {AI_PAY_AS_YOU_GO.unit}</div>
-                  <div>✉️ Email ৳{plan.payAsYouGo.emailSms}/পিস · SMS ৳{plan.payAsYouGo.sms}/পিস</div>
+                <div style={{ borderTop: `1px solid ${T.borderDefault}`, paddingTop: '14px', display: 'flex', flexDirection: 'column', gap: '9px', fontSize: '12.5px', color: T.textSecondary, marginBottom: '18px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FiUsers style={{ fontSize: '13px', color: T.accent600, flexShrink: 0 }} />
+                    <span>{plan.maxCustomersLabel}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FiMail style={{ fontSize: '13px', color: T.accent600, flexShrink: 0 }} />
+                    <span>{formatTaka(plan.freeCreditTk)} ফ্রি Email/SMS ক্রেডিট/মাস</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FiCpu style={{ fontSize: '13px', color: T.accent600, flexShrink: 0 }} />
+                    <span>{plan.freeAiCreditM}M টোকেন ফ্রি AI ক্রেডিট/মাস</span>
+                  </div>
                 </div>
 
                 <button
                   onClick={() => navigate('/start-trial', { state: { planHint: key } })}
                   style={{
-                    marginTop: 'auto', padding: '11px 16px', borderRadius: '9px', border: 'none',
+                    marginTop: 'auto', padding: '11px 16px', borderRadius: '8px', border: 'none',
                     background: plan.highlight ? T.accent600 : T.primary700, color: '#fff',
                     fontSize: '13.5px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody,
                   }}
@@ -349,22 +360,74 @@ export default function Pricing() {
           })}
         </div>
 
-        {/* Free trial + commitment discount note */}
-        <div style={{
-          marginTop: '22px', display: 'flex', flexWrap: 'wrap', gap: '14px',
-          justifyContent: 'center',
-        }}>
+        {/* Usage & overage — link to expand, avoids clashing numbers on cards */}
+        <div style={{ textAlign: 'center', marginTop: '18px' }}>
+          <button
+            onClick={() => setUsageOpen(p => !p)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer', padding: '6px 4px',
+              color: T.primary700, fontSize: '13px', fontWeight: 600, fontFamily: T.fontBody,
+              textDecoration: 'underline', textUnderlineOffset: '3px',
+            }}
+          >
+            Email/SMS ও AI ক্রেডিট কীভাবে হিসাব হয় — বিস্তারিত দেখুন {usageOpen ? '▲' : '▼'}
+          </button>
+        </div>
+
+        {usageOpen && (
           <div style={{
-            background: T.accent100, border: `1px solid ${T.borderDefault}`, borderRadius: '10px',
-            padding: '12px 18px', fontSize: '12.5px', color: T.textPrimary, maxWidth: '440px', lineHeight: 1.7,
+            marginTop: '14px', background: T.bgSurface, border: `1px solid ${T.borderDefault}`,
+            borderRadius: '12px', padding: '20px', overflowX: 'auto',
           }}>
-            🎉 <strong>৩ মাস ফ্রি ট্রায়াল</strong> — ৪ SR + ১ ম্যানেজার + ১ অ্যাডমিন + ২ শপ কিপার + ২ স্টক কিপার,
-            সর্বোচ্চ ২,০০০ কাস্টমার পর্যন্ত। ফুল-ফিচার ERP লেভেল অ্যাক্সেসসহ।
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '560px' }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${T.borderDefault}` }}>
+                  <th style={{ textAlign: 'left', padding: '6px 10px', fontSize: '11.5px', color: T.textMuted, fontWeight: 600 }}>প্ল্যান</th>
+                  <th style={{ textAlign: 'left', padding: '6px 10px', fontSize: '11.5px', color: T.textMuted, fontWeight: 600 }}>ফ্রি ক্রেডিট (মাসিক)</th>
+                  <th style={{ textAlign: 'left', padding: '6px 10px', fontSize: '11.5px', color: T.textMuted, fontWeight: 600 }}>ফ্রি শেষে — Email / SMS</th>
+                  <th style={{ textAlign: 'left', padding: '6px 10px', fontSize: '11.5px', color: T.textMuted, fontWeight: 600 }}>ফ্রি AI ক্রেডিট</th>
+                  <th style={{ textAlign: 'left', padding: '6px 10px', fontSize: '11.5px', color: T.textMuted, fontWeight: 600 }}>ফ্রি শেষে — AI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {PLAN_ORDER.map(key => {
+                  const plan = PLANS[key]
+                  return (
+                    <tr key={key} style={{ borderBottom: `1px solid ${T.bgAlt}` }}>
+                      <td style={{ padding: '10px', fontSize: '13px', fontWeight: 700, color: T.primary700 }}>{plan.name}</td>
+                      <td style={{ padding: '10px', fontSize: '12.5px', color: T.textSecondary }}>{formatTaka(plan.freeCreditTk)}</td>
+                      <td style={{ padding: '10px', fontSize: '12.5px', color: T.textSecondary }}>
+                        ৳{plan.payAsYouGo.emailSms}/ইমেইল · ৳{plan.payAsYouGo.sms}/SMS
+                      </td>
+                      <td style={{ padding: '10px', fontSize: '12.5px', color: T.textSecondary }}>{plan.freeAiCreditM}M টোকেন</td>
+                      <td style={{ padding: '10px', fontSize: '12.5px', color: T.textSecondary }}>
+                        {AI_PAY_AS_YOU_GO.min}–{AI_PAY_AS_YOU_GO.max} {AI_PAY_AS_YOU_GO.unit} <span style={{ color: T.textMuted }}>(মডেল-ভেদে)</span>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+            <p style={{ fontSize: '11.5px', color: T.textMuted, margin: '14px 4px 0', lineHeight: 1.7 }}>
+              ফ্রি কোটা প্রতি মাসে রিসেট হয় এবং জমা থাকে না। কোটা শেষ হলে ওয়ালেট ব্যালেন্স থেকে উপরের রেটে
+              অটো-কেটে নেওয়া হয়; ব্যালেন্স না থাকলে শুধু সেই নির্দিষ্ট সার্ভিস সাময়িক বন্ধ থাকে, বাকি সিস্টেম চালু থাকে।
+            </p>
+          </div>
+        )}
+
+        {/* Free trial + commitment discount note */}
+        <div style={{ marginTop: '20px', display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
+          <div style={{
+            background: T.bgAlt, border: `1px solid ${T.borderDefault}`, borderRadius: '9px',
+            padding: '11px 16px', fontSize: '12px', color: T.textPrimary, maxWidth: '460px', lineHeight: 1.7,
+          }}>
+            <strong>৩ মাস ফ্রি ট্রায়াল</strong> — ৪ SR + ১ ম্যানেজার + ১ অ্যাডমিন + ২ শপ কিপার + ২ স্টক কিপার,
+            সর্বোচ্চ ২,০০০ কাস্টমার পর্যন্ত, ফুল ERP-লেভেল ফিচার সহ।
           </div>
           {COMMITMENT_DISCOUNTS.map(d => (
             <div key={d.years} style={{
-              background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '10px',
-              padding: '12px 18px', fontSize: '12.5px', color: T.textSecondary, display: 'flex', alignItems: 'center', gap: '8px',
+              background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '9px',
+              padding: '11px 16px', fontSize: '12px', color: T.textSecondary, display: 'flex', alignItems: 'center', gap: '6px',
             }}>
               <strong style={{ color: T.primary700 }}>{d.discountPct}%</strong> ছাড় — {d.years} বছরের লাইসেন্স
             </div>
@@ -372,69 +435,109 @@ export default function Pricing() {
         </div>
       </section>
 
-      {/* Feature comparison matrix */}
-      <section style={{ padding: '16px 24px 64px', maxWidth: '1040px', margin: '0 auto' }}>
+      {/* Feature comparison matrix — single shared CSS-grid template so columns
+          never drift out of alignment between the header and the rows. */}
+      <section style={{ padding: '48px 24px 56px', maxWidth: '1000px', margin: '0 auto' }}>
         <h2 style={{
-          fontFamily: T.fontHead, fontSize: 'clamp(22px, 4vw, 30px)', fontWeight: 600,
+          fontFamily: T.fontHead, fontSize: 'clamp(21px, 3.6vw, 28px)', fontWeight: 600,
           color: T.primary700, textAlign: 'center', margin: '0 0 6px',
         }}>
           সব প্ল্যানের ফিচার তুলনা করুন
         </h2>
-        <p style={{ textAlign: 'center', color: T.textMuted, fontSize: '13px', margin: '0 0 28px' }}>
+        <p style={{ textAlign: 'center', color: T.textMuted, fontSize: '13px', margin: '0 0 24px' }}>
           একটা ক্যাটাগরিতে ক্লিক করে বিস্তারিত ফিচার দেখুন
         </p>
 
-        <div style={{ background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '14px', overflow: 'hidden' }}>
-          {/* Sticky plan header */}
-          <div style={{
-            display: 'grid', gridTemplateColumns: '1fr repeat(4, 90px)',
-            padding: '14px 18px', background: T.primary900, position: 'sticky', top: '58px', zIndex: 10,
-          }}>
-            <div />
-            {PLAN_ORDER.map(key => (
-              <div key={key} style={{ textAlign: 'center', color: '#fff', fontSize: '12.5px', fontWeight: 700, fontFamily: T.fontHead }}>
-                {PLANS[key].name}
-              </div>
-            ))}
-          </div>
+        <div style={{ overflowX: 'auto', border: `1px solid ${T.borderDefault}`, borderRadius: '12px', background: T.bgSurface }}>
+          <div style={{ minWidth: '640px' }}>
+            {/* Plan header row */}
+            <div style={{
+              display: 'grid', gridTemplateColumns: GRID_COLS, alignItems: 'center',
+              padding: '13px 16px', background: T.primary900,
+              position: 'sticky', top: 0, zIndex: 5,
+            }}>
+              <div style={{ fontSize: '11px', color: T.primary300, fontFamily: T.fontMono, letterSpacing: '0.04em', textTransform: 'uppercase' }}>ফিচার</div>
+              {PLAN_ORDER.map(key => (
+                <div key={key} style={{ textAlign: 'center', color: '#fff', fontSize: '12.5px', fontWeight: 700, fontFamily: T.fontHead }}>
+                  {PLANS[key].name}
+                </div>
+              ))}
+            </div>
 
-          {FEATURE_CATEGORIES.map((cat, catIdx) => {
-            const isOpen = openCats.has(cat.id)
+            {FEATURE_CATEGORIES.map((cat, catIdx) => {
+              const isOpen = openCats.has(cat.id)
+              return (
+                <div key={cat.id} style={{ borderTop: catIdx === 0 ? 'none' : `1px solid ${T.borderDefault}` }}>
+                  <button
+                    className="zx-cat-row"
+                    onClick={() => toggleCat(cat.id)}
+                    style={{
+                      width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                      padding: '13px 16px', background: 'transparent', border: 'none', cursor: 'pointer',
+                      textAlign: 'left', transition: 'background 0.15s',
+                    }}
+                  >
+                    <span style={{ fontSize: '13.5px', fontWeight: 700, color: T.primary700, fontFamily: T.fontBody }}>
+                      {cat.title}{' '}
+                      <span style={{ color: T.textMuted, fontWeight: 500, fontSize: '11.5px' }}>({cat.rows.length})</span>
+                    </span>
+                    <FiChevronDown style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', color: T.textMuted, flexShrink: 0 }} />
+                  </button>
+
+                  {isOpen && cat.rows.map((row, i) => {
+                    const [label, std, pro, max, erp] = row
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'grid', gridTemplateColumns: GRID_COLS, alignItems: 'center',
+                          padding: '9px 16px', borderTop: `1px solid ${T.bgAlt}`,
+                        }}
+                      >
+                        <div style={{ fontSize: '12.5px', color: T.textPrimary, paddingLeft: '14px' }}>{label}</div>
+                        {[std, pro, max, erp].map((v, ci) => (
+                          <div key={ci} style={{ display: 'flex', justifyContent: 'center' }}>
+                            <Cell value={v} />
+                          </div>
+                        ))}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section style={{ padding: '0 24px 64px', maxWidth: '760px', margin: '0 auto' }}>
+        <h2 style={{
+          fontFamily: T.fontHead, fontSize: 'clamp(21px, 3.6vw, 28px)', fontWeight: 600,
+          color: T.primary700, textAlign: 'center', margin: '0 0 28px',
+        }}>
+          সাধারণ জিজ্ঞাসা
+        </h2>
+        <div style={{ border: `1px solid ${T.borderDefault}`, borderRadius: '12px', background: T.bgSurface, overflow: 'hidden' }}>
+          {PRICING_FAQ.map((item, i) => {
+            const isOpen = faqOpen === i
             return (
-              <div key={cat.id} style={{ borderTop: catIdx === 0 ? 'none' : `1px solid ${T.borderDefault}` }}>
+              <div key={i} style={{ borderTop: i === 0 ? 'none' : `1px solid ${T.borderDefault}` }}>
                 <button
-                  className="zx-cat-row"
-                  onClick={() => toggleCat(cat.id)}
+                  onClick={() => setFaqOpen(isOpen ? null : i)}
                   style={{
                     width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '14px 18px', background: 'transparent', border: 'none', cursor: 'pointer',
-                    textAlign: 'left', transition: 'background 0.15s',
+                    gap: '12px', padding: '16px 18px', background: 'transparent', border: 'none',
+                    cursor: 'pointer', textAlign: 'left', fontFamily: T.fontBody,
                   }}
                 >
-                  <span style={{ fontSize: '14px', fontWeight: 700, color: T.primary700, fontFamily: T.fontBody }}>
-                    {cat.title} <span style={{ color: T.textMuted, fontWeight: 500, fontSize: '11.5px' }}>({cat.rows.length}টি ফিচার)</span>
-                  </span>
-                  <FiChevronDown style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', color: T.textMuted }} />
+                  <span style={{ fontSize: '14px', fontWeight: 600, color: T.textPrimary }}>{item.q}</span>
+                  <FiChevronDown style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', color: T.textMuted, flexShrink: 0 }} />
                 </button>
-
                 {isOpen && (
-                  <table className="zx-plan-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <tbody>
-                      {cat.rows.map((row, i) => {
-                        const [label, std, pro, max, erp] = row
-                        return (
-                          <tr key={i} style={{ borderTop: `1px solid ${T.bgAlt}` }}>
-                            <td style={{ padding: '10px 18px 10px 34px', fontSize: '13px', color: T.textPrimary }}>{label}</td>
-                            {[std, pro, max, erp].map((v, ci) => (
-                              <td key={ci} style={{ padding: '10px 6px', textAlign: 'center' }}>
-                                <Cell value={v} />
-                              </td>
-                            ))}
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                  <div style={{ padding: '0 18px 16px', fontSize: '13px', color: T.textSecondary, lineHeight: 1.8 }}>
+                    {item.a}
+                  </div>
                 )}
               </div>
             )
