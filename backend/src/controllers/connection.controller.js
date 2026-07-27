@@ -9,6 +9,7 @@
 const { query }   = require('../config/db');
 const logger      = require('../config/logger');
 const { generateCustomerCode } = require('../services/employee.service');
+const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
 
 // ── Helper: একটা connection row থেকে বিদ্যমান/নতুন customer row বানিয়ে/খুঁজে দাও ──
 async function ensureCustomerForPerson(personId, tenantId, createdByUserId) {
@@ -18,6 +19,10 @@ async function ensureCustomerForPerson(personId, tenantId, createdByUserId) {
         [personId, tenantId]
     );
     if (existing.rows.length > 0) return existing.rows[0].id;
+
+    // ✅ নতুন customer row তৈরি হতে যাচ্ছে (existing reuse না) — তাই এখানেই
+    // ট্রায়াল/প্ল্যান কাস্টমার সীমা চেক করা হচ্ছে
+    await assertCustomerLimitAvailable(tenantId);
 
     // না থাকলে person-এর তথ্য দিয়ে একটা নতুন customer row বানাও
     const person = await query(`SELECT * FROM persons WHERE id = $1`, [personId]);
@@ -169,6 +174,14 @@ const connectViaQrScan = async (req, res) => {
 
         res.status(201).json({ success: true, message: 'সংযুক্ত হয়েছে!', data: connectionRow });
     } catch (err) {
+        if (err.code === 'CUSTOMER_LIMIT_REACHED') {
+            return res.status(403).json({
+                success: false,
+                code: 'CUSTOMER_LIMIT_REACHED',
+                message: `কাস্টমার সীমা (${err.used}/${err.limit}) শেষ হয়ে গেছে। নতুন কাস্টমার যোগ করতে হলে প্ল্যান আপগ্রেড করতে হবে।`,
+                data: { used: err.used, limit: err.limit }
+            });
+        }
         logger.error('❌ connectViaQrScan error:', err.message);
         res.status(500).json({ success: false, message: 'QR স্ক্যান করতে সমস্যা হয়েছে।' });
     }
@@ -231,6 +244,14 @@ const acceptConnection = async (req, res) => {
 
         res.json({ success: true, data: updated.rows[0] });
     } catch (err) {
+        if (err.code === 'CUSTOMER_LIMIT_REACHED') {
+            return res.status(403).json({
+                success: false,
+                code: 'CUSTOMER_LIMIT_REACHED',
+                message: `কাস্টমার সীমা (${err.used}/${err.limit}) শেষ হয়ে গেছে। নতুন কাস্টমার যোগ করতে হলে প্ল্যান আপগ্রেড করতে হবে।`,
+                data: { used: err.used, limit: err.limit }
+            });
+        }
         logger.error('❌ acceptConnection error:', err.message);
         res.status(500).json({ success: false, message: 'Accept করতে সমস্যা হয়েছে।' });
     }

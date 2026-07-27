@@ -9,6 +9,7 @@
 const { query } = require('../config/db');
 const logger    = require('../config/logger');
 const jwt       = require('jsonwebtoken');
+const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
 
 // ── Helper: portal customer_id থেকে person_id বের করো ──
 // ⚠️ FIX: আগে শুধু customerId নিয়ে DB থেকে person_id বের করতো — কিন্তু
@@ -195,6 +196,10 @@ const acceptCompanyRequest = async (req, res) => {
         if (existingCust.rows.length > 0) {
             customerId = existingCust.rows[0].id;
         } else {
+            // ✅ নতুন customer row তৈরি হতে যাচ্ছে (existing reuse না) — তাই
+            // এখানেই ট্রায়াল/প্ল্যান কাস্টমার সীমা চেক করা হচ্ছে
+            await assertCustomerLimitAvailable(conn.rows[0].tenant_id);
+
             const person = await query(`SELECT * FROM persons WHERE id = $1`, [personId]);
             const p = person.rows[0];
             const code = await generateCustomerCode(new Date());
@@ -220,6 +225,14 @@ const acceptCompanyRequest = async (req, res) => {
     } catch (err) {
         if (err.message === 'PERSON_NOT_LINKED') {
             return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        if (err.code === 'CUSTOMER_LIMIT_REACHED') {
+            return res.status(403).json({
+                success: false,
+                code: 'CUSTOMER_LIMIT_REACHED',
+                message: `কাস্টমার সীমা (${err.used}/${err.limit}) শেষ হয়ে গেছে। কোম্পানির সাথে যোগাযোগ করুন।`,
+                data: { used: err.used, limit: err.limit }
+            });
         }
         logger.error('❌ acceptCompanyRequest error:', err.message);
         res.status(500).json({ success: false, message: 'Accept করতে সমস্যা হয়েছে।' });

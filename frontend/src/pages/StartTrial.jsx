@@ -10,7 +10,7 @@ import {
 } from 'react-icons/fi'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
-import { SEAT_RATES, MAX_SEATS_PER_ROLE, calculateMonthlyTotal, formatTaka } from '../constants/pricing'
+import { SEAT_RATES, TRIAL_SEAT_LIMITS, MAX_TRIAL_CUSTOMERS, calculateMonthlyTotal, formatTaka } from '../constants/pricing'
 
 // ============================================================
 // Start Trial — ZovoriX
@@ -174,7 +174,7 @@ const STEPS = [
 
 // প্রতিটা role-এর জন্য এক লাইনের সিট-স্টেপার (− সংখ্যা +)
 // admin/fixed role-এ স্টেপার না দেখিয়ে শুধু "১ (তুমি)" দেখানো হয়
-function SeatStepper({ config, value, onChange }) {
+function SeatStepper({ config, value, onChange, max }) {
   const disabled = config.comingSoon || config.fixed
   return (
     <div style={{
@@ -204,8 +204,8 @@ function SeatStepper({ config, value, onChange }) {
           <button type="button" disabled={disabled || value <= 0} style={stepBtnStyle(disabled || value <= 0)}
             onClick={() => onChange(Math.max(0, value - 1))}>−</button>
           <span style={{ minWidth: '18px', textAlign: 'center', fontSize: '14px', fontWeight: 700, color: T.primary700 }}>{value}</span>
-          <button type="button" disabled={disabled || value >= MAX_SEATS_PER_ROLE} style={stepBtnStyle(disabled || value >= MAX_SEATS_PER_ROLE)}
-            onClick={() => onChange(Math.min(MAX_SEATS_PER_ROLE, value + 1))}>+</button>
+          <button type="button" disabled={disabled || value >= max} style={stepBtnStyle(disabled || value >= max)}
+            onClick={() => onChange(Math.min(max, value + 1))}>+</button>
         </div>
       )}
     </div>
@@ -272,8 +272,15 @@ export default function StartTrial() {
   const [slugStatus, setSlugStatus] = useState(null) // null | 'checking' | 'available' | 'taken' | 'invalid'
   const slugCheckTimer = useRef(null)
 
-  // সিট নির্বাচন — একটা ছোট SR + ম্যানেজার টিম দিয়ে শুরু, চাইলে বাড়ানো/কমানো যাবে
-  const [seats, setSeats] = useState({ manager: 1, worker: 2, shop_keeper: 0, stock_keeper: 0 })
+  // সিট নির্বাচন — ফ্রি ট্রায়াল প্যাকেজের পূর্ণ সীমা দিয়ে শুরু (৪ SR + ১ Manager
+  // + ২ Shop Keeper + ২ Stock Keeper reserved), চাইলে কমানো যাবে (TRIAL_SEAT_LIMITS-এর
+  // বেশি বাড়ানো যাবে না — দেখো SeatStepper-এর max prop)
+  const [seats, setSeats] = useState({
+    manager: TRIAL_SEAT_LIMITS.manager,
+    worker: TRIAL_SEAT_LIMITS.worker,
+    shop_keeper: TRIAL_SEAT_LIMITS.shop_keeper,
+    stock_keeper: TRIAL_SEAT_LIMITS.stock_keeper,
+  })
   const monthlyTotal = calculateMonthlyTotal({ admin: 1, ...seats })
 
   const {
@@ -718,7 +725,7 @@ export default function StartTrial() {
                   <div style={{ marginBottom: '20px' }}>
                     <label style={labelStyle}>তোমার টিমে কে কে থাকবে?</label>
                     <p style={{ fontSize: '12px', color: T.textMuted, margin: '-2px 0 10px', lineHeight: 1.6 }}>
-                      ট্রায়ালে যেকোনো সংখ্যা বেছে নাও, পুরোটাই ৩ মাস ফ্রি
+                      ফ্রি ট্রায়াল প্যাকেজে এই সর্বোচ্চ সংখ্যা পর্যন্ত সিট থাকছে, সাথে সর্বোচ্চ {MAX_TRIAL_CUSTOMERS.toLocaleString('bn-BD')} জন কাস্টমার যোগ করা যাবে — পুরোটাই ৩ মাস ফ্রি, ফুল ফিচার সহ
                     </p>
 
                     {Object.values(SEAT_RATES).map((config) => (
@@ -726,6 +733,7 @@ export default function StartTrial() {
                         key={config.role}
                         config={config}
                         value={config.fixed ? 1 : seats[config.role]}
+                        max={TRIAL_SEAT_LIMITS[config.role]}
                         onChange={(v) => setSeats((s) => ({ ...s, [config.role]: v }))}
                       />
                     ))}

@@ -4,6 +4,7 @@ const { uploadToCloudinary, generateCustomerCode } = require('../services/employ
 const { sendWelcomeEmail, sendOTPEmail } = require('../services/email.service');
 const { generateOTP } = require('../config/encryption');
 const { sendCustomerNotification } = require('./customerNotification.controller');
+const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
 
 // ============================================================
 // GET CUSTOMERS
@@ -250,6 +251,10 @@ const createCustomer = async (req, res) => {
             });
         }
 
+        // ✅ ট্রায়াল/প্ল্যান কাস্টমার সীমা — ছবি আপলোড/কোড জেনারেট করার আগেই
+        // চেক করা হচ্ছে, যাতে সীমা পার হয়ে গেলে অযথা সেই কাজগুলো না হয়
+        await assertCustomerLimitAvailable(req.tenantId);
+
         // দোকানের ছবি Cloudinary তে
         let shopPhotoUrl = null;
         if (req.file) {
@@ -363,6 +368,14 @@ const createCustomer = async (req, res) => {
         });
 
     } catch (error) {
+        if (error.code === 'CUSTOMER_LIMIT_REACHED') {
+            return res.status(403).json({
+                success: false,
+                code: 'CUSTOMER_LIMIT_REACHED',
+                message: `কাস্টমার সীমা (${error.used}/${error.limit}) শেষ হয়ে গেছে। নতুন কাস্টমার যোগ করতে হলে প্ল্যান আপগ্রেড করতে হবে।`,
+                data: { used: error.used, limit: error.limit }
+            });
+        }
         logger.error('❌ Create Customer Error:', error.message);
         return res.status(500).json({ success: false, message: 'কাস্টমার তৈরিতে সমস্যা হয়েছে।' });
     }

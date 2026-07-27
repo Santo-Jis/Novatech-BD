@@ -39,25 +39,50 @@ const SEAT_RATES = {
   stock_keeper: 499,   // এখনো live না
 };
 
-// এখনো ফিচার-হিসেবে বাস্তবায়িত হয়নি এমন role — client যাই পাঠাক, backend জোর করে ০
-const NOT_YET_LIVE_ROLES = ['shop_keeper', 'stock_keeper'];
+// ============================================================
+// ✅ ফ্রি ট্রায়াল প্যাকেজ (৩ মাস) — ফিক্সড সীমা, role অনুযায়ী আলাদা।
+// আগে সব role-এ ফ্ল্যাট ৫০ পর্যন্ত (কার্যত সীমাহীন) সিট নেওয়া যেত।
+// এখন নির্দিষ্ট, generous প্যাকেজ: সর্বোচ্চ ৪ SR + ১ Manager + ১ Admin +
+// ২ Shop Keeper + ২ Stock Keeper + সর্বোচ্চ ২,০০০ কাস্টমার। ফুল ফিচার —
+// কোনো ফিচার লক করা নেই, শুধু সংখ্যা সীমিত। এর বেশি লাগলে sales-এর
+// সাথে কথা বলে paid প্ল্যানে upgrade করতে হবে।
+//
+// shop_keeper/stock_keeper সিট এখানে আর জোর করে ০ করা হচ্ছে না — client
+// এই দুই role-এ সিট বুক/reserve করতে পারবে (২ পর্যন্ত), যদিও role দুটো
+// এখনো ফিচার-হিসেবে লাইভ না (roleCheck.js-এ নেই, users.role ENUM-এও
+// ভ্যালু নেই)। বাস্তবে এই role দিয়ে employee তৈরি এখনো আটকানো থাকছে
+// employee.controller.js-এর assertSeatAvailable-এ (ROLE_NOT_LIVE guard) —
+// সিট শুধু রিজার্ভ থাকবে, ফিচার আসলে চালু হলে ব্যবহারযোগ্য হবে।
+//
+// ⚠️ frontend/src/constants/pricing.js-এর TRIAL_SEAT_LIMITS-এর সাথে
+//    মিলিয়ে রাখতে হবে (duplicate — এখানেই আসল enforcement হয়, frontend
+//    শুধু UI-তে বাটন disable করে)।
+// ============================================================
+const TRIAL_SEAT_LIMITS = {
+  manager:      1,
+  worker:       4,   // SR
+  shop_keeper:  2,
+  stock_keeper: 2,
+};
 
-const MAX_SEATS_PER_ROLE = 50; // ট্রায়াল সাইনআপে reasonable ceiling — এর বেশি হলে sales-এর সাথে কথা বলা উচিত
+// ট্রায়াল তৈরি হওয়া মোট admin/employee সিটের যোগফল (tenants.max_employees-এ যাবে)
+const MAX_TRIAL_EMPLOYEES = 1 /* admin */ + Object.values(TRIAL_SEAT_LIMITS).reduce((a, b) => a + b, 0);
+
+// ট্রায়ালে সর্বোচ্চ কতজন কাস্টমার যোগ করা যাবে (tenants.max_customers-এ যাবে;
+// আসল enforcement হয় services/tenantLimits.service.js-এর assertCustomerLimitAvailable-এ)
+const MAX_TRIAL_CUSTOMERS = 2000;
 
 // ইনকামিং seats object normalize + validate করো
 // ইনপুট: { manager: 1, worker: 4, shop_keeper: 2, stock_keeper: 2 } (admin বাদে, কারণ admin সবসময় ১ — যে সাইনআপ করছে সে নিজেই)
-// আউটপুট: প্রতিটা role-এর জন্য একটা safe non-negative integer, cap সহ, not-yet-live role জোর করে ০
+// আউটপুট: প্রতিটা role-এর জন্য একটা safe non-negative integer, নিজের role-এর TRIAL_SEAT_LIMITS cap সহ
 const normalizeSeats = (seatsInput = {}) => {
   const normalized = {};
   for (const role of Object.keys(SEAT_RATES)) {
     if (role === 'admin') continue; // admin আলাদাভাবে হ্যান্ডেল হয়, নিচে দেখো
-    if (NOT_YET_LIVE_ROLES.includes(role)) {
-      normalized[role] = 0; // ফিচার রেডি না হওয়া পর্যন্ত জোর করে ০, client override করতে পারবে না
-      continue;
-    }
     const raw = Number(seatsInput?.[role]);
     const safe = Number.isFinite(raw) ? Math.trunc(raw) : 0;
-    normalized[role] = Math.min(Math.max(safe, 0), MAX_SEATS_PER_ROLE);
+    const cap  = TRIAL_SEAT_LIMITS[role] ?? 0; // অচেনা role থাকলে নিরাপদে ০
+    normalized[role] = Math.min(Math.max(safe, 0), cap);
   }
   return normalized;
 };
@@ -143,11 +168,12 @@ const registerCompany = async (req, res) => {
             trial_ends_at, max_employees, max_customers,
             industry, company_size, country, division, city, timezone, website, referral_source)
          VALUES ($1, $2, $3, 'trial', 'basic',
-                 NOW() + INTERVAL '3 months', 10, 200,
-                 $4, $5, $6, $7, $8, $9, $10, $11)
+                 NOW() + INTERVAL '3 months', $4, $5,
+                 $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING *`,
         [
           slug, company_name, company_name_bn || null,
+          MAX_TRIAL_EMPLOYEES, MAX_TRIAL_CUSTOMERS,
           industry || null, company_size || null, country || null, division || null,
           city || null, timezone || null, website || null, referral_source || null,
         ]
@@ -247,4 +273,4 @@ const checkSlugAvailability = async (req, res) => {
   return res.json({ available: result.rows.length === 0 });
 };
 
-module.exports = { registerCompany, checkSlugAvailability, SEAT_RATES };
+module.exports = { registerCompany, checkSlugAvailability, SEAT_RATES, TRIAL_SEAT_LIMITS, MAX_TRIAL_CUSTOMERS };

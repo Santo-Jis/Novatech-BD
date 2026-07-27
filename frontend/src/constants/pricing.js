@@ -53,7 +53,31 @@ export const SEAT_RATES = {
   },
 };
 
-export const MAX_SEATS_PER_ROLE = 50;
+// ============================================================
+// ✅ ফ্রি ট্রায়াল প্যাকেজ (৩ মাস) — ফিক্সড সীমা, role অনুযায়ী আলাদা
+// আগে যেকোনো role-এ ফ্ল্যাট ৫০ পর্যন্ত (কার্যত সীমাহীন) সিট নেওয়া যেত।
+// এখন ট্রায়ালে দেওয়া হচ্ছে একটা নির্দিষ্ট, generous প্যাকেজ:
+//   সর্বোচ্চ ৪ SR + ১ Manager + ১ Admin + ২ Shop Keeper + ২ Stock Keeper
+//   + সর্বোচ্চ ২,০০০ কাস্টমার — ফুল ফিচার (কোনো ফিচার লক করা নেই, শুধু
+//   সংখ্যা সীমিত)। এর বেশি লাগলে sales-এর সাথে কথা বলে paid প্ল্যানে
+//   upgrade করতে হবে।
+//
+// ⚠️ backend/src/controllers/onboarding.controller.js-এ TRIAL_SEAT_LIMITS
+//    হিসেবে এই একই ভ্যালু আলাদাভাবে রাখা আছে — এখানে বদলালে ওখানেও
+//    বদলাতে হবে (frontend শুধু UI-তে বাটন disable করে; আসল enforcement
+//    হয় backend-এ, তাই ওটাই source of truth)।
+// ============================================================
+export const TRIAL_SEAT_LIMITS = {
+  admin:        1,
+  manager:      1,
+  worker:       4, // SR
+  shop_keeper:  2,
+  stock_keeper: 2,
+};
+
+// ট্রায়ালে সর্বোচ্চ কতজন কাস্টমার যোগ করা যাবে (backend/services/
+// tenantLimits.service.js-এ enforce হয়)
+export const MAX_TRIAL_CUSTOMERS = 2000;
 
 // { manager: 1, worker: 4, ... } → মোট মাসিক টাকা (৳)
 export function calculateMonthlyTotal(seatCounts) {
