@@ -7,7 +7,7 @@ import ErrorBoundary from '../components/ErrorBoundary'
 import {
   FiHome, FiShoppingCart, FiFileText, FiCreditCard,
   FiBell, FiX, FiUser, FiMenu, FiCpu, FiLogOut,
-  FiChevronRight, FiPackage
+  FiChevronRight, FiPackage, FiLink, FiMessageCircle
 } from 'react-icons/fi'
 
 // ── Nav config ────────────────────────────────────────────────
@@ -21,13 +21,29 @@ const BOTTOM_NAV = [
 
 const DRAWER_NAV = [
   { icon: FiHome,         label: 'ড্যাশবোর্ড',  path: '/customer/dashboard',      color: '#60a5fa' },
+  { icon: FiLink,         label: 'নেটওয়ার্ক',   path: '/customer/network',        color: '#22d3ee' },
   { icon: FiShoppingCart, label: 'অর্ডার',       path: '/customer/orders',         color: '#34d399' },
   { icon: FiFileText,     label: 'ইনভয়েস',      path: '/customer/invoices',       color: '#a78bfa' },
   { icon: FiCreditCard,   label: 'পরিশোধ',      path: '/customer/payments',       color: '#fb923c' },
   { icon: FiUser,         label: 'প্রোফাইল',    path: '/customer/profile',        color: '#38bdf8' },
   { icon: FiCpu,          label: 'AI সহকারী',   path: '/customer/ai-chat',        color: '#e879f9' },
   { icon: FiBell,         label: 'নোটিফিকেশন', path: '/customer/notifications',  color: '#fbbf24' },
+  // ✅ IA স্কেলেটন প্লেসহোল্ডার (ধাপ ১) — ব্যাকএন্ড/স্পেক এখনো নেই, শুধু
+  // নেভিগেশন স্লট রিজার্ভ করে রাখা হলো যাতে Phase 3 (Social layer) শুরু
+  // হলে আবার পুরো ড্রয়ার/নেভিগেশন-স্ট্রাকচার ভাঙতে না হয়।
+  { icon: FiMessageCircle, label: 'মেসেজ (শীঘ্রই আসছে)', path: '/customer/messages', color: '#f472b6', comingSoon: true },
 ]
+
+// ✅ hex → "r,g,b" — আগে প্রতিটা রঙের জন্য আলাদা ternary ছিল (নতুন রঙ যোগ
+// করলে ভুলে মিস হয়ে ভুল rgba রেন্ডার হওয়ার ঝুঁকি ছিল), এখন যেকোনো hex
+// দিলেই কাজ করবে।
+function hexToRgbStr(hex) {
+  const h = hex.replace('#', '')
+  const r = parseInt(h.substring(0, 2), 16)
+  const g = parseInt(h.substring(2, 4), 16)
+  const b = parseInt(h.substring(4, 6), 16)
+  return `${r},${g},${b}`
+}
 
 function clearCustomerSession() {
   Object.keys(localStorage)
@@ -341,7 +357,7 @@ export default function CustomerLayout() {
                       padding: '10px 12px',
                       borderRadius: 11, border: 'none',
                       background: isActive
-                        ? `rgba(${item.color === '#60a5fa' ? '59,130,246' : item.color === '#34d399' ? '52,211,153' : item.color === '#a78bfa' ? '167,139,250' : item.color === '#fb923c' ? '251,146,60' : item.color === '#38bdf8' ? '56,189,248' : item.color === '#e879f9' ? '232,121,249' : '251,191,36'},0.1}`
+                        ? `rgba(${hexToRgbStr(item.color)},0.1)`
                         : 'transparent',
                       cursor: 'pointer', textAlign: 'left',
                       marginBottom: 2,
@@ -352,7 +368,7 @@ export default function CustomerLayout() {
                     <div style={{
                       width: 34, height: 34, borderRadius: 9,
                       background: isActive
-                        ? `rgba(${item.color === '#60a5fa' ? '59,130,246' : item.color === '#34d399' ? '52,211,153' : item.color === '#a78bfa' ? '167,139,250' : item.color === '#fb923c' ? '251,146,60' : item.color === '#38bdf8' ? '56,189,248' : item.color === '#e879f9' ? '232,121,249' : '251,191,36'},0.18)`
+                        ? `rgba(${hexToRgbStr(item.color)},0.18)`
                         : 'rgba(255,255,255,0.04)',
                       border: `1px solid ${isActive ? item.color + '40' : 'rgba(255,255,255,0.06)'}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',

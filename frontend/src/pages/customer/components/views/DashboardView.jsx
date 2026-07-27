@@ -20,6 +20,7 @@ import CreditTab from '../CreditTab'
 import ComplaintsTab from '../ComplaintsTab'
 import ReturnsTab from '../ReturnsTab'
 import OrderRequestTab from '../OrderRequestTab'
+import ConnectionsTab from '../ConnectionsTab'
 import CustomerAIChat from '../../CustomerAIChat'
 
 import DashboardHeader from '../dashboard/DashboardHeader'
@@ -101,6 +102,7 @@ export default function DashboardView({
 
   const tabs = [
     { id:'summary',    label:'সারসংক্ষেপ' },
+    { id:'network',    label:'🔗 নেটওয়ার্ক' },
     { id:'orders',     label:'🛒 অর্ডার' },
     { id:'invoices',   label:`🧾 ইনভয়েস` },
     { id:'payments',   label:`পরিশোধ` },
@@ -225,6 +227,11 @@ export default function DashboardView({
             {activeTab === 'summary' && (
               <SummaryTab customer={customer} monthly_summary={monthly_summary} total_summary={total_summary} portalJWT={portalJWT} />
             )}
+
+            {/* ══ নেটওয়ার্ক (কানেক্টেড কোম্পানি) ══ */}
+            {/* ✅ NEW: এই ট্যাবই ভবিষ্যতের Social/Discovery ফিডের natural home —
+                এই কার্ড-লিস্ট প্যাটার্নই পরে ফিডে এক্সটেন্ড হবে (IA স্কেলেটন ধাপ ১) */}
+            {activeTab === 'network' && <ConnectionsTab portalJWT={portalJWT} />}
 
             {/* ══ অর্ডার ══ */}
             {activeTab === 'orders' && <OrderRequestTab portalJWT={portalJWT}/>}

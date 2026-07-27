@@ -37,6 +37,7 @@ const WorkerLayout  = IS_CUSTOMER_APP ? null : lazy(() => import('./layouts/Work
 const CustomerPortal = lazy(() => import('./pages/customer/CustomerPortal'))
 const CustomerAIChat = lazy(() => import('./pages/customer/CustomerAIChat'))
 const CustomerSelfRegister = lazy(() => import('./pages/customer/CustomerSelfRegister'))
+const ComingSoonView = lazy(() => import('./pages/customer/ComingSoonView'))
 
 // Auth / Public
 const Login     = lazy(() => import('./pages/Login'))
@@ -402,12 +403,16 @@ function AppWithPermissions() {
             <Route path="/customer" element={<CustomerLayout />}>
               <Route index                element={<Navigate to="dashboard" replace />} />
               <Route path="dashboard"     element={<CustomerPortal defaultTab="summary"       />} />
+              <Route path="network"       element={<CustomerPortal defaultTab="network"       />} />
               <Route path="orders"        element={<CustomerPortal defaultTab="orders"        />} />
               <Route path="invoices"      element={<CustomerPortal defaultTab="invoices"      />} />
               <Route path="payments"      element={<CustomerPortal defaultTab="payments"      />} />
               <Route path="notifications" element={<CustomerPortal defaultTab="notifications" />} />
               <Route path="profile"       element={<CustomerPortal defaultTab="summary"       />} />
               <Route path="ai-chat"       element={<CustomerAIChat />} />
+              {/* ✅ IA স্কেলেটন প্লেসহোল্ডার (ধাপ ১) — Phase 3 (Social/Messaging) এখনো
+                  স্পেক-লেভেলে চূড়ান্ত হয়নি, শুধু রুট/নেভিগেশন স্লট রিজার্ভ করা হলো */}
+              <Route path="messages" element={<ComingSoonView title="মেসেজ" description="কোম্পানি ও অন্যান্য শপের সাথে ইন-অ্যাপ মেসেজিং — শীঘ্রই আসছে।" />} />
             </Route>
           </Route>
 
