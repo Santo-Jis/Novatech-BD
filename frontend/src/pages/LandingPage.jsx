@@ -535,32 +535,32 @@ export default function LandingPage() {
                 <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '16px', color: '#fff' }}>ZovoriX</span>
               </div>
               <p style={{ fontSize: '12.5px', lineHeight: 1.7, color: T.primary300, margin: 0, maxWidth: '240px' }}>
-                বিক্রয়, টিম ও কাস্টমার ব্যবস্থাপনার জন্য একটি সম্পূর্ণ প্ল্যাটফর্ম।
+                A complete platform for sales, team and customer management.
               </p>
             </div>
 
-            {/* যোগাযোগ */}
+            {/* Contact */}
             <div>
               <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
-                যোগাযোগ
+                Contact
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <a href="tel:+8801309540282" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
-                  <FiPhone style={{ fontSize: '14px', color: T.accent300 }} /> +৮৮০ ১৩০৯-৫৪০২৮২
+                  <FiPhone style={{ fontSize: '14px', color: T.accent300 }} /> +880 1309-540282
                 </a>
                 <a href="mailto:support@zovorix.com" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
                   <FiMail style={{ fontSize: '14px', color: T.accent300 }} /> support@zovorix.com
                 </a>
                 <a href="https://wa.me/8801309540282" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
-                  <FiMessageCircle style={{ fontSize: '14px', color: T.accent300 }} /> WhatsApp-এ লিখুন
+                  <FiMessageCircle style={{ fontSize: '14px', color: T.accent300 }} /> Message on WhatsApp
                 </a>
               </div>
             </div>
 
-            {/* সোশ্যাল */}
+            {/* Social */}
             <div>
               <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
-                সামাজিক যোগাযোগ
+                Social
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                 {[
@@ -596,23 +596,38 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* কুইক লিংক */}
+            {/* Login */}
             <div>
               <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
-                লগইন
+                Login
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  ম্যানেজমেন্ট লগইন
+                  Management Login
                 </button>
                 <button onClick={() => navigate('/customer-login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  রিটেইলার শপ লগইন
+                  Retailer Shop Login
                 </button>
                 <button onClick={() => navigate('/apply/sr')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  SR আবেদন করুন
+                  Apply as SR
                 </button>
+              </div>
+            </div>
+
+            {/* Company */}
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
+                Company
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <button onClick={() => navigate('/pricing')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  প্রাইসিং
+                  Pricing
+                </button>
+                <button onClick={() => navigate('/about')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  About Us
+                </button>
+                <button onClick={() => navigate('/contact')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  Contact
                 </button>
                 <button onClick={() => navigate('/privacy-policy')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   Privacy Policy
@@ -633,7 +648,7 @@ export default function LandingPage() {
             paddingTop: '20px',
           }}>
             <div style={{ fontSize: '12px', color: T.primary300 }}>
-              © {new Date().getFullYear()} ZovoriX. সর্বস্বত্ব সংরক্ষিত।
+              © {new Date().getFullYear()} ZovoriX. All rights reserved.
             </div>
           </div>
         </div>

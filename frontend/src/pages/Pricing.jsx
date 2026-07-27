@@ -7,7 +7,7 @@ import {
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
-import { PLAN_ORDER, PLANS, AI_PAY_AS_YOU_GO, COMMITMENT_DISCOUNTS, PRICING_FAQ, formatTaka, applyDiscount } from '../constants/planPricing'
+import { PLAN_ORDER, PLANS, AI_PAY_AS_YOU_GO, PRICING_FAQ, formatTaka, applyDiscount } from '../constants/planPricing'
 import { FEATURE_CATEGORIES } from '../constants/planFeatures'
 
 // ============================================================
@@ -247,13 +247,14 @@ export default function Pricing() {
         </div>
         <h1 style={{
           fontFamily: T.fontHead, fontSize: 'clamp(26px, 5vw, 38px)', fontWeight: 600,
-          lineHeight: 1.35, margin: '0 auto', maxWidth: '620px', color: T.primary700,
+          lineHeight: 1.35, margin: '0 auto', maxWidth: '580px', color: T.primary700,
         }}>
-          যত জন ইউজার দরকার নিন — প্ল্যান বাছাই হবে ফিচার দিয়ে
+          ইউজার যত খুশি যোগ করুন, প্ল্যান ঠিক হয় ফিচার দিয়ে
         </h1>
-        <p style={{ color: T.textSecondary, fontSize: '15px', maxWidth: '580px', margin: '18px auto 0', lineHeight: 1.8 }}>
-          ইউজার সংখ্যায় কোনো লিমিট নেই — প্রতিটা প্ল্যানে যত ইচ্ছা SR, ম্যানেজার বা অ্যাডমিন যোগ করা যাবে,
-          প্রতি সিটের রেট অনুযায়ী বিল হবে। প্ল্যান আলাদা হয় ফিচার আর সর্বোচ্চ কাস্টমার-কানেকশন সংখ্যা দিয়ে।
+        <p style={{ color: T.textSecondary, fontSize: '15px', maxWidth: '560px', margin: '18px auto 0', lineHeight: 1.8 }}>
+          প্রতিটা প্ল্যানে ইচ্ছামতো SR, ম্যানেজার, স্টক/শপ কিপার বা অ্যাডমিন যোগ করা যায় — যতজন যোগ
+          করবেন ততজনের সিট-রেট অনুযায়ী বিল হবে। প্ল্যান বদলায় দুইটা জিনিসে: কী কী ফিচার পাচ্ছেন, আর
+          সর্বোচ্চ কতজন কাস্টমার কানেক্ট করতে পারবেন — ইউজার সংখ্যার সাথে এর কোনো সম্পর্ক নেই।
         </p>
 
         {/* Billing cycle toggle */}
@@ -414,25 +415,6 @@ export default function Pricing() {
             </p>
           </div>
         )}
-
-        {/* Free trial + commitment discount note */}
-        <div style={{ marginTop: '20px', display: 'flex', flexWrap: 'wrap', gap: '12px', justifyContent: 'center' }}>
-          <div style={{
-            background: T.bgAlt, border: `1px solid ${T.borderDefault}`, borderRadius: '9px',
-            padding: '11px 16px', fontSize: '12px', color: T.textPrimary, maxWidth: '460px', lineHeight: 1.7,
-          }}>
-            <strong>৩ মাস ফ্রি ট্রায়াল</strong> — ৪ SR + ১ ম্যানেজার + ১ অ্যাডমিন + ২ শপ কিপার + ২ স্টক কিপার,
-            সর্বোচ্চ ২,০০০ কাস্টমার পর্যন্ত, ফুল ERP-লেভেল ফিচার সহ।
-          </div>
-          {COMMITMENT_DISCOUNTS.map(d => (
-            <div key={d.years} style={{
-              background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '9px',
-              padding: '11px 16px', fontSize: '12px', color: T.textSecondary, display: 'flex', alignItems: 'center', gap: '6px',
-            }}>
-              <strong style={{ color: T.primary700 }}>{d.discountPct}%</strong> ছাড় — {d.years} বছরের লাইসেন্স
-            </div>
-          ))}
-        </div>
       </section>
 
       {/* Feature comparison matrix — single shared CSS-grid template so columns
@@ -549,7 +531,7 @@ export default function Pricing() {
       <footer style={{ background: T.primary900, color: T.primary100, padding: '48px 24px 24px' }}>
         <div style={{ maxWidth: '960px', margin: '0 auto' }}>
           <div style={{
-            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
             gap: '32px', paddingBottom: '32px', borderBottom: '1px solid rgba(255,255,255,0.12)',
           }}>
             <div>
@@ -559,22 +541,22 @@ export default function Pricing() {
                 </div>
                 <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '16px', color: '#fff' }}>ZovoriX</span>
               </div>
-              <p style={{ fontSize: '12.5px', lineHeight: 1.7, color: T.primary300, margin: 0, maxWidth: '240px' }}>
-                বিক্রয়, টিম ও কাস্টমার ব্যবস্থাপনার জন্য একটি সম্পূর্ণ প্ল্যাটফর্ম।
+              <p style={{ fontSize: '12.5px', lineHeight: 1.7, color: T.primary300, margin: 0, maxWidth: '220px' }}>
+                A complete platform for sales, team and customer management.
               </p>
             </div>
 
             <div>
-              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>যোগাযোগ</div>
+              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>Contact</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <a href="tel:+8801309540282" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>+৮৮০ ১৩০৯-৫৪০২৮২</a>
-                <a href="mailto:support@zovorix.com" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>support@zovorix.com</a>
-                <a href="https://wa.me/8801309540282" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>WhatsApp-এ লিখুন</a>
+                <a href="tel:+8801309540282" style={{ color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>+880 1309-540282</a>
+                <a href="mailto:support@zovorix.com" style={{ color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>support@zovorix.com</a>
+                <a href="https://wa.me/8801309540282" target="_blank" rel="noopener noreferrer" style={{ color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>Message on WhatsApp</a>
               </div>
             </div>
 
             <div>
-              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>সামাজিক যোগাযোগ</div>
+              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>Social</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                 {[
                   { icon: <FaFacebookF />,  href: 'https://www.facebook.com/profile.php?id=61591653097465&mibextid=ZbWKwL', label: 'Facebook' },
@@ -596,21 +578,29 @@ export default function Pricing() {
             </div>
 
             <div>
-              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>লিংক</div>
+              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>Login</div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>ম্যানেজমেন্ট লগইন</button>
-                <button onClick={() => navigate('/customer-login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>রিটেইলার শপ লগইন</button>
-                <button onClick={() => navigate('/apply/sr')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>SR আবেদন করুন</button>
-                <button onClick={() => navigate('/pricing')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>প্রাইসিং</button>
+                <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>Management Login</button>
+                <button onClick={() => navigate('/customer-login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>Retailer Shop Login</button>
+                <button onClick={() => navigate('/apply/sr')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>Apply as SR</button>
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>Company</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                <button onClick={() => navigate('/pricing')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>Pricing</button>
+                <button onClick={() => navigate('/about')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>About Us</button>
+                <button onClick={() => navigate('/contact')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>Contact</button>
                 <button onClick={() => navigate('/privacy-policy')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>Privacy Policy</button>
                 <button onClick={() => navigate('/terms-conditions')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>Terms & Conditions</button>
               </div>
             </div>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', paddingTop: '20px' }}>
-            <div style={{ fontSize: '12px', color: T.primary300 }}>© {new Date().getFullYear()} ZovoriX. সর্বস্বত্ব সংরক্ষিত।</div>
+            <div style={{ fontSize: '12px', color: T.primary300 }}>© {new Date().getFullYear()} ZovoriX. All rights reserved.</div>
             <div style={{ fontSize: '12px', color: T.primary300, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <FiMapPin style={{ fontSize: '13px', color: T.accent300 }} /> বরিশাল সদর, কাউনিয়া, জানকি সিংহ রোড
+              <FiMapPin style={{ fontSize: '13px', color: T.accent300 }} /> Barishal Sadar, Kaunia, Janoki Singho Road
             </div>
           </div>
         </div>
