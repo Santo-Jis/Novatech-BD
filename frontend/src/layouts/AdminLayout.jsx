@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
 import ErrorBoundary from '../components/ErrorBoundary'
-import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag } from 'react-icons/fi'
+import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag, FiLink } from 'react-icons/fi'
 
 // সবসময় দেখা যাবে — গ্রুপের বাইরে (ঘন ঘন ব্যবহার হয়)
 const pinnedItems = [
@@ -45,6 +45,7 @@ const navGroups = [
       { path: '/admin/customer-order-requests', icon: <FiShoppingCart />, label: 'অর্ডার রিকোয়েস্ট' },
       { path: '/admin/portal-devices',          icon: <FiSmartphone />,   label: 'পোর্টাল ডিভাইস' },
       { path: '/admin/customer-requests',       icon: <FiInbox />,        label: 'কাস্টমার রিকোয়েস্ট' },
+      { path: '/admin/network-discovery',       icon: <FiLink />,         label: 'নেটওয়ার্ক ও ডিসকভারি' },
     ],
   },
   {

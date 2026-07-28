@@ -105,6 +105,7 @@ const AdminRoutes            = IS_CUSTOMER_APP ? null : lazy(() => import('./pag
 const AdminCustomerOrderRequests = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/CustomerOrderRequests'))
 const AdminLeaveManagement   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AdminLeaveManagement'))
 const AdminPromotions        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Promotions'))
+const AdminNetworkDiscovery  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/NetworkDiscovery'))
 
 // ── Manager pages — Customer APK-এ bundle হবে না ─────────────
 const ManagerDashboard    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Dashboard'))
@@ -486,6 +487,7 @@ function AppWithPermissions() {
                 <Route path="recruitment"       element={<SRRecruitmentDashboard />} />
                 <Route path="teams"             element={<AdminTeams />} />
                 <Route path="settings"          element={<AdminSettings />} />
+                <Route path="network-discovery" element={<AdminNetworkDiscovery />} />
                 <Route path="products"          element={<AdminProducts />} />
                 <Route path="audit-logs"        element={<AuditLogs />} />
                 <Route path="portal-returns"    element={<PortalReturnRequests />} />
