@@ -4,7 +4,6 @@ const { uploadToCloudinary, generateCustomerCode } = require('../services/employ
 const { sendWelcomeEmail, sendOTPEmail } = require('../services/email.service');
 const { generateOTP } = require('../config/encryption');
 const { sendCustomerNotification } = require('./customerNotification.controller');
-const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
 
 // ============================================================
 // GET CUSTOMERS
@@ -251,10 +250,6 @@ const createCustomer = async (req, res) => {
             });
         }
 
-        // ✅ ট্রায়াল/প্ল্যান কাস্টমার সীমা — ছবি আপলোড/কোড জেনারেট করার আগেই
-        // চেক করা হচ্ছে, যাতে সীমা পার হয়ে গেলে অযথা সেই কাজগুলো না হয়
-        await assertCustomerLimitAvailable(req.tenantId);
-
         // দোকানের ছবি Cloudinary তে
         let shopPhotoUrl = null;
         if (req.file) {
@@ -353,7 +348,7 @@ const createCustomer = async (req, res) => {
                     workerInfo = workerResult.rows[0] || null;
                 }
 
-                await sendWelcomeEmail(email, result.rows[0], workerInfo);
+                await sendWelcomeEmail(email, result.rows[0], workerInfo, { tenant_id: req.tenantId });
                 logger.info(`📧 স্বাগতম Email পাঠানো হয়েছে → ${email}`);
             } catch (emailErr) {
                 // Email ব্যর্থ হলেও customer creation সফল রাখো
@@ -368,14 +363,6 @@ const createCustomer = async (req, res) => {
         });
 
     } catch (error) {
-        if (error.code === 'CUSTOMER_LIMIT_REACHED') {
-            return res.status(403).json({
-                success: false,
-                code: 'CUSTOMER_LIMIT_REACHED',
-                message: `কাস্টমার সীমা (${error.used}/${error.limit}) শেষ হয়ে গেছে। নতুন কাস্টমার যোগ করতে হলে প্ল্যান আপগ্রেড করতে হবে।`,
-                data: { used: error.used, limit: error.limit }
-            });
-        }
         logger.error('❌ Create Customer Error:', error.message);
         return res.status(500).json({ success: false, message: 'কাস্টমার তৈরিতে সমস্যা হয়েছে।' });
     }
@@ -990,7 +977,7 @@ const sendEmailVerifyOTP = async (req, res) => {
             [emailLower, otp, expiresAt]
         );
 
-        const result = await sendOTPEmail(email, otp, 'নতুন কাস্টমার নিবন্ধন');
+        const result = await sendOTPEmail(email, otp, 'নতুন কাস্টমার নিবন্ধন', 10, null, { tenant_id: req.tenantId });
 
         if (!result.success && !result.dev) {
             return res.status(500).json({ success: false, message: 'Email পাঠানো যায়নি। পরে চেষ্টা করুন।' });

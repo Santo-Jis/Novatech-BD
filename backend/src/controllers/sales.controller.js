@@ -569,12 +569,12 @@ const createSale = async (req, res) => {
 
         // OTP + Invoice একসাথে একটাই Email/SMS
         if (otp) {
-            const otpResult = await sendInvoiceOTP(cust, saleResult.id, otp, expiryMinutes, saleResult, req.user, processedItems);
+            const otpResult = await sendInvoiceOTP(cust, saleResult.id, otp, expiryMinutes, saleResult, req.user, processedItems, req.tenantId);
             logger.info('📤 OTP+Invoice পাঠানো:', JSON.stringify(otpResult.results));
         }
 
         // Invoice SMS Fallback (email না থাকলে)
-        sendInvoiceNotification(cust, saleResult, req.user, processedItems)
+        sendInvoiceNotification(cust, saleResult, req.user, processedItems, req.tenantId)
             .then(r => logger.info('📄 Invoice SMS Fallback:', JSON.stringify(r.results)))
             .catch(e => logger.error('⚠️ Invoice নোটিফিকেশন Error:', e.message));
 
@@ -714,16 +714,17 @@ const sendInvoice = async (req, res) => {
                 s.sms_phone || s.whatsapp,
                 s.invoice_number,
                 s.net_amount,
-                s.shop_name
+                s.shop_name,
+                { tenant_id: req.tenantId }
             );
         } else if (sendVia === 'email' && s.email) {
             const { sendInvoiceEmail } = require('../services/email.service');
             const items = typeof s.items === 'string' ? JSON.parse(s.items) : (s.items || []);
-            await sendInvoiceEmail(s.email, s, s, req.user, items);
+            await sendInvoiceEmail(s.email, s, s, req.user, items, { tenant_id: req.tenantId });
         } else {
             // 'auto' — Email আগে, না থাকলে SMS
             const items = typeof s.items === 'string' ? JSON.parse(s.items) : (s.items || []);
-            await sendInvoiceNotification(s, s, req.user, items);
+            await sendInvoiceNotification(s, s, req.user, items, req.tenantId);
         }
 
         return res.status(200).json({

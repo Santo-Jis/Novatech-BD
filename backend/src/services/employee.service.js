@@ -130,7 +130,7 @@ const generateTempPassword = () => {
 // Welcome SMS পাঠানো
 // ============================================================
 
-const sendWelcomeSMS = async (employee, employeeCode, tempPassword) => {
+const sendWelcomeSMS = async (employee, employeeCode, tempPassword, tenantId = null) => {
     const phone = employee.phone || employee.phone2;
     if (!phone) return;
 
@@ -138,7 +138,8 @@ const sendWelcomeSMS = async (employee, employeeCode, tempPassword) => {
         phone,
         employeeCode,
         tempPassword,
-        employee.name_bn
+        employee.name_bn,
+        { tenant_id: tenantId }
     );
 };
 

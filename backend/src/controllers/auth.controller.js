@@ -448,7 +448,7 @@ const forgotPassword = async (req, res) => {
           </div>
         </div>`;
 
-        await sendEmail(user.email, 'ZovoriX - পাসওয়ার্ড রিসেট OTP 🔑', html);
+        await sendEmail(user.email, 'ZovoriX - পাসওয়ার্ড রিসেট OTP 🔑', html, '', { type: 'otp', tenant_id: req.tenantId });
 
         return res.status(200).json({ success: true, message: 'OTP আপনার ইমেইলে পাঠানো হয়েছে।' });
 

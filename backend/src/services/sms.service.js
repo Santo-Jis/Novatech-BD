@@ -2,6 +2,7 @@ const axios = require('axios');
 const logger = require('../config/logger');
 const { query } = require('../config/db');
 const { decrypt } = require('../config/encryption');
+const walletService = require('./wallet.service');
 
 // ============================================================
 // SMS Service — Multi-Provider Adapter
@@ -195,12 +196,12 @@ const sendViaCustom = async (formattedPhone, message, config) => {
 // ============================================================
 // SMS LOGGER — non-blocking, DB-এ log রাখে
 // ============================================================
-const logSms = async ({ phone, type = 'custom', provider, status, error = null, sent_by = null }) => {
+const logSms = async ({ phone, type = 'custom', provider, status, error = null, sent_by = null, tenant_id = null }) => {
     try {
         await query(
-            `INSERT INTO sms_logs (phone, message_type, provider, status, error_message, sent_by)
-             VALUES ($1, $2, $3, $4, $5, $6)`,
-            [phone, type, provider, status, error, sent_by]
+            `INSERT INTO sms_logs (phone, message_type, provider, status, error_message, sent_by, tenant_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [phone, type, provider, status, error, sent_by, tenant_id]
         );
     } catch (e) {
         logger.warn('⚠️ SMS log save failed:', e.message);
@@ -212,24 +213,54 @@ const logSms = async ({ phone, type = 'custom', provider, status, error = null, 
 // ============================================================
 
 const sendSMS = async (phone, message, meta = {}) => {
-    // meta = { type: 'otp' | 'invoice' | 'login' | 'custom', sent_by: userId }
-    const { type = 'custom', sent_by = null } = meta;
+    // meta = { type: 'otp' | 'invoice' | 'login' | 'custom', sent_by: userId, tenant_id }
+    const { type = 'custom', sent_by = null, tenant_id = null } = meta;
+    const formattedPhone = formatPhone(phone);
+    let config;
+
     try {
-        const formattedPhone = formatPhone(phone);
-        const config = await getSmsConfig();
+        config = await getSmsConfig();
+    } catch (error) {
+        logger.error(`❌ SMS Config Error → ${phone}:`, error.message);
+        return { success: false, error: error.message };
+    }
 
-        if (!config.enabled) {
-            logger.info(`📵 SMS বন্ধ (${formattedPhone})`);
-            await logSms({ phone: formattedPhone, type, provider: config.provider, status: 'disabled', sent_by });
-            return { success: true, disabled: true };
+    if (!config.enabled) {
+        logger.info(`📵 SMS বন্ধ (${formattedPhone})`);
+        await logSms({ phone: formattedPhone, type, provider: config.provider, status: 'disabled', sent_by, tenant_id });
+        return { success: true, disabled: true };
+    }
+
+    if (!config.apiKey) {
+        logger.info(`📱 Dev Mode [${config.provider}] → ${formattedPhone}: ${message}`);
+        await logSms({ phone: formattedPhone, type, provider: config.provider, status: 'dev', sent_by, tenant_id });
+        return { success: true, dev: true };
+    }
+
+    // ── Phase 3 (26 July 2026): আসল সেন্ড করার ঠিক আগে ব্যালেন্স কেটে নাও ──
+    // tenant_id না থাকলে (যেমন সুপার-অ্যাডমিন internal টেস্ট) charge হয় না।
+    // ব্যালেন্স-সিস্টেমেই অপ্রত্যাশিত DB সমস্যা হলে SMS আটকানো হয় না (business-
+    // critical পাথ যেমন OTP/login — শুধু charge ছাড়াই পাঠিয়ে লগে warning রাখা হয়)।
+    let chargedPaisa = 0;
+    if (tenant_id) {
+        try {
+            const pricing = await walletService.getPricing();
+            await walletService.deduct(tenant_id, pricing.smsPricePaisa, {
+                type: 'sms_charge',
+                description: `SMS (${type}) → ${formattedPhone}`,
+            });
+            chargedPaisa = pricing.smsPricePaisa;
+        } catch (err) {
+            if (err.code === 'INSUFFICIENT_BALANCE') {
+                logger.warn(`⚠️ SMS ব্লকড — অপ্রতুল ব্যালেন্স (tenant ${tenant_id})`);
+                await logSms({ phone: formattedPhone, type, provider: config.provider, status: 'blocked', error: 'insufficient_balance', sent_by, tenant_id });
+                return { success: false, blocked: true, error: 'অপ্রতুল ব্যালেন্স।', balance_paisa: err.balance_paisa };
+            }
+            logger.error('⚠️ Wallet deduct ব্যর্থ (SMS তবু পাঠানো হচ্ছে, charge ছাড়া):', err.message);
         }
+    }
 
-        if (!config.apiKey) {
-            logger.info(`📱 Dev Mode [${config.provider}] → ${formattedPhone}: ${message}`);
-            await logSms({ phone: formattedPhone, type, provider: config.provider, status: 'dev', sent_by });
-            return { success: true, dev: true };
-        }
-
+    try {
         let result;
         switch (config.provider) {
             case 'textbee':      result = await sendViaTextBee(formattedPhone, message, config);    break;
@@ -241,13 +272,20 @@ const sendSMS = async (phone, message, meta = {}) => {
         }
 
         logger.info(`✅ SMS সফল [${config.provider}] → ${formattedPhone}`);
-        await logSms({ phone: formattedPhone, type, provider: config.provider, status: 'sent', sent_by });
+        await logSms({ phone: formattedPhone, type, provider: config.provider, status: 'sent', sent_by, tenant_id });
         return result;
 
     } catch (error) {
-        const config = _configCache;
         logger.error(`❌ SMS Error → ${phone}:`, error.message);
-        await logSms({ phone: formatPhone(phone), type, provider: config?.provider, status: 'failed', error: error.message, sent_by });
+
+        // পাঠানো ব্যর্থ হলে কাটা টাকা ফেরত দাও
+        if (chargedPaisa > 0) {
+            walletService.recharge(tenant_id, chargedPaisa, {
+                type: 'refund', description: `SMS পাঠাতে ব্যর্থ — রিফান্ড (${type})`,
+            }).catch(e => logger.error('⚠️ SMS রিফান্ড ব্যর্থ:', e.message));
+        }
+
+        await logSms({ phone: formattedPhone, type, provider: config.provider, status: 'failed', error: error.message, sent_by, tenant_id });
         return { success: false, error: error.message };
     }
 };

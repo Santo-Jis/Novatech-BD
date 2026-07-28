@@ -200,7 +200,7 @@ const createOrder = async (req, res) => {
                     totalAmount,
                     note:        note || null,
                     requestedAt: new Date().toISOString()
-                });
+                }, { tenant_id: req.tenantId });
                 logger.info(`📧 Order Email → ${allEmails.join(', ')}`);
             } else {
                 logger.info('⚠️ কোনো Admin/Manager এর email পাওয়া যায়নি।');

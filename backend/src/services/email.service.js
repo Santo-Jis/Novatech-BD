@@ -1,5 +1,6 @@
 const logger = require('../config/logger');
 const { query } = require('../config/db');
+const walletService = require('./wallet.service');
 // nodemailer বাদ — Render SMTP block করে, তাই Brevo HTTP API ব্যবহার করা হচ্ছে
 
 // ============================================================
@@ -8,6 +9,19 @@ const { query } = require('../config/db');
 // Nodemailer দিয়ে Email পাঠানো (Gmail SMTP / Custom SMTP)
 // OTP ও Invoice দুটোই Email-এ পাঠানো যাবে
 // ============================================================
+
+// ── EMAIL LOGGER (Phase 3, 26 July 2026) — non-blocking, DB-এ log রাখে ──
+const logEmail = async ({ email, subject, type = 'custom', status, error = null, tenant_id = null }) => {
+    try {
+        await query(
+            `INSERT INTO email_logs (email, subject, message_type, status, error_message, tenant_id)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [email, subject, type, status, error, tenant_id]
+        );
+    } catch (e) {
+        logger.warn('⚠️ Email log save failed:', e.message);
+    }
+};
 
 // DB থেকে Email কনফিগ পড়া (cached 60s)
 let _emailConfigCache = null;
@@ -66,20 +80,52 @@ const clearEmailConfigCache = () => {
 // CORE SENDER
 // ============================================================
 
-const sendEmail = async (to, subject, html, text = '') => {
+const sendEmail = async (to, subject, html, text = '', meta = {}) => {
+    const { type = 'custom', tenant_id = null } = meta;
+    let config;
+
     try {
-        const config = await getEmailConfig();
+        config = await getEmailConfig();
+    } catch (error) {
+        logger.error(`❌ Email Config Error → ${to}:`, error.message);
+        return { success: false, error: error.message };
+    }
 
-        if (!config.enabled) {
-            logger.info(`📵 Email বন্ধ → ${to}`);
-            return { success: true, disabled: true };
+    if (!config.enabled) {
+        logger.info(`📵 Email বন্ধ → ${to}`);
+        await logEmail({ email: to, subject, type, status: 'disabled', tenant_id });
+        return { success: true, disabled: true };
+    }
+
+    if (!config.user || !config.pass) {
+        logger.info(`📧 Dev Mode Email → ${to}: ${subject}`);
+        await logEmail({ email: to, subject, type, status: 'dev', tenant_id });
+        return { success: true, dev: true };
+    }
+
+    // ── Phase 3 (26 July 2026): আসল সেন্ড করার ঠিক আগে ব্যালেন্স কেটে নাও ──
+    // (SMS-এর মতোই — tenant_id না থাকলে charge হয় না, wallet-এ অপ্রত্যাশিত
+    // সমস্যা হলেও email আটকানো হয় না, শুধু charge ছাড়া পাঠানো হয়)
+    let chargedPaisa = 0;
+    if (tenant_id) {
+        try {
+            const pricing = await walletService.getPricing();
+            await walletService.deduct(tenant_id, pricing.emailPricePaisa, {
+                type: 'email_charge',
+                description: `Email (${type}) → ${to}`,
+            });
+            chargedPaisa = pricing.emailPricePaisa;
+        } catch (err) {
+            if (err.code === 'INSUFFICIENT_BALANCE') {
+                logger.warn(`⚠️ Email ব্লকড — অপ্রতুল ব্যালেন্স (tenant ${tenant_id})`);
+                await logEmail({ email: to, subject, type, status: 'blocked', error: 'insufficient_balance', tenant_id });
+                return { success: false, blocked: true, error: 'অপ্রতুল ব্যালেন্স।', balance_paisa: err.balance_paisa };
+            }
+            logger.error('⚠️ Wallet deduct ব্যর্থ (Email তবু পাঠানো হচ্ছে, charge ছাড়া):', err.message);
         }
+    }
 
-        if (!config.user || !config.pass) {
-            logger.info(`📧 Dev Mode Email → ${to}: ${subject}`);
-            return { success: true, dev: true };
-        }
-
+    try {
         // ✅ Brevo HTTP API (SMTP এর বদলে — Render SMTP block করে)
         const response = await fetch('https://api.brevo.com/v3/smtp/email', {
             method: 'POST',
@@ -103,10 +149,20 @@ const sendEmail = async (to, subject, html, text = '') => {
         }
 
         logger.info(`✅ Email সফল → ${to} [${result.messageId}]`);
+        await logEmail({ email: to, subject, type, status: 'sent', tenant_id });
         return { success: true, messageId: result.messageId };
 
     } catch (error) {
         logger.error(`❌ Email Error → ${to}:`, error.message);
+
+        // পাঠানো ব্যর্থ হলে কাটা টাকা ফেরত দাও
+        if (chargedPaisa > 0) {
+            walletService.recharge(tenant_id, chargedPaisa, {
+                type: 'refund', description: `Email পাঠাতে ব্যর্থ — রিফান্ড (${type})`,
+            }).catch(e => logger.error('⚠️ Email রিফান্ড ব্যর্থ:', e.message));
+        }
+
+        await logEmail({ email: to, subject, type, status: 'failed', error: error.message, tenant_id });
         return { success: false, error: error.message };
     }
 };
@@ -115,7 +171,7 @@ const sendEmail = async (to, subject, html, text = '') => {
 // OTP EMAIL TEMPLATE
 // ============================================================
 
-const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToken = null) => {
+const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToken = null, meta = {}) => {
     const FRONTEND_URL = process.env.FRONTEND_URL || 'https://zovorix.com';
     const verifyLink   = verifyToken ? `${FRONTEND_URL}/verify/${verifyToken}` : null;
     const subject      = verifyLink
@@ -187,14 +243,14 @@ const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToke
     const text = verifyLink
         ? `ZovoriX — অর্ডার নিশ্চিত করুন\nদোকান: ${shopName}\nলিংক: ${verifyLink}\nমেয়াদ: ${expiryMinutes} মিনিট`
         : `ZovoriX OTP\nদোকান: ${shopName}\nOTP: ${otp}\nমেয়াদ: ${expiryMinutes} মিনিট\nএই কোড কাউকে দেবেন না।`;
-    return sendEmail(email, subject, html, text);
+    return sendEmail(email, subject, html, text, { type: 'otp', tenant_id: meta.tenant_id });
 };
 
 // ============================================================
 // INVOICE EMAIL TEMPLATE
 // ============================================================
 
-const sendInvoiceEmail = async (email, sale, customer, worker, items) => {
+const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {}) => {
     const subject = `ZovoriX Invoice - ${sale.invoice_number} | ${customer.shop_name}`;
 
     const paymentLabels = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
@@ -325,14 +381,14 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items) => {
 </html>`;
 
     const text = `ZovoriX Invoice\nদোকান: ${customer.shop_name}\nInvoice: ${sale.invoice_number}\nমোট: ৳${sale.net_amount}\nপেমেন্ট: ${paymentLabels[sale.payment_method] || sale.payment_method}\nধন্যবাদ।`;
-    return sendEmail(email, subject, html, text);
+    return sendEmail(email, subject, html, text, { type: 'invoice', tenant_id: meta.tenant_id });
 };
 
 // ============================================================
 // OTP + INVOICE একসাথে — একটাই Email
 // ============================================================
 
-const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, customer, worker, items) => {
+const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, customer, worker, items, meta = {}) => {
     const FRONTEND_URL = process.env.FRONTEND_URL || 'https://zovorix.com';
     const verifyLink   = sale?.verify_token ? `${FRONTEND_URL}/verify/${sale.verify_token}` : null;
     const subject      = verifyLink
@@ -500,7 +556,7 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
     const text = verifyLink
         ? `ZovoriX — অর্ডার নিশ্চিত করুন\nInvoice: ${sale.invoice_number}\nদোকান: ${customer.shop_name}\nমোট: ৳${sale.net_amount}\nলিংক: ${verifyLink}\nমেয়াদ: ${expiryMinutes} মিনিট`
         : `ZovoriX - OTP: ${otp} (মেয়াদ: ${expiryMinutes} মিনিট)\nInvoice: ${sale.invoice_number}\nদোকান: ${customer.shop_name}\nমোট: ৳${sale.net_amount}\nএই কোড কাউকে দেবেন না।`;
-    return sendEmail(email, subject, html, text);
+    return sendEmail(email, subject, html, text, { type: 'otp_invoice', tenant_id: meta.tenant_id });
 };
 
 // ============================================================
@@ -508,7 +564,7 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
 // SR/কর্মি নতুন অর্ডার দিলে সাথে সাথে Email যাবে
 // ============================================================
 
-const sendOrderNotificationEmail = async (toEmails, orderData) => {
+const sendOrderNotificationEmail = async (toEmails, orderData, meta = {}) => {
     const {
         orderId,
         workerName,
@@ -664,7 +720,7 @@ const sendOrderNotificationEmail = async (toEmails, orderData) => {
     const results = [];
     for (const email of (Array.isArray(toEmails) ? toEmails : [toEmails])) {
         if (email) {
-            const result = await sendEmail(email, subject, html, text);
+            const result = await sendEmail(email, subject, html, text, { type: 'order_notification', tenant_id: meta.tenant_id });
             results.push({ email, ...result });
         }
     }
@@ -675,7 +731,7 @@ const sendOrderNotificationEmail = async (toEmails, orderData) => {
 // WELCOME EMAIL TEMPLATE — নতুন কাস্টমার নিবন্ধন সম্পন্ন হলে
 // ============================================================
 
-const sendWelcomeEmail = async (email, customer, worker) => {
+const sendWelcomeEmail = async (email, customer, worker, meta = {}) => {
     const subject = `🎉 স্বাগতম ZovoriX পরিবারে! | ${customer.shop_name}`;
 
     const html = `<!DOCTYPE html>
@@ -834,7 +890,7 @@ const sendWelcomeEmail = async (email, customer, worker) => {
 
     const text = `স্বাগতম ZovoriX পরিবারে!\nদোকান: ${customer.shop_name}\nমালিক: ${customer.owner_name}\nকাস্টমার কোড: ${customer.customer_code}\nধন্যবাদ আমাদের সাথে থাকার জন্য।`;
 
-    return sendEmail(email, subject, html, text);
+    return sendEmail(email, subject, html, text, { type: 'welcome', tenant_id: meta.tenant_id });
 };
 
 // ============================================================
@@ -842,7 +898,7 @@ const sendWelcomeEmail = async (email, customer, worker) => {
 // আবেদনকারীকে "গ্রাহক" না বলে সঠিকভাবে সম্বোধন করা হয়েছে
 // ============================================================
 
-const sendSRApplicationOTPEmail = async (email, otp, applicantName, expiryMinutes = 10) => {
+const sendSRApplicationOTPEmail = async (email, otp, applicantName, expiryMinutes = 10, meta = {}) => {
     const subject = `ZovoriX — SR আবেদন যাচাই কোড: ${otp}`;
 
     const html = `<!DOCTYPE html>
@@ -980,14 +1036,14 @@ const sendSRApplicationOTPEmail = async (email, otp, applicantName, expiryMinute
 </html>`;
 
     const text = `ZovoriX — SR নিয়োগ আবেদন যাচাই\nআবেদনকারী: ${applicantName || 'আবেদনকারী'}\nOTP কোড: ${otp}\nমেয়াদ: ${expiryMinutes} মিনিট\nএই কোড কাউকে দেবেন না।`;
-    return sendEmail(email, subject, html, text);
+    return sendEmail(email, subject, html, text, { type: 'sr_otp', tenant_id: meta.tenant_id });
 };
 
 // ============================================================
 // SR আবেদন সফল — আবেদনকারীকে Confirmation Email
 // ============================================================
 
-const sendSRApplicationConfirmEmail = async (email, applicantData) => {
+const sendSRApplicationConfirmEmail = async (email, applicantData, meta = {}) => {
     const { name, application_id, phone, district, created_at } = applicantData;
 
     const subject = `✅ আবেদন সফল হয়েছে — ${application_id} | ZovoriX`;
@@ -1146,14 +1202,14 @@ const sendSRApplicationConfirmEmail = async (email, applicantData) => {
 </html>`;
 
     const text = `আবেদন সফল! আবেদন নম্বর: ${application_id}\nনাম: ${name}\nমোবাইল: ${phone}\nজেলা: ${district}\nসময়: ${dateStr}\nযোগাযোগ: 01836-191102`;
-    return sendEmail(email, subject, html, text);
+    return sendEmail(email, subject, html, text, { type: 'sr_confirm', tenant_id: meta.tenant_id });
 };
 
 // ============================================================
 // SR আবেদন সফল — Admin কে Notification Email
 // ============================================================
 
-const sendSRApplicationAdminNotifyEmail = async (toEmails, applicantData) => {
+const sendSRApplicationAdminNotifyEmail = async (toEmails, applicantData, meta = {}) => {
     const { name, application_id, phone, email: applicantEmail, district, nid, created_at } = applicantData;
 
     const subject = `📋 নতুন SR আবেদন: ${name} (${application_id})`;
@@ -1268,7 +1324,7 @@ const sendSRApplicationAdminNotifyEmail = async (toEmails, applicantData) => {
     const text = `নতুন SR আবেদন!\nআবেদন নম্বর: ${application_id}\nনাম: ${name}\nমোবাইল: ${phone}\nজেলা: ${district}\nসময়: ${dateStr}`;
 
     for (const email of (Array.isArray(toEmails) ? toEmails : [toEmails])) {
-        await sendEmail(email, subject, html, text);
+        await sendEmail(email, subject, html, text, { type: 'sr_admin_notify', tenant_id: meta.tenant_id });
     }
 };
 

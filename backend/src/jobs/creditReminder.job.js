@@ -144,7 +144,7 @@ const runCreditReminderJob = async () => {
         const { rows: customers } = await query(`
             SELECT
                 c.id, c.shop_name, c.owner_name, c.customer_code,
-                c.email, c.current_credit, c.credit_limit,
+                c.email, c.current_credit, c.credit_limit, c.tenant_id,
                 u.name_bn  AS sr_name,
                 u.id       AS sr_id,
                 u.manager_id,
@@ -176,7 +176,7 @@ const runCreditReminderJob = async () => {
                     : null;
 
                 const { subject, html, text } = buildReminderEmail(customer, portalLink);
-                const result = await sendEmail(customer.email, subject, html, text);
+                const result = await sendEmail(customer.email, subject, html, text, { type: 'credit_reminder', tenant_id: customer.tenant_id });
                 if (result.success) emailSent++;
             } catch (e) {
                 logger.error(`❌ Email fail (${customer.shop_name}):`, e.message);

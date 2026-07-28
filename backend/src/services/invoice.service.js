@@ -83,7 +83,7 @@ const generateInvoiceNumber = async () => {
 //   2. Email না থাকলে বা fail হলে → SMS দিয়ে OTP পাঠাও
 // ============================================================
 
-const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10, sale = null, worker = null, items = null) => {
+const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10, sale = null, worker = null, items = null, tenantId = null) => {
     const phone = customer.whatsapp || customer.sms_phone;
     const email = customer.email;
 
@@ -110,9 +110,9 @@ const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10, sale = 
     if (email) {
         try {
             if (sale && worker && items) {
-                results.email = await sendOTPWithInvoiceEmail(email, otp, expiryMinutes, sale, customer, worker, items);
+                results.email = await sendOTPWithInvoiceEmail(email, otp, expiryMinutes, sale, customer, worker, items, { tenant_id: tenantId });
             } else {
-                results.email = await sendOTPEmail(email, otp, customer.shop_name, expiryMinutes, sale?.verify_token || null);
+                results.email = await sendOTPEmail(email, otp, customer.shop_name, expiryMinutes, sale?.verify_token || null, { tenant_id: tenantId });
             }
             if (results.email?.success && !results.email?.dev && !results.email?.disabled) {
                 anySent = true;
@@ -127,7 +127,7 @@ const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10, sale = 
     // ── ৩. SMS Fallback — WhatsApp ও Email দুটোই fail হলে ──────
     if (phone && !anySent) {
         try {
-            results.sms = await sendOTP(phone, otp, customer.shop_name);
+            results.sms = await sendOTP(phone, otp, customer.shop_name, { tenant_id: tenantId });
             if (results.sms?.success) {
                 anySent = true;
                 logger.info(`📱 [OTP] SMS সফল → ${phone}`);
@@ -150,7 +150,7 @@ const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10, sale = 
 // (Email আগেই OTP-এর সাথে পাঠানো হয়েছে)
 // ============================================================
 
-const sendInvoiceNotification = async (customer, sale, worker, items) => {
+const sendInvoiceNotification = async (customer, sale, worker, items, tenantId = null) => {
     const phone = customer.whatsapp || customer.sms_phone;
 
     const results = { email: null, sms: null };
@@ -165,7 +165,8 @@ const sendInvoiceNotification = async (customer, sale, worker, items) => {
                 phone,
                 sale.invoice_number,
                 sale.net_amount,
-                customer.shop_name
+                customer.shop_name,
+                { tenant_id: tenantId }
             );
             if (results.sms?.success) {
                 anySent = true;

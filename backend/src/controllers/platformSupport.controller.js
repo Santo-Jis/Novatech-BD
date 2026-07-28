@@ -96,7 +96,7 @@ const triggerPasswordReset = async (req, res) => {
     }
 
     try {
-        const result = await query('SELECT id, name_bn, email, phone, status FROM users WHERE id = $1', [id]);
+        const result = await query('SELECT id, name_bn, email, phone, status, tenant_id FROM users WHERE id = $1', [id]);
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'ইউজার পাওয়া যায়নি।' });
         }
@@ -122,7 +122,7 @@ const triggerPasswordReset = async (req, res) => {
 
         if (channel === 'sms') {
             const msg = `ZovoriX\nOTP: ${otp}\nমেয়াদ: ১০ মিনিট\nSupport সহায়তায় পাঠানো — কাউকে শেয়ার করবেন না।`;
-            const smsResult = await sendSMS(user.phone, msg, { type: 'otp', sent_by: req.platformStaff.id });
+            const smsResult = await sendSMS(user.phone, msg, { type: 'otp', sent_by: req.platformStaff.id, tenant_id: user.tenant_id });
             if (smsResult.success === false) {
                 return res.status(502).json({ success: false, message: 'SMS পাঠানো যায়নি, আবার চেষ্টা করুন।' });
             }
@@ -142,7 +142,7 @@ const triggerPasswordReset = async (req, res) => {
           </div>
         </div>`;
 
-        await sendEmail(user.email, 'ZovoriX - পাসওয়ার্ড রিসেট OTP (Support সহায়তা) 🔑', html);
+        await sendEmail(user.email, 'ZovoriX - পাসওয়ার্ড রিসেট OTP (Support সহায়তা) 🔑', html, '', { type: 'otp', tenant_id: user.tenant_id });
 
         return res.json({ success: true, message: `${user.name_bn}-এর ইমেইলে reset OTP পাঠানো হয়েছে।` });
     } catch (err) {

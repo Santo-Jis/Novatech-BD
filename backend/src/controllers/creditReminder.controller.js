@@ -143,7 +143,8 @@ const sendCreditReminder = async (req, res) => {
 
         const emailResult = await sendEmail(
             customer.email, subject, html,
-            `ZovoriX — বাকি Reminder\nদোকান: ${customer.shop_name}\nবাকি: ৳${credit}`
+            `ZovoriX — বাকি Reminder\nদোকান: ${customer.shop_name}\nবাকি: ৳${credit}`,
+            { type: 'credit_reminder', tenant_id: req.tenantId }
         );
 
         // ── Push to SR's Manager ─────────────────────────────
