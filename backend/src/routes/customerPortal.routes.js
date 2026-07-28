@@ -5,13 +5,10 @@
 
 const express    = require('express');
 const router     = express.Router();
-const jwt        = require('jsonwebtoken');
 const multer     = require('multer');
 const rateLimit  = require('express-rate-limit');
 const { RedisStore }     = require('rate-limit-redis');
 const { getRedisClient } = require('../config/redis');
-const logger             = require('../config/logger');
-const { getCached, setCache, invalidatePortalAuthCache } = require('../services/portalCache.service');
 
 // ============================================================
 // FILE UPLOAD (সেলফ-রেজিস্ট্রেশনে প্রোফাইল ছবি ও দোকানের ছবি)
@@ -74,112 +71,15 @@ const {
 const { auth }          = require('../middlewares/auth');
 const { aiTokenBucket } = require('../middlewares/aiTokenBucket');
 const { customerAiChat, getCustomerChatHistory } = require('../controllers/customerAiChat.controller');
-const { query }         = require('../config/db');
 
 // ── Portal JWT Middleware ─────────────────────────────────────
-// ✅ শুধু short-lived access token (type: 'customer_portal') গ্রহণ করে।
-//    Refresh token (type: 'customer_portal_refresh') এখানে reject হবে।
-const portalAuth = async (req, res, next) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader?.startsWith('Bearer ')) {
-        return res.status(401).json({ success: false, message: 'লগইন করুন।' });
-    }
-
-    if (!process.env.JWT_PORTAL_SECRET) {
-        return res.status(500).json({ success: false, message: 'সার্ভার কনফিগারেশন সমস্যা।' });
-    }
-
-    const token = authHeader.split(' ')[1];
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_PORTAL_SECRET, {
-            algorithms: ['HS256']
-        });
-
-        // refresh token দিয়ে portal route access করা যাবে না
-        if (decoded.type !== 'customer_portal') {
-            return res.status(403).json({ success: false, message: 'অবৈধ টোকেন।' });
-        }
-
-        // ⚠️ FIX: আগে customer_id বাধ্যতামূলক ছিল — এখন company-বিহীন
-        // person-only token-ও গ্রহণযোগ্য (customer_id: null, person_id উপস্থিত)।
-        if (!decoded.customer_id && !decoded.person_id) {
-            return res.status(403).json({ success: false, message: 'অবৈধ টোকেন — customer_id/person_id নেই।' });
-        }
-
-        // ── person-only session (এখনো কোনো কোম্পানির সাথে connection নেই) ──
-        // customer_portal_tokens টেবিলে customer_id NOT NULL, তাই এই
-        // session-এর token_version cache-check প্রযোজ্য না — শুধু person
-        // সত্যিই আছে কিনা যাচাই করা হয়।
-        if (!decoded.customer_id && decoded.person_id) {
-            try {
-                const personCheck = await query(`SELECT id FROM persons WHERE id = $1`, [decoded.person_id]);
-                if (personCheck.rows.length === 0) {
-                    return res.status(403).json({ success: false, message: 'প্রোফাইল পাওয়া যায়নি।' });
-                }
-            } catch (dbErr) {
-                logger.error('❌ portalAuth person check error:', dbErr.message);
-                return res.status(500).json({ success: false, message: 'যাচাই করতে সমস্যা হয়েছে।' });
-            }
-            req.portalUser = decoded;
-            return next();
-        }
-
-        const customerId = decoded.customer_id;
-        const jwtVersion = decoded.token_version || 1;
-
-        let cached = await getCached(customerId);
-
-        if (!cached) {
-            try {
-                const authCheck = await query(
-                    `SELECT c.id, c.is_active, cpt.token_version AS current_version
-                     FROM customers c
-                     LEFT JOIN customer_portal_tokens cpt ON cpt.customer_id = c.id
-                     WHERE c.id = $1`,
-                    [customerId]
-                );
-
-                if (authCheck.rows.length === 0 || !authCheck.rows[0].is_active) {
-                    return res.status(403).json({
-                        success: false,
-                        message: 'আপনার অ্যাকাউন্ট নিষ্ক্রিয় করা হয়েছে।',
-                    });
-                }
-
-                const currentVersion = authCheck.rows[0].current_version || 1;
-                cached = { token_version: currentVersion, cachedAt: Date.now() };
-                await setCache(customerId, cached);
-
-            } catch (dbErr) {
-                logger.error('❌ portalAuth DB check error:', dbErr.message);
-                return res.status(500).json({ success: false, message: 'যাচাই করতে সমস্যা হয়েছে।' });
-            }
-        }
-
-        if (jwtVersion !== cached.token_version) {
-            await invalidatePortalAuthCache(customerId);
-            return res.status(401).json({
-                success:    false,
-                message:    'নতুন লিংক ইস্যু হয়েছে। পুনরায় লগইন করুন।',
-                error_code: 'TOKEN_REVOKED',
-            });
-        }
-
-        req.portalUser = decoded;
-        next();
-
-    } catch (err) {
-        // ✅ TokenExpiredError আলাদাভাবে ধরা — frontend auto-refresh করবে
-        if (err.name === 'TokenExpiredError') {
-            return res.status(401).json({
-                success:    false,
-                message:    'Token মেয়াদোত্তীর্ণ।',
-                error_code: 'TOKEN_EXPIRED',
-            });
-        }
-        return res.status(401).json({ success: false, message: 'অবৈধ টোকেন।' });
-    }
-};
+// ⚠️ FIX: আগে এখানে একই লজিকের একটা আলাদা inline কপি ছিল, যেটাতে
+// tenant suspend/cancel enforcement (SaaS Phase 1) মিস হয়ে গিয়েছিল —
+// company suspend করলেও এই routes (dashboard/invoices/credit/ইত্যাদি)
+// দিয়ে customer ডেটা অ্যাক্সেস করতে পারতো। এখন middlewares/portalAuthShared.js
+// থেকে single, canonical কপি import করা হচ্ছে — দুই জায়গায় একই লজিক
+// আলাদাভাবে maintain করলে ঠিক এভাবেই ভবিষ্যতেও drift হতে পারে।
+const { portalAuth } = require('../middlewares/portalAuthShared');
 
 // ============================================================
 // RATE LIMITERS — Redis-backed, customer_id keyed
@@ -227,6 +127,23 @@ const selfRegisterLimiter = rateLimit({
     message: { success: false, message: 'অনেকবার চেষ্টা করা হয়েছে। ১ ঘণ্টা পর আবার চেষ্টা করুন।' }
 });
 
+// ⚠️ FIX: portal login endpoints (/google-auth, /direct-auth, /device-login)-এ
+// আগে কোনো rate limiter ছিল না, অথচ staff-side /login-এ ছিল। যদিও Google
+// token verify করা লাগে (তাই সরাসরি password brute-force সম্ভব না), তারপরও
+// এটা unbound customer_code/person_id-তে নিজের Gmail bind করার race,
+// device-login link_token guessing, এবং Google API abuse-এর বিরুদ্ধে সুরক্ষা দেয়।
+// ১৫ মিনিটে ১৫টি — staff login-এর চেয়ে একটু বেশি ছাড় (device switching/retry
+// স্বাভাবিক কারণেও ঘন ঘন হতে পারে)।
+const portalLoginLimiter = rateLimit({
+    windowMs:     15 * 60 * 1000,
+    max:          15,
+    keyGenerator: (req) => `portal_login:${req.ip}`,
+    store:        makeRedisStore(),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
+});
+
 // ============================================================
 // AUTH ROUTES
 // ============================================================
@@ -237,9 +154,9 @@ router.post('/self-register', selfRegisterLimiter,
     selfRegisterCustomer);
 router.post('/resolve-link',  resolveLink);
 router.get('/verify-token',   verifyPortalToken);
-router.post('/google-auth',   googleAuth);
-router.post('/direct-auth',   directGoogleAuth);
-router.post('/device-login',  deviceLogin);
+router.post('/google-auth',   portalLoginLimiter, googleAuth);
+router.post('/direct-auth',   portalLoginLimiter, directGoogleAuth);
+router.post('/device-login',  portalLoginLimiter, deviceLogin);
 
 // ✅ NEW: HttpOnly cookie → নতুন 15-মিনিট access token
 // Authorization header লাগে না — browser cookie automatically পাঠায়

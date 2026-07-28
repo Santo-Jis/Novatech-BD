@@ -1122,6 +1122,7 @@ const switchCompany = async (req, res) => {
         const jwtPayload = {
             customer_id:   target.target_customer_id,
             customer_code: target.customer_code,
+            person_id:     personId,  // ✅ নতুন — বাকি সব login path-এর সাথে সামঞ্জস্যপূর্ণ
             type:          'customer_portal',
             token_version: target.token_version || 1,
         };

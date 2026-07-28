@@ -312,7 +312,7 @@ const revokeAllDevices = async (req, res) => {
             linkRevoked = true;
 
             try {
-                const { invalidatePortalAuthCache } = require('../routes/customerPortal.routes');
+                const { invalidatePortalAuthCache } = require('../services/portalCache.service');
                 invalidatePortalAuthCache(customerId);
             } catch { /* silent */ }
         }
