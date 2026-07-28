@@ -21,6 +21,7 @@ import ComplaintsTab from '../ComplaintsTab'
 import ReturnsTab from '../ReturnsTab'
 import OrderRequestTab from '../OrderRequestTab'
 import ConnectionsTab from '../ConnectionsTab'
+import ProfileTab from '../ProfileTab'
 import CustomerAIChat from '../../CustomerAIChat'
 
 import DashboardHeader from '../dashboard/DashboardHeader'
@@ -109,6 +110,7 @@ export default function DashboardView({
     { id:'returns',    label:`🔄 রিটার্ন${returnReqTotal > 0 ? ` (${returnReqTotal})` : ''}` },
     { id:'credit_req', label:'💳 লিমিট' },
     { id:'complaints', label:'📣 অভিযোগ' },
+    { id:'profile',    label:'👤 প্রোফাইল' },
     { id:'ai_chat',    label:'🤖 AI চ্যাট' },
   ]
 
@@ -526,6 +528,11 @@ export default function DashboardView({
             {/* ✅ REDESIGNED (Session 18): aggregate + company-ট্যাগ প্যাটার্নে, self-contained ComplaintsTab
                 (/all-complaints ইতিহাস + /complaint ফর্ম, connection_id-স্কোপড) */}
             {activeTab === 'complaints' && <ComplaintsTab portalJWT={portalJWT} />}
+
+            {/* ══ প্রোফাইল ══ */}
+            {/* ✅ NEW: Phase 2 ফ্রন্টএন্ড — শপ তথ্য/এরিয়া/বিজনেস-ফিল্ড/discoverable টগল
+                (ব্যাকএন্ড GET/PUT /api/portal/profile/area-field আগে থেকেই রেডি ছিল) */}
+            {activeTab === 'profile' && <ProfileTab portalJWT={portalJWT} />}
             {false && (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 {!complaintOpen ? (

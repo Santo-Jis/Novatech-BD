@@ -408,7 +408,7 @@ function AppWithPermissions() {
               <Route path="invoices"      element={<CustomerPortal defaultTab="invoices"      />} />
               <Route path="payments"      element={<CustomerPortal defaultTab="payments"      />} />
               <Route path="notifications" element={<CustomerPortal defaultTab="notifications" />} />
-              <Route path="profile"       element={<CustomerPortal defaultTab="summary"       />} />
+              <Route path="profile"       element={<CustomerPortal defaultTab="profile"      />} />
               <Route path="ai-chat"       element={<CustomerAIChat />} />
               {/* ✅ IA স্কেলেটন প্লেসহোল্ডার (ধাপ ১) — Phase 3 (Social/Messaging) এখনো
                   স্পেক-লেভেলে চূড়ান্ত হয়নি, শুধু রুট/নেভিগেশন স্লট রিজার্ভ করা হলো */}
