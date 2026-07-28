@@ -73,7 +73,8 @@ const getAllTenants = async (req, res) => {
       SELECT
         t.*,
         (SELECT COUNT(*) FROM users u WHERE u.tenant_id = t.id)     AS employee_count,
-        (SELECT COUNT(*) FROM customers c WHERE c.tenant_id = t.id) AS customer_count
+        (SELECT COUNT(*) FROM customers c WHERE c.tenant_id = t.id) AS customer_count,
+        (SELECT balance_paisa FROM tenant_wallets w WHERE w.tenant_id = t.id) AS wallet_balance_paisa
       FROM tenants t
       ${whereClause}
       ORDER BY t.created_at DESC
@@ -293,7 +294,8 @@ const getTenantDetails = async (req, res) => {
           (SELECT COUNT(*) FROM users       WHERE tenant_id = $1) AS employees,
           (SELECT COUNT(*) FROM customers   WHERE tenant_id = $1) AS customers,
           (SELECT COUNT(*) FROM sales_transactions WHERE tenant_id = $1) AS total_sales,
-          (SELECT COALESCE(SUM(net_amount),0) FROM sales_transactions WHERE tenant_id = $1) AS total_revenue
+          (SELECT COALESCE(SUM(net_amount),0) FROM sales_transactions WHERE tenant_id = $1) AS total_revenue,
+          (SELECT balance_paisa FROM tenant_wallets WHERE tenant_id = $1) AS wallet_balance_paisa
       `, [tenantId]),
     ]);
 
@@ -890,6 +892,72 @@ const testSmsGateway = async (req, res) => {
   }
 };
 
+// ============================================================
+// ✅ Phase 4 (26 July 2026): WALLET — Super Admin ম্যানুয়ালি কোনো
+// tenant-কে রিচার্জ করতে পারবে, আর ব্যালেন্স/লেনদেনের হিস্টরি দেখতে পারবে।
+// ============================================================
+const getTenantWallet = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const page  = parseInt(req.query.page, 10)  || 1;
+    const limit = parseInt(req.query.limit, 10) || 20;
+
+    const walletService = require('../services/wallet.service');
+    const [wallet, history] = await Promise.all([
+      walletService.getWallet(tenantId),
+      walletService.getHistory(tenantId, { page, limit }),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        balance_paisa: Number(wallet.balance_paisa),
+        transactions:  history.rows,
+        pagination:    history.pagination,
+      },
+    });
+  } catch (err) {
+    console.error('[superAdmin.getTenantWallet]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const rechargeTenantWallet = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const { amount_paisa, description, reference } = req.body;
+
+    const amountPaisa = parseInt(amount_paisa, 10);
+    if (!Number.isInteger(amountPaisa) || amountPaisa <= 0) {
+      return res.status(400).json({ success: false, message: 'amount_paisa একটা positive সংখ্যা হতে হবে।' });
+    }
+
+    const tenantRes = await query(`SELECT id, company_name FROM tenants WHERE id = $1`, [tenantId]);
+    if (tenantRes.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Tenant পাওয়া যায়নি।' });
+    }
+
+    const walletService = require('../services/wallet.service');
+    const result = await walletService.recharge(tenantId, amountPaisa, {
+      type: 'recharge',
+      reference: reference || null,
+      description: description || 'Super Admin ম্যানুয়াল রিচার্জ',
+    });
+
+    await logAudit(req, 'wallet.recharge', tenantId, {
+      company_name: tenantRes.rows[0].company_name,
+      amount_paisa: amountPaisa,
+      new_balance_paisa: result.balance_paisa,
+      description: description || null,
+    });
+
+    return res.json({ success: true, message: 'রিচার্জ সফল হয়েছে।', data: { balance_paisa: result.balance_paisa } });
+  } catch (err) {
+    console.error('[superAdmin.rechargeTenantWallet]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   getAllTenants,
   createTenant,
@@ -911,4 +979,6 @@ module.exports = {
   updatePlatformSettings,
   getSmsStatus,
   testSmsGateway,
+  getTenantWallet,
+  rechargeTenantWallet,
 };

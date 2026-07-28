@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { FiArrowLeft, FiLoader, FiKey, FiTrash2, FiCopy, FiCheck } from 'react-icons/fi'
+import { FiArrowLeft, FiLoader, FiKey, FiTrash2, FiCopy, FiCheck, FiDollarSign, FiPlus } from 'react-icons/fi'
 import superAdminApi from './api/superAdminApi'
 import StatusBadge from './components/StatusBadge'
 import { LoadingState, ErrorState } from './components/PanelStates'
@@ -72,6 +72,8 @@ export default function TenantDetail() {
         <StatCard label="মোট বিক্রয়" value={stats.total_sales} />
         <StatCard label="মোট রাজস্ব" value={`৳${Number(stats.total_revenue).toLocaleString('bn-BD')}`} />
       </div>
+
+      <WalletCard tenantId={tenant.id} balancePaisa={stats.wallet_balance_paisa} onChanged={load} />
 
       <div className="bg-pf-bg-surface border border-pf-border rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-pf-border">
@@ -307,6 +309,137 @@ function ResetPasswordCard({ tenantId }) {
           </p>
         </div>
       )}
+    </Card>
+  )
+}
+
+// ─── Wallet (Phase 4, 26 July 2026) ────────────────────────────
+const TXN_LABELS = {
+  recharge:     { label: 'রিচার্জ',       color: 'text-pf-success' },
+  refund:       { label: 'রিফান্ড',       color: 'text-pf-success' },
+  adjustment:   { label: 'সংশোধন',       color: 'text-pf-text-secondary' },
+  sms_charge:   { label: 'SMS চার্জ',     color: 'text-pf-error' },
+  email_charge: { label: 'Email চার্জ',   color: 'text-pf-error' },
+}
+
+function WalletCard({ tenantId, balancePaisa, onChanged }) {
+  const [amountTaka, setAmountTaka] = useState('')
+  const [description, setDescription] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  const [history, setHistory] = useState(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [expanded, setExpanded] = useState(false)
+
+  const loadHistory = async () => {
+    setHistoryLoading(true)
+    try {
+      const res = await superAdminApi.get(`/tenants/${tenantId}/wallet`)
+      setHistory(res.data.data.transactions)
+    } catch (err) {
+      if (!err._toastShown) setMsg('হিস্টরি লোড করা যায়নি।')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (expanded && history === null) loadHistory()
+  }, [expanded])
+
+  const submit = async (e) => {
+    e.preventDefault()
+    setMsg('')
+    const taka = parseFloat(amountTaka)
+    if (!taka || taka <= 0) {
+      setMsg('সঠিক পরিমাণ (টাকা) দিন।')
+      return
+    }
+    setLoading(true)
+    try {
+      await superAdminApi.post(`/tenants/${tenantId}/wallet/recharge`, {
+        amount_paisa: Math.round(taka * 100),
+        description: description || undefined,
+      })
+      setMsg('✅ রিচার্জ সফল হয়েছে।')
+      setAmountTaka('')
+      setDescription('')
+      onChanged()
+      if (expanded) loadHistory()
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'রিচার্জ করা যায়নি।')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const balanceTaka = ((balancePaisa || 0) / 100).toLocaleString('bn-BD', { minimumFractionDigits: 2 })
+
+  return (
+    <Card title="ওয়ালেট / ক্রেডিট">
+      <div className="flex items-center gap-2 mb-4">
+        <FiDollarSign className="text-pf-primary-700" />
+        <span className="text-2xl font-pf-mono font-semibold text-pf-primary-700">৳{balanceTaka}</span>
+        <span className="text-xs text-pf-text-muted">বর্তমান ব্যালেন্স</span>
+      </div>
+
+      <form onSubmit={submit} className="flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+        <div>
+          <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">রিচার্জ (টাকা)</label>
+          <input
+            type="number" step="0.01" min="0"
+            value={amountTaka} onChange={(e) => setAmountTaka(e.target.value)}
+            placeholder="৫০০" className={inputCls}
+          />
+        </div>
+        <div className="flex-1 w-full">
+          <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">নোট (ঐচ্ছিক)</label>
+          <input
+            value={description} onChange={(e) => setDescription(e.target.value)}
+            placeholder="যেমন: bKash TrxID 8N7X..." className={`${inputCls} w-full`}
+          />
+        </div>
+        <SubmitButton loading={loading}><FiPlus /> রিচার্জ করুন</SubmitButton>
+      </form>
+      {msg && <p className="text-sm mt-2 text-pf-text-secondary">{msg}</p>}
+
+      <div className="mt-4 pt-3 border-t border-pf-border">
+        {!expanded ? (
+          <button onClick={() => setExpanded(true)} className="text-sm font-medium text-pf-primary-700 hover:underline">
+            লেনদেনের হিস্টরি দেখতে ক্লিক করুন →
+          </button>
+        ) : (
+          <>
+            {historyLoading && <p className="text-sm text-pf-text-muted">লোড হচ্ছে...</p>}
+            {history && history.length === 0 && (
+              <p className="text-sm text-pf-text-muted">এখনো কোনো লেনদেন হয়নি।</p>
+            )}
+            {history && history.length > 0 && (
+              <div className="space-y-2">
+                {history.map((t) => {
+                  const meta = TXN_LABELS[t.type] || { label: t.type, color: 'text-pf-text-primary' }
+                  const taka = (Math.abs(t.amount_paisa) / 100).toLocaleString('bn-BD', { minimumFractionDigits: 2 })
+                  return (
+                    <div key={t.id} className="flex items-center justify-between text-sm border-b border-pf-border/60 pb-2 last:border-0">
+                      <div>
+                        <span className={`font-medium ${meta.color}`}>{meta.label}</span>
+                        {t.description && <span className="text-pf-text-muted ml-2 text-xs">{t.description}</span>}
+                        <div className="text-[11px] text-pf-text-muted">
+                          {new Date(t.created_at).toLocaleString('bn-BD')}
+                        </div>
+                      </div>
+                      <span className={`font-pf-mono font-semibold ${t.amount_paisa >= 0 ? 'text-pf-success' : 'text-pf-error'}`}>
+                        {t.amount_paisa >= 0 ? '+' : '−'}৳{taka}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </Card>
   )
 }

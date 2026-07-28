@@ -100,4 +100,8 @@ router.put   ('/platform-settings',      ctrl.updatePlatformSettings);
 router.get   ('/platform-settings/sms-status', ctrl.getSmsStatus);
 router.post  ('/platform-settings/sms-test',   ctrl.testSmsGateway);
 
+// ✅ Phase 4 (26 July 2026): Tenant Wallet — ব্যালেন্স/হিস্টরি দেখা ও ম্যানুয়াল রিচার্জ
+router.get   ('/tenants/:tenantId/wallet',          ctrl.getTenantWallet);
+router.post  ('/tenants/:tenantId/wallet/recharge', ctrl.rechargeTenantWallet);
+
 module.exports = router;

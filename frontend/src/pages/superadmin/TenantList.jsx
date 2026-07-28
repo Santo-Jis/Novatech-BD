@@ -118,12 +118,16 @@ export default function TenantList() {
                   <th className="text-left px-4 py-2.5 font-semibold">কোম্পানি</th>
                   <th className="text-left px-4 py-2.5 font-semibold">প্ল্যান</th>
                   <th className="text-left px-4 py-2.5 font-semibold">স্ট্যাটাস</th>
+                  <th className="text-left px-4 py-2.5 font-semibold">ওয়ালেট</th>
                   <th className="text-left px-4 py-2.5 font-semibold hidden sm:table-cell">কর্মী/কাস্টমার</th>
                   <th className="text-left px-4 py-2.5 font-semibold hidden sm:table-cell">তৈরি হয়েছে</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-pf-border">
-                {rows.map((t) => (
+                {rows.map((t) => {
+                  const balanceTaka = (t.wallet_balance_paisa || 0) / 100
+                  const isLow = balanceTaka < 10
+                  return (
                   <tr
                     key={t.id}
                     onClick={() => navigate(`/superadmin/tenants/${t.id}`)}
@@ -141,6 +145,9 @@ export default function TenantList() {
                     <td className="px-4 py-3">
                       <StatusBadge status={t.status} />
                     </td>
+                    <td className={`px-4 py-3 font-pf-mono text-xs font-semibold ${isLow ? 'text-pf-error' : 'text-pf-success'}`}>
+                      ৳{balanceTaka.toLocaleString('bn-BD', { minimumFractionDigits: 2 })}
+                    </td>
                     <td className="px-4 py-3 hidden sm:table-cell text-pf-text-secondary text-xs font-pf-mono">
                       {t.employee_count} / {t.customer_count}
                     </td>
@@ -148,7 +155,8 @@ export default function TenantList() {
                       {new Date(t.created_at).toLocaleDateString('bn-BD')}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>
