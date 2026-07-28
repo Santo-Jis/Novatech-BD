@@ -108,19 +108,53 @@ const getPendingForMe = async (req, res) => {
 // GET /api/portal/connections/search-companies?q=...
 // রহিম কোম্পানি খুঁজবে (গ্লোবাল tenant ডিরেক্টরি)
 // ============================================================
+// ============================================================
+// GET /api/portal/connections/search-companies?q=...
+// ✅ UPDATED: এলাকা (জেলা) ও বিজনেস ফিল্ড ম্যাচ করা কোম্পানি লিস্টের
+// উপরে দেখাবে (match_score DESC) — কিন্তু এটা কোনো হার্ড ফিল্টার না,
+// বাকি সব কোম্পানিও লিস্টে থাকবে, চাইলে যেকোনো কাস্টমার যেকোনো
+// কোম্পানির সাথে কানেক্ট রিকোয়েস্ট পাঠাতে পারবে (unrestricted)।
+// ============================================================
 const searchCompanies = async (req, res) => {
     try {
         const q = (req.query.q || '').trim();
         if (q.length < 2) {
             return res.status(400).json({ success: false, message: 'কমপক্ষে ২ অক্ষর লিখুন।' });
         }
+
+        // ⚠️ ম্যাচ-স্কোরিং person profile-নির্ভর — profile লিংক না থাকলে
+        // (PERSON_NOT_LINKED) নীরবে স্কোরিং বাদ দিয়ে সাধারণ নাম-সার্চেই
+        // ফিরে যায়, যাতে সার্চ ফিচারটা কখনো ভেঙে না যায়।
+        let personId = null;
+        try {
+            personId = await getPersonId(req.portalUser);
+        } catch { /* profile লিংক নেই — স্কোরিং ছাড়াই এগোবে */ }
+
         const result = await query(
-            `SELECT id AS tenant_id, company_name, company_name_bn, logo_url, company_address
-             FROM tenants
-             WHERE (company_name ILIKE $1 OR company_name_bn ILIKE $1)
-               AND status != 'suspended'
+            `SELECT t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url, t.company_address,
+                    (
+                      CASE WHEN $2::int IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM tenant_service_areas tsa
+                        JOIN persons p ON p.district_id = tsa.district_id
+                        WHERE tsa.tenant_id = t.id AND p.id = $2
+                      ) THEN 2 ELSE 0 END
+                      +
+                      COALESCE((
+                        SELECT COUNT(*) FROM entity_business_fields ebf
+                        WHERE ebf.entity_type = 'tenant' AND ebf.entity_id = t.id
+                          AND $2::int IS NOT NULL
+                          AND ebf.business_field_id IN (
+                            SELECT business_field_id FROM entity_business_fields
+                            WHERE entity_type = 'person' AND entity_id = $2
+                          )
+                      ), 0)
+                    ) AS match_score
+             FROM tenants t
+             WHERE (t.company_name ILIKE $1 OR t.company_name_bn ILIKE $1)
+               AND t.status != 'suspended'
+             ORDER BY match_score DESC, t.company_name ASC
              LIMIT 20`,
-            [`%${q}%`]
+            [`%${q}%`, personId]
         );
         res.json({ success: true, data: result.rows });
     } catch (err) {

@@ -302,7 +302,14 @@ export default function ConnectionsTab({ portalJWT }) {
                 <CpCard key={c.tenant_id} padding="sm">
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-cp-text-primary truncate">{companyName(c)}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-semibold text-cp-text-primary truncate">{companyName(c)}</p>
+                        {c.match_score > 0 && (
+                          <span className="flex-shrink-0 text-[9px] font-semibold text-cp-confidence-600 bg-cp-confidence-100 rounded-full px-2 py-0.5">
+                            আপনার এলাকা/ফিল্ড ম্যাচ
+                          </span>
+                        )}
+                      </div>
                       {c.company_address && <p className="text-[10px] text-cp-text-muted truncate">{c.company_address}</p>}
                     </div>
                     <CpButton
