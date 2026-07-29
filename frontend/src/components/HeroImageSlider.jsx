@@ -44,7 +44,7 @@ export default function HeroImageSlider({ intervalMs = 4500 }) {
         position: 'relative',
         width: '100%',
         maxWidth: '720px',
-        height: 'clamp(240px, 40vw, 340px)',
+        aspectRatio: '16 / 9',
         margin: '40px auto 0',
         borderRadius: '20px',
         overflow: 'hidden',
