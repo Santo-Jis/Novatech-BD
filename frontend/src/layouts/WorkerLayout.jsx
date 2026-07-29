@@ -8,7 +8,7 @@ import {
   FiHome, FiMapPin, FiShoppingBag, FiDollarSign, FiUser,
   FiBell, FiMoon, FiSun, FiUsers, FiMenu, FiX, FiLogOut,
   FiClipboard, FiAlertTriangle, FiRefreshCw, FiTrendingUp, FiPackage, FiCreditCard, FiFileText, FiInbox, FiShoppingCart,
-  FiTag, FiTruck, FiAward
+  FiTag, FiTruck, FiAward, FiLink
 } from 'react-icons/fi'
 import OfflineStatusBar from '../components/OfflineStatusBar'
 import { useOffline } from '../store/useOffline'
@@ -30,6 +30,11 @@ const bottomNav = [
 
 // ─── Hamburger Menu Items (গৌণ পৃষ্ঠা) ──────────────────────
 const menuItems = [
+  {
+    icon: <FiLink />,
+    label: 'কাস্টমার কানেক্ট (QR)',
+    path: '/worker/connect-customer',
+  },
   {
     icon: <FiMapPin />,
     label: 'রুট সিলেক্ট করুন',

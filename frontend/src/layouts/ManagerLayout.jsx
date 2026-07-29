@@ -8,7 +8,7 @@ import {
   FiCalendar, FiMapPin, FiUser, FiBell, FiMenu, FiX,
   FiLogOut, FiMessageSquare, FiList, FiFileText,
   FiRefreshCw, FiShield, FiDollarSign, FiCreditCard,
-  FiBarChart2, FiBookOpen, FiChevronDown, FiTarget
+  FiBarChart2, FiBookOpen, FiChevronDown, FiTarget, FiLink
 } from 'react-icons/fi'
 
 // সবসময় দেখা যাবে — গ্রুপের বাইরে (ঘন ঘন ব্যবহার হয়)
@@ -44,6 +44,7 @@ const navGroups = [
       { path: '/manager/order-ledger',      icon: <FiFileText />,     label: 'অর্ডার লেজার' },
       { path: '/manager/customers',         icon: <FiUser />,         label: 'কাস্টমার' },
       { path: '/manager/customer-requests', icon: <FiInbox />,        label: 'কাস্টমার রিকোয়েস্ট' },
+      { path: '/manager/network-discovery', icon: <FiLink />,         label: 'নেটওয়ার্ক ও ডিসকভারি' },
     ],
   },
   {

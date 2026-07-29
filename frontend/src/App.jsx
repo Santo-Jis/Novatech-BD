@@ -139,6 +139,7 @@ const WorkerAttendance = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/wor
 const RouteSelect      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/RouteSelect'))
 const OrderForm        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/OrderForm'))
 const CustomerList     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/CustomerList'))
+const ConnectCustomer  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/ConnectCustomer'))
 const VisitPage        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/VisitPage'))
 const SalesForm        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/SalesForm'))
 const OTPVerify        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/OTPVerify'))
@@ -531,6 +532,7 @@ function AppWithPermissions() {
                 <Route path="ai-chat"                    element={<AIChat />} />
                 <Route path="notices"                    element={<NoticesView />} />
                 <Route path="customer-requests"          element={<CustomerRequestsPage />} />
+                <Route path="network-discovery"          element={<AdminNetworkDiscovery />} />
                 <Route path="credit-approvals"           element={<ManagerCreditApprovals />} />
                 <Route path="reports"                    element={<ManagerReports />} />
                 <Route path="salary-sheet"               element={<ManagerSalarySheet />} />
@@ -550,6 +552,7 @@ function AppWithPermissions() {
                 <Route path="route"              element={<RouteSelect />} />
                 <Route path="order"              element={<OrderForm />} />
                 <Route path="customers"          element={<CustomerList />} />
+                <Route path="connect-customer"    element={<ConnectCustomer />} />
                 <Route path="visit/:id"          element={<VisitPage />} />
                 <Route path="sales/:id"          element={<SalesForm />} />
                 <Route path="otp/:id"            element={<OTPVerify />} />
