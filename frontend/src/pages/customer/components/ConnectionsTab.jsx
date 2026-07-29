@@ -28,12 +28,13 @@ import CpCard from './ui/CpCard'
 import CpButton from './ui/CpButton'
 import CpInput from './ui/CpInput'
 
-export default function ConnectionsTab({ portalJWT }) {
+export default function ConnectionsTab({ portalJWT, switchCompany }) {
   const [companies, setCompanies] = useState([])
   const [pending,   setPending]   = useState([])
   const [loading,   setLoading]   = useState(true)
   const [errorMsg,  setErrorMsg]  = useState('')
   const [actionMsg, setActionMsg] = useState('')
+  const [switchingId, setSwitchingId] = useState(null)
 
   const [qrOpen,    setQrOpen]    = useState(false)
   const [qrData,    setQrData]   = useState(null)
@@ -136,6 +137,22 @@ export default function ConnectionsTab({ portalJWT }) {
       load()
     } catch {
       setActionMsg('সংযোগ বিচ্ছিন্ন করতে সমস্যা হয়েছে।')
+    }
+  }
+
+  // ✅ নতুন — কোম্পানির কার্ডে ট্যাপ করলে সেই কোম্পানির ড্যাশবোর্ডে প্রবেশ
+  // (person-only/company-বিহীন session থেকে প্রথম কোম্পানিতে ঢোকার একমাত্র পথ,
+  // এবং একাধিক-কোম্পানি কাস্টমারের জন্যও company switch করার সরাসরি উপায়)
+  const handleSwitch = async (connection_id) => {
+    if (!switchCompany || switchingId) return
+    setSwitchingId(connection_id)
+    setActionMsg('')
+    try {
+      await switchCompany(connection_id)
+      // সফল হলে phase নিজে থেকেই dashboard-এ চলে যাবে (usePortalAuth-এর ভেতরে)
+    } catch {
+      setActionMsg('প্রবেশ করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।')
+      setSwitchingId(null)
     }
   }
 
@@ -242,6 +259,18 @@ export default function ConnectionsTab({ portalJWT }) {
                   <p className="text-sm font-bold text-cp-confidence-600 font-cp-mono">৳{fmtCur(c.current_credit)}</p>
                 </div>
               </div>
+              {switchCompany && (
+                <CpButton
+                  variant="primary"
+                  size="sm"
+                  fullWidth
+                  className="mt-2.5"
+                  loading={switchingId === c.connection_id}
+                  onClick={() => handleSwitch(c.connection_id)}
+                >
+                  প্রবেশ করুন
+                </CpButton>
+              )}
             </CpCard>
           ))}
         </div>

@@ -46,6 +46,8 @@ export default function CustomerPortal({ defaultTab = 'summary' }) {
   if (auth.phase === 'no-company') return (
     <NoCompanyView
       personProfile={auth.personProfile}
+      portalJWT={auth.portalJWT}
+      switchCompany={auth.switchCompany}
       onLogout={auth.handleLogout}
     />
   )

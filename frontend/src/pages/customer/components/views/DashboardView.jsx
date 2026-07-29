@@ -233,7 +233,7 @@ export default function DashboardView({
             {/* ══ নেটওয়ার্ক (কানেক্টেড কোম্পানি) ══ */}
             {/* ✅ NEW: এই ট্যাবই ভবিষ্যতের Social/Discovery ফিডের natural home —
                 এই কার্ড-লিস্ট প্যাটার্নই পরে ফিডে এক্সটেন্ড হবে (IA স্কেলেটন ধাপ ১) */}
-            {activeTab === 'network' && <ConnectionsTab portalJWT={portalJWT} />}
+            {activeTab === 'network' && <ConnectionsTab portalJWT={portalJWT} switchCompany={switchCompany} />}
 
             {/* ══ অর্ডার ══ */}
             {activeTab === 'orders' && <OrderRequestTab portalJWT={portalJWT}/>}
