@@ -1,16 +1,16 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import {
-  FiShoppingBag, FiSettings, FiChevronDown, FiPhone, FiMail, FiMessageCircle,
-  FiMapPin, FiClock, FiSend,
-} from 'react-icons/fi'
+import { useNavigate, useParams } from 'react-router-dom'
+import { FiShoppingBag, FiSettings, FiChevronDown, FiPhone, FiMail, FiMessageCircle, FiMapPin, FiArrowLeft, FiArrowRight } from 'react-icons/fi'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
+import { VISUALS, BrandVisualPanel } from '../components/BrandVisuals'
+import BlogPostCard from '../components/BlogPostCard'
+import { getPostBySlug, getOtherPosts } from '../constants/blogPosts'
 
 // ============================================================
-// Contact Us — ZovoriX
-// ল্যান্ডিং পেইজের সাথে সামঞ্জস্যপূর্ণ ডিজাইন সিস্টেম ব্যবহার করা হয়েছে
+// BlogPost — ZovoriX
+// /blog/:slug — constants/blogPosts.js থেকে slug মিলিয়ে একক পোস্ট দেখায়।
 // ============================================================
 
 const T = {
@@ -36,25 +36,15 @@ const T = {
   fontMono: "'IBM Plex Mono',monospace",
 }
 
-const inputStyle = {
-  width: '100%',
-  padding: '11px 14px',
-  border: `1px solid ${T.borderDefault}`,
-  borderRadius: '9px',
-  fontSize: '14px',
-  fontFamily: T.fontBody,
-  color: T.textPrimary,
-  background: T.bgSurface,
-  outline: 'none',
-  boxSizing: 'border-box',
-}
-
-export default function ContactUs() {
+export default function BlogPost() {
   const navigate = useNavigate()
+  const { slug } = useParams()
   const [mgmtOpen, setMgmtOpen] = useState(false)
   const dropRef = useRef(null)
-  const [form, setForm] = useState({ name: '', contact: '', message: '' })
-  const [sent, setSent] = useState(false)
+
+  const post = getPostBySlug(slug)
+  const otherPosts = getOtherPosts(slug, 2)
+  const visual = post ? (VISUALS.find((v) => v.id === post.visualId) || VISUALS[0]) : null
 
   useEffect(() => {
     const handler = (e) => {
@@ -64,35 +54,23 @@ export default function ContactUs() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
+  // পোস্ট বদলালে স্ক্রল টপে ফিরিয়ে দিন
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [slug])
+
   const roles = [
     { label: 'SR লগইন',      role: 'sr',      icon: '👤', desc: 'Sales Representative' },
     { label: 'Manager লগইন', role: 'manager', icon: '📊', desc: 'ম্যানেজার / সুপারভাইজার' },
     { label: 'Admin লগইন',   role: 'admin',   icon: '⚙️', desc: 'অ্যাডমিন প্যানেল' },
   ]
 
-  const contactCards = [
-    { icon: <FiPhone />,        title: 'ফোন',      value: '+880 1309-540282', href: 'tel:+8801309540282' },
-    { icon: <FiMail />,         title: 'ইমেইল',    value: 'support@zovorix.com', href: 'mailto:support@zovorix.com' },
-    { icon: <FiMessageCircle />,title: 'হোয়াটসঅ্যাপ', value: 'চ্যাট শুরু করুন', href: 'https://wa.me/8801309540282' },
-    { icon: <FiMapPin />,       title: 'ঠিকানা',   value: 'Barishal Sadar, Kaunia, Janoki Singho Road', href: 'https://www.google.com/maps/search/?api=1&query=Kaunia+Jankisingha+Road+Barisal+Sadar' },
-  ]
-
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    const subject = encodeURIComponent(`ZovoriX যোগাযোগ ফর্ম — ${form.name || 'নাম প্রদত্ত নয়'}`)
-    const body = encodeURIComponent(
-      `নাম: ${form.name}\nযোগাযোগ: ${form.contact}\n\nবার্তা:\n${form.message}`
-    )
-    window.location.href = `mailto:support@zovorix.com?subject=${subject}&body=${body}`
-    setSent(true)
-  }
-
   return (
     <div style={{ minHeight: '100vh', background: T.bgBase, fontFamily: T.fontBody, color: T.textPrimary, overflowX: 'hidden' }}>
       <SEO
-        title="যোগাযোগ করুন"
-        description="ZovoriX টিমের সাথে যোগাযোগ করুন — ফোন, ইমেইল বা WhatsApp-এ। আপনার ব্যবসার জন্য ডেমো বুক করুন বা যেকোনো প্রশ্নের উত্তর জানুন।"
-        path="/contact"
+        title={post ? post.title : 'ব্লগ পোস্ট পাওয়া যায়নি'}
+        description={post ? post.excerpt : 'এই ব্লগ পোস্টটি খুঁজে পাওয়া যায়নি।'}
+        path={`/blog/${slug}`}
       />
       {/* Navbar */}
       <style>{`
@@ -119,11 +97,17 @@ export default function ContactUs() {
         position: 'sticky', top: 0, zIndex: 100,
         flexWrap: 'wrap', rowGap: '10px',
       }}>
-        <div className="zx-brand" onClick={() => navigate('/landing')} style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', minWidth: 0 }}>
+        <div
+          className="zx-brand"
+          onClick={() => navigate('/landing')}
+          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', minWidth: 0 }}
+        >
           <div className="zx-logo-box" style={{ width: '34px', height: '34px', borderRadius: '8px', overflow: 'hidden', flexShrink: 0, border: `1px solid ${T.borderDefault}` }}>
             <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
-          <span className="zx-brand-text" style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>ZovoriX</span>
+          <span className="zx-brand-text" style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
+            ZovoriX
+          </span>
         </div>
 
         <div className="zx-nav-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
@@ -195,7 +179,7 @@ export default function ContactUs() {
         </div>
       </nav>
 
-      {/* Utility links bar — Home / About / Contact */}
+      {/* Utility links bar */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '24px',
         padding: '10px 24px', borderBottom: `1px solid ${T.borderDefault}`,
@@ -219,7 +203,9 @@ export default function ContactUs() {
         </button>
         <button
           onClick={() => navigate('/contact')}
-          style={{ background: 'none', border: 'none', padding: 0, color: T.primary700, fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody }}
+          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
         >
           যোগাযোগ
         </button>
@@ -233,170 +219,123 @@ export default function ContactUs() {
         </button>
         <button
           onClick={() => navigate('/blog')}
-          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
-          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+          style={{ background: 'none', border: 'none', padding: 0, color: T.primary700, fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody }}
         >
           ব্লগ
         </button>
       </div>
 
-
-      {/* Hero */}
-      <section style={{ textAlign: 'center', padding: '64px 24px 40px' }}>
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px',
-          background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '20px',
-          fontSize: '11px', fontFamily: T.fontMono, letterSpacing: '0.04em', textTransform: 'uppercase',
-          color: T.textMuted, marginBottom: '24px',
-        }}>
-          যোগাযোগ
-        </div>
-        <h1 style={{
-          fontFamily: T.fontHead, fontSize: 'clamp(28px, 5.5vw, 44px)', fontWeight: 600,
-          lineHeight: 1.3, margin: '0 auto 8px', maxWidth: '560px', color: T.primary700,
-        }}>
-          আমরা আছি<br />
-          <span style={{ color: T.accent600 }}>আপনার পাশে</span>
-        </h1>
-        <p style={{ color: T.textSecondary, fontSize: '15.5px', maxWidth: '480px', margin: '24px auto 0', lineHeight: 1.8 }}>
-          প্রশ্ন, পরামর্শ বা সাহায্য দরকার? নিচের যেকোনো মাধ্যমে যোগাযোগ করুন —
-          আমরা দ্রুত সাড়া দেওয়ার চেষ্টা করি।
-        </p>
-      </section>
-
-      {/* Contact cards */}
-      <section style={{ padding: '8px 24px 48px', maxWidth: '960px', margin: '0 auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '18px' }}>
-          {contactCards.map((c, i) => (
-            <a
-              key={i}
-              href={c.href}
-              target={c.href.startsWith('http') ? '_blank' : undefined}
-              rel={c.href.startsWith('http') ? 'noopener noreferrer' : undefined}
+      {post ? (
+        <>
+          {/* পোস্ট কন্টেন্ট */}
+          <article style={{ maxWidth: '720px', margin: '0 auto', padding: '40px 24px 24px' }}>
+            <button
+              onClick={() => navigate('/blog')}
               style={{
-                background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '12px',
-                padding: '24px 20px', textAlign: 'center', textDecoration: 'none', color: 'inherit',
-                display: 'block', transition: 'border-color 0.2s, transform 0.2s',
+                display: 'inline-flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none',
+                padding: 0, marginBottom: '24px', color: T.textSecondary, fontSize: '13px', fontWeight: 600,
+                cursor: 'pointer', fontFamily: T.fontBody,
               }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = T.primary300; e.currentTarget.style.transform = 'translateY(-2px)' }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = T.borderDefault; e.currentTarget.style.transform = 'translateY(0)' }}
+              onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+              onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
             >
-              <div style={{ width: '46px', height: '46px', background: T.primary100, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '20px', color: T.primary700, margin: '0 auto 14px' }}>
-                {c.icon}
+              <FiArrowLeft style={{ fontSize: '14px' }} /> সব ব্লগ পোস্ট
+            </button>
+
+            <div style={{ height: '220px', borderRadius: '18px', overflow: 'hidden', marginBottom: '28px', boxShadow: '0 16px 40px rgba(15,27,46,0.16)' }}>
+              <BrandVisualPanel visual={visual} />
+            </div>
+
+            <span style={{
+              display: 'inline-block', padding: '3px 10px', background: T.accent100, color: T.accent600,
+              borderRadius: '20px', fontSize: '11px', fontWeight: 700, fontFamily: T.fontMono,
+              letterSpacing: '0.03em', marginBottom: '14px',
+            }}>
+              {post.category}
+            </span>
+
+            <h1 style={{ fontFamily: T.fontHead, fontSize: 'clamp(24px, 4.5vw, 34px)', fontWeight: 600, lineHeight: 1.35, color: T.primary700, margin: '0 0 14px' }}>
+              {post.title}
+            </h1>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '12.5px', color: T.textMuted, fontFamily: T.fontMono, marginBottom: '32px', paddingBottom: '28px', borderBottom: `1px solid ${T.borderDefault}` }}>
+              <span>{post.date}</span>
+              <span>•</span>
+              <span>{post.readTime}</span>
+            </div>
+
+            {post.sections.map((s, i) => (
+              <div key={i} style={{ marginBottom: '28px' }}>
+                <h2 style={{ fontFamily: T.fontHead, fontSize: '19px', fontWeight: 600, color: T.primary700, margin: '0 0 10px' }}>
+                  {s.heading}
+                </h2>
+                <p style={{ fontSize: '15px', color: T.textSecondary, lineHeight: 1.85, margin: 0 }}>
+                  {s.body}
+                </p>
               </div>
-              <h3 style={{ fontSize: '13px', fontWeight: 600, color: T.textMuted, marginBottom: '6px', fontFamily: T.fontMono, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                {c.title}
-              </h3>
-              <p style={{ fontSize: '14px', color: T.primary700, fontWeight: 600, margin: 0, wordBreak: 'break-word' }}>
-                {c.value}
+            ))}
+
+            {/* CTA */}
+            <div style={{
+              marginTop: '40px', padding: '28px 24px', background: T.primary900, borderRadius: '16px',
+              textAlign: 'center',
+            }}>
+              <div style={{ fontFamily: T.fontHead, fontSize: '19px', fontWeight: 600, color: '#fff', marginBottom: '8px' }}>
+                আপনার ব্যবসায় এই সুবিধাগুলো পেতে চান?
+              </div>
+              <p style={{ fontSize: '13.5px', color: T.primary100, margin: '0 0 20px', lineHeight: 1.7 }}>
+                ৩ মাসের ফ্রি ট্রায়াল দিয়ে ZovoriX ব্যবহার শুরু করুন — কোনো কার্ড লাগবে না।
               </p>
-            </a>
-          ))}
-        </div>
-      </section>
-
-      {/* Support hours + Form */}
-      <section style={{ padding: '8px 24px 64px', maxWidth: '960px', margin: '0 auto' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 1fr) minmax(280px, 1.4fr)', gap: '24px' }} className="contact-grid">
-          <style>{`
-            @media (max-width: 720px) {
-              .contact-grid { grid-template-columns: 1fr !important; }
-            }
-          `}</style>
-
-          {/* Support hours card */}
-          <div style={{ background: T.primary900, borderRadius: '16px', padding: '32px 28px', color: '#fff', height: 'fit-content' }}>
-            <div style={{ width: '42px', height: '42px', background: T.accent600, borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px', marginBottom: '18px' }}>
-              <FiClock />
+              <button
+                onClick={() => navigate('/start-trial')}
+                style={{
+                  padding: '12px 26px', background: T.accent600, border: `1px solid ${T.accent600}`,
+                  borderRadius: '9px', color: '#fff', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
+                  fontFamily: T.fontBody, display: 'inline-flex', alignItems: 'center', gap: '8px',
+                  transition: 'background 0.15s',
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = '#8a5e28'}
+                onMouseLeave={e => e.currentTarget.style.background = T.accent600}
+              >
+                ৩ মাসের ফ্রি ট্রায়াল শুরু করুন <FiArrowRight style={{ fontSize: '14px' }} />
+              </button>
             </div>
-            <h3 style={{ fontFamily: T.fontHead, fontSize: '18px', fontWeight: 600, margin: '0 0 16px' }}>সাপোর্ট সময়</h3>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', padding: '10px 0', borderBottom: '1px solid rgba(255,255,255,0.12)' }}>
-              <span style={{ color: T.primary300 }}>শনি – বৃহস্পতি</span>
-              <span style={{ fontWeight: 600 }}>সকাল ৮:৩০ – রাত ৯:৩০</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13.5px', padding: '10px 0' }}>
-              <span style={{ color: T.primary300 }}>শুক্রবার</span>
-              <span style={{ fontWeight: 600 }}>বিরতি ১১:৩০ – ৪:০০</span>
-            </div>
-            <p style={{ fontSize: '12.5px', color: T.primary300, marginTop: '16px', lineHeight: 1.7 }}>
-              শুক্রবার বাকি সময় স্বাভাবিক সাপোর্ট চালু থাকে।
-            </p>
+          </article>
 
-            <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.12)' }}>
-              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '13px', color: T.primary100 }}>
-                <FiMapPin style={{ fontSize: '15px', color: T.accent300, marginTop: '2px', flexShrink: 0 }} />
-                <span>Barishal Sadar, Kaunia, Janoki Singho Road</span>
+          {/* রিলেটেড পোস্ট */}
+          {otherPosts.length > 0 && (
+            <section style={{ padding: '16px 24px 88px', maxWidth: '960px', margin: '0 auto' }}>
+              <h3 style={{ fontFamily: T.fontHead, fontSize: '18px', fontWeight: 600, color: T.primary700, margin: '0 0 18px', textAlign: 'center' }}>
+                আরও পড়ুন
+              </h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '22px' }}>
+                {otherPosts.map((p) => (
+                  <BlogPostCard key={p.slug} post={p} />
+                ))}
               </div>
-            </div>
+            </section>
+          )}
+        </>
+      ) : (
+        /* পোস্ট পাওয়া যায়নি */
+        <div style={{ maxWidth: '480px', margin: '0 auto', padding: '100px 24px', textAlign: 'center' }}>
+          <div style={{ fontFamily: T.fontHead, fontSize: '22px', fontWeight: 600, color: T.primary700, marginBottom: '10px' }}>
+            এই ব্লগ পোস্টটি খুঁজে পাওয়া যায়নি
           </div>
-
-          {/* Contact form */}
-          <div style={{ background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '16px', padding: '32px 28px' }}>
-            <h3 style={{ fontFamily: T.fontHead, fontSize: '18px', fontWeight: 600, color: T.primary700, margin: '0 0 18px' }}>
-              বার্তা পাঠান
-            </h3>
-
-            {sent ? (
-              <div style={{ padding: '20px', background: T.accent100, borderRadius: '10px', textAlign: 'center' }}>
-                <p style={{ margin: 0, fontSize: '14px', color: T.primary700, fontWeight: 600 }}>
-                  আপনার মেইল অ্যাপ খোলা হয়েছে — বার্তাটি পাঠাতে সেখান থেকে সেন্ড করুন।
-                </p>
-                <button
-                  onClick={() => setSent(false)}
-                  style={{ marginTop: '12px', background: 'none', border: 'none', color: T.accent600, fontSize: '13px', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}
-                >
-                  আরেকটি বার্তা পাঠান
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div>
-                  <label style={{ fontSize: '12.5px', fontWeight: 600, color: T.textSecondary, display: 'block', marginBottom: '6px' }}>নাম</label>
-                  <input
-                    type="text" required value={form.name}
-                    onChange={e => setForm({ ...form, name: e.target.value })}
-                    placeholder="আপনার নাম"
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12.5px', fontWeight: 600, color: T.textSecondary, display: 'block', marginBottom: '6px' }}>ফোন / ইমেইল</label>
-                  <input
-                    type="text" required value={form.contact}
-                    onChange={e => setForm({ ...form, contact: e.target.value })}
-                    placeholder="যোগাযোগের নম্বর বা ইমেইল"
-                    style={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12.5px', fontWeight: 600, color: T.textSecondary, display: 'block', marginBottom: '6px' }}>বার্তা</label>
-                  <textarea
-                    required rows={4} value={form.message}
-                    onChange={e => setForm({ ...form, message: e.target.value })}
-                    placeholder="আপনার প্রশ্ন বা বার্তা লিখুন"
-                    style={{ ...inputStyle, resize: 'vertical', fontFamily: T.fontBody }}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  style={{
-                    padding: '12px 24px', background: T.primary700, border: 'none', borderRadius: '9px',
-                    color: '#fff', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                    fontFamily: T.fontBody, marginTop: '4px',
-                  }}
-                >
-                  <FiSend /> বার্তা পাঠান
-                </button>
-                <p style={{ fontSize: '11.5px', color: T.textMuted, textAlign: 'center', margin: '4px 0 0' }}>
-                  দ্রুত উত্তরের জন্য WhatsApp বা ফোনেও যোগাযোগ করতে পারেন।
-                </p>
-              </form>
-            )}
-          </div>
+          <p style={{ fontSize: '14px', color: T.textSecondary, lineHeight: 1.7, marginBottom: '24px' }}>
+            লিংকটি সঠিক নয়, অথবা পোস্টটি সরানো হয়েছে। সব ব্লগ পোস্ট থেকে খুঁজে দেখুন।
+          </p>
+          <button
+            onClick={() => navigate('/blog')}
+            style={{
+              padding: '11px 22px', background: T.primary700, border: `1px solid ${T.primary700}`,
+              borderRadius: '9px', color: '#fff', fontSize: '13.5px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody,
+            }}
+          >
+            সব ব্লগ পোস্ট দেখুন
+          </button>
         </div>
-      </section>
+      )}
 
       {/* Footer */}
       <footer style={{ background: T.primary900, color: T.primary100, padding: '48px 24px 24px' }}>
@@ -470,6 +409,9 @@ export default function ContactUs() {
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', paddingTop: '20px' }}>
             <div style={{ fontSize: '12px', color: T.primary300 }}>© {new Date().getFullYear()} ZovoriX. All rights reserved.</div>
+            <div style={{ fontSize: '12px', color: T.primary300, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <FiMapPin style={{ fontSize: '13px', color: T.accent300 }} /> Barishal Sadar, Kaunia, Janoki Singho Road
+            </div>
           </div>
         </div>
       </footer>

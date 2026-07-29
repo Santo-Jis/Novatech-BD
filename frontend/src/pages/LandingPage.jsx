@@ -4,6 +4,7 @@ import { FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSetting
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
+import HeroImageSlider from '../components/HeroImageSlider'
 
 // ============================================================
 // Landing Page — ZovoriX
@@ -320,6 +321,14 @@ export default function LandingPage() {
         >
           প্রাইসিং
         </button>
+        <button
+          onClick={() => navigate('/blog')}
+          style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
+          onMouseEnter={e => e.currentTarget.style.color = T.primary700}
+          onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
+        >
+          ব্লগ
+        </button>
       </div>
 
       {/* Hero */}
@@ -425,6 +434,9 @@ export default function LandingPage() {
             আরও জানুন
           </button>
         </div>
+
+        {/* ৫টি ছবি/প্যানেল নির্দিষ্ট সময় পর পর অটো-স্লাইড হবে */}
+        <HeroImageSlider />
 
       </section>
 
@@ -628,6 +640,9 @@ export default function LandingPage() {
                 </button>
                 <button onClick={() => navigate('/contact')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   Contact
+                </button>
+                <button onClick={() => navigate('/blog')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                  Blog
                 </button>
                 <button onClick={() => navigate('/privacy-policy')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   Privacy Policy

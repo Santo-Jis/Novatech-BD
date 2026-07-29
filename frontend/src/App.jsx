@@ -47,6 +47,8 @@ const ContactUs = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/ContactUs'
 const PrivacyPolicy = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/PrivacyPolicy'))
 const TermsConditions = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/TermsConditions'))
 const Pricing = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/Pricing'))
+const Blog     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/Blog'))
+const BlogPost = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/BlogPost'))
 
 // SR Application — Customer APK-এ নেই
 const SRApplicationForm = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/SRApplicationForm'))
@@ -396,6 +398,8 @@ function AppWithPermissions() {
               <Route path="/privacy-policy" element={<PrivacyPolicy />} />
               <Route path="/terms-conditions" element={<TermsConditions />} />
               <Route path="/pricing" element={<Pricing />} />
+              <Route path="/blog" element={<Blog />} />
+              <Route path="/blog/:slug" element={<BlogPost />} />
             </>
           )}
 
