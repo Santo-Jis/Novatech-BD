@@ -31,7 +31,12 @@ const STATUS_LABEL = {
 }
 
 export default function OrderRequestTab({ portalJWT }) {
-  const [phase,        setPhase]        = useState('list')
+  // ✅ FIX: কাস্টমার E-commerce ট্যাবে ঢুকলেই যেন সরাসরি প্রোডাক্ট দেখতে পায়,
+  // আগে 'list' (অর্ডার হিস্টোরি) ডিফল্ট ছিল বলে "নতুন অর্ডার রিকোয়েস্ট" বাটনে
+  // ক্লিক না করা পর্যন্ত প্রোডাক্ট দেখা যেত না। এখন 'new' ফেজ ডিফল্ট —
+  // প্রোডাক্ট লিস্ট সরাসরি লোড হবে (নিচের useEffect অনুযায়ী)। আগের অর্ডার
+  // দেখতে হলে হেডারের ← বাটনে ক্লিক করে 'list' ফেজে যাওয়া যাবে।
+  const [phase,        setPhase]        = useState('new')
   const [products,     setProducts]     = useState([])
   const [requests,     setRequests]     = useState([])
   const [cart,         setCart]         = useState({})
@@ -560,12 +565,13 @@ export default function OrderRequestTab({ portalJWT }) {
       <div className="flex items-center gap-3">
         <button
           onClick={() => { setPhase('list'); setCart({}); setNote(''); setErrorMsg('') }}
+          title="আগের অর্ডার দেখুন"
           className="w-9 h-9 bg-cp-bg-alt hover:bg-cp-border rounded-xl flex items-center justify-center text-cp-text-secondary flex-shrink-0 transition-colors"
         >
           <FiChevronLeft className="w-4 h-4" />
         </button>
         <div className="min-w-0 flex-1">
-          <h3 className="text-[14px] font-bold font-cp-head text-cp-text-primary">নতুন অর্ডার রিকোয়েস্ট</h3>
+          <h3 className="text-[14px] font-bold font-cp-head text-cp-text-primary">পণ্য বেছে নিন</h3>
           <p className="text-[11px] text-cp-text-muted">
             {cartProductCount > 0
               ? `${cartProductCount}টি পণ্য — ${cartItemCount}টি আইটেম বেছেছেন`
