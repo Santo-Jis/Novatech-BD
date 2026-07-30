@@ -27,6 +27,10 @@ export function getActiveSectionId(activeTab) {
   return found ? found.id : 'home'
 }
 
+export function getActiveSection(activeTab) {
+  return NAV_SECTIONS.find(s => s.id === getActiveSectionId(activeTab)) || NAV_SECTIONS[0]
+}
+
 export default function BottomNav({ activeTab, onTabChange }) {
   const activeSectionId = getActiveSectionId(activeTab)
 
