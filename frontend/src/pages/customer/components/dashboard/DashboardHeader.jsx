@@ -4,7 +4,6 @@
 
 import { useState } from 'react'
 import { FiSearch, FiMessageCircle, FiLogOut } from 'react-icons/fi'
-import CreditRing from './CreditRing'
 import NotificationBell from './NotificationBell'
 
 export default function DashboardHeader({
@@ -20,7 +19,7 @@ export default function DashboardHeader({
   }
 
   return (
-    <div className="relative overflow-hidden bg-gradient-to-br from-cp-trust-900 via-cp-trust-900 to-cp-trust-700 px-5 pt-12 pb-[90px]">
+    <div className="relative overflow-hidden bg-gradient-to-br from-cp-trust-900 via-cp-trust-900 to-cp-trust-700 px-5 pt-12 pb-8">
       {/* সূক্ষ্ম ডট প্যাটার্ন + আলোকরশ্মি — বিশুদ্ধ ভিজ্যুয়াল, ক্লিকযোগ্য না */}
       <div
         className="absolute inset-0 pointer-events-none opacity-40"
@@ -100,21 +99,6 @@ export default function DashboardHeader({
           >
             <FiLogOut size={17} />
           </button>
-        </div>
-      </div>
-
-      {/* Credit Ring + Balance Cards */}
-      <div className="relative flex items-center gap-3.5">
-        <CreditRing current={customer.current_credit} limit={customer.credit_limit} fmtCur={fmtCur} />
-        <div className="flex-1 flex flex-col gap-2 min-w-0">
-          <div className="bg-white/[0.06] rounded-2xl px-3.5 py-2.5 border border-white/[0.08]">
-            <p className="text-[10px] text-white/40 font-medium mb-0.5">ক্রেডিট লিমিট</p>
-            <p className="text-[19px] text-white font-bold font-cp-mono">৳{fmtCur(customer.credit_limit)}</p>
-          </div>
-          <div className="bg-cp-confidence-600/[0.14] rounded-2xl px-3.5 py-2.5 border border-cp-confidence-600/20">
-            <p className="text-[10px] text-cp-confidence-300 font-medium mb-0.5">জমা ব্যালেন্স</p>
-            <p className="text-[19px] text-cp-confidence-300 font-bold font-cp-mono">৳{fmtCur(customer.credit_balance)}</p>
-          </div>
         </div>
       </div>
     </div>
