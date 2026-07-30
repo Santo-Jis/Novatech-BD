@@ -1,6 +1,7 @@
 const { query } = require('../config/db');
 const { encrypt } = require('../config/encryption');
 const logger = require('../config/logger');
+const walletService = require('../services/wallet.service');
 
 // ============================================================
 // SETTINGS GROUPS — key গুলো বিভাগ অনুযায়ী ভাগ করা
@@ -210,6 +211,45 @@ const updateSettings = async (req, res) => {
     } catch (error) {
         logger.error('❌ Update Settings Error:', error.message);
         return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// WALLET STATUS (Tenant Admin — read-only)
+// GET /api/admin/wallet?page=&limit=
+// আগে এটা শুধু Super Admin দেখতে পেতো। এখন নিজের tenant-এর Admin
+// নিজের ব্যালেন্স ও SMS/Email deduction হিস্টরি দেখতে পারবে —
+// কিন্তু রিচার্জ করার ক্ষমতা এখানে নেই (ইচ্ছাকৃতভাবে), সেটা এখনো
+// শুধু Super Admin API (/api/superadmin/tenants/:id/wallet/recharge)।
+// ============================================================
+const LOW_BALANCE_THRESHOLD_PAISA = 10000; // ৳১০০ — নিচে নামলে warning
+
+const getWalletStatus = async (req, res) => {
+    try {
+        const { page = 1, limit = 20 } = req.query;
+
+        const [wallet, history, pricing] = await Promise.all([
+            walletService.getWallet(req.tenantId),
+            walletService.getHistory(req.tenantId, { page: parseInt(page, 10), limit: parseInt(limit, 10) }),
+            walletService.getPricing(),
+        ]);
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                balance_paisa: Number(wallet.balance_paisa),
+                updated_at:    wallet.updated_at,
+                low_balance:   Number(wallet.balance_paisa) < LOW_BALANCE_THRESHOLD_PAISA,
+                low_balance_threshold_paisa: LOW_BALANCE_THRESHOLD_PAISA,
+                pricing:       pricing,
+                transactions:  history.rows,
+                pagination:    history.pagination,
+            },
+        });
+
+    } catch (error) {
+        logger.error('❌ Get Wallet Status Error:', error.message);
+        return res.status(500).json({ success: false, message: 'ওয়ালেট তথ্য আনতে সমস্যা হয়েছে।' });
     }
 };
 
@@ -575,5 +615,6 @@ module.exports = {
     getAuditLogs,
     getSystemStats,
     getSmsLogs,
-    getPublicSettings
+    getPublicSettings,
+    getWalletStatus,
 };

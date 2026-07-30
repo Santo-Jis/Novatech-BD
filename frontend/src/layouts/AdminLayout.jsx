@@ -66,6 +66,7 @@ const navGroups = [
       { path: '/admin/reports',     icon: <FiBarChart2 />, label: 'রিপোর্ট' },
       { path: '/admin/ai-insights', icon: <FiCpu />,       label: 'AI বিশ্লেষণ' },
       { path: '/admin/audit-logs', icon: <FiShield />,    label: 'অডিট লগ' },
+      { path: '/admin/wallet',     icon: <FiCreditCard />, label: 'ওয়ালেট' },
       { path: '/admin/settings',    icon: <FiSettings />,  label: 'সেটিংস' },
     ],
   },

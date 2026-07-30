@@ -97,6 +97,7 @@ const AdminSettings          = IS_CUSTOMER_APP ? null : lazy(() => import('./pag
 const AdminProducts          = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Products'))
 const AdminNotices           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Notices'))
 const AuditLogs              = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AuditLogs'))
+const AdminWallet            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Wallet'))
 const PortalReturnRequests   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PortalReturnRequests'))
 const CustomerRequestsPage   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/CustomerRequestsPage'))
 const SRRecruitmentDashboard = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/SRRecruitmentDashboard'))
@@ -495,6 +496,7 @@ function AppWithPermissions() {
                 <Route path="network-discovery" element={<AdminNetworkDiscovery />} />
                 <Route path="products"          element={<AdminProducts />} />
                 <Route path="audit-logs"        element={<AuditLogs />} />
+                <Route path="wallet"            element={<AdminWallet />} />
                 <Route path="portal-returns"    element={<PortalReturnRequests />} />
                 <Route path="customer-requests" element={<CustomerRequestsPage />} />
                 <Route path="credit-settings"   element={<AdminCreditSettings />} />

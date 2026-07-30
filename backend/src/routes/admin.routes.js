@@ -20,6 +20,7 @@ const {
     getAuditLogs,
     getSystemStats,
     getSmsLogs,
+    getWalletStatus,
 } = require('../controllers/admin.controller');
 
 // ✅ NEW — কাস্টমার সেলফ-রেজিস্ট্রেশন লিংকের জন্য কোম্পানির slug
@@ -45,6 +46,9 @@ const {
 // ── System Settings (Admin only) ─────────────────────────────
 router.get('/settings',        auth, isAdmin, getSettings);
 router.put('/settings',        auth, isAdmin, updateSettings);
+
+// ── Wallet (Admin only, READ-ONLY — রিচার্জ শুধু Super Admin করতে পারবে) ──
+router.get('/wallet',          auth, isAdmin, getWalletStatus);
 
 // ── Audit & Stats (Admin only) ───────────────────────────────
 router.get('/audit-logs',      auth, isAdmin, getAuditLogs);
