@@ -7,7 +7,7 @@ const IS_CUSTOMER_APP = import.meta.env.VITE_APP_MODE === 'customer'
 
 // ✅ GitHub Actions automatically এই numbers আপডেট করবে
 const CURRENT_VERSION_CODE = 217          // Main APK — build-apk.yml আপডেট করে
-const CURRENT_CUSTOMER_VERSION_CODE = 273   // Customer APK — build-customer-apk.yml আপডেট করে
+const CURRENT_CUSTOMER_VERSION_CODE = 274   // Customer APK — build-customer-apk.yml আপডেট করে
 
 export function useAppUpdate() {
   const [updateInfo, setUpdateInfo] = useState(null)
