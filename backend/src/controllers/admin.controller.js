@@ -321,7 +321,7 @@ const getAuditLogs = async (req, res) => {
         const { action, category, user_role, from, to, page = 1, limit = 50 } = req.query;
         const offset = (page - 1) * limit;
 
-        let conditions = [];
+        let conditions = ['al.tenant_id = $1'];
         let params = [req.tenantId];
     let paramCount = 1;
 

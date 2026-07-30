@@ -150,7 +150,8 @@ const runCreditReminderJob = async () => {
                 u.manager_id,
                 cpt.redirect_id  AS portal_redirect_id
             FROM customers c
-            LEFT JOIN users u ON c.assigned_sr_id = u.id
+            LEFT JOIN customer_assignments ca ON ca.customer_id = c.id AND ca.is_active = true
+            LEFT JOIN users u ON ca.worker_id = u.id
             LEFT JOIN customer_portal_tokens cpt ON c.id = cpt.customer_id
                 AND cpt.expires_at > NOW()
             WHERE c.is_active = true
