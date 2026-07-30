@@ -6,6 +6,7 @@ import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlie
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
 import HeroImageSlider from '../components/HeroImageSlider'
+import { PLAN_ORDER, PLANS, formatTaka } from '../constants/planPricing'
 
 // ============================================================
 // Landing Page — ZovoriX
@@ -96,6 +97,9 @@ export default function LandingPage() {
     { value: '২৪',       label: 'ম্যানেজার' },
     { value: '১৪,৬৮৩',  label: 'রিটেইল দোকান' },
   ]
+
+  // প্রতিটা প্ল্যানের সবচেয়ে কম রোল-প্রাইস — ল্যান্ডিং টিজারে "শুরু ৳X থেকে" দেখাতে
+  const minPaidPrice = (plan) => Math.min(...plan.roles.filter(r => r.price > 0).map(r => r.price))
 
   return (
     <div style={{
@@ -628,6 +632,96 @@ export default function LandingPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Pricing Teaser — পুরো ডিটেইল Pricing পেইজে, এখানে শুধু ধারণা দেওয়ার জন্য */}
+      <section style={{ padding: '8px 24px 72px', maxWidth: '1040px', margin: '0 auto' }}>
+        <h2 style={{
+          textAlign: 'center', fontFamily: T.fontHead, fontSize: '24px', fontWeight: 600,
+          color: T.primary700, margin: '48px 0 8px',
+        }}>
+          আপনার ব্যবসার জন্য যেই প্ল্যান
+        </h2>
+        <p style={{ textAlign: 'center', color: T.textSecondary, fontSize: '14px', maxWidth: '480px', margin: '0 auto 40px' }}>
+          ছোট দোকান থেকে বড় ডিস্ট্রিবিউশন নেটওয়ার্ক — প্রতি রোল অনুযায়ী দাম, লুকানো কোনো খরচ নেই
+        </p>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '16px',
+        }}>
+          {PLAN_ORDER.map((key) => {
+            const plan = PLANS[key]
+            return (
+              <div key={key} style={{
+                background: plan.highlight ? T.primary900 : T.bgSurface,
+                border: `1px solid ${plan.highlight ? T.primary900 : T.borderDefault}`,
+                borderRadius: '14px',
+                padding: '24px 20px',
+                position: 'relative',
+                display: 'flex',
+                flexDirection: 'column',
+              }}>
+                {plan.highlight && (
+                  <div style={{
+                    position: 'absolute', top: '-11px', left: '20px',
+                    background: T.accent600, color: '#fff', fontSize: '10.5px', fontWeight: 700,
+                    padding: '3px 10px', borderRadius: '20px', fontFamily: T.fontMono, letterSpacing: '0.04em',
+                  }}>
+                    জনপ্রিয়
+                  </div>
+                )}
+                <div style={{
+                  fontFamily: T.fontHead, fontSize: '18px', fontWeight: 600,
+                  color: plan.highlight ? '#fff' : T.primary700, marginBottom: '4px',
+                }}>
+                  {plan.name}
+                </div>
+                <div style={{
+                  fontSize: '12px', color: plan.highlight ? T.primary100 : T.textSecondary,
+                  marginBottom: '18px', minHeight: '32px', lineHeight: 1.5,
+                }}>
+                  {plan.tagline}
+                </div>
+                <div style={{ marginBottom: '18px' }}>
+                  <span style={{
+                    fontFamily: T.fontHead, fontSize: '26px', fontWeight: 600,
+                    color: plan.highlight ? '#fff' : T.textPrimary,
+                  }}>
+                    {formatTaka(minPaidPrice(plan))}
+                  </span>
+                  <span style={{ fontSize: '12px', color: plan.highlight ? T.primary300 : T.textMuted }}> /মাস থেকে</span>
+                </div>
+                <div style={{
+                  fontSize: '12px', color: plan.highlight ? T.primary100 : T.textSecondary,
+                  marginBottom: '20px', paddingBottom: '18px',
+                  borderBottom: `1px solid ${plan.highlight ? 'rgba(255,255,255,0.15)' : T.borderDefault}`,
+                }}>
+                  {plan.maxCustomersLabel}
+                </div>
+                <button
+                  onClick={() => { setMobileMenuOpen(false); navigate('/pricing') }}
+                  style={{
+                    marginTop: 'auto',
+                    padding: '10px 16px',
+                    background: plan.highlight ? '#fff' : 'transparent',
+                    border: `1px solid ${plan.highlight ? '#fff' : T.primary700}`,
+                    borderRadius: '8px',
+                    color: plan.highlight ? T.primary900 : T.primary700,
+                    fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody,
+                  }}
+                >
+                  বিস্তারিত দেখুন
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        <p style={{ textAlign: 'center', fontSize: '12.5px', color: T.textMuted, marginTop: '20px' }}>
+          প্রতিটা প্ল্যানেই যত ইচ্ছা ইউজার যোগ করা যায় — রোল অনুযায়ী শুধু প্রতি-ইউজার রেটে বিল হয়
+        </p>
       </section>
 
       {/* Stats */}
