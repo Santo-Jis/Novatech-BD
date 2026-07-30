@@ -29,7 +29,7 @@ import AccountMenu from '../dashboard/AccountMenu'
 import SummaryTab from '../dashboard/SummaryTab'
 import HomeFeed from '../dashboard/HomeFeed'
 import { NOTIF_CONFIG } from '../dashboard/NotificationBell'
-import BottomNav, { getActiveSectionId } from '../dashboard/BottomNav'
+import BottomNav, { getActiveSectionId, getActiveSection } from '../dashboard/BottomNav'
 
 // ── এখনো-অরিডিজাইন করা ট্যাবগুলোর জন্য পুরনো Design Tokens (আপাতত রাখা হলো) ──
 // ⚠️ এগুলো মুছবেন না — নিচের Invoices/Payments/Credit/Complaints/Returns/AI ট্যাব
@@ -153,7 +153,11 @@ export default function DashboardView({
       `}</style>
 
       {/* ═══ TOP BAR (ধাপ ৩ — Facebook-স্টাইল) ══════════════════════ */}
-      <TopBar onMenuClick={() => setMenuOpen(v => !v)} unreadCount={unreadCount} />
+      <TopBar
+        onMenuClick={() => setMenuOpen(v => !v)}
+        unreadCount={unreadCount}
+        pageTitle={activeSectionId === 'home' ? null : getActiveSection(activeTab).label}
+      />
       <AccountMenu
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -779,7 +783,8 @@ export default function DashboardView({
           </div>
         </div>
 
-        {/* ── Statement Download ──────────────────────────────── */}
+        {/* ── Statement Download (শুধু "রিপোর্ট" সেকশনে) ──────────── */}
+        {activeSectionId === 'reports' && (
         <div style={{ background:C.card, borderRadius:20, overflow:'hidden', boxShadow:'0 4px 16px rgba(0,0,0,0.05)', marginTop:14 }}>
           <button onClick={() => setStmtOpen(v => !v)}
             style={{ width:'100%', padding:'15px 18px', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
@@ -821,6 +826,7 @@ export default function DashboardView({
             </div>
           )}
         </div>
+        )}
 
         <p style={{ textAlign:'center', fontSize:10, color:'#c4cbd6', marginTop:24, lineHeight:1.7 }}>
           ZovoriX • কাস্টমার পোর্টাল<br/>

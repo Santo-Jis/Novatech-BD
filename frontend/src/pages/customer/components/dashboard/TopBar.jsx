@@ -1,16 +1,25 @@
 // components/dashboard/TopBar.jsx
 // ═══════════════════════════════════════════════════════════════
-// ধাপ ৩ — Facebook-স্টাইল টপ বার
-// আগের ভারী ডার্ক হেডার (শপ নাম/verified ব্যাজ/SR কার্ড) সরিয়ে এখন একদম
-// Facebook-এর মতো সরু সাদা bar: ☰ মেনু → লোগো → + → 🔍 → 💬
-// শপ পরিচিতি, verified ব্যাজ, নোটিফিকেশন, SR কন্টাক্ট, লগআউট — সবকিছু
-// এখন ☰ (হ্যামবার্গার) চাপলে যেই মেনু খোলে (AccountMenu.jsx) তার ভেতরে।
+// ধাপ ৩ (রিভাইজড) — Facebook-স্টাইল টপ বার
+//
+// হোম পেইজ:      ☰  ZovoriX (হ্যামবার্গারের কাছাকাছি)  ······  + 🔍 💬
+// অন্যান্য পেইজ:  ☰  🔵 পেইজের নাম (যেমন কানেকশন/রিপোর্ট)  ······  [সার্চ বার]
+//                 (+ আইকন ও মেসেঞ্জার আইকন অন্যান্য পেইজে দেখানো হয় না)
 // ═══════════════════════════════════════════════════════════════
 
 import { useState } from 'react'
 import { FiMenu, FiPlus, FiSearch, FiMessageCircle } from 'react-icons/fi'
 
-export default function TopBar({ onMenuClick, unreadCount = 0 }) {
+function LogoDot({ small }) {
+  return (
+    <div className={`${small ? 'w-6 h-6 text-[11px]' : 'w-7 h-7 text-[13px]'} rounded-full bg-cp-trust-500 flex items-center justify-center text-white font-bold flex-shrink-0 font-cp-head`}>
+      Z
+    </div>
+  )
+}
+
+export default function TopBar({ onMenuClick, unreadCount = 0, pageTitle = null }) {
+  const isHome = !pageTitle
   const [comingSoon, setComingSoon] = useState(null) // 'add' | 'search' | 'messenger' | null
 
   const flashComingSoon = (key) => {
@@ -19,8 +28,8 @@ export default function TopBar({ onMenuClick, unreadCount = 0 }) {
   }
 
   return (
-    <div className="sticky top-0 z-30 bg-cp-bg-surface border-b border-cp-border px-2.5 h-14 flex items-center justify-between">
-      {/* ☰ মেনু (শপ তথ্য/নোটিফিকেশন/SR/লগআউট এখানে) */}
+    <div className="sticky top-0 z-30 bg-cp-bg-surface border-b border-cp-border px-2 h-14 flex items-center gap-1">
+      {/* ☰ মেনু */}
       <button
         onClick={onMenuClick}
         aria-label="মেনু"
@@ -32,35 +41,74 @@ export default function TopBar({ onMenuClick, unreadCount = 0 }) {
         )}
       </button>
 
-      {/* লোগো / ব্র্যান্ড ওয়ার্ডমার্ক */}
-      <div className="flex items-center gap-1.5 min-w-0">
-        <div className="w-7 h-7 rounded-full bg-cp-trust-500 flex items-center justify-center text-white text-[13px] font-bold flex-shrink-0 font-cp-head">N</div>
-        <span className="text-[15px] font-bold text-cp-trust-500 font-cp-head truncate">NovaTech</span>
+      {/* লোগো — হ্যামবার্গারের একদম কাছে (গ্যাপ মাঝখানে/ডানে ঠেলে দেওয়া হয়েছে) */}
+      <div className="flex items-center gap-1.5 min-w-0 flex-shrink">
+        <LogoDot small={!isHome} />
+        {isHome ? (
+          <span className="text-[15px] font-bold text-cp-trust-500 font-cp-head truncate">ZovoriX</span>
+        ) : (
+          <span className="text-[15px] font-bold text-cp-text-primary font-cp-head truncate">{pageTitle}</span>
+        )}
       </div>
 
-      {/* ডান পাশের আইকন — +, সার্চ, মেসেঞ্জার (ব্যাকএন্ড নেই — শীঘ্রই আসছে) */}
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <div className="relative">
-          <button
-            onClick={() => flashComingSoon('add')}
-            aria-label="নতুন"
-            className="w-10 h-10 rounded-full flex items-center justify-center text-cp-text-primary hover:bg-cp-bg-alt"
-          >
-            <FiPlus size={19} />
-          </button>
-          {comingSoon === 'add' && (
-            <div className="absolute top-11 right-0 z-50 bg-cp-trust-900 text-white text-[10px] font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-lg">
-              শীঘ্রই আসছে
-            </div>
-          )}
+      {/* মাঝের ফাঁকা জায়গা — বাকি স্পেসটা এখানে চলে যায় */}
+      <div className="flex-1 min-w-2" />
+
+      {isHome ? (
+        /* ── হোম: +, সার্চ আইকন, মেসেঞ্জার (ব্যাকএন্ড নেই — শীঘ্রই আসছে) ── */
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <div className="relative">
+            <button
+              onClick={() => flashComingSoon('add')}
+              aria-label="নতুন"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-cp-text-primary hover:bg-cp-bg-alt"
+            >
+              <FiPlus size={19} />
+            </button>
+            {comingSoon === 'add' && (
+              <div className="absolute top-11 right-0 z-50 bg-cp-trust-900 text-white text-[10px] font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-lg">
+                শীঘ্রই আসছে
+              </div>
+            )}
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => flashComingSoon('search')}
+              aria-label="সার্চ"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-cp-text-primary hover:bg-cp-bg-alt"
+            >
+              <FiSearch size={18} />
+            </button>
+            {comingSoon === 'search' && (
+              <div className="absolute top-11 right-0 z-50 bg-cp-trust-900 text-white text-[10px] font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-lg">
+                সার্চ শীঘ্রই আসছে
+              </div>
+            )}
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => flashComingSoon('messenger')}
+              aria-label="মেসেঞ্জার"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-cp-text-primary hover:bg-cp-bg-alt"
+            >
+              <FiMessageCircle size={18} />
+            </button>
+            {comingSoon === 'messenger' && (
+              <div className="absolute top-11 right-0 z-50 bg-cp-trust-900 text-white text-[10px] font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-lg">
+                মেসেজিং শীঘ্রই আসছে
+              </div>
+            )}
+          </div>
         </div>
-        <div className="relative">
+      ) : (
+        /* ── অন্যান্য পেইজ: শুধু সার্চ বার ── */
+        <div className="relative flex-shrink-0">
           <button
             onClick={() => flashComingSoon('search')}
-            aria-label="সার্চ"
-            className="w-10 h-10 rounded-full flex items-center justify-center text-cp-text-primary hover:bg-cp-bg-alt"
+            className="flex items-center gap-2 bg-cp-bg-alt rounded-full pl-3 pr-3.5 h-9 text-cp-text-muted"
           >
-            <FiSearch size={18} />
+            <FiSearch size={15} />
+            <span className="text-[11.5px]">সার্চ করুন...</span>
           </button>
           {comingSoon === 'search' && (
             <div className="absolute top-11 right-0 z-50 bg-cp-trust-900 text-white text-[10px] font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-lg">
@@ -68,21 +116,7 @@ export default function TopBar({ onMenuClick, unreadCount = 0 }) {
             </div>
           )}
         </div>
-        <div className="relative">
-          <button
-            onClick={() => flashComingSoon('messenger')}
-            aria-label="মেসেঞ্জার"
-            className="w-10 h-10 rounded-full flex items-center justify-center text-cp-text-primary hover:bg-cp-bg-alt"
-          >
-            <FiMessageCircle size={18} />
-          </button>
-          {comingSoon === 'messenger' && (
-            <div className="absolute top-11 right-0 z-50 bg-cp-trust-900 text-white text-[10px] font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-lg">
-              মেসেজিং শীঘ্রই আসছে
-            </div>
-          )}
-        </div>
-      </div>
+      )}
     </div>
   )
 }
