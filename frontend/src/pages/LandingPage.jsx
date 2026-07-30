@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSettings, FiPhone, FiMail, FiMessageCircle } from 'react-icons/fi'
+import { FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSettings, FiPhone, FiMail, FiMessageCircle, FiMenu, FiX } from 'react-icons/fi'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
@@ -38,6 +38,7 @@ const T = {
 export default function LandingPage() {
   const navigate = useNavigate()
   const [mgmtOpen, setMgmtOpen] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const dropRef = useRef(null)
 
   // ── লুকানো Platform Panel অ্যাক্সেস ──────────────────────────
@@ -109,22 +110,39 @@ export default function LandingPage() {
            ট্যাব/ল্যাপটপে (৪৮০px-এর উপরে) কোনো পরিবর্তন নেই — বেস স্টাইলই বহাল থাকবে (এক লাইনেই সব)। */
         @media (max-width: 480px) {
           .zx-navbar { flex-direction: column !important; flex-wrap: nowrap !important; align-items: stretch !important; padding: 10px 14px !important; row-gap: 10px !important; }
-          .zx-brand { gap: 6px !important; justify-content: center !important; }
+          .zx-navbar-top { width: 100% !important; }
+          .zx-brand { gap: 6px !important; justify-content: flex-start !important; }
           .zx-logo-box { width: 26px !important; height: 26px !important; border-radius: 6px !important; }
           .zx-brand-text { font-size: 14px !important; }
-          .zx-nav-links { order: 0; flex: none !important; justify-content: center !important; gap: 16px !important; }
-          .zx-nav-links button { font-size: 12px !important; }
-          .zx-nav-actions { justify-content: center !important; gap: 8px !important; }
-          .zx-btn-retailer, .zx-btn-mgmt { padding: 6px 8px !important; font-size: 11px !important; gap: 4px !important; border-radius: 6px !important; }
-          .zx-btn-suffix { display: none !important; }
-          .zx-btn-icon { font-size: 12px !important; }
-          .zx-chevron { font-size: 11px !important; }
+          .zx-hamburger { display: flex !important; }
+          /* মেনু বন্ধ থাকলে নেভ লিংক ও লগইন বাটন লুকানো থাকবে — শুধু হ্যামবার্গার আইকনে ট্যাপ করলে খুলবে */
+          .zx-nav-links, .zx-nav-actions { display: none !important; }
+          .zx-navbar.zx-menu-open .zx-nav-links {
+            display: flex !important; flex-direction: column !important; align-items: stretch !important;
+            justify-content: flex-start !important; gap: 4px !important; width: 100% !important;
+            order: 0 !important; flex: none !important;
+          }
+          .zx-navbar.zx-menu-open .zx-nav-links button {
+            font-size: 14px !important; width: 100% !important; text-align: left !important;
+            padding: 10px 4px !important;
+          }
+          .zx-navbar.zx-menu-open .zx-nav-actions {
+            display: flex !important; flex-direction: column !important; align-items: stretch !important;
+            justify-content: flex-start !important; gap: 8px !important; width: 100% !important;
+            border-top: 1px solid #E4E1D8; padding-top: 10px !important; margin-top: 4px !important;
+          }
+          .zx-navbar.zx-menu-open .zx-btn-retailer, .zx-navbar.zx-menu-open .zx-btn-mgmt {
+            padding: 10px 14px !important; font-size: 13px !important; gap: 8px !important;
+            justify-content: center !important; width: 100% !important;
+          }
+          .zx-navbar.zx-menu-open .zx-btn-suffix { display: inline !important; }
+          .zx-navbar.zx-menu-open .zx-chevron { font-size: 13px !important; }
         }
         @media (max-width: 360px) {
-          .zx-btn-retailer, .zx-btn-mgmt { padding: 6px 7px !important; }
+          .zx-navbar.zx-menu-open .zx-btn-retailer, .zx-navbar.zx-menu-open .zx-btn-mgmt { padding: 10px 12px !important; }
         }
       `}</style>
-      <nav className="zx-navbar" style={{
+      <nav className={`zx-navbar${mobileMenuOpen ? ' zx-menu-open' : ''}`} style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -138,25 +156,50 @@ export default function LandingPage() {
         flexWrap: 'wrap',
         rowGap: '10px',
       }}>
-        <div className="zx-brand" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-          <div className="zx-logo-box" style={{
-            width: '34px', height: '34px',
-            borderRadius: '8px',
-            overflow: 'hidden',
-            flexShrink: 0,
-            border: `1px solid ${T.borderDefault}`,
-          }}>
-            <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <div className="zx-navbar-top" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '10px' }}>
+          <div className="zx-brand" style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+            <div className="zx-logo-box" style={{
+              width: '34px', height: '34px',
+              borderRadius: '8px',
+              overflow: 'hidden',
+              flexShrink: 0,
+              border: `1px solid ${T.borderDefault}`,
+            }}>
+              <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            </div>
+            <span className="zx-brand-text" style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
+              ZovoriX
+            </span>
           </div>
-          <span className="zx-brand-text" style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
-            ZovoriX
-          </span>
+
+          {/* মোবাইল হ্যামবার্গার মেনু — শুধু ছোট স্ক্রিনে দেখা যাবে */}
+          <button
+            className="zx-hamburger"
+            onClick={() => setMobileMenuOpen(p => !p)}
+            aria-label={mobileMenuOpen ? 'মেনু বন্ধ করুন' : 'মেনু খুলুন'}
+            style={{
+              display: 'none',
+              alignItems: 'center',
+              justifyContent: 'center',
+              background: 'none',
+              border: `1px solid ${T.borderDefault}`,
+              borderRadius: '8px',
+              width: '36px',
+              height: '36px',
+              flexShrink: 0,
+              color: T.primary700,
+              fontSize: '20px',
+              cursor: 'pointer',
+            }}
+          >
+            {mobileMenuOpen ? <FiX /> : <FiMenu />}
+          </button>
         </div>
 
         {/* নেভ লিংক — আগে আলাদা ব্যানার/বার হিসেবে ছিল, এখন হেডারেই মিশে গেছে */}
         <div className="zx-nav-links" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '1 1 auto', flexWrap: 'wrap', gap: '22px', minWidth: '120px' }}>
           <button
-            onClick={() => navigate('/about')}
+            onClick={() => { setMobileMenuOpen(false); navigate('/about') }}
             style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s', whiteSpace: 'nowrap' }}
             onMouseEnter={e => e.currentTarget.style.color = T.primary700}
             onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
@@ -164,7 +207,7 @@ export default function LandingPage() {
             আমাদের সম্পর্কে
           </button>
           <button
-            onClick={() => navigate('/contact')}
+            onClick={() => { setMobileMenuOpen(false); navigate('/contact') }}
             style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s', whiteSpace: 'nowrap' }}
             onMouseEnter={e => e.currentTarget.style.color = T.primary700}
             onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
@@ -172,7 +215,7 @@ export default function LandingPage() {
             যোগাযোগ
           </button>
           <button
-            onClick={() => navigate('/pricing')}
+            onClick={() => { setMobileMenuOpen(false); navigate('/pricing') }}
             style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s', whiteSpace: 'nowrap' }}
             onMouseEnter={e => e.currentTarget.style.color = T.primary700}
             onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
@@ -180,7 +223,7 @@ export default function LandingPage() {
             প্রাইসিং
           </button>
           <button
-            onClick={() => navigate('/blog')}
+            onClick={() => { setMobileMenuOpen(false); navigate('/blog') }}
             style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s', whiteSpace: 'nowrap' }}
             onMouseEnter={e => e.currentTarget.style.color = T.primary700}
             onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}
@@ -195,7 +238,7 @@ export default function LandingPage() {
           {/* রিটেইলার শপ লগইন */}
           <button
             className="zx-btn-retailer"
-            onClick={() => navigate('/customer-login')}
+            onClick={() => { setMobileMenuOpen(false); navigate('/customer-login') }}
             style={{
               padding: '9px 18px',
               background: 'transparent',
@@ -285,6 +328,7 @@ export default function LandingPage() {
                     key={item.role}
                     onClick={() => {
                       setMgmtOpen(false)
+                      setMobileMenuOpen(false)
                       navigate('/login', { state: { roleHint: item.role } })
                     }}
                     style={{
@@ -410,7 +454,7 @@ export default function LandingPage() {
             ৩ মাসের ফ্রি ট্রায়াল শুরু করুন
           </button>
           <button
-            onClick={() => navigate('/about')}
+            onClick={() => { setMobileMenuOpen(false); navigate('/about') }}
             style={{
               padding: '13px 28px',
               background: 'transparent',
@@ -612,7 +656,7 @@ export default function LandingPage() {
                 <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   Management Login
                 </button>
-                <button onClick={() => navigate('/customer-login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                <button onClick={() => { setMobileMenuOpen(false); navigate('/customer-login') }} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   Retailer Shop Login
                 </button>
                 <button onClick={() => navigate('/apply/sr')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
@@ -627,16 +671,16 @@ export default function LandingPage() {
                 Company
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <button onClick={() => navigate('/pricing')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                <button onClick={() => { setMobileMenuOpen(false); navigate('/pricing') }} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   Pricing
                 </button>
-                <button onClick={() => navigate('/about')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                <button onClick={() => { setMobileMenuOpen(false); navigate('/about') }} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   About Us
                 </button>
-                <button onClick={() => navigate('/contact')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                <button onClick={() => { setMobileMenuOpen(false); navigate('/contact') }} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   Contact
                 </button>
-                <button onClick={() => navigate('/blog')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
+                <button onClick={() => { setMobileMenuOpen(false); navigate('/blog') }} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
                   Blog
                 </button>
                 <button onClick={() => navigate('/privacy-policy')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
