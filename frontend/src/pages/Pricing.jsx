@@ -117,6 +117,8 @@ export default function Pricing() {
           .zx-btn-suffix { display: none !important; }
           .zx-btn-icon { font-size: 12px !important; }
           .zx-chevron { font-size: 11px !important; }
+          .zx-nav-links { order: 3; flex-basis: 100%; gap: 14px !important; margin-top: 4px; }
+          .zx-nav-links button { font-size: 11.5px !important; }
         }
         @media (max-width: 360px) {
           .zx-brand-text { display: none !important; }
@@ -143,6 +145,29 @@ export default function Pricing() {
           <span className="zx-brand-text" style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '19px', color: T.primary700, letterSpacing: '-0.01em', whiteSpace: 'nowrap' }}>
             ZovoriX
           </span>
+        </div>
+
+        {/* নেভ লিংক — হেডারেই মিশে গেছে */}
+        <div className="zx-nav-links" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '1 1 auto', flexWrap: 'wrap', gap: '22px', minWidth: '120px' }}>
+          <button onClick={() => navigate('/landing')} style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s', whiteSpace: 'nowrap' }}
+            onMouseEnter={e => e.currentTarget.style.color = T.primary700} onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}>
+            হোম
+          </button>
+          <button onClick={() => navigate('/about')} style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s', whiteSpace: 'nowrap' }}
+            onMouseEnter={e => e.currentTarget.style.color = T.primary700} onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}>
+            আমাদের সম্পর্কে
+          </button>
+          <button onClick={() => navigate('/contact')} style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s', whiteSpace: 'nowrap' }}
+            onMouseEnter={e => e.currentTarget.style.color = T.primary700} onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}>
+            যোগাযোগ
+          </button>
+          <button onClick={() => navigate('/pricing')} style={{ background: 'none', border: 'none', padding: 0, color: T.primary700, fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody, whiteSpace: 'nowrap' }}>
+            প্রাইসিং
+          </button>
+          <button onClick={() => navigate('/blog')} style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s', whiteSpace: 'nowrap' }}
+            onMouseEnter={e => e.currentTarget.style.color = T.primary700} onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}>
+            ব্লগ
+          </button>
         </div>
 
         <div className="zx-nav-actions" style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
@@ -213,33 +238,6 @@ export default function Pricing() {
           </div>
         </div>
       </nav>
-
-      {/* Utility links bar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '24px',
-        padding: '10px 24px', borderBottom: `1px solid ${T.borderDefault}`,
-        background: T.bgAlt, flexWrap: 'wrap',
-      }}>
-        <button onClick={() => navigate('/landing')} style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.color = T.primary700} onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}>
-          হোম
-        </button>
-        <button onClick={() => navigate('/about')} style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.color = T.primary700} onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}>
-          আমাদের সম্পর্কে
-        </button>
-        <button onClick={() => navigate('/contact')} style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.color = T.primary700} onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}>
-          যোগাযোগ
-        </button>
-        <button onClick={() => navigate('/pricing')} style={{ background: 'none', border: 'none', padding: 0, color: T.primary700, fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody }}>
-          প্রাইসিং
-        </button>
-        <button onClick={() => navigate('/blog')} style={{ background: 'none', border: 'none', padding: 0, color: T.textSecondary, fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody, transition: 'color 0.15s' }}
-          onMouseEnter={e => e.currentTarget.style.color = T.primary700} onMouseLeave={e => e.currentTarget.style.color = T.textSecondary}>
-          ব্লগ
-        </button>
-      </div>
 
       {/* Hero */}
       <section style={{ textAlign: 'center', padding: '52px 24px 28px' }}>
