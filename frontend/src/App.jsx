@@ -408,7 +408,7 @@ function AppWithPermissions() {
           <Route element={<CustomerGuard />}>
             <Route path="/customer" element={<CustomerLayout />}>
               <Route index                element={<Navigate to="dashboard" replace />} />
-              <Route path="dashboard"     element={<CustomerPortal defaultTab="summary"       />} />
+              <Route path="dashboard"     element={<CustomerPortal defaultTab="home_feed"     />} />
               <Route path="network"       element={<CustomerPortal defaultTab="network"       />} />
               <Route path="orders"        element={<CustomerPortal defaultTab="orders"        />} />
               <Route path="invoices"      element={<CustomerPortal defaultTab="invoices"      />} />

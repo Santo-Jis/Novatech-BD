@@ -28,7 +28,7 @@ import WelcomeView    from './components/views/WelcomeView'
 import DashboardView  from './components/views/DashboardView'
 import NoCompanyView  from './components/views/NoCompanyView'
 
-export default function CustomerPortal({ defaultTab = 'summary' }) {
+export default function CustomerPortal({ defaultTab = 'home_feed' }) {
   const auth = usePortalAuth(defaultTab)
 
   if (auth.phase === 'loading')   return <LoadingView />

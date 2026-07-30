@@ -14,10 +14,10 @@
 import { FiHome, FiUsers, FiShoppingBag, FiBarChart2, FiCpu, FiUser } from 'react-icons/fi'
 
 export const NAV_SECTIONS = [
-  { id: 'home',        icon: FiHome,        label: 'হোম',       tab: 'summary' },
+  { id: 'home',        icon: FiHome,        label: 'হোম',       tab: 'home_feed' },
   { id: 'connections', icon: FiUsers,       label: 'কানেকশন',   tab: 'network' },
   { id: 'ecommerce',   icon: FiShoppingBag, label: 'E-commerce', tab: 'orders' },
-  { id: 'reports',     icon: FiBarChart2,   label: 'রিপোর্ট',   tab: 'invoices', subTabs: ['invoices', 'payments', 'returns', 'credit_req', 'complaints'] },
+  { id: 'reports',     icon: FiBarChart2,   label: 'রিপোর্ট',   tab: 'summary', subTabs: ['summary', 'invoices', 'payments', 'returns', 'credit_req', 'complaints'] },
   { id: 'ai',          icon: FiCpu,         label: 'AI চ্যাট',  tab: 'ai_chat' },
   { id: 'profile',     icon: FiUser,        label: 'প্রোফাইল', tab: 'profile' },
 ]

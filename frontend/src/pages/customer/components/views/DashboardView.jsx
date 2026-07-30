@@ -26,6 +26,7 @@ import CustomerAIChat from '../../CustomerAIChat'
 
 import DashboardHeader from '../dashboard/DashboardHeader'
 import SummaryTab from '../dashboard/SummaryTab'
+import HomeFeed from '../dashboard/HomeFeed'
 import { NOTIF_CONFIG } from '../dashboard/NotificationBell'
 import BottomNav, { getActiveSectionId } from '../dashboard/BottomNav'
 
@@ -107,6 +108,7 @@ export default function DashboardView({
   // বাকি ৫টা (সারসংক্ষেপ/নেটওয়ার্ক/অর্ডার/প্রোফাইল/AI চ্যাট) সরাসরি নিচের
   // BottomNav-এর ৬টা মূল আইকনে ম্যাপ হয়ে গেছে (দেখুন dashboard/BottomNav.jsx)।
   const reportTabs = [
+    { id:'summary',    label:'📊 সারসংক্ষেপ' },
     { id:'invoices',   label:`🧾 ইনভয়েস` },
     { id:'payments',   label:`পরিশোধ` },
     { id:'returns',    label:`🔄 রিটার্ন${returnReqTotal > 0 ? ` (${returnReqTotal})` : ''}` },
@@ -225,7 +227,12 @@ export default function DashboardView({
           {/* ── Content ─────────────────────────────────────────── */}
           <div style={{ padding: activeTab === 'ai_chat' ? 0 : 16 }}>
 
-            {/* ══ সারসংক্ষেপ (redesigned — নতুন ফাইল থেকে) ══ */}
+            {/* ══ হোম ফিড (ধাপ ২ — নতুন) ══ */}
+            {activeTab === 'home_feed' && (
+              <HomeFeed portalJWT={portalJWT} customer={customer} />
+            )}
+
+            {/* ══ সারসংক্ষেপ (এখন "রিপোর্ট" সেকশনের ওভারভিউ সাব-ট্যাব) ══ */}
             {activeTab === 'summary' && (
               <SummaryTab customer={customer} monthly_summary={monthly_summary} total_summary={total_summary} portalJWT={portalJWT} />
             )}
