@@ -5,10 +5,11 @@ import Button from '../../components/ui/Button'
 import Input, { Textarea } from '../../components/ui/Input'
 import Modal from '../../components/ui/Modal'
 import StockMovementsModal from '../../components/StockMovementsModal'
+import ProductImportModal from '../../components/ProductImportModal'
 import toast from 'react-hot-toast'
 import {
   FiPlus, FiEdit, FiPackage, FiTrendingUp,
-  FiImage, FiPercent, FiTag, FiInfo, FiDollarSign, FiX, FiPlusCircle, FiList
+  FiImage, FiPercent, FiTag, FiInfo, FiDollarSign, FiX, FiPlusCircle, FiList, FiUpload
 } from 'react-icons/fi'
 
 // ─── ছবি আপলোড প্রিভিউ কম্পোনেন্ট ──────────────────────────
@@ -128,12 +129,39 @@ const EMPTY_FORM = {
   image_url: '',
   description: '',
   discount: '', discount_type: 'flat',
-  vat: '', tax: ''
+  vat: '', tax: '',
+  cost_price: '', category_id: '', brand: '', reorder_point: ''
+}
+
+// ─── মার্জিন সারাংশ (শুধু admin/manager cost_price দেখতে পাবে) ──
+function MarginSummary({ price, costPrice }) {
+  const p = parseFloat(price)     || 0
+  const c = parseFloat(costPrice) || 0
+  if (!p || !c) return null
+
+  const margin    = p - c
+  const marginPct = (margin / p) * 100
+
+  return (
+    <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl text-xs space-y-1 border border-purple-100 dark:border-purple-800">
+      <p className="font-semibold text-purple-700 dark:text-purple-300 text-sm mb-1">মার্জিন সারাংশ (শুধু আপনি দেখছেন)</p>
+      <div className="flex justify-between text-gray-600 dark:text-gray-300">
+        <span>ক্রয়মূল্য</span><span>৳{c.toLocaleString()}</span>
+      </div>
+      <div className="flex justify-between font-bold text-gray-800 dark:text-gray-100 pt-1 border-t border-purple-200 dark:border-purple-700">
+        <span>লাভ / ইউনিট</span>
+        <span className={margin >= 0 ? 'text-green-600' : 'text-red-600'}>
+          ৳{margin.toLocaleString('en', { maximumFractionDigits: 2 })} ({marginPct.toFixed(1)}%)
+        </span>
+      </div>
+    </div>
+  )
 }
 
 // ─── MAIN COMPONENT ────────────────────────────────────────
 export default function AdminProducts() {
   const [products,   setProducts]   = useState([])
+  const [categories, setCategories] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [modal,      setModal]      = useState(null) // 'add' | 'edit' | 'adjust' | 'view'
   const [selected,   setSelected]   = useState(null)
@@ -143,6 +171,7 @@ export default function AdminProducts() {
   const [tab,        setTab]        = useState('basic') // 'basic' | 'pricing' | 'image'
   const [movOpen,    setMovOpen]    = useState(false)
   const [movProduct, setMovProduct] = useState(null)
+  const [importOpen, setImportOpen] = useState(false)
 
   const fetchProducts = async () => {
     try {
@@ -152,7 +181,25 @@ export default function AdminProducts() {
     finally { setLoading(false) }
   }
 
-  useEffect(() => { fetchProducts() }, [])
+  const fetchCategories = async () => {
+    try {
+      const res = await api.get('/categories')
+      setCategories(res.data.data)
+    } catch { /* ক্যাটাগরি লোড না হলেও প্রডাক্ট পেজ কাজ করবে */ }
+  }
+
+  useEffect(() => { fetchProducts(); fetchCategories() }, [])
+
+  const quickAddCategory = async () => {
+    const name = window.prompt('নতুন ক্যাটাগরির নাম লিখুন:')
+    if (!name?.trim()) return
+    try {
+      const res = await api.post('/categories', { name: name.trim() })
+      toast.success('ক্যাটাগরি যোগ হয়েছে।')
+      setCategories(prev => [...prev, res.data.data])
+      setField('category_id', res.data.data.id)
+    } catch (err) { toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।') }
+  }
 
   const setField = (key, val) => setForm(p => ({ ...p, [key]: val }))
 
@@ -176,6 +223,10 @@ export default function AdminProducts() {
       discount_type: product.discount_type || 'flat',
       vat:           product.vat          || '',
       tax:           product.tax          || '',
+      cost_price:    product.cost_price    || '',
+      category_id:   product.category_id  || '',
+      brand:         product.brand        || '',
+      reorder_point: product.reorder_point ?? '',
     })
     setSelected(product)
     setTab('basic')
@@ -203,11 +254,14 @@ export default function AdminProducts() {
     try {
       const payload = {
         ...form,
-        price:    parseFloat(form.price)    || 0,
-        stock:    parseInt(form.stock)      || 0,
-        discount: parseFloat(form.discount) || 0,
-        vat:      parseFloat(form.vat)      || 0,
-        tax:      parseFloat(form.tax)      || 0,
+        price:         parseFloat(form.price)    || 0,
+        stock:         parseInt(form.stock)      || 0,
+        discount:      parseFloat(form.discount) || 0,
+        vat:           parseFloat(form.vat)      || 0,
+        tax:           parseFloat(form.tax)      || 0,
+        cost_price:    parseFloat(form.cost_price)    || 0,
+        reorder_point: parseInt(form.reorder_point)   || 0,
+        category_id:   form.category_id || null,
       }
       if (modal === 'add') {
         await api.post('/products', payload)
@@ -264,9 +318,18 @@ export default function AdminProducts() {
           <div>
             <p className="font-semibold text-sm text-gray-800 dark:text-gray-100">{row.name}</p>
             <p className="text-xs text-gray-400 font-mono">{row.sku}</p>
-            {row.description && (
-              <p className="text-xs text-gray-400 truncate max-w-[180px]">{row.description}</p>
-            )}
+            <div className="flex gap-1 mt-0.5 flex-wrap">
+              {row.brand && (
+                <span className="text-[10px] bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded-full">
+                  {row.brand}
+                </span>
+              )}
+              {row.category_name_bn || row.category_name ? (
+                <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded-full">
+                  {row.category_name_bn || row.category_name}
+                </span>
+              ) : null}
+            </div>
           </div>
         </div>
       )
@@ -276,6 +339,11 @@ export default function AdminProducts() {
       render: (_, row) => (
         <div>
           <p className="font-semibold text-secondary">৳{parseFloat(row.price).toLocaleString()}</p>
+          {parseFloat(row.cost_price) > 0 && (
+            <p className="text-[10px] text-purple-600">
+              মার্জিন: {(((row.price - row.cost_price) / row.price) * 100).toFixed(0)}%
+            </p>
+          )}
           {(parseFloat(row.discount) > 0 || parseFloat(row.vat) > 0 || parseFloat(row.tax) > 0) && (
             <p className="text-xs text-primary font-medium">
               চূড়ান্ত: ৳{calcFinal(row).toLocaleString('en', { maximumFractionDigits: 2 })}
@@ -305,12 +373,17 @@ export default function AdminProducts() {
       title: 'স্টক',
       render: (_, row) => (
         <div>
-          <span className={`font-bold ${parseInt(row.available_stock) <= 10 ? 'text-red-600' : 'text-gray-800 dark:text-gray-100'}`}>
+          <span className={`font-bold ${row.is_low_stock ? 'text-red-600' : 'text-gray-800 dark:text-gray-100'}`}>
             {row.available_stock}
           </span>
           <span className="text-xs text-gray-400"> / {row.stock} {row.unit}</span>
           {parseInt(row.reserved_stock) > 0 && (
             <p className="text-xs text-amber-600">রিজার্ভ: {row.reserved_stock}</p>
+          )}
+          {row.is_low_stock && (
+            <p className="text-[10px] font-semibold text-red-600 bg-red-50 dark:bg-red-900/20 inline-block px-1.5 py-0.5 rounded-full mt-0.5">
+              ⚠️ Low Stock
+            </p>
           )}
         </div>
       )
@@ -371,7 +444,10 @@ export default function AdminProducts() {
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">পণ্য ব্যবস্থাপনা</h1>
-        <Button icon={<FiPlus />} onClick={openAdd}>নতুন পণ্য</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" icon={<FiUpload />} onClick={() => setImportOpen(true)}>বাল্ক ইম্পোর্ট</Button>
+          <Button icon={<FiPlus />} onClick={openAdd}>নতুন পণ্য</Button>
+        </div>
       </div>
 
       <Table columns={columns} data={products} loading={loading} emptyText="কোনো পণ্য নেই।" />
@@ -444,6 +520,38 @@ export default function AdminProducts() {
                 </select>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="ব্র্যান্ড"
+                placeholder="যেমন: Nestle"
+                value={form.brand}
+                onChange={e => setField('brand', e.target.value)}
+              />
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">ক্যাটাগরি</label>
+                <div className="flex gap-1.5">
+                  <select
+                    value={form.category_id}
+                    onChange={e => setField('category_id', e.target.value)}
+                    className="w-full border rounded-xl px-3 py-2.5 text-sm border-gray-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  >
+                    <option value="">— বাছাই করুন —</option>
+                    {categories.map(c => (
+                      <option key={c.id} value={c.id}>{c.name_bn || c.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={quickAddCategory}
+                    title="নতুন ক্যাটাগরি যোগ করুন"
+                    className="px-3 rounded-xl border border-dashed border-primary/40 text-primary hover:bg-primary/5 flex-shrink-0"
+                  >
+                    <FiPlus size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+
             {modal === 'add' && (
               <Input
                 label="প্রারম্ভিক স্টক"
@@ -455,6 +563,16 @@ export default function AdminProducts() {
                 hint="পণ্য তৈরির সময় কতটি স্টকে থাকবে"
               />
             )}
+
+            <Input
+              label="রি-অর্ডার পয়েন্ট (Low Stock Alert)"
+              type="number"
+              min="0"
+              placeholder="0"
+              value={form.reorder_point}
+              onChange={e => setField('reorder_point', e.target.value)}
+              hint="স্টক এই সংখ্যার নিচে নামলে 'Low Stock' হিসেবে দেখাবে"
+            />
 
             {modal === 'edit' && selected && (
               <div className="p-4 border border-gray-200 dark:border-slate-600 rounded-xl space-y-3">
@@ -497,6 +615,22 @@ export default function AdminProducts() {
         {/* ── TAB: মূল্য ও ছাড় ── */}
         {tab === 'pricing' && (
           <div className="space-y-4">
+            {/* Cost Price */}
+            <div className="p-4 border border-gray-200 dark:border-slate-600 rounded-xl space-y-3">
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                <FiDollarSign className="text-purple-500" /> ক্রয়মূল্য (Cost Price)
+              </p>
+              <Input
+                type="number"
+                min="0"
+                placeholder="0.00"
+                value={form.cost_price}
+                onChange={e => setField('cost_price', e.target.value)}
+                hint="এটা শুধু Admin/Manager দেখতে পাবে — worker বা customer দেখবে না"
+              />
+              <MarginSummary price={form.price} costPrice={form.cost_price} />
+            </div>
+
             {/* Discount */}
             <div className="p-4 border border-gray-200 dark:border-slate-600 rounded-xl space-y-3">
               <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
@@ -711,6 +845,14 @@ export default function AdminProducts() {
                 <p className="text-gray-400 text-xs">মূল মূল্য</p>
                 <p className="font-semibold text-secondary">৳{parseFloat(selected.price).toLocaleString()}</p>
               </div>
+              {(selected.brand || selected.category_name_bn || selected.category_name) && (
+                <div className="p-3 bg-gray-50 dark:bg-slate-700 rounded-xl col-span-2">
+                  <p className="text-gray-400 text-xs">ব্র্যান্ড / ক্যাটাগরি</p>
+                  <p className="font-semibold">
+                    {[selected.brand, selected.category_name_bn || selected.category_name].filter(Boolean).join(' • ') || '—'}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* মূল্য সারাংশ */}
@@ -721,6 +863,9 @@ export default function AdminProducts() {
               vat={selected.vat}
               tax={selected.tax}
             />
+
+            {/* মার্জিন সারাংশ */}
+            <MarginSummary price={selected.price} costPrice={selected.cost_price} />
 
             {/* বিবরণ */}
             {selected.description && (
@@ -739,6 +884,13 @@ export default function AdminProducts() {
         onClose={() => { setMovOpen(false); setMovProduct(null) }}
         productId={movProduct?.id}
         productName={movProduct?.name}
+      />
+
+      {/* বাল্ক CSV ইম্পোর্ট Modal */}
+      <ProductImportModal
+        isOpen={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => { fetchProducts(); fetchCategories() }}
       />
     </div>
   )
