@@ -15,7 +15,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useState, useEffect } from 'react'
-import { FiFileText, FiMegaphone, FiTag, FiUsers } from 'react-icons/fi'
+import { FiFileText, FiVolume2, FiTag, FiUsers } from 'react-icons/fi'
 import { portalFetch } from '../../utils/api'
 import { fmtDate } from '../../utils/helpers'
 import InvoiceCard from '../InvoiceCard'
@@ -94,7 +94,7 @@ export default function HomeFeed({ portalJWT, customer }) {
       {/* ── কোম্পানির পোস্ট (placeholder) ── */}
       <div>
         <SectionLabel label="কোম্পানির পোস্ট" tone="trust" />
-        <ComingSoonCard icon={FiMegaphone} title="কোম্পানির পোস্ট এখানে দেখা যাবে" desc="আপনার কানেক্টেড কোম্পানিগুলো নতুন পণ্য, আপডেট বা ঘোষণা পোস্ট করলে এখানে দেখতে পাবেন।" />
+        <ComingSoonCard icon={FiVolume2} title="কোম্পানির পোস্ট এখানে দেখা যাবে" desc="আপনার কানেক্টেড কোম্পানিগুলো নতুন পণ্য, আপডেট বা ঘোষণা পোস্ট করলে এখানে দেখতে পাবেন।" />
       </div>
 
       {/* ── মার্কেটিং অফার (placeholder) ── */}
