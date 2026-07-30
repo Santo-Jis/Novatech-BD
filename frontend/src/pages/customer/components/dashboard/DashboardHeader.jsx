@@ -2,6 +2,8 @@
 // ড্যাশবোর্ডের উপরের ডার্ক হেডার — শপ তথ্য, verified ব্যাজ, নোটিফিকেশন বেল,
 // লগআউট বাটন, ক্রেডিট রিং ও ব্যালেন্স কার্ড। DashboardView.jsx থেকে আলাদা করা হলো।
 
+import { useState } from 'react'
+import { FiSearch, FiMessageCircle, FiLogOut } from 'react-icons/fi'
 import CreditRing from './CreditRing'
 import NotificationBell from './NotificationBell'
 
@@ -10,6 +12,13 @@ export default function DashboardHeader({
   notifications, unreadCount, showBell, setShowBell, markAllAsRead, markOneRead, onTabChange,
   onLogoutClick,
 }) {
+  const [comingSoon, setComingSoon] = useState(null) // 'search' | 'messenger' | null
+
+  const flashComingSoon = (key) => {
+    setComingSoon(key)
+    setTimeout(() => setComingSoon(c => (c === key ? null : c)), 1800)
+  }
+
   return (
     <div className="relative overflow-hidden bg-gradient-to-br from-cp-trust-900 via-cp-trust-900 to-cp-trust-700 px-5 pt-12 pb-[90px]">
       {/* সূক্ষ্ম ডট প্যাটার্ন + আলোকরশ্মি — বিশুদ্ধ ভিজ্যুয়াল, ক্লিকযোগ্য না */}
@@ -45,7 +54,35 @@ export default function DashboardHeader({
           </span>
         </div>
 
-        <div className="flex gap-2 flex-shrink-0">
+        <div className="flex gap-2 flex-shrink-0 relative">
+          <div className="relative">
+            <button
+              onClick={() => flashComingSoon('search')}
+              aria-label="সার্চ"
+              className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 text-white/70 flex items-center justify-center"
+            >
+              <FiSearch size={17} />
+            </button>
+            {comingSoon === 'search' && (
+              <div className="absolute top-12 right-0 z-50 bg-cp-trust-900 text-white text-[10px] font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-lg">
+                সার্চ শীঘ্রই আসছে
+              </div>
+            )}
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => flashComingSoon('messenger')}
+              aria-label="মেসেঞ্জার"
+              className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 text-white/70 flex items-center justify-center"
+            >
+              <FiMessageCircle size={17} />
+            </button>
+            {comingSoon === 'messenger' && (
+              <div className="absolute top-12 right-0 z-50 bg-cp-trust-900 text-white text-[10px] font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-lg">
+                মেসেজিং শীঘ্রই আসছে
+              </div>
+            )}
+          </div>
           <NotificationBell
             notifications={notifications}
             unreadCount={unreadCount}
@@ -58,9 +95,10 @@ export default function DashboardHeader({
           />
           <button
             onClick={onLogoutClick}
-            className="h-10 px-3.5 rounded-xl bg-white/10 border border-white/15 text-white/70 text-[11px] font-semibold tracking-wide"
+            aria-label="লগআউট"
+            className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 text-white/70 flex items-center justify-center"
           >
-            লগআউট
+            <FiLogOut size={17} />
           </button>
         </div>
       </div>

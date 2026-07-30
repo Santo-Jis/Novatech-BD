@@ -1,0 +1,65 @@
+// components/dashboard/BottomNav.jsx
+// ═══════════════════════════════════════════════════════════════
+// ধাপ ১ — Facebook-স্টাইল নেভিগেশন স্ট্রাকচার
+// ৬টা মূল সেকশন (fixed bottom bar, mobile app-এর মতো):
+//   হোম → কানেকশন → E-commerce → রিপোর্ট (Reels-এর জায়গায়) → AI চ্যাট → প্রোফাইল
+//
+// পুরনো ১০টা flat ট্যাব (summary/network/orders/invoices/payments/returns/
+// credit_req/complaints/profile/ai_chat) এখন এই ৬টা সেকশনের নিচে গোছানো —
+// ইনভয়েস/পরিশোধ/রিটার্ন/লিমিট/অভিযোগ সব "রিপোর্ট" সেকশনের সাব-ট্যাব হিসেবে থাকছে
+// (DashboardView.jsx-এ NAV_SECTIONS দেখুন)। কোনো ব্যাকএন্ড লজিক/ডেটা মোছা হয়নি,
+// শুধু নেভিগেশনের জায়গা বদলেছে।
+// ═══════════════════════════════════════════════════════════════
+
+import { FiHome, FiUsers, FiShoppingBag, FiBarChart2, FiCpu, FiUser } from 'react-icons/fi'
+
+export const NAV_SECTIONS = [
+  { id: 'home',        icon: FiHome,        label: 'হোম',       tab: 'summary' },
+  { id: 'connections', icon: FiUsers,       label: 'কানেকশন',   tab: 'network' },
+  { id: 'ecommerce',   icon: FiShoppingBag, label: 'E-commerce', tab: 'orders' },
+  { id: 'reports',     icon: FiBarChart2,   label: 'রিপোর্ট',   tab: 'invoices', subTabs: ['invoices', 'payments', 'returns', 'credit_req', 'complaints'] },
+  { id: 'ai',          icon: FiCpu,         label: 'AI চ্যাট',  tab: 'ai_chat' },
+  { id: 'profile',     icon: FiUser,        label: 'প্রোফাইল', tab: 'profile' },
+]
+
+export function getActiveSectionId(activeTab) {
+  const found = NAV_SECTIONS.find(s => s.tab === activeTab || (s.subTabs || []).includes(activeTab))
+  return found ? found.id : 'home'
+}
+
+export default function BottomNav({ activeTab, onTabChange }) {
+  const activeSectionId = getActiveSectionId(activeTab)
+
+  return (
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-40 bg-cp-bg-surface border-t border-cp-border flex"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', boxShadow: '0 -4px 20px rgba(10,46,92,0.08)' }}
+    >
+      {NAV_SECTIONS.map((section) => {
+        const active = section.id === activeSectionId
+        const Icon = section.icon
+        return (
+          <button
+            key={section.id}
+            onClick={() => onTabChange(section.tab)}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-w-0"
+          >
+            <Icon
+              size={22}
+              strokeWidth={active ? 2.4 : 1.8}
+              className={active ? 'text-cp-trust-500' : 'text-cp-text-muted'}
+            />
+            <span
+              className={`text-[9.5px] leading-tight font-cp-body truncate max-w-full px-0.5 ${
+                active ? 'text-cp-trust-500 font-semibold' : 'text-cp-text-muted font-medium'
+              }`}
+            >
+              {section.label}
+            </span>
+            {active && <span className="w-1 h-1 rounded-full bg-cp-trust-500 mt-0.5" />}
+          </button>
+        )
+      })}
+    </nav>
+  )
+}

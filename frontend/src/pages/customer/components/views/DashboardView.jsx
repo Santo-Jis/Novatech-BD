@@ -27,6 +27,7 @@ import CustomerAIChat from '../../CustomerAIChat'
 import DashboardHeader from '../dashboard/DashboardHeader'
 import SummaryTab from '../dashboard/SummaryTab'
 import { NOTIF_CONFIG } from '../dashboard/NotificationBell'
+import BottomNav, { getActiveSectionId } from '../dashboard/BottomNav'
 
 // ── এখনো-অরিডিজাইন করা ট্যাবগুলোর জন্য পুরনো Design Tokens (আপাতত রাখা হলো) ──
 // ⚠️ এগুলো মুছবেন না — নিচের Invoices/Payments/Credit/Complaints/Returns/AI ট্যাব
@@ -101,18 +102,18 @@ export default function DashboardView({
 
   const fmtCur = (n) => parseFloat(n || 0).toLocaleString('en-US')
 
-  const tabs = [
-    { id:'summary',    label:'সারসংক্ষেপ' },
-    { id:'network',    label:'🔗 নেটওয়ার্ক' },
-    { id:'orders',     label:'🛒 অর্ডার' },
+  // ✅ ধাপ ১ (নেভিগেশন রিস্ট্রাকচার): আগে এই ১০টা ট্যাব একটাই ফ্ল্যাট স্ক্রলযোগ্য
+  // পিল-বার-এ থাকত। এখন শুধু "রিপোর্ট" সেকশনের ৫টা সাব-ট্যাব এখানে থাকছে —
+  // বাকি ৫টা (সারসংক্ষেপ/নেটওয়ার্ক/অর্ডার/প্রোফাইল/AI চ্যাট) সরাসরি নিচের
+  // BottomNav-এর ৬টা মূল আইকনে ম্যাপ হয়ে গেছে (দেখুন dashboard/BottomNav.jsx)।
+  const reportTabs = [
     { id:'invoices',   label:`🧾 ইনভয়েস` },
     { id:'payments',   label:`পরিশোধ` },
     { id:'returns',    label:`🔄 রিটার্ন${returnReqTotal > 0 ? ` (${returnReqTotal})` : ''}` },
     { id:'credit_req', label:'💳 লিমিট' },
     { id:'complaints', label:'📣 অভিযোগ' },
-    { id:'profile',    label:'👤 প্রোফাইল' },
-    { id:'ai_chat',    label:'🤖 AI চ্যাট' },
   ]
+  const activeSectionId = getActiveSectionId(activeTab)
 
   useEffect(() => {
     if (activeTab === 'credit_req' && !limitReqsLoaded) loadMyLimitReqs()
@@ -171,7 +172,7 @@ export default function DashboardView({
           -28px করা হলো যাতে balance card গুলো এখনো সুন্দরভাবে overlap করে (floating
           card effect বজায় থাকে) কিন্তু Tab Bar সবসময় সাদা কার্ডের নিজের background-এর
           উপর বসে, header-এর অন্ধকার অংশ স্পর্শ না করে। */}
-      <div className="px-4 pb-10" style={{ marginTop: -8 }}>
+      <div className="px-4 pb-24" style={{ marginTop: -8 }}>
 
         {/* Unread Banner */}
         {unreadBanner && (() => {
@@ -201,26 +202,25 @@ export default function DashboardView({
         {/* ── Tab Card ─────────────────────────────────────────── */}
         <div className="bg-cp-bg-surface rounded-[24px] overflow-hidden shadow-[0_4px_24px_rgba(10,46,92,0.08)]">
 
-          {/* Tab Bar — pill-style segmented control (ডিজাইন সিস্টেম অনুযায়ী) */}
-          {/* ✅ FIX (Session 10): /60 translucent bg বাদ দিয়ে solid bg-cp-bg-alt করা
-              হলো — নিচে যাই থাকুক (header-এর গাঢ় নীল হোক বা সাদা কার্ড), ট্যাব
-              টেক্সট সবসময় নিজের স্বাভাবিক কনট্রাস্টে দেখা যাবে। */}
-          <div className="flex overflow-x-auto gap-1.5 p-2 bg-cp-bg-alt">
-            {tabs.map((t) => {
-              const active = activeTab === t.id
-              return (
-                <button
-                  key={t.id}
-                  onClick={() => onTabChange(t.id)}
-                  className={`flex-shrink-0 px-3.5 py-2 rounded-full text-[11px] whitespace-nowrap transition-colors font-cp-head ${
-                    active ? 'bg-cp-trust-500 text-white font-semibold' : 'bg-transparent text-cp-text-muted font-medium'
-                  }`}
-                >
-                  {t.label}
-                </button>
-              )
-            })}
-          </div>
+          {/* Sub-tab Bar — শুধু "রিপোর্ট" সেকশনে দেখা যাবে (ইনভয়েস/পরিশোধ/রিটার্ন/লিমিট/অভিযোগ) */}
+          {activeSectionId === 'reports' && (
+            <div className="flex overflow-x-auto gap-1.5 p-2 bg-cp-bg-alt">
+              {reportTabs.map((t) => {
+                const active = activeTab === t.id
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => onTabChange(t.id)}
+                    className={`flex-shrink-0 px-3.5 py-2 rounded-full text-[11px] whitespace-nowrap transition-colors font-cp-head ${
+                      active ? 'bg-cp-trust-500 text-white font-semibold' : 'bg-transparent text-cp-text-muted font-medium'
+                    }`}
+                  >
+                    {t.label}
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
           {/* ── Content ─────────────────────────────────────────── */}
           <div style={{ padding: activeTab === 'ai_chat' ? 0 : 16 }}>
@@ -990,6 +990,9 @@ export default function DashboardView({
           </div>
         </div>
       )}
+
+      {/* ═══ BOTTOM NAV — Facebook-স্টাইল ৬-সেকশন নেভিগেশন (ধাপ ১) ═══ */}
+      <BottomNav activeTab={activeTab} onTabChange={onTabChange} />
     </div>
   )
 }
