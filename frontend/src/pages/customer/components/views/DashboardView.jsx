@@ -174,9 +174,11 @@ export default function DashboardView({
       />
 
       {/* ═══ MAIN CONTENT ════════════════════════════════════════ */}
-      {/* ✅ FIX (Session 10, ধাপ ৩-এ আর প্রাসঙ্গিক না — TopBar এখন সরু, ওভারল্যাপের
-          দরকার নেই, কিন্তু ইতিহাসের জন্য নোট রাখা হলো) */}
-      <div className="px-4 pb-24 pt-3">
+      {/* ✅ FIX: আগে এখানে px-4 ছিল যার ফলে দুই পাশে cp-bg-base (হালকা নীল)
+          রঙ উঁকি দিচ্ছিল, Tab Card-টা edge-to-edge না হয়ে "ভাসমান" দেখাচ্ছিল।
+          এখন px বাদ দিয়ে Tab Card নিজেই স্ক্রিনের পুরো প্রস্থ জুড়ে বসবে
+          (Facebook-এর মতো)। */}
+      <div className="pb-24 pt-3">
 
         {/* Unread Banner */}
         {unreadBanner && (() => {
@@ -184,7 +186,7 @@ export default function DashboardView({
           return (
             <div
               onClick={() => { if (cfg.tab) { onTabChange(cfg.tab); setUnreadBanner(null); markAllAsRead(portalJWT) } }}
-              className="rounded-[20px] px-4 py-3.5 flex gap-3 items-start mb-3.5 bg-gradient-to-br from-cp-trust-700 to-cp-trust-500 shadow-lg shadow-cp-trust-500/25"
+              className="rounded-[20px] px-4 py-3.5 flex gap-3 items-start mb-3.5 mx-3 bg-gradient-to-br from-cp-trust-700 to-cp-trust-500 shadow-lg shadow-cp-trust-500/25"
               style={{ cursor: cfg.tab ? 'pointer' : 'default' }}
             >
               <span className="text-2xl flex-shrink-0">{cfg.icon}</span>
@@ -203,8 +205,8 @@ export default function DashboardView({
           )
         })()}
 
-        {/* ── Tab Card ─────────────────────────────────────────── */}
-        <div className="bg-cp-bg-surface rounded-[24px] overflow-hidden shadow-[0_4px_24px_rgba(10,46,92,0.08)]">
+        {/* ── Tab Card (এখন edge-to-edge, কোনো side-gap নেই) ──────── */}
+        <div className="bg-cp-bg-surface overflow-hidden">
 
           {/* Sub-tab Bar — শুধু "রিপোর্ট" সেকশনে দেখা যাবে (ইনভয়েস/পরিশোধ/রিটার্ন/লিমিট/অভিযোগ) */}
           {activeSectionId === 'reports' && (
@@ -785,7 +787,7 @@ export default function DashboardView({
 
         {/* ── Statement Download (শুধু "রিপোর্ট" সেকশনে) ──────────── */}
         {activeSectionId === 'reports' && (
-        <div style={{ background:C.card, borderRadius:20, overflow:'hidden', boxShadow:'0 4px 16px rgba(0,0,0,0.05)', marginTop:14 }}>
+        <div style={{ background:C.card, borderRadius:20, overflow:'hidden', boxShadow:'0 4px 16px rgba(0,0,0,0.05)', marginTop:14, marginLeft:12, marginRight:12 }}>
           <button onClick={() => setStmtOpen(v => !v)}
             style={{ width:'100%', padding:'15px 18px', background:'none', border:'none', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
             <div style={{ width:46, height:46, background:C.pL, borderRadius:14, display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>📄</div>
@@ -828,7 +830,7 @@ export default function DashboardView({
         </div>
         )}
 
-        <p style={{ textAlign:'center', fontSize:10, color:'#c4cbd6', marginTop:24, lineHeight:1.7 }}>
+        <p style={{ textAlign:'center', fontSize:10, color:'#c4cbd6', marginTop:24, marginLeft:12, marginRight:12, lineHeight:1.7 }}>
           ZovoriX • কাস্টমার পোর্টাল<br/>
           <span style={{ fontSize:9 }}>তথ্য সংক্রান্ত সমস্যায় আপনার SR-এর সাথে যোগাযোগ করুন।</span>
         </p>

@@ -532,39 +532,44 @@ const getPortalProducts = async (req, res) => {
         const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 30));
         const offset = (page - 1) * limit;
         const search = (req.query.search || '').trim();
+        const tenantId = req.tenantId;
 
-        // Search filter — নাম দিয়ে partial match (ILIKE)
-        // search থাকলে: $1=search_term (count-এ), $1=limit $2=offset $3=search_term (list-এ)
-        // search না থাকলে: $1=limit $2=offset
+        // ✅ FIX: এই query-তে tenant_id ফিল্টার একদমই ছিল না — যার ফলে হয়
+        // কোনো প্রোডাক্টই দেখাচ্ছিল না (tenant_id NOT NULL/RLS-এর কারণে সাইলেন্টলি
+        // ব্লক), অথবা উল্টো অন্য কোম্পানির প্রোডাক্ট দেখানোর ঝুঁকি ছিল। এই ফাইলের
+        // বাকি সব query-ই (order_requests, notifications ইত্যাদি) tenant_id
+        // ফিল্টার করে — products query-ও এখন একই প্যাটার্ন অনুসরণ করছে।
         const searchCondition = search ? `AND name ILIKE $3` : '';
 
-        // Count query — search থাকলে $1 = search term
+        // Count query — $1=tenant_id, ($2=search যদি থাকে)
         const countRes = await query(
             `SELECT COUNT(*) AS total
              FROM products
-             WHERE is_active = true
+             WHERE tenant_id = $1
+               AND is_active = true
                AND (stock - COALESCE(reserved_stock, 0)) > 0
-               ${search ? 'AND name ILIKE $1' : ''}`,
-            search ? [`%${search}%`] : []
+               ${search ? 'AND name ILIKE $2' : ''}`,
+            search ? [tenantId, `%${search}%`] : [tenantId]
         );
         const total      = parseInt(countRes.rows[0].total);
         const totalPages = Math.ceil(total / limit);
 
-        // List query — $1=limit, $2=offset, ($3=search যদি থাকে)
+        // List query — $1=tenant_id, $2=limit, $3=offset, ($4=search যদি থাকে)
         const listParams = search
-            ? [limit, offset, `%${search}%`]
-            : [limit, offset];
+            ? [tenantId, limit, offset, `%${search}%`]
+            : [tenantId, limit, offset];
 
         // Paginated product list
         const { rows } = await query(
             `SELECT id, name, price, vat, tax, unit, description, image_url,
                     (stock - COALESCE(reserved_stock, 0)) AS available_stock
              FROM products
-             WHERE is_active = true
+             WHERE tenant_id = $1
+               AND is_active = true
                AND (stock - COALESCE(reserved_stock, 0)) > 0
-               ${searchCondition}
+               ${search ? 'AND name ILIKE $4' : ''}
              ORDER BY name ASC
-             LIMIT $1 OFFSET $2`,
+             LIMIT $2 OFFSET $3`,
             listParams
         );
 
