@@ -24,7 +24,8 @@ import ConnectionsTab from '../ConnectionsTab'
 import ProfileTab from '../ProfileTab'
 import CustomerAIChat from '../../CustomerAIChat'
 
-import DashboardHeader from '../dashboard/DashboardHeader'
+import TopBar from '../dashboard/TopBar'
+import AccountMenu from '../dashboard/AccountMenu'
 import SummaryTab from '../dashboard/SummaryTab'
 import HomeFeed from '../dashboard/HomeFeed'
 import { NOTIF_CONFIG } from '../dashboard/NotificationBell'
@@ -99,6 +100,7 @@ export default function DashboardView({
   const [showComplaintConfirm, setShowComplaintConfirm] = useState(false)
   const [showCreditConfirm,    setShowCreditConfirm]    = useState(false)
   const [showReturnConfirm,    setShowReturnConfirm]    = useState(false)
+  const [menuOpen,             setMenuOpen]             = useState(false)
   const [returnSubTab,         setReturnSubTab]         = useState('requests')
 
   const fmtCur = (n) => parseFloat(n || 0).toLocaleString('en-US')
@@ -150,10 +152,12 @@ export default function DashboardView({
         ::-webkit-scrollbar { display:none; }
       `}</style>
 
-      {/* ═══ HEADER ══════════════════════════════════════════════ */}
-      <DashboardHeader
+      {/* ═══ TOP BAR (ধাপ ৩ — Facebook-স্টাইল) ══════════════════════ */}
+      <TopBar onMenuClick={() => setMenuOpen(v => !v)} unreadCount={unreadCount} />
+      <AccountMenu
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
         customer={customer}
-        fmtCur={fmtCur}
         portalJWT={portalJWT}
         notifications={notifications}
         unreadCount={unreadCount}
@@ -162,19 +166,13 @@ export default function DashboardView({
         markAllAsRead={markAllAsRead}
         markOneRead={markOneRead}
         onTabChange={onTabChange}
-        onLogoutClick={() => setShowLogoutConfirm(true)}
-        switchCompany={switchCompany}
-        toast={toast}
+        onLogoutClick={() => { setMenuOpen(false); setShowLogoutConfirm(true) }}
       />
 
       {/* ═══ MAIN CONTENT ════════════════════════════════════════ */}
-      {/* ✅ FIX (Session 10): -46px ছিল, যা Tab Bar row-কে (Tab Card-এর একদম উপরের
-          অংশ) এখনো গাঢ় নীল header-এর ব্যাকগ্রাউন্ডের উপর বসিয়ে দিচ্ছিল — ফলে
-          হালকা ধূসর ট্যাব টেক্সট (text-cp-text-muted) কার্যত অদৃশ্য হয়ে যাচ্ছিল।
-          -28px করা হলো যাতে balance card গুলো এখনো সুন্দরভাবে overlap করে (floating
-          card effect বজায় থাকে) কিন্তু Tab Bar সবসময় সাদা কার্ডের নিজের background-এর
-          উপর বসে, header-এর অন্ধকার অংশ স্পর্শ না করে। */}
-      <div className="px-4 pb-24" style={{ marginTop: -8 }}>
+      {/* ✅ FIX (Session 10, ধাপ ৩-এ আর প্রাসঙ্গিক না — TopBar এখন সরু, ওভারল্যাপের
+          দরকার নেই, কিন্তু ইতিহাসের জন্য নোট রাখা হলো) */}
+      <div className="px-4 pb-24 pt-3">
 
         {/* Unread Banner */}
         {unreadBanner && (() => {
