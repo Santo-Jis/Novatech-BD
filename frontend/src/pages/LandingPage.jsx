@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiShoppingBag, FiUsers, FiBarChart2, FiShield, FiChevronDown, FiSettings, FiPhone, FiMail, FiMessageCircle, FiMenu, FiX } from 'react-icons/fi'
+import { FiShoppingBag, FiChevronDown, FiSettings, FiPhone, FiMail, FiMessageCircle, FiMenu, FiX } from 'react-icons/fi'
+import { HiOutlineReceiptPercent, HiOutlineUserGroup, HiOutlineChartBarSquare, HiOutlineShieldCheck } from 'react-icons/hi2'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
@@ -69,10 +70,10 @@ export default function LandingPage() {
   }, [])
 
   const features = [
-    { icon: <FiShoppingBag />, title: 'বিক্রয় ব্যবস্থাপনা',  desc: 'অর্ডার, ইনভয়েস ও পেমেন্ট সব এক জায়গায়' },
-    { icon: <FiUsers />,       title: 'টিম ম্যানেজমেন্ট',    desc: 'কর্মীদের অ্যাটেন্ডেন্স ও পারফরম্যান্স ট্র্যাকিং' },
-    { icon: <FiBarChart2 />,   title: 'রিয়েল-টাইম রিপোর্ট',  desc: 'ব্যবসার সামগ্রিক চিত্র একনজরে দেখুন' },
-    { icon: <FiShield />,      title: 'নিরাপদ প্ল্যাটফর্ম',   desc: 'এনক্রিপ্টেড ডেটা ও সুরক্ষিত অ্যাক্সেস' },
+    { icon: <HiOutlineReceiptPercent />, title: 'বিক্রয় ব্যবস্থাপনা',  desc: 'অর্ডার, ইনভয়েস ও পেমেন্ট সব এক জায়গায়' },
+    { icon: <HiOutlineUserGroup />,      title: 'টিম ম্যানেজমেন্ট',    desc: 'কর্মীদের অ্যাটেন্ডেন্স ও পারফরম্যান্স ট্র্যাকিং' },
+    { icon: <HiOutlineChartBarSquare />, title: 'রিয়েল-টাইম রিপোর্ট',  desc: 'ব্যবসার সামগ্রিক চিত্র একনজরে দেখুন' },
+    { icon: <HiOutlineShieldCheck />,    title: 'নিরাপদ প্ল্যাটফর্ম',   desc: 'এনক্রিপ্টেড ডেটা ও সুরক্ষিত অ্যাক্সেস' },
   ]
 
   const roles = [
