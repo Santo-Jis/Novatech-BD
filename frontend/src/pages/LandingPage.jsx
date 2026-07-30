@@ -104,21 +104,23 @@ export default function LandingPage() {
       <style>{`
         /* মোবাইল স্ক্রিনে নেভবার — লোগোর পাশে বাটনগুলো ছোট হয়ে একই লাইনে থাকবে, নিচে wrap করবে না।
            ট্যাব/ল্যাপটপে (৪৮০px-এর উপরে) কোনো পরিবর্তন নেই — বেস স্টাইলই বহাল থাকবে। */
+        /* মোবাইল স্ক্রিনে নেভবার — ৩টা আলাদা লাইনে ভাগ হয়ে যাবে: লোগো, তারপর নেভ লিংক,
+           তারপর লগইন বাটন — flex-direction:column দিয়ে, তাই ওভারল্যাপ হওয়ার সুযোগ নেই।
+           ট্যাব/ল্যাপটপে (৪৮০px-এর উপরে) কোনো পরিবর্তন নেই — বেস স্টাইলই বহাল থাকবে (এক লাইনেই সব)। */
         @media (max-width: 480px) {
-          .zx-navbar { padding: 8px 10px !important; flex-wrap: nowrap !important; row-gap: 0 !important; }
-          .zx-brand { gap: 6px !important; }
+          .zx-navbar { flex-direction: column !important; flex-wrap: nowrap !important; align-items: stretch !important; padding: 10px 14px !important; row-gap: 10px !important; }
+          .zx-brand { gap: 6px !important; justify-content: center !important; }
           .zx-logo-box { width: 26px !important; height: 26px !important; border-radius: 6px !important; }
           .zx-brand-text { font-size: 14px !important; }
-          .zx-nav-actions { gap: 6px !important; }
+          .zx-nav-links { order: 0; flex: none !important; justify-content: center !important; gap: 16px !important; }
+          .zx-nav-links button { font-size: 12px !important; }
+          .zx-nav-actions { justify-content: center !important; gap: 8px !important; }
           .zx-btn-retailer, .zx-btn-mgmt { padding: 6px 8px !important; font-size: 11px !important; gap: 4px !important; border-radius: 6px !important; }
           .zx-btn-suffix { display: none !important; }
           .zx-btn-icon { font-size: 12px !important; }
           .zx-chevron { font-size: 11px !important; }
-          .zx-nav-links { order: 3; flex-basis: 100%; gap: 14px !important; margin-top: 4px; }
-          .zx-nav-links button { font-size: 11.5px !important; }
         }
         @media (max-width: 360px) {
-          .zx-brand-text { display: none !important; }
           .zx-btn-retailer, .zx-btn-mgmt { padding: 6px 7px !important; }
         }
       `}</style>
