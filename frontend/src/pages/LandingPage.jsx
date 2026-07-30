@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FiShoppingBag, FiChevronDown, FiSettings, FiPhone, FiMail, FiMessageCircle, FiMenu, FiX } from 'react-icons/fi'
-import { HiOutlineReceiptPercent, HiOutlineUserGroup, HiOutlineChartBarSquare, HiOutlineShieldCheck } from 'react-icons/hi2'
+import { FiShoppingBag, FiChevronDown, FiSettings, FiPhone, FiMail, FiMessageCircle, FiMenu, FiX, FiWifiOff } from 'react-icons/fi'
+import { HiOutlineReceiptPercent, HiOutlineUserGroup, HiOutlineChartBarSquare, HiOutlineShieldCheck, HiOutlineDevicePhoneMobile, HiOutlineClipboardDocumentCheck, HiOutlineBuildingStorefront } from 'react-icons/hi2'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
@@ -74,6 +74,14 @@ export default function LandingPage() {
     { icon: <HiOutlineUserGroup />,      title: 'টিম ম্যানেজমেন্ট',    desc: 'কর্মীদের অ্যাটেন্ডেন্স ও পারফরম্যান্স ট্র্যাকিং' },
     { icon: <HiOutlineChartBarSquare />, title: 'রিয়েল-টাইম রিপোর্ট',  desc: 'ব্যবসার সামগ্রিক চিত্র একনজরে দেখুন' },
     { icon: <HiOutlineShieldCheck />,    title: 'নিরাপদ প্ল্যাটফর্ম',   desc: 'এনক্রিপ্টেড ডেটা ও সুরক্ষিত অ্যাক্সেস' },
+    { icon: <FiWifiOff />,               title: 'অফলাইন সাপোর্ট',      desc: 'ইন্টারনেট না থাকলেও কাজ করুন, সংযোগ ফিরলেই ডেটা অটো-সিঙ্ক হয়ে যাবে' },
+  ]
+
+  const workflowSteps = [
+    { icon: <HiOutlineDevicePhoneMobile />, step: '০১', title: 'SR মাঠে গিয়ে অর্ডার নেন', desc: 'দোকান ভিজিট করে অ্যাপেই সরাসরি অর্ডার এন্ট্রি করেন, কাগজের হিসাব লাগে না' },
+    { icon: <HiOutlineClipboardDocumentCheck />, step: '০২', title: 'ম্যানেজার রিয়েল-টাইমে দেখেন', desc: 'প্রতিটা অর্ডার ও টিমের পারফরম্যান্স সাথে সাথে দেখতে ও অনুমোদন দিতে পারেন' },
+    { icon: <HiOutlineChartBarSquare />, step: '০৩', title: 'এডমিন পুরো নেটওয়ার্ক নিয়ন্ত্রণ করেন', desc: 'সব ডিস্ট্রিবিউটর, স্টক ও রিপোর্ট এক ড্যাশবোর্ড থেকে মনিটর করেন' },
+    { icon: <HiOutlineBuildingStorefront />, step: '০৪', title: 'রিটেইলার নিজের হিসাব দেখেন', desc: 'নিজের অর্ডার হিস্ট্রি ও পেমেন্ট স্ট্যাটাস নিজের লগইন দিয়ে যেকোনো সময় দেখতে পারেন' },
   ]
 
   const roles = [
@@ -478,6 +486,92 @@ export default function LandingPage() {
         {/* ৫টি ছবি/প্যানেল নির্দিষ্ট সময় পর পর অটো-স্লাইড হবে */}
         <HeroImageSlider />
 
+      </section>
+
+      {/* কীভাবে কাজ করে — SR থেকে রিটেইলার পর্যন্ত পুরো ওয়ার্কফ্লো একনজরে */}
+      <section style={{
+        padding: '8px 24px 72px',
+        maxWidth: '1040px',
+        margin: '0 auto',
+      }}>
+        <h2 style={{
+          textAlign: 'center',
+          fontFamily: T.fontHead,
+          fontSize: '24px',
+          fontWeight: 600,
+          color: T.primary700,
+          margin: '48px 0 8px',
+        }}>
+          কীভাবে কাজ করে
+        </h2>
+        <p style={{
+          textAlign: 'center',
+          color: T.textSecondary,
+          fontSize: '14px',
+          maxWidth: '480px',
+          margin: '0 auto 40px',
+        }}>
+          অর্ডার নেওয়া থেকে শুরু করে পুরো নেটওয়ার্ক মনিটর করা পর্যন্ত — চারটি ধাপে সব একসাথে
+        </p>
+
+        <style>{`
+          /* গ্রিড কলাম কমে গেলে (ছোট স্ক্রিনে ধাপগুলো একটার নিচে একটা সাজে) আড়াআড়ি
+             সংযোগ রেখাটা আর ঠিকমতো মানায় না, তাই তখন লুকিয়ে রাখা হলো */
+          @media (max-width: 900px) {
+            .zx-step-connector { display: none !important; }
+          }
+        `}</style>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '4px',
+        }}>
+          {workflowSteps.map((w, i) => (
+            <div key={i} style={{
+              position: 'relative',
+              padding: '0 18px',
+            }}>
+              {/* ডেস্কটপে ধাপগুলোর মাঝে সংযোগ রেখা */}
+              {i < workflowSteps.length - 1 && (
+                <div className="zx-step-connector" style={{
+                  display: 'block',
+                  position: 'absolute',
+                  top: '25px',
+                  right: '-8px',
+                  width: 'calc(100% - 34px)',
+                  height: '1px',
+                  background: T.borderStrong,
+                  zIndex: 0,
+                }} />
+              )}
+              <div style={{
+                width: '50px', height: '50px',
+                background: T.bgSurface,
+                border: `1px solid ${T.borderDefault}`,
+                borderRadius: '12px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: '22px', color: T.primary700,
+                position: 'relative', zIndex: 1,
+                marginBottom: '14px',
+              }}>
+                {w.icon}
+              </div>
+              <div style={{
+                fontFamily: T.fontMono, fontSize: '11px', color: T.accent600,
+                letterSpacing: '0.06em', marginBottom: '4px',
+              }}>
+                ধাপ {w.step}
+              </div>
+              <h3 style={{ fontSize: '14.5px', fontWeight: 700, color: T.textPrimary, marginBottom: '6px', fontFamily: T.fontBody }}>
+                {w.title}
+              </h3>
+              <p style={{ fontSize: '12.5px', color: T.textSecondary, lineHeight: 1.6, margin: 0 }}>
+                {w.desc}
+              </p>
+            </div>
+          ))}
+        </div>
       </section>
 
       {/* Features */}
