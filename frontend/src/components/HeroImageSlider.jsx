@@ -40,6 +40,7 @@ export default function HeroImageSlider({ intervalMs = 4500 }) {
 
   return (
     <div
+      className="zx-hero-slider"
       style={{
         position: 'relative',
         width: '100%',
@@ -53,6 +54,16 @@ export default function HeroImageSlider({ intervalMs = 4500 }) {
       onMouseEnter={stopTimer}
       onMouseLeave={startTimer}
     >
+      <style>{`
+        /* মোবাইলে হিরো ব্যানারটা 16:9 রেশিওতে বেশি "মোটা"/লম্বা দেখায় —
+           ছোট স্ক্রিনে চ্যাপ্টা রেশিও ও কম মার্জিন দিয়ে হালকা করা হয়েছে। */
+        @media (max-width: 640px) {
+          .zx-hero-slider { aspect-ratio: 16 / 8 !important; margin: 26px auto 0 !important; border-radius: 14px !important; }
+        }
+        @media (max-width: 420px) {
+          .zx-hero-slider { aspect-ratio: 16 / 7.6 !important; }
+        }
+      `}</style>
       {VISUALS.map((v, i) => (
         <div
           key={v.id}

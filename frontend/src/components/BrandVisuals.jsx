@@ -59,6 +59,7 @@ export const VISUALS = [
 export function BrandVisualPanel({ visual, compact = false }) {
   return (
     <div
+      className={compact ? undefined : 'zx-visual-panel'}
       style={{
         position: 'relative',
         width: '100%',
@@ -69,6 +70,18 @@ export function BrandVisualPanel({ visual, compact = false }) {
         background: '#0F1B2E',
       }}
     >
+      {!compact && (
+        <style>{`
+          /* মোবাইলে HeroImageSlider-এর রেশিও চ্যাপ্টা করা হয়েছে, তাই এখানকার
+             ন্যূনতম উচ্চতাও ছোট স্ক্রিনে কমিয়ে রাখা হলো — নাহলে ক্যাপশন কাটা পড়বে */
+          @media (max-width: 640px) {
+            .zx-visual-panel { min-height: 150px !important; }
+          }
+          @media (max-width: 420px) {
+            .zx-visual-panel { min-height: 130px !important; }
+          }
+        `}</style>
+      )}
       <img
         src={visual.image}
         alt={visual.caption}
