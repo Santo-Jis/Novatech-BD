@@ -14,6 +14,29 @@ const { query } = require('../config/db');
 const bcrypt    = require('bcryptjs');
 const { clearTenantCache } = require('../middlewares/tenantResolver');
 
+// ✅ ৪-টায়ার প্ল্যান — frontend/src/constants/planPricing.js-এর PLANS-এর
+// সাথে মিলিয়ে (স্ট্যান্ডার্ড/প্রো/ম্যাক্স/ERP)। createTenant ও
+// updateTenantPlan দুটোতেই ব্যবহৃত হয়, তাই একবারই এখানে সংজ্ঞায়িত —
+// আগে updateTenantPlan-এর ভেতরে আলাদাভাবে (পুরনো basic/pro/enterprise
+// নাম দিয়ে) ছিল, আর createTenant প্ল্যান-নাম উপেক্ষা করে flat ডিফল্ট
+// (১০ কর্মী/২০০ কাস্টমার) বসাতো — dropdown-এ যা-ই বেছে নেওয়া হোক না কেন।
+//
+// max_employees: null মানে সীমাহীন — নতুন প্রাইসিং মডেলে ইউজার সংখ্যার
+// কোনো cap নেই, শুধু per-seat বিল হয় (planPricing.js-এর PRICING_FAQ-এর
+// প্রথম প্রশ্ন দেখো)। max_customers null হলেও সীমাহীন (ERP টায়ার) —
+// services/tenantLimits.service.js-এর assertCustomerLimitAvailable এটা
+// আগে থেকেই null-safe হ্যান্ডেল করে।
+//
+// ⚠️ প্রথমবার এই নতুন নাম দিয়ে কল করার আগে migration_tenants_plan_tiers.sql
+// Supabase-এ রান করে নিতে হবে — নাহলে tenants.plan-এর DB-লেভেল CHECK
+// constraint-এ ফেইল করবে (পুরনো constraint শুধু basic/pro/enterprise মানে)।
+const PLAN_TIER_DEFAULTS = {
+  standard: { max_employees: null, max_customers: 2000,  ai_tokens_monthly: 500000   },
+  pro:      { max_employees: null, max_customers: 5000,  ai_tokens_monthly: 1000000  },
+  max:      { max_employees: null, max_customers: 10000, ai_tokens_monthly: 1500000  },
+  erp:      { max_employees: null, max_customers: null,  ai_tokens_monthly: 2000000  },
+};
+
 // ✅ Phase 2 (Security Hardening, 19 July 2026): Audit logging।
 // "Novatech BD - Support Role & Panel" প্রজেক্টের বানানো
 // platform_audit_log টেবিল পুনঃব্যবহার করা হচ্ছে (নতুন টেবিল না,
@@ -99,21 +122,37 @@ const getAllTenants = async (req, res) => {
 const createTenant = async (req, res) => {
   const {
     slug, company_name, company_name_bn,
-    plan = 'basic', admin_phone, admin_name, admin_email, admin_password,
-    max_employees = 10, max_customers = 200,
+    plan = 'standard', admin_phone, admin_name, admin_email, admin_password,
+    max_employees, max_customers, ai_tokens_monthly,
   } = req.body;
 
   if (!slug || !company_name || !admin_phone || !admin_password) {
     return res.status(400).json({ success: false, message: 'slug, company_name, admin_phone, admin_password আবশ্যক' });
   }
 
+  // ✅ আগে plan যা-ই পাঠানো হোক, max_employees/max_customers সবসময় flat
+  // ডিফল্ট (১০/২০০) বসতো — dropdown-এ "Enterprise" বেছে নিলেও আসলে ১০
+  // কর্মী/২০০ কাস্টমারের tenant তৈরি হতো। এখন plan অনুযায়ী সঠিক লিমিট
+  // বসবে (PLAN_TIER_DEFAULTS, ফাইলের শুরুতে দেখো), request body-তে
+  // explicit override দিলে সেটাই প্রাধান্য পাবে।
+  const tierDefaults = PLAN_TIER_DEFAULTS[plan];
+  if (!tierDefaults) {
+    return res.status(400).json({
+      success: false,
+      message: `Invalid plan "${plan}". Valid options: ${Object.keys(PLAN_TIER_DEFAULTS).join(', ')}`,
+    });
+  }
+  const finalMaxEmployees = max_employees     ?? tierDefaults.max_employees;
+  const finalMaxCustomers = max_customers     ?? tierDefaults.max_customers;
+  const finalAiTokens     = ai_tokens_monthly ?? tierDefaults.ai_tokens_monthly;
+
   try {
     // ১. Tenant তৈরি
     const tenantResult = await query(
-      `INSERT INTO tenants (slug, company_name, company_name_bn, plan, max_employees, max_customers, status)
-       VALUES ($1, $2, $3, $4, $5, $6, 'active')
+      `INSERT INTO tenants (slug, company_name, company_name_bn, plan, max_employees, max_customers, ai_tokens_monthly, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
        RETURNING *`,
-      [slug, company_name, company_name_bn || null, plan, max_employees, max_customers]
+      [slug, company_name, company_name_bn || null, plan, finalMaxEmployees, finalMaxCustomers, finalAiTokens]
     );
     const tenant = tenantResult.rows[0];
 
@@ -221,17 +260,29 @@ const updateTenantPlan = async (req, res) => {
     ? await verifyPlanPayment(payment_reference)
     : { verified: false, reason: 'force_no_payment override — payment_reference দেওয়া হয়নি' };
 
-  const planDefaults = {
-    basic:      { max_employees: 10,   max_customers: 200,   ai_tokens_monthly: 50000   },
-    pro:        { max_employees: 50,   max_customers: 2000,  ai_tokens_monthly: 200000  },
-    enterprise: { max_employees: 1000, max_customers: 50000, ai_tokens_monthly: 1000000 },
-  };
-
-  const defaults = planDefaults[plan] || planDefaults.basic;
+  // ✅ প্ল্যান ডিফল্ট এখন module-এর টপে PLAN_TIER_DEFAULTS-এ (createTenant-ও
+  // একই জিনিস ব্যবহার করে, দেখো ফাইলের শুরুতে কমেন্ট)। ভুল/অচেনা plan নাম
+  // দিলে আগে চুপচাপ 'basic'-এর ডিফল্ট বসিয়ে দিত (silent wrong-tier bug —
+  // "standard"/"max"/"erp" পাঠালে ধরা পড়তো না, ভুল লিমিট বসে যেত)। এখন
+  // স্পষ্ট 400 দিয়ে জানানো হচ্ছে।
+  const defaults = PLAN_TIER_DEFAULTS[plan];
+  if (!defaults) {
+    return res.status(400).json({
+      success: false,
+      message: `Invalid plan "${plan}". Valid options: ${Object.keys(PLAN_TIER_DEFAULTS).join(', ')}`,
+    });
+  }
 
   try {
     const before = await query(`SELECT plan FROM tenants WHERE id = $1`, [tenantId]);
     const oldPlan = before.rows[0]?.plan || null;
+
+    // ✅ `||` এর বদলে `??` — আগে explicit 0 পাঠালেও (যেমন ইচ্ছাকৃতভাবে
+    // max_customers 0 করে দেওয়া) সেটা falsy বলে ignore হয়ে tier-এর
+    // ডিফল্ট বসে যেত। `??` শুধু null/undefined হলেই ডিফল্টে যায়।
+    const finalMaxEmployees = max_employees     ?? defaults.max_employees;
+    const finalMaxCustomers = max_customers     ?? defaults.max_customers;
+    const finalAiTokens     = ai_tokens_monthly ?? defaults.ai_tokens_monthly;
 
     await query(
       `UPDATE tenants SET
@@ -242,13 +293,7 @@ const updateTenantPlan = async (req, res) => {
          subscription_ends_at = NOW() + INTERVAL '30 days',
          updated_at = NOW()
        WHERE id = $5`,
-      [
-        plan,
-        max_employees     || defaults.max_employees,
-        max_customers     || defaults.max_customers,
-        ai_tokens_monthly || defaults.ai_tokens_monthly,
-        tenantId,
-      ]
+      [plan, finalMaxEmployees, finalMaxCustomers, finalAiTokens, tenantId]
     );
 
     await query(
@@ -263,9 +308,9 @@ const updateTenantPlan = async (req, res) => {
     await logAudit(req, 'tenant.plan_change', tenantId, {
       old_plan: oldPlan,
       new_plan: plan,
-      max_employees: max_employees || defaults.max_employees,
-      max_customers: max_customers || defaults.max_customers,
-      ai_tokens_monthly: ai_tokens_monthly || defaults.ai_tokens_monthly,
+      max_employees: finalMaxEmployees,
+      max_customers: finalMaxCustomers,
+      ai_tokens_monthly: finalAiTokens,
       payment_reference: payment_reference || null,
       payment_verified: paymentCheck.verified,
       payment_verification_note: paymentCheck.reason,

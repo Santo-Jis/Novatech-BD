@@ -6,7 +6,9 @@ import StatusBadge from './components/StatusBadge'
 import { LoadingState, ErrorState } from './components/PanelStates'
 
 const STATUS_OPTIONS = ['trial', 'active', 'suspended', 'cancelled']
-const PLAN_OPTIONS = ['basic', 'pro', 'enterprise']
+// ✅ নতুন ৪-টায়ার — planPricing.js-এর PLAN_ORDER-এর সাথে মিলিয়ে (আগে
+// basic/pro/enterprise ছিল, পাবলিক Pricing পেইজের সাথে আর মেলে না)
+const PLAN_OPTIONS = ['standard', 'pro', 'max', 'erp']
 const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001'
 
 const inputCls = 'px-3 py-2 rounded-lg border border-pf-border bg-pf-bg-surface text-sm ' +

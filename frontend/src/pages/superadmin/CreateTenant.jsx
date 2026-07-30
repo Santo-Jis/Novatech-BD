@@ -6,17 +6,22 @@ import superAdminApi from './api/superAdminApi'
 const inputCls = 'w-full px-3 py-2.5 rounded-lg border border-pf-border bg-pf-bg-surface text-sm ' +
   'focus:outline-none focus:ring-2 focus:ring-pf-primary-700/20 focus:border-pf-primary-700'
 
+// ✅ নতুন ৪-টায়ার — planPricing.js-এর PLAN_ORDER-এর সাথে মিলিয়ে (আগে
+// basic/pro/enterprise ছিল, আর লেবেলে যা লেখা ছিল তা আসলে backend থেকে
+// কখনো বসতোই না — createTenant প্ল্যান উপেক্ষা করে সবসময় ১০ কর্মী/২০০
+// কাস্টমার বসাতো, backend fix করা হয়েছে, এখন লেবেলগুলো সত্যিই কার্যকর হয়)
 const PLANS = [
-  { value: 'basic', label: 'Basic (১০ কর্মী, ২০০ কাস্টমার)' },
-  { value: 'pro', label: 'Pro (৫০ কর্মী, ২০০০ কাস্টমার)' },
-  { value: 'enterprise', label: 'Enterprise (১০০০ কর্মী, ৫০,০০০ কাস্টমার)' },
+  { value: 'standard', label: 'Standard (কাস্টমার ২,০০০, ইউজার আনলিমিটেড — per-seat বিল)' },
+  { value: 'pro', label: 'Pro (কাস্টমার ৫,০০০, ইউজার আনলিমিটেড — per-seat বিল)' },
+  { value: 'max', label: 'Max (কাস্টমার ১০,০০০, ইউজার আনলিমিটেড — per-seat বিল)' },
+  { value: 'erp', label: 'ERP (কাস্টমার আনলিমিটেড, ইউজার আনলিমিটেড — per-seat বিল)' },
 ]
 
 const emptyForm = {
   slug: '',
   company_name: '',
   company_name_bn: '',
-  plan: 'basic',
+  plan: 'standard',
   admin_name: '',
   admin_phone: '',
   admin_email: '',

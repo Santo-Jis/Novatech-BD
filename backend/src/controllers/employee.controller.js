@@ -32,6 +32,15 @@ const ROLE_LABELS = {
 // admin-কে seat-limit চেকের বাইরে রাখা হলো
 const SEAT_EXEMPT_ROLES = ['admin'];
 
+// role এখনো ফিচার-হিসেবে লাইভ না — users.role ENUM-এই এই ভ্যালু নেই, আর
+// "কর্মচারী যোগ করুন" ফর্মের role dropdown-এও (EmployeeForm.jsx) এই দুইটা
+// role নেই। onboarding.controller.js এখন এই role-গুলোতে trial সাইনআপে সিট
+// রিজার্ভ/বুক করতে দেয় (২টা পর্যন্ত), কিন্তু আসল কর্মচারী তৈরি এখনো এখানেই
+// আটকানো — নিচে assertSeatAvailable দেখো। এই তালিকা বদলানোর একমাত্র সময়
+// হলো যখন role দুটো সত্যিকারের ফিচার হিসেবে চালু হবে (ENUM migration +
+// role dropdown + permissions সব একসাথে যোগ করে)।
+const NOT_YET_LIVE_ROLES_DISPLAY = ['shop_keeper', 'stock_keeper'];
+
 /**
  * নতুন কর্মচারী তৈরির আগে (বা archived কর্মচারী reactivate করার আগে)
  * চেক করে যে এই role-এ tenant-এর কেনা সিট এখনো খালি আছে কিনা।
@@ -45,6 +54,18 @@ const SEAT_EXEMPT_ROLES = ['admin'];
  */
 const assertSeatAvailable = async (client, tenantId, role) => {
     if (SEAT_EXEMPT_ROLES.includes(role)) return;
+
+    // shop_keeper/stock_keeper-এর জন্য সিট রিজার্ভ থাকতে পারে (trial প্যাকেজে
+    // ২টা পর্যন্ত), কিন্তু role এখনো ফিচার-হিসেবে চালু হয়নি — সরাসরি এখানেই
+    // পরিষ্কার একটা এরর দিয়ে আটকানো হচ্ছে, যাতে EmployeeForm.jsx-এর dropdown
+    // বাইপাস করে কেউ সরাসরি API কল করলে raw DB এরর (invalid input value for
+    // enum user_role) না দেখে, একটা বোধগম্য মেসেজ পায়।
+    if (NOT_YET_LIVE_ROLES_DISPLAY.includes(role)) {
+        const err = new Error('ROLE_NOT_LIVE');
+        err.code  = 'ROLE_NOT_LIVE';
+        err.role  = role;
+        throw err;
+    }
 
     const seatRow = await client.query(
         `SELECT seat_count FROM tenant_seats WHERE tenant_id = $1 AND role = $2 FOR UPDATE`,
@@ -71,12 +92,6 @@ const assertSeatAvailable = async (client, tenantId, role) => {
         throw err;
     }
 };
-
-// রোল এখনো ফিচার-হিসেবে লাইভ না — onboarding.controller.js-এর
-// NOT_YET_LIVE_ROLES-এর সাথে মিলিয়ে রাখতে হবে (দুই জায়গায় আলাদা রাখা
-// আছে, ভবিষ্যতে shared config/API দিয়ে একীভূত করা উচিত — SEAT_RATES-এর
-// কমেন্টেও একই নোট আছে)
-const NOT_YET_LIVE_ROLES_DISPLAY = ['shop_keeper', 'stock_keeper'];
 
 // ============================================================
 // GET SEAT STATUS — রোল-ভিত্তিক সিট ব্যবহার (Admin dashboard)
@@ -394,6 +409,15 @@ const createEmployee = async (req, res) => {
                 code: 'SEAT_LIMIT_REACHED',
                 message: `"${label}" রোলের সব সিট (${error.used}/${error.limit}) ব্যবহার হয়ে গেছে। নতুন কর্মচারী যোগ করতে হলে আগে সিট বাড়াতে হবে।`,
                 data: { role: error.role, used: error.used, limit: error.limit }
+            });
+        }
+        if (error.code === 'ROLE_NOT_LIVE') {
+            const label = ROLE_LABELS[error.role] || error.role;
+            return res.status(400).json({
+                success: false,
+                code: 'ROLE_NOT_LIVE',
+                message: `"${label}" রোলটা এখনো চালু হয়নি (শীঘ্রই আসছে) — সিট রিজার্ভ করা থাকলেও এই মুহূর্তে এই রোলে কর্মচারী তৈরি করা যাবে না।`,
+                data: { role: error.role }
             });
         }
         logger.error('❌ Create Employee Error:', error.message);
@@ -1136,6 +1160,15 @@ const reactivateEmployee = async (req, res) => {
                 code: 'SEAT_LIMIT_REACHED',
                 message: `"${label}" রোলের সব সিট (${error.used}/${error.limit}) ব্যবহার হয়ে গেছে। পুনরায় যুক্ত করতে হলে আগে সিট বাড়াতে হবে।`,
                 data: { role: error.role, used: error.used, limit: error.limit }
+            });
+        }
+        if (error.code === 'ROLE_NOT_LIVE') {
+            const label = ROLE_LABELS[error.role] || error.role;
+            return res.status(400).json({
+                success: false,
+                code: 'ROLE_NOT_LIVE',
+                message: `"${label}" রোলটা এখনো চালু হয়নি — এই মুহূর্তে এই রোলে কর্মচারী পুনরায় যুক্ত করা যাবে না।`,
+                data: { role: error.role }
             });
         }
         logger.error('❌ Reactivate Error:', error.message);
