@@ -55,8 +55,7 @@ module.exports = (app) => {
                     p.id,
                     p.name,
                     p.unit,
-                    p.price_per_unit   AS price,
-                    p.category,
+                    p.price,
                     p.description,
                     p.image_url,           -- ← Cloudinary URL
                     GREATEST(0, p.stock - COALESCE(p.reserved_stock, 0)) AS available_stock
@@ -82,7 +81,7 @@ module.exports = (app) => {
         try {
             const { rows } = await query(
                 `SELECT
-                    id, name, unit, price_per_unit AS price,
+                    id, name, unit, price,
                     description, image_url,
                     GREATEST(0, stock - COALESCE(reserved_stock, 0)) AS available_stock
                  FROM products
@@ -154,7 +153,7 @@ module.exports = (app) => {
             // Product ID গুলো যাচাই ও enrich
             const productIds = items.map(i => i.product_id);
             const prodRes = await query(
-                `SELECT id, name, price_per_unit AS price
+                `SELECT id, name, price
                  FROM products
                  WHERE id = ANY($1::uuid[]) AND is_active = true`,
                 [productIds]

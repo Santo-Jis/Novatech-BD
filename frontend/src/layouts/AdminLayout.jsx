@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
 import ErrorBoundary from '../components/ErrorBoundary'
-import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag, FiLink } from 'react-icons/fi'
+import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag, FiLink, FiTruck, FiClipboard } from 'react-icons/fi'
 
 // সবসময় দেখা যাবে — গ্রুপের বাইরে (ঘন ঘন ব্যবহার হয়)
 const pinnedItems = [
@@ -32,6 +32,8 @@ const navGroups = [
     icon: <FiPackage />,
     items: [
       { path: '/admin/products',   icon: <FiPackage />, label: 'পণ্য' },
+      { path: '/admin/suppliers',       icon: <FiTruck />,     label: 'সাপ্লায়ার' },
+      { path: '/admin/purchase-orders', icon: <FiClipboard />, label: 'ক্রয় অর্ডার' },
       { path: '/admin/promotions', icon: <FiTag />,     label: 'অফার / প্রমোশন' },
       { path: '/admin/routes',     icon: <FiMapPin />,  label: 'রুট ম্যানেজমেন্ট' },
     ],

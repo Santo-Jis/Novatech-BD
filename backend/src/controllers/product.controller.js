@@ -10,9 +10,9 @@ const getProducts = async (req, res) => {
     try {
         const { search, is_active = true } = req.query;
 
-        let conditions = [`is_active = $1`];
-        let params     = [is_active];
-        let paramCount = 1;
+        let conditions = [`is_active = $1`, `tenant_id = $2`];
+        let params     = [is_active, req.tenantId];
+        let paramCount = 2;
 
         if (search) {
             paramCount++;
@@ -21,8 +21,8 @@ const getProducts = async (req, res) => {
         }
 
         const result = await query(
-            `SELECT id, name, sku, price, stock, reserved_stock, return_stock, defective_stock,
-                    (stock - COALESCE((
+            `SELECT p.id, p.name, p.sku, p.price, p.stock, p.reserved_stock, p.return_stock, p.defective_stock,
+                    (p.stock - COALESCE((
                         SELECT SUM((item->>'quantity')::int)
                         FROM orders o,
                              jsonb_array_elements(
@@ -34,16 +34,26 @@ const getProducts = async (req, res) => {
                         WHERE (item->>'product_id')::uuid = p.id
                           AND o.status IN ('pending', 'approved', 'processing')
                     ), 0)) AS available_stock,
-                    unit, is_active, updated_at,
-                    image_url, description,
-                    discount, discount_type, vat, tax
+                    p.unit, p.is_active, p.updated_at,
+                    p.image_url, p.description,
+                    p.discount, p.discount_type, p.vat, p.tax,
+                    p.cost_price, p.brand, p.category_id, p.reorder_point,
+                    c.name AS category_name, c.name_bn AS category_name_bn,
+                    (p.stock <= COALESCE(p.reorder_point, 0)) AS is_low_stock
              FROM products p
+             LEFT JOIN product_categories c ON c.id = p.category_id
              WHERE ${conditions.join(' AND ')}
-             ORDER BY name ASC`,
+             ORDER BY p.name ASC`,
             params
         );
 
-        return res.status(200).json({ success: true, data: result.rows });
+        // cost_price শুধু admin/manager দেখতে পারবে — worker/অন্য রোলের রেসপন্স থেকে বাদ
+        const canSeeCost = ['admin', 'manager'].includes(req.user?.role);
+        const rows = canSeeCost
+            ? result.rows
+            : result.rows.map(({ cost_price, ...rest }) => rest);
+
+        return res.status(200).json({ success: true, data: rows });
 
     } catch (error) {
         logger.error('❌ Get Products Error:', error.message);
@@ -59,7 +69,7 @@ const getProducts = async (req, res) => {
 const getProduct = async (req, res) => {
     try {
         const result = await query(
-            `SELECT *, (stock - COALESCE((
+            `SELECT p.*, (p.stock - COALESCE((
                         SELECT SUM((item->>'quantity')::int)
                         FROM orders o,
                              jsonb_array_elements(
@@ -70,9 +80,13 @@ const getProduct = async (req, res) => {
                              ) AS item
                         WHERE (item->>'product_id')::uuid = p.id
                           AND o.status IN ('pending', 'approved', 'processing')
-                    ), 0)) AS available_stock
-             FROM products p WHERE id = $1
-             AND o.tenant_id = $2`,
+                    ), 0)) AS available_stock,
+                    c.name AS category_name, c.name_bn AS category_name_bn,
+                    (p.stock <= COALESCE(p.reorder_point, 0)) AS is_low_stock
+             FROM products p
+             LEFT JOIN product_categories c ON c.id = p.category_id
+             WHERE p.id = $1
+             AND p.tenant_id = $2`,
             [req.params.id,
                 req.tenantId]
         );
@@ -81,7 +95,12 @@ const getProduct = async (req, res) => {
             return res.status(404).json({ success: false, message: 'পণ্য পাওয়া যায়নি।' });
         }
 
-        return res.status(200).json({ success: true, data: result.rows[0] });
+        const canSeeCost = ['admin', 'manager'].includes(req.user?.role);
+        const product = canSeeCost
+            ? result.rows[0]
+            : (({ cost_price, ...rest }) => rest)(result.rows[0]);
+
+        return res.status(200).json({ success: true, data: product });
 
     } catch (error) {
         logger.error('❌ Get Product Error:', error.message);
@@ -100,7 +119,8 @@ const createProduct = async (req, res) => {
             name, sku, price, stock, unit,
             image_url, description,
             discount, discount_type,
-            vat, tax
+            vat, tax,
+            cost_price, category_id, brand, reorder_point
         } = req.body;
 
         if (!name || !sku || price === undefined) {
@@ -114,7 +134,9 @@ const createProduct = async (req, res) => {
             `INSERT INTO products (name, sku, price, stock, unit,
                 image_url, description,
                 discount, discount_type,
-                vat, tax, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                vat, tax, tenant_id,
+                cost_price, category_id, brand, reorder_point)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
              RETURNING *`,
             [
                 name, sku, price, stock || 0, unit || 'pcs',
@@ -124,7 +146,11 @@ const createProduct = async (req, res) => {
                 discount_type || 'flat',
                 vat          || 0,
                 tax          || 0,
-                req.tenantId  // $12 tenant_id
+                req.tenantId,   // $12 tenant_id
+                cost_price    || 0,
+                category_id   || null,
+                brand         || null,
+                reorder_point || 0
             ]
         );
 
@@ -162,7 +188,8 @@ const updateProduct = async (req, res) => {
             name, sku, price, unit, is_active,
             image_url, description,
             discount, discount_type,
-            vat, tax
+            vat, tax,
+            cost_price, category_id, brand, reorder_point
         } = req.body;
 
         const result = await query(
@@ -178,6 +205,10 @@ const updateProduct = async (req, res) => {
                 discount_type = COALESCE($9,  discount_type),
                 vat           = COALESCE($10, vat),
                 tax           = COALESCE($11, tax),
+                cost_price    = COALESCE($14, cost_price),
+                category_id   = COALESCE($15, category_id),
+                brand         = COALESCE($16, brand),
+                reorder_point = COALESCE($17, reorder_point),
                 updated_at    = NOW()
              WHERE id = $12 AND tenant_id = $13
              RETURNING *`,
@@ -194,7 +225,11 @@ const updateProduct = async (req, res) => {
                 vat         ?? null,
                 tax         ?? null,
                 req.params.id,
-                req.tenantId   // $13 tenant_id
+                req.tenantId,   // $13 tenant_id
+                cost_price    ?? null,
+                category_id   ?? null,
+                brand         ?? null,
+                reorder_point ?? null
             ]
         );
 
@@ -228,7 +263,7 @@ const adjustStock = async (req, res) => {
             return res.status(400).json({ success: false, message: 'পরিমাণ দিন।' });
         }
 
-        const product = await query('SELECT * FROM products WHERE id = $1', [productId]);
+        const product = await query('SELECT * FROM products WHERE id = $1 AND tenant_id = $2', [productId, req.tenantId]);
         if (product.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'পণ্য পাওয়া যায়নি।' });
         }
@@ -244,8 +279,8 @@ const adjustStock = async (req, res) => {
         }
 
         await query(
-            'UPDATE products SET stock = $1, updated_at = NOW() WHERE id = $2',
-            [newStock, productId]
+            'UPDATE products SET stock = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
+            [newStock, productId, req.tenantId]
         );
 
         await query(
@@ -276,10 +311,10 @@ const getStockMovements = async (req, res) => {
             `SELECT sm.*, u.name_bn AS created_by_name
              FROM stock_movements sm
              JOIN users u ON sm.created_by = u.id
-             WHERE sm.product_id = $1
+             WHERE sm.product_id = $1 AND sm.tenant_id = $2
              ORDER BY sm.created_at DESC
              LIMIT 100`,
-            [req.params.id]
+            [req.params.id, req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });
