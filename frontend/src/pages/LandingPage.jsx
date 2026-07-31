@@ -937,6 +937,64 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Book a Demo — বড় ডিস্ট্রিবিউটরদের জন্য যারা সরাসরি টিমের সাথে কথা বলে সিদ্ধান্ত নিতে চান */}
+      <section style={{ padding: '8px 24px 72px', maxWidth: '760px', margin: '0 auto' }}>
+        <div style={{
+          background: T.bgSurface,
+          border: `1px solid ${T.borderDefault}`,
+          borderRadius: '18px',
+          padding: '36px 28px',
+          textAlign: 'center',
+        }}>
+          <h2 style={{
+            fontFamily: T.fontHead, fontSize: '20px', fontWeight: 600,
+            color: T.primary700, margin: '0 0 8px',
+          }}>
+            বড় টিমের জন্য ডেমো দরকার?
+          </h2>
+          <p style={{ color: T.textSecondary, fontSize: '13.5px', maxWidth: '440px', margin: '0 auto 24px', lineHeight: 1.7 }}>
+            আপনার ডিস্ট্রিবিউশন নেটওয়ার্ক বড় হলে, সাইনআপের আগে সরাসরি আমাদের টিমের সাথে কথা বলে
+            আপনার প্রয়োজন অনুযায়ী একটা লাইভ ডেমো দেখে নিতে পারেন।
+          </p>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <a
+              href="https://wa.me/8801309540282?text=আমি%20ZovoriX-এর%20একটা%20ডেমো%20বুক%20করতে%20চাই"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                padding: '12px 22px',
+                background: T.primary700,
+                border: `1px solid ${T.primary700}`,
+                borderRadius: '9px',
+                color: '#fff',
+                fontSize: '13.5px', fontWeight: 700,
+                fontFamily: T.fontBody,
+                textDecoration: 'none',
+              }}
+            >
+              <FiMessageCircle /> হোয়াটসঅ্যাপে ডেমো বুক করুন
+            </a>
+            <a
+              href="tel:+8801309540282"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '8px',
+                padding: '12px 22px',
+                background: 'transparent',
+                border: `1px solid ${T.borderStrong}`,
+                borderRadius: '9px',
+                color: T.primary700,
+                fontSize: '13.5px', fontWeight: 700,
+                fontFamily: T.fontBody,
+                textDecoration: 'none',
+              }}
+            >
+              <FiPhone /> +৮৮০ ১৩০৯-৫৪০২৮২
+            </a>
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer style={{
         background: T.primary900,
