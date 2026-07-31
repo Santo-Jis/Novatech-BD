@@ -404,7 +404,7 @@ export default function LandingPage() {
           color: T.textMuted,
           marginBottom: '28px',
         }}>
-          আধুনিক ব্যবসা ব্যবস্থাপনা সফটওয়্যার
+          ডিস্ট্রিবিউটর ও পাইকারি ব্যবসার জন্য ব্যবস্থাপনা সফটওয়্যার
         </div>
 
         <h1 style={{
@@ -775,14 +775,14 @@ export default function LandingPage() {
                 <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '16px', color: '#fff' }}>ZovoriX</span>
               </div>
               <p style={{ fontSize: '12.5px', lineHeight: 1.7, color: T.primary300, margin: 0, maxWidth: '240px' }}>
-                A complete platform for sales, team and customer management.
+                বিক্রয়, টিম ও কাস্টমার ব্যবস্থাপনার সম্পূর্ণ প্ল্যাটফর্ম।
               </p>
             </div>
 
             {/* Contact */}
             <div>
               <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
-                Contact
+                যোগাযোগ
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <a href="tel:+8801309540282" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
@@ -792,7 +792,7 @@ export default function LandingPage() {
                   <FiMail style={{ fontSize: '14px', color: T.accent300 }} /> support@zovorix.com
                 </a>
                 <a href="https://wa.me/8801309540282" target="_blank" rel="noopener noreferrer" style={{ display: 'flex', alignItems: 'center', gap: '8px', color: T.primary100, fontSize: '13px', textDecoration: 'none' }}>
-                  <FiMessageCircle style={{ fontSize: '14px', color: T.accent300 }} /> Message on WhatsApp
+                  <FiMessageCircle style={{ fontSize: '14px', color: T.accent300 }} /> হোয়াটসঅ্যাপে মেসেজ করুন
                 </a>
               </div>
             </div>
@@ -800,7 +800,7 @@ export default function LandingPage() {
             {/* Social */}
             <div>
               <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
-                Social
+                সোশ্যাল মিডিয়া
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
                 {[
@@ -839,17 +839,17 @@ export default function LandingPage() {
             {/* Login */}
             <div>
               <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
-                Login
+                লগইন
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <button onClick={() => navigate('/login')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  Management Login
+                  ম্যানেজমেন্ট লগইন
                 </button>
                 <button onClick={() => { setMobileMenuOpen(false); navigate('/customer-login') }} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  Retailer Shop Login
+                  রিটেইলার শপ লগইন
                 </button>
                 <button onClick={() => navigate('/apply/sr')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  Apply as SR
+                  SR হিসেবে আবেদন করুন
                 </button>
               </div>
             </div>
@@ -857,26 +857,26 @@ export default function LandingPage() {
             {/* Company */}
             <div>
               <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.06em', textTransform: 'uppercase', color: T.primary300, marginBottom: '14px', fontFamily: T.fontMono }}>
-                Company
+                কোম্পানি
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <button onClick={() => { setMobileMenuOpen(false); navigate('/pricing') }} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  Pricing
+                  প্রাইসিং
                 </button>
                 <button onClick={() => { setMobileMenuOpen(false); navigate('/about') }} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  About Us
+                  আমাদের সম্পর্কে
                 </button>
                 <button onClick={() => { setMobileMenuOpen(false); navigate('/contact') }} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  Contact
+                  যোগাযোগ
                 </button>
                 <button onClick={() => { setMobileMenuOpen(false); navigate('/blog') }} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  Blog
+                  ব্লগ
                 </button>
                 <button onClick={() => navigate('/privacy-policy')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  Privacy Policy
+                  প্রাইভেসি পলিসি
                 </button>
                 <button onClick={() => navigate('/terms-conditions')} style={{ background: 'none', border: 'none', padding: 0, textAlign: 'left', color: T.primary100, fontSize: '13px', cursor: 'pointer', fontFamily: T.fontBody }}>
-                  Terms & Conditions
+                  শর্তাবলী
                 </button>
               </div>
             </div>
@@ -891,7 +891,7 @@ export default function LandingPage() {
             paddingTop: '20px',
           }}>
             <div style={{ fontSize: '12px', color: T.primary300 }}>
-              © {new Date().getFullYear()} ZovoriX. All rights reserved.
+              © {new Date().getFullYear()} ZovoriX। সর্বস্বত্ব সংরক্ষিত।
             </div>
           </div>
         </div>
