@@ -423,10 +423,34 @@ const receivePurchaseOrder = async (req, res) => {
                 );
 
                 // ৩. স্টক মুভমেন্ট লগ
+                // Step ৪ (Batch/Expiry): batch_id নিচে ব্যাচ তৈরি হলে সেট হবে, না হলে NULL থাকবে
+                // (batch tracking ঐচ্ছিক — সব পণ্যের জন্য batch/expiry না দিলেও রিসিভ করা যায়)
+                let batchId = null;
+
+                // ৩ক. ব্যাচ/মেয়াদ তথ্য দেওয়া থাকলে product_batches-এ নতুন ব্যাচ তৈরি করো
+                // (batch_number বা expiry_date যেকোনো একটা দিলেই যথেষ্ট — দুটোই বাধ্যতামূলক নয়)
+                if (entry.batch_number || entry.expiry_date) {
+                    const batchResult = await client.query(
+                        `INSERT INTO product_batches
+                            (tenant_id, product_id, batch_number, quantity, manufacture_date, expiry_date, received_at)
+                         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                         RETURNING id`,
+                        [
+                            req.tenantId,
+                            item.product_id,
+                            entry.batch_number || null,
+                            qtyNow,
+                            entry.manufacture_date || null,
+                            entry.expiry_date || null
+                        ]
+                    );
+                    batchId = batchResult.rows[0].id;
+                }
+
                 await client.query(
-                    `INSERT INTO stock_movements (product_id, movement_type, quantity, reference_id, reference_type, note, created_by, tenant_id)
-                     VALUES ($1, 'in', $2, $3, 'purchase', $4, $5, $6)`,
-                    [item.product_id, qtyNow, po.id, note || `${po.po_number} থেকে মাল গ্রহণ`, req.user.id, req.tenantId]
+                    `INSERT INTO stock_movements (product_id, movement_type, quantity, reference_id, reference_type, note, created_by, tenant_id, batch_id)
+                     VALUES ($1, 'in', $2, $3, 'purchase', $4, $5, $6, $7)`,
+                    [item.product_id, qtyNow, po.id, note || `${po.po_number} থেকে মাল গ্রহণ`, req.user.id, req.tenantId, batchId]
                 );
             }
 

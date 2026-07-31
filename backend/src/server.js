@@ -166,6 +166,7 @@ const productRoutes     = require('./routes/product.routes');
 const categoryRoutes    = require('./routes/category.routes');
 const supplierRoutes    = require('./routes/supplier.routes');
 const purchaseOrderRoutes = require('./routes/purchaseOrder.routes');
+const batchRoutes         = require('./routes/batch.routes');       // ← নতুন (Step ৪: Batch/Expiry + FEFO)
 const orderRoutes       = require('./routes/order.routes');
 const salesRoutes       = require('./routes/sales.routes');
 const settlementRoutes  = require('./routes/settlement.routes');
@@ -223,6 +224,7 @@ app.use('/api/products',    productRoutes);
 app.use('/api/categories',  categoryRoutes);
 app.use('/api/suppliers',        supplierRoutes);
 app.use('/api/purchase-orders',  purchaseOrderRoutes);
+app.use('/api/batches',          batchRoutes);
 app.use('/api/orders',      orderRoutes);
 app.use('/api/sales',       salesRoutes);
 app.use('/api/settlements', settlementRoutes);

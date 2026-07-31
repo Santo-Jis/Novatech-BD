@@ -25,8 +25,12 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
   const [po,        setPo]        = useState(null)
   const [loading,   setLoading]   = useState(false)
   const [busy,      setBusy]      = useState(false)
-  const [receiveQty, setReceiveQty] = useState({}) // { item_id: quantity_now }
+  // { item_id: { qty, batch_number, expiry_date } } — ব্যাচ/মেয়াদ ঐচ্ছিক (Step ৪)
+  const [receiveRows, setReceiveRows] = useState({})
   const [receiveNote, setReceiveNote] = useState('')
+
+  const setRow = (itemId, field, value) =>
+    setReceiveRows(prev => ({ ...prev, [itemId]: { ...prev[itemId], [field]: value } }))
 
   const fetchPO = async () => {
     if (!poId) return
@@ -39,7 +43,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
   }
 
   useEffect(() => {
-    if (isOpen && poId) { fetchPO(); setReceiveQty({}); setReceiveNote('') }
+    if (isOpen && poId) { fetchPO(); setReceiveRows({}); setReceiveNote('') }
   }, [isOpen, poId])
 
   const handlePlaceOrder = async () => {
@@ -64,9 +68,15 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
   }
 
   const handleReceive = async () => {
-    const items = Object.entries(receiveQty)
-      .filter(([, qty]) => parseInt(qty, 10) > 0)
-      .map(([item_id, qty]) => ({ item_id, quantity_received_now: parseInt(qty, 10) }))
+    const items = Object.entries(receiveRows)
+      .filter(([, row]) => parseInt(row?.qty, 10) > 0)
+      .map(([item_id, row]) => ({
+        item_id,
+        quantity_received_now: parseInt(row.qty, 10),
+        // ব্যাচ/মেয়াদ ঐচ্ছিক — খালি রাখলে ব্যাচ ছাড়াই স্টক যোগ হবে
+        batch_number: row.batch_number?.trim() || undefined,
+        expiry_date:  row.expiry_date || undefined,
+      }))
 
     if (items.length === 0) { toast.error('কমপক্ষে একটি পণ্যের গ্রহণকৃত পরিমাণ দিন।'); return }
 
@@ -74,7 +84,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
     try {
       const res = await api.post(`/purchase-orders/${poId}/receive`, { items, note: receiveNote })
       toast.success(res.data.message)
-      setReceiveQty({}); setReceiveNote('')
+      setReceiveRows({}); setReceiveNote('')
       fetchPO(); onChanged?.()
     } catch (err) { toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।') }
     finally { setBusy(false) }
@@ -111,7 +121,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
           )}
 
           {/* Items table */}
-          <div className="border border-gray-100 dark:border-slate-700 rounded-xl overflow-hidden">
+          <div className="border border-gray-100 dark:border-slate-700 rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 dark:bg-slate-700/50 text-xs text-gray-500 dark:text-gray-400">
@@ -119,12 +129,15 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
                   <th className="text-right px-3 py-2">অর্ডার</th>
                   <th className="text-right px-3 py-2">গৃহীত</th>
                   <th className="text-right px-3 py-2">দর</th>
-                  {canReceive && <th className="text-right px-3 py-2">এখন গ্রহণ</th>}
+                  {canReceive && <th className="text-right px-3 py-2 whitespace-nowrap">এখন গ্রহণ</th>}
+                  {canReceive && <th className="text-left px-3 py-2 whitespace-nowrap">ব্যাচ নং (ঐচ্ছিক)</th>}
+                  {canReceive && <th className="text-left px-3 py-2 whitespace-nowrap">মেয়াদ উত্তীর্ণ (ঐচ্ছিক)</th>}
                 </tr>
               </thead>
               <tbody>
                 {po.items.map(item => {
                   const remaining = item.quantity_ordered - item.quantity_received
+                  const row = receiveRows[item.id] || {}
                   return (
                     <tr key={item.id} className="border-t border-gray-100 dark:border-slate-700">
                       <td className="px-3 py-2">
@@ -144,12 +157,37 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
                             <input
                               type="number" min="0" max={remaining}
                               placeholder="0"
-                              value={receiveQty[item.id] || ''}
-                              onChange={e => setReceiveQty(prev => ({ ...prev, [item.id]: e.target.value }))}
+                              value={row.qty || ''}
+                              onChange={e => setRow(item.id, 'qty', e.target.value)}
                               className="w-20 border border-gray-200 dark:border-slate-600 rounded-lg px-2 py-1 text-right text-sm bg-white dark:bg-slate-800"
                             />
                           ) : (
                             <span className="text-xs text-emerald-600">সম্পূর্ণ</span>
+                          )}
+                        </td>
+                      )}
+                      {canReceive && (
+                        <td className="px-3 py-2">
+                          {remaining > 0 && (
+                            <input
+                              type="text"
+                              placeholder="যেমন: BN-2607"
+                              value={row.batch_number || ''}
+                              onChange={e => setRow(item.id, 'batch_number', e.target.value)}
+                              className="w-28 border border-gray-200 dark:border-slate-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-slate-800"
+                            />
+                          )}
+                        </td>
+                      )}
+                      {canReceive && (
+                        <td className="px-3 py-2">
+                          {remaining > 0 && (
+                            <input
+                              type="date"
+                              value={row.expiry_date || ''}
+                              onChange={e => setRow(item.id, 'expiry_date', e.target.value)}
+                              className="w-36 border border-gray-200 dark:border-slate-600 rounded-lg px-2 py-1 text-sm bg-white dark:bg-slate-800"
+                            />
                           )}
                         </td>
                       )}
@@ -159,6 +197,9 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
               </tbody>
             </table>
           </div>
+          {canReceive && (
+            <p className="text-xs text-gray-400 -mt-2">ব্যাচ নং/মেয়াদ ফাঁকা রাখলে সাধারণভাবে স্টক যোগ হবে (FEFO ট্র্যাকিং ছাড়া)।</p>
+          )}
 
           <div className="flex justify-end text-sm">
             <p className="text-gray-500 dark:text-gray-400">মোট মূল্য: <span className="font-bold text-secondary">৳{parseFloat(po.total_amount).toLocaleString()}</span></p>

@@ -4,6 +4,7 @@ const { sendOrderNotificationEmail } = require('../services/email.service');
 const { sendPushNotification } = require('../services/fcm.service');
 const { addLedgerEntry } = require('./ledger.controller');
 const { getDB } = require('../config/firebase');
+const { consumeBatchesFEFO } = require('../services/batchFefo.utils'); // ← নতুন (Step ৪: Batch/Expiry FEFO)
 
 // ============================================================
 // Firebase নোটিফিকেশন Helper
@@ -442,6 +443,22 @@ const approveOrder = async (req, res) => {
              AND tenant_id = $4`,
                     [item.approved_qty, origQty, item.product_id, req.tenantId]
                 );
+
+                // ─── Step ৪: FEFO ব্যাচ কনজাম্পশন ──────────────
+                // এখানেই আসল ওয়্যারহাউজ স্টক SR-কে ইস্যু হচ্ছে (sales.controller.js
+                // এই স্টক আবার টাচ করে না — শুধু audit রাখে)। তাই batch deduction-ও
+                // এখানেই হওয়া উচিত — নিকটতম মেয়াদের ব্যাচ আগে বের হবে।
+                if (item.approved_qty > 0) {
+                    await consumeBatchesFEFO(client, {
+                        tenantId:      req.tenantId,
+                        productId:     item.product_id,
+                        qty:           item.approved_qty,
+                        referenceId:   id,
+                        referenceType: 'order',
+                        createdBy:     req.user.id,
+                        note:          `অর্ডার অনুমোদন — SR-কে ইস্যু`
+                    });
+                }
             }
 
             // অর্ডার আপডেট
