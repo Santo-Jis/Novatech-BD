@@ -4,6 +4,7 @@ import { FiShoppingBag, FiChevronDown, FiSettings, FiPhone, FiMail, FiMessageCir
 import { HiOutlineReceiptPercent, HiOutlineUserGroup, HiOutlineChartBarSquare, HiOutlineShieldCheck, HiOutlineDevicePhoneMobile, HiOutlineClipboardDocumentCheck, HiOutlineBuildingStorefront } from 'react-icons/hi2'
 import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlien } from 'react-icons/fa6'
 import logo from '../assets/zovorix-logo.png'
+import novatechLogo from '../assets/novatech-nt-logo.png'
 import SEO from '../components/SEO'
 import HeroImageSlider from '../components/HeroImageSlider'
 import BlogPostCard from '../components/BlogPostCard'
@@ -123,6 +124,15 @@ export default function LandingPage() {
     { value: '৮৪+',      label: 'সেলস রিপ্রেজেন্টেটিভ (SR)' },
     { value: '২৪',       label: 'ম্যানেজার' },
     { value: '১৪,৬৮৩',  label: 'রিটেইল দোকান' },
+  ]
+
+  // সাফল্যের গল্প — NovaTech BD (FMCG ব্র্যান্ড)-এর আসল রেজাল্ট
+  const caseStudyStats = [
+    { value: '৩৭.৯%', label: 'ওভারঅল রেভিনিউ বৃদ্ধি' },
+    { value: '৮০%',   label: 'ই-কমার্স অর্ডারে অফ-টাইম রেভিনিউ বৃদ্ধি' },
+    { value: '৬০%',   label: 'কাজের এফিসিয়েন্সি বৃদ্ধি' },
+    { value: '২×',    label: '৭০% এরিয়ায় SR ভিজিট বৃদ্ধি' },
+    { value: '<২%',   label: 'স্টক ফল্ট (আগের তুলনায় প্রায় শূন্যের কাছাকাছি)' },
   ]
 
   // প্রতিটা প্ল্যানের সবচেয়ে কম রোল-প্রাইস — ল্যান্ডিং টিজারে "শুরু ৳X থেকে" দেখাতে
@@ -813,6 +823,70 @@ export default function LandingPage() {
               </div>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* সাফল্যের গল্প — NovaTech BD */}
+      <section style={{ padding: '8px 24px 72px', maxWidth: '960px', margin: '0 auto' }}>
+        <div style={{
+          background: T.primary900,
+          borderRadius: '20px',
+          padding: '40px 32px',
+          color: '#fff',
+        }}>
+          <div style={{
+            display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '5px 14px',
+            background: 'rgba(255,255,255,0.08)', borderRadius: '20px', fontSize: '11px',
+            fontFamily: T.fontMono, letterSpacing: '0.05em', color: T.accent300, marginBottom: '20px',
+          }}>
+            সাফল্যের গল্প
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+            gap: '20px',
+            marginBottom: '28px',
+            paddingBottom: '28px',
+            borderBottom: '1px solid rgba(255,255,255,0.12)',
+          }}>
+            {caseStudyStats.map((s, i) => (
+              <div key={i}>
+                <div style={{ fontFamily: T.fontHead, fontSize: '28px', fontWeight: 600, color: T.accent300 }}>
+                  {s.value}
+                </div>
+                <div style={{ fontSize: '12px', color: T.primary100, marginTop: '4px', lineHeight: 1.5 }}>
+                  {s.label}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <p style={{ fontSize: '15px', lineHeight: 1.85, color: T.primary100, margin: '0 0 24px', maxWidth: '700px' }}>
+            "ZovoriX ব্যবহার শুরু করার পর কাস্টমারদের সাথে যোগাযোগ ও অর্ডার ব্যবস্থাপনা অনেক সহজ হয়ে গেছে।
+            আগে রিটেইলারদের বাকি টাকার হিসাব রাখতে খুব ঝামেলা হতো, বাকি আদায় করতে সরাসরি কাস্টমারের কাছে
+            যেতে হতো — এখন পুরোটাই অ্যাপ থেকে মনিটর করা যায়। স্টোরেজ ও স্টক ম্যানেজমেন্ট সহজ হয়ে স্টক ফল্ট
+            ২%-এরও কমে নেমে এসেছে, শপ ম্যানেজমেন্টও অনেক সহজ হয়ে গেছে। আগে যেসব ব্যবসায়িক ভুল হতো তা প্রায়
+            শূন্যের কোঠায় নেমে এসেছে, কাগজের ব্যবহারও অনেকটাই কমেছে। রিটেইলার ও কাস্টমারদের মধ্যে আমাদের
+            ব্র্যান্ডের প্রতি আস্থা বেড়েছে। SR, ASM ও RSM-দের ম্যানেজ করা এবং তাদের টাস্ক দেওয়া এখন অনেক সহজ —
+            আমি এখন এক স্ক্রিন থেকেই পুরো ব্যবসা মনিটর করতে পারি, ব্যবসা কোন দিকে যাচ্ছে তার পাই-টু-পাই হিসাবও
+            হাতের মুঠোয়।"
+          </p>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{
+              width: '42px', height: '42px', borderRadius: '50%',
+              background: T.accent600,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0, overflow: 'hidden',
+            }}>
+              <img src={novatechLogo} alt="NovaTech BD" style={{ width: '70%', height: '70%', objectFit: 'contain' }} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '14px', color: '#fff' }}>সান্তো হাওলাদার</div>
+              <div style={{ fontSize: '12.5px', color: T.primary300 }}>মালিক ও সিইও, NovaTech BD — FMCG ব্র্যান্ড</div>
+            </div>
+          </div>
         </div>
       </section>
 
