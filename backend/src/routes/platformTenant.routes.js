@@ -20,5 +20,8 @@ router.use(platformAuth);
 
 router.get('/', requireScope('full', 'support'), ctrl.listTenants);
 router.get('/:tenantId', requireScope('full', 'support'), ctrl.getTenantDetail);
+// কাস্টমার/সিট লিমিট, ওয়ালেট (full-only), AI টোকেন (full-only), সাম্প্রতিক SMS —
+// এই রুটও read-only, উপরের দুইটার মতোই।
+router.get('/:tenantId/diagnostics', requireScope('full', 'support'), ctrl.getTenantDiagnostics);
 
 module.exports = router;

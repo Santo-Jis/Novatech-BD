@@ -15,6 +15,7 @@
  */
 
 const { query } = require('../config/db');
+const tenantDiagnosticsService = require('../services/tenantDiagnostics.service');
 
 const BILLING_FIELDS = ['billing_email', 'billing_name'];
 
@@ -132,4 +133,31 @@ const getTenantDetail = async (req, res) => {
   }
 };
 
-module.exports = { listTenants, getTenantDetail };
+// ─── Tenant Diagnostics — কাস্টমার/সিট লিমিট, ওয়ালেট, AI টোকেন, SMS লগ ──
+// "কাস্টমার/কর্মচারী যোগ করা যাচ্ছে না কেন", "SMS পৌঁছাচ্ছে না কেন" —
+// এই ধরনের প্রশ্নের উত্তর Support-কে এক কলেই দেয় (tenantDiagnostics.service.js
+// দেখো)। wallet/ai_tokens শুধু scope==='full'-এ — billing_email/billing_name-এর
+// মতোই billing-sensitive বলে 'support' scope-এ বাদ।
+const getTenantDiagnostics = async (req, res) => {
+  const { tenantId } = req.params;
+  const phone = (req.query.phone || '').trim() || null;
+
+  try {
+    const scope = req.platformStaff.scope;
+    const data = await tenantDiagnosticsService.getTenantDiagnostics(tenantId, {
+      includeBilling: scope === 'full',
+      phone,
+    });
+
+    if (!data) {
+      return res.status(404).json({ success: false, message: 'Tenant পাওয়া যায়নি।' });
+    }
+
+    return res.json({ success: true, data });
+  } catch (err) {
+    console.error('[platformTenant.getTenantDiagnostics]', err);
+    return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+  }
+};
+
+module.exports = { listTenants, getTenantDetail, getTenantDiagnostics };

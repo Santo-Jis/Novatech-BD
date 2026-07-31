@@ -5,6 +5,7 @@ import platformApi from './api/platformApi'
 import { usePlatformAuthStore } from './store/platformAuth.store'
 import StatusBadge from './components/StatusBadge'
 import { LoadingState, ErrorState } from './components/PanelStates'
+import TenantDiagnostics from './components/TenantDiagnostics'
 
 export default function TenantDetail() {
   const { tenantId } = useParams()
@@ -79,6 +80,8 @@ export default function TenantDetail() {
         <StatCard label="মোট বিক্রয়" value={stats.total_sales} />
         <StatCard label="মোট রাজস্ব" value={`৳${Number(stats.total_revenue).toLocaleString('bn-BD')}`} />
       </div>
+
+      <TenantDiagnostics tenantId={tenant.id} isFull={isFull} />
 
       {/* Fields */}
       <div className="bg-pf-bg-surface border border-pf-border rounded-xl overflow-hidden">
