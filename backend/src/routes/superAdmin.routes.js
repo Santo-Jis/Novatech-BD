@@ -20,6 +20,7 @@ const router      = express.Router();
 const rateLimit    = require('express-rate-limit');
 const crypto       = require('crypto');
 const ctrl         = require('../controllers/superAdmin.controller');
+const aiCtrl       = require('../controllers/ai.controller');
 
 // ✅ Phase 2 (Security Hardening): brute-force রোধে rate limit।
 // /superadmin/api প্রথম থেকেই /api/ prefix-এর বাইরে ছিল বলে global
@@ -93,12 +94,25 @@ router.post  ('/staff/:staffId/reset-password', ctrl.resetStaffPassword);
 router.get   ('/tenants/:tenantId/settings', ctrl.getTenantSettings);
 router.patch ('/tenants/:tenantId/settings', ctrl.updateTenantSettings);
 
+// ✅ ৩০ জুলাই ২০২৬: Tenant AI Settings — BYOK (own key vs platform key) + pricing override
+router.get   ('/tenants/:tenantId/ai-settings', ctrl.getTenantAISettings);
+router.patch ('/tenants/:tenantId/ai-settings', ctrl.updateTenantAISettings);
+
 // ✅ Phase 1 (26 July 2026): Platform Settings — SMS/Email গেটওয়ে
 // (পুরো প্ল্যাটফর্মের জন্য একটাই শেয়ার্ড কনফিগ, tenant admin panel থেকে সরানো হলো)
 router.get   ('/platform-settings',      ctrl.getPlatformSettings);
 router.put   ('/platform-settings',      ctrl.updatePlatformSettings);
 router.get   ('/platform-settings/sms-status', ctrl.getSmsStatus);
 router.post  ('/platform-settings/sms-test',   ctrl.testSmsGateway);
+
+// ✅ ৩০ জুলাই ২০২৬: Platform-wide AI Key (ai_config) — এখানে সরানো হলো কারণ
+// এটা *সব tenant-শেয়ার্ড* একটা global key/model config। আগে tenant-role
+// 'admin' এটা GET/PUT করতে পারতো (/api/ai/config) — অর্থাৎ যেকোনো tenant
+// পুরো প্ল্যাটফর্মের key বদলে দিতে পারতো। এখন শুধু Super Admin।
+router.get   ('/ai/config',   aiCtrl.getAIConfig);
+router.put   ('/ai/config',   aiCtrl.updateAIConfig);
+router.post  ('/ai/test',     aiCtrl.testAIConnection);
+router.post  ('/ai/trigger',  aiCtrl.triggerAIJob);
 
 // ✅ Phase 4 (26 July 2026): Tenant Wallet — ব্যালেন্স/হিস্টরি দেখা ও ম্যানুয়াল রিচার্জ
 router.get   ('/tenants/:tenantId/wallet',          ctrl.getTenantWallet);

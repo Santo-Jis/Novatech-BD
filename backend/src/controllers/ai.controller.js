@@ -2,6 +2,7 @@ const { query }   = require('../config/db');
 const { encrypt, decrypt, maskApiKey } = require('../config/encryption');
 const { runAIInsightsJob } = require('../jobs/ai.job');
 const { callAI, detectProvider, PROVIDERS } = require('../services/ai.service');
+const { resolveAIAccess, getTenantAISettings, AIAccessBlockedError } = require('../services/tenantAI.service');
 const axios = require('axios');
 const logger = require('../config/logger');
 
@@ -210,14 +211,21 @@ const updateAIConfig = async (req, res) => {
                  VALUES ($3, $1, $2, NOW())
                  ON CONFLICT (config_key) DO UPDATE
                  SET config_value = $1, updated_by = $2, updated_at = NOW()`,
-                [value, req.user.id, key]
+                [value, req.user?.id || null, key]
             );
         }
 
-        await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'UPDATE_AI_CONFIG', 'ai_config', $2, $3)`,
-            [req.user.id, JSON.stringify({ ...updates, api_key: api_key ? '***' : undefined })]
-        );
+        // Super Admin (আলাদা key-based auth, req.user/req.tenantId নেই) থেকে কল হলে
+        // tenant audit_logs-এ না লিখে শুধু log-এ রাখি — অন্যথায় tenant-level
+        // audit_logs-এ user_id/tenant_id NULL সহ ঢুকে যেত।
+        if (req.user?.id) {
+            await query(
+                `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'UPDATE_AI_CONFIG', 'ai_config', $2, $3)`,
+                [req.user.id, JSON.stringify({ ...updates, api_key: api_key ? '***' : undefined }), req.tenantId || null]
+            );
+        } else {
+            logger.info('🔧 Global AI Config Super Admin থেকে আপডেট হলো:', JSON.stringify({ ...updates, api_key: api_key ? '***' : undefined }));
+        }
 
         return res.status(200).json({ success: true, message: 'AI Config আপডেট সফল।' });
     } catch (error) {
@@ -233,11 +241,11 @@ const updateAIConfig = async (req, res) => {
 
 const testAIConnection = async (req, res) => {
     try {
-        const reply = await callAI('বলো: "সংযোগ সফল!"', 'daily', null, []);
+        const result = await callAI('বলো: "সংযোগ সফল!"', 'daily', null, []);
         return res.status(200).json({
             success: true,
             message: 'AI সংযোগ সফল!',
-            data: { reply: reply.trim() }
+            data: { reply: result.text.trim() }
         });
     } catch (error) {
         logger.error('❌ AI Test Error:', error.response?.data || error.message);
@@ -275,30 +283,15 @@ const aiChat = async (req, res) => {
             return res.status(400).json({ success: false, message: 'বার্তা দিন।' });
         }
 
-        // AI Config
-        const configRes = await query(`SELECT config_key, config_value FROM ai_config`);
-        const dbConfig  = {};
-        configRes.rows.forEach(r => { dbConfig[r.config_key] = r.config_value; });
-
-        if (!dbConfig.api_key) {
-            return res.status(400).json({ success: false, message: 'AI API Key সেট করা নেই। Settings থেকে যোগ করুন।' });
-        }
-
-        let apiKey;
-        try { apiKey = decrypt(dbConfig.api_key); } catch { apiKey = dbConfig.api_key; }
-
-        const provider     = dbConfig.provider_override || detectProvider(apiKey);
-        const providerInfo = PROVIDERS[provider];
-
-        // Business context
+        // Business context (tenant-scoped)
         const today = new Date().toISOString().split('T')[0];
         const [salesCtx, attendCtx, creditCtx] = await Promise.all([
-            query(`SELECT COALESCE(SUM(total_amount),0) AS today_sales, COUNT(id) AS invoices FROM sales_transactions WHERE date = $1`, [today]),
-            query(`SELECT COUNT(CASE WHEN status IN ('present','late') THEN 1 END) AS present, COUNT(CASE WHEN status = 'absent' THEN 1 END) AS absent FROM attendance WHERE date = $1`, [today]),
-            query(`SELECT COALESCE(SUM(current_credit),0) AS total_due FROM customers WHERE is_active = true`)
+            query(`SELECT COALESCE(SUM(total_amount),0) AS today_sales, COUNT(id) AS invoices FROM sales_transactions WHERE date = $1 AND tenant_id = $2`, [today, req.tenantId]),
+            query(`SELECT COUNT(CASE WHEN status IN ('present','late') THEN 1 END) AS present, COUNT(CASE WHEN status = 'absent' THEN 1 END) AS absent FROM attendance WHERE date = $1 AND tenant_id = $2`, [today, req.tenantId]),
+            query(`SELECT COALESCE(SUM(current_credit),0) AS total_due FROM customers WHERE is_active = true AND tenant_id = $1`, [req.tenantId])
         ]);
 
-        const systemPrompt = `তুমি ZovoriX কোম্পানির AI ম্যানেজার। বাংলায় উত্তর দাও।
+        const systemPrompt = `তুমি এই কোম্পানির AI ম্যানেজার। বাংলায় উত্তর দাও।
 
 আজকের তথ্য (${today}):
 - বিক্রয়: ৳${parseInt(salesCtx.rows[0].today_sales).toLocaleString()} (${salesCtx.rows[0].invoices}টি invoice)
@@ -308,98 +301,29 @@ const aiChat = async (req, res) => {
 সংক্ষেপে ও বাস্তবসম্মত পরামর্শ দাও।`;
 
         const chatHistory = history.slice(-6).map(h => ({ role: h.role, content: h.content }));
-        const primaryModel = dbConfig.daily_model || (provider === 'openrouter' ? 'meta-llama/llama-3.3-70b-instruct:free' : 'gpt-4o-mini');
-        const maxTokens   = 800;
 
-        // OpenRouter free model fallback list — rate limit হলে পরেরটা try করবে
-        const FREE_FALLBACKS = [
-            'meta-llama/llama-3.3-70b-instruct:free',
-            'google/gemma-3-27b-it:free',
-            'mistralai/mistral-7b-instruct:free',
-            'openrouter/auto',
-        ];
-
-        const callOpenRouter = async (model, messages) => {
-            return axios.post(providerInfo.baseUrl,
-                { model, max_tokens: maxTokens, messages },
-                {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        [providerInfo.authHeader]: providerInfo.authValue(apiKey),
-                        ...providerInfo.extraHeaders
-                    },
-                    timeout: 30000
-                }
-            );
-        };
-
-        let reply = '';
-
-        // Provider অনুযায়ী কল
-        if (providerInfo.format === 'gemini') {
-            const url = `${providerInfo.baseUrl}/${primaryModel}:generateContent?key=${apiKey}`;
-            const contents = [...chatHistory, { role: 'user', content: message }].map(m => ({
-                role: m.role === 'assistant' ? 'model' : 'user',
-                parts: [{ text: m.content }]
-            }));
-            const gemRes = await axios.post(url, {
-                contents,
-                systemInstruction: { parts: [{ text: systemPrompt }] },
-                generationConfig: { maxOutputTokens: maxTokens }
-            }, { headers: { 'Content-Type': 'application/json' }, timeout: 30000 });
-            reply = gemRes.data?.candidates?.[0]?.content?.parts?.[0]?.text || 'উত্তর পাওয়া যায়নি।';
-
-        } else if (providerInfo.format === 'anthropic') {
-            const messages = [...chatHistory, { role: 'user', content: message }];
-            const antRes = await axios.post(providerInfo.baseUrl,
-                { model: primaryModel, max_tokens: maxTokens, system: systemPrompt, messages },
-                { headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' }, timeout: 30000 }
-            );
-            reply = antRes.data.content[0]?.text || 'উত্তর পাওয়া যায়নি।';
-
-        } else {
-            // OpenAI-compatible (OpenRouter + OpenAI) — with fallback retry
-            const oaiMessages = [
-                { role: 'system', content: systemPrompt },
-                ...chatHistory,
-                { role: 'user', content: message }
-            ];
-
-            // Build model list: primary first, then fallbacks (deduped)
-            const modelsToTry = [primaryModel, ...FREE_FALLBACKS.filter(m => m !== primaryModel)];
-            let lastError = null;
-
-            for (const model of modelsToTry) {
-                try {
-                    const oaiRes = await callOpenRouter(model, oaiMessages);
-                    reply = oaiRes.data?.choices?.[0]?.message?.content || 'উত্তর পাওয়া যায়নি।';
-                    break; // সফল হলে loop থেকে বের হও
-                } catch (err) {
-                    const errStatus = err.response?.status;
-                    // শুধু 429 বা 404 হলে fallback করো, অন্যথায় throw করো
-                    if (errStatus === 429 || errStatus === 404) {
-                        logger.warn(`⚠️ Model ${model} failed (${errStatus}), trying next...`);
-                        lastError = err;
-                        continue;
-                    }
-                    throw err;
-                }
-            }
-
-            if (!reply && lastError) throw lastError;
-        }
+        // ── কেন্দ্রীয় callAI — BYOK resolve + token usage log + wallet চার্জ সব এখানেই হয় ──
+        const result = await callAI(message, 'daily', systemPrompt, chatHistory, {
+            tenantId: req.tenantId, userId: req.user.id, source: 'admin_chat',
+        });
 
         return res.status(200).json({
             success: true,
             data: {
-                reply,
-                model: primaryModel,
-                provider:      providerInfo.name,
-                provider_key:  provider
+                reply:      result.text,
+                model:      result.model,
+                provider:   PROVIDERS[result.provider]?.name || result.provider,
+                provider_key: result.provider,
+                key_source: result.keySource,     // 'own' | 'platform'
+                charge_paisa: result.chargePaisa, // 0 হলে নিজের key ব্যবহার হয়েছে
             }
         });
 
     } catch (error) {
+        if (error instanceof AIAccessBlockedError) {
+            logger.warn('⚠️ AI Chat Blocked:', error.message);
+            return res.status(403).json({ success: false, message: error.message, error_code: error.code });
+        }
         logger.error('❌ AI Chat Error:', error.response?.data || error.message);
         const status = error.response?.status;
         const msg = status === 401 ? 'API Key সঠিক নয়।'
@@ -410,4 +334,66 @@ const aiChat = async (req, res) => {
     }
 };
 
-module.exports = { getInsights, markInsightRead, getAIConfig, getModels, updateAIConfig, testAIConnection, triggerAIJob, aiChat };
+// ============================================================
+// TENANT নিজের AI API KEY (BYOK) — GET status / PUT সেট করো
+// key_source নিজে বদলাতে পারবে না (সেটা শুধু Super Admin) —
+// এটা শুধু key/provider/model সাবমিট করে, Super Admin 'own' করে
+// দিলেই সেটা আসলে ব্যবহার হবে।
+// ============================================================
+
+const getOwnAIKeyStatus = async (req, res) => {
+    try {
+        const settings = await getTenantAISettings(req.tenantId);
+        return res.status(200).json({
+            success: true,
+            data: {
+                key_source:     settings?.key_source || 'platform',
+                has_own_key:    !!settings?.api_key_encrypted,
+                provider:       settings?.provider || null,
+                model_override: settings?.model_override || null,
+                masked_key:     settings?.api_key_encrypted
+                    ? maskApiKey((() => { try { return decrypt(settings.api_key_encrypted); } catch { return settings.api_key_encrypted; } })())
+                    : null,
+            },
+        });
+    } catch (error) {
+        logger.error('❌ Get Own AI Key Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+const updateOwnAIKey = async (req, res) => {
+    try {
+        const { api_key, provider, model_override } = req.body;
+
+        if (!api_key || api_key.includes('...') || api_key.includes('****')) {
+            return res.status(400).json({ success: false, message: 'সঠিক API Key দিন।' });
+        }
+
+        const detected = provider || detectProvider(api_key);
+        const encrypted = encrypt(api_key);
+
+        await query(
+            `INSERT INTO tenant_ai_settings (tenant_id, provider, api_key_encrypted, model_override, updated_by, updated_at)
+             VALUES ($1, $2, $3, $4, $5, NOW())
+             ON CONFLICT (tenant_id) DO UPDATE
+             SET provider = $2, api_key_encrypted = $3, model_override = $4, updated_by = $5, updated_at = NOW()`,
+            [req.tenantId, detected, encrypted, model_override || null, req.user.id]
+        );
+
+        await query(
+            `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'UPDATE_OWN_AI_KEY', 'tenant_ai_settings', $2, $3)`,
+            [req.user.id, JSON.stringify({ provider: detected, api_key: '***' }), req.tenantId]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'আপনার AI Key সেভ হয়েছে। Super Admin অনুমোদন করলে এটা সক্রিয় হবে।',
+        });
+    } catch (error) {
+        logger.error('❌ Update Own AI Key Error:', error.message);
+        return res.status(500).json({ success: false, message: 'Key সেভ করতে সমস্যা হয়েছে।' });
+    }
+};
+
+module.exports = { getInsights, markInsightRead, getAIConfig, getModels, updateAIConfig, testAIConnection, triggerAIJob, aiChat, getOwnAIKeyStatus, updateOwnAIKey };

@@ -11,6 +11,7 @@ const logger = require('../config/logger');
 
 const { query }          = require('../config/db');
 const { callAI }         = require('../services/ai.service');
+const { AIAccessBlockedError } = require('../services/tenantAI.service');
 const { writeAiChatLog, getDB } = require('../config/firebase');
 const {
     CUSTOMER_TOOLS,
@@ -105,9 +106,12 @@ const customerAiChat = async (req, res) => {
         let toolData = null;
 
         try {
-            const intentResponse = await callAI(intentPrompt, 'daily', null, []);
-            toolName = parseToolCall(intentResponse);
+            const intentResult = await callAI(intentPrompt, 'daily', null, [], {
+                tenantId: req.tenantId, userId: null, source: 'customer_chat_intent',
+            });
+            toolName = parseToolCall(intentResult.text);
         } catch (err) {
+            if (err instanceof AIAccessBlockedError) throw err;
             logger.warn('⚠️ Intent detection failed:', err.message);
         }
 
@@ -146,7 +150,10 @@ const customerAiChat = async (req, res) => {
                 `Data unavailable. Tell user to contact their SR.`;
         }
 
-        const reply = await callAI(finalPrompt, 'daily', systemPrompt, chatHistory);
+        const aiResult = await callAI(finalPrompt, 'daily', systemPrompt, chatHistory, {
+            tenantId: req.tenantId, userId: null, source: 'customer_chat',
+        });
+        const reply = aiResult.text;
         await saveToLog(customerId, message.trim(), reply);
 
         // ── Token Info (aiTokenBucket middleware থেকে) ───────
@@ -169,6 +176,10 @@ const customerAiChat = async (req, res) => {
         });
 
     } catch (error) {
+        if (error instanceof AIAccessBlockedError) {
+            logger.warn('⚠️ Customer AI Chat blocked:', error.message);
+            return res.status(403).json({ success: false, message: error.message, error_code: error.code });
+        }
         logger.error('❌ Customer AI Chat Error:', error.message);
         const status = error.response?.status;
         const msg = status === 429 ? 'একটু পরে আবার চেষ্টা করুন।' : 'AI চ্যাটে সমস্যা হয়েছে।';

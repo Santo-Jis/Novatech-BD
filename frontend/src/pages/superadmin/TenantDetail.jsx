@@ -102,6 +102,7 @@ export default function TenantDetail() {
       <PlanChangeCard tenant={tenant} onUpdated={load} />
       <ResetPasswordCard tenantId={tenant.id} />
       <SettingsCard tenantId={tenant.id} />
+      <AiSettingsCard tenantId={tenant.id} />
       {tenant.id !== DEFAULT_TENANT_ID && <DeleteTenantCard tenant={tenant} />}
     </div>
   )
@@ -544,6 +545,165 @@ function SettingsCard({ tenantId }) {
           )}
 
           {msg && <p className="text-sm text-pf-text-secondary">{msg}</p>}
+        </div>
+      )}
+    </Card>
+  )
+}
+
+// ─── AI Settings (BYOK key_source + pricing override) ──────────
+// ৩০ জুলাই ২০২৬। Tenant নিজে key_source বদলাতে পারে না (নিরাপত্তার
+// জন্য) — শুধু এখান থেকে Super Admin ঠিক করেন কোন tenant নিজের AI key
+// ব্যবহার করবে ('own'), কে platform-এর shared key ব্যবহার করে wallet
+// থেকে charge দেবে ('platform'), আর কার AI ফিচার বন্ধ থাকবে ('blocked')।
+const KEY_SOURCE_OPTIONS = [
+  { value: 'platform', label: 'Platform Key', hint: 'shared key, wallet থেকে charge' },
+  { value: 'own',      label: 'নিজের Key',     hint: 'tenant-এর নিজের API key' },
+  { value: 'blocked',  label: 'বন্ধ',           hint: 'AI ফিচার সম্পূর্ণ বন্ধ' },
+]
+
+function AiSettingsCard({ tenantId }) {
+  const [data, setData] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState('')
+  const [expanded, setExpanded] = useState(false)
+
+  const [keySource, setKeySource]   = useState('platform')
+  const [pricingMode, setPricingMode] = useState('default') // 'default' | 'flat' | 'percent'
+  const [flatRate, setFlatRate]     = useState('')
+  const [markup, setMarkup]         = useState('')
+
+  const load = async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await superAdminApi.get(`/tenants/${tenantId}/ai-settings`)
+      const d = res.data.data
+      setData(d)
+      setKeySource(d.key_source || 'platform')
+      setPricingMode(d.pricing_mode || 'default')
+      setFlatRate(d.flat_rate_paisa_per_1k ?? '')
+      setMarkup(d.markup_percent ?? '')
+    } catch (err) {
+      setError(err.response?.data?.message || 'AI সেটিংস লোড করা যায়নি।')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (expanded && data === null) load()
+  }, [expanded])
+
+  const save = async () => {
+    setSaving(true)
+    setMsg('')
+    try {
+      const payload = { key_source: keySource }
+      if (pricingMode === 'default') {
+        payload.pricing_mode = null
+        payload.flat_rate_paisa_per_1k = null
+        payload.markup_percent = null
+      } else {
+        payload.pricing_mode = pricingMode
+        if (pricingMode === 'flat') payload.flat_rate_paisa_per_1k = flatRate === '' ? null : parseInt(flatRate, 10)
+        if (pricingMode === 'percent') payload.markup_percent = markup === '' ? null : parseFloat(markup)
+      }
+      await superAdminApi.patch(`/tenants/${tenantId}/ai-settings`, payload)
+      setMsg('✅ AI সেটিংস আপডেট হয়েছে।')
+      load()
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'আপডেট করা যায়নি।')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Card title="AI Settings (BYOK)">
+      {!expanded ? (
+        <button onClick={() => setExpanded(true)} className="text-sm font-medium text-pf-primary-700 hover:underline">
+          দেখতে ও পরিবর্তন করতে ক্লিক করুন →
+        </button>
+      ) : (
+        <div className="space-y-4">
+          {loading && <p className="text-sm text-pf-text-muted">লোড হচ্ছে...</p>}
+          {error && <p className="text-sm text-pf-error">{error}</p>}
+
+          {data && (
+            <>
+              {/* বর্তমান অবস্থা */}
+              <div className="flex flex-wrap items-center gap-3 text-sm bg-pf-bg-body rounded-lg p-3">
+                <span className="text-pf-text-secondary">
+                  Key জমা দেওয়া: {data.has_own_key
+                    ? <span className="font-medium text-pf-success">হ্যাঁ ({data.provider}, {data.masked_key})</span>
+                    : <span className="font-medium text-pf-text-muted">না</span>}
+                </span>
+                <span className="text-pf-text-secondary ml-auto">
+                  গত ৩০ দিন: <span className="font-pf-mono font-semibold text-pf-text-primary">{data.last_30d.calls}</span> কল,{' '}
+                  <span className="font-pf-mono font-semibold text-pf-text-primary">{data.last_30d.tokens.toLocaleString('bn-BD')}</span> token,{' '}
+                  ৳<span className="font-pf-mono font-semibold text-pf-text-primary">{(data.last_30d.charge_paisa / 100).toLocaleString('bn-BD', { minimumFractionDigits: 2 })}</span> charge
+                </span>
+              </div>
+
+              {/* key_source নির্বাচন */}
+              <div>
+                <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">এই Tenant কোন Key ব্যবহার করবে</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {KEY_SOURCE_OPTIONS.map((opt) => (
+                    <label key={opt.value}
+                      className={`flex flex-col border-2 rounded-lg p-2.5 cursor-pointer transition-all
+                        ${keySource === opt.value ? 'border-pf-primary-700 bg-pf-primary-700/5' : 'border-pf-border hover:border-pf-primary-700/40'}`}>
+                      <input type="radio" name="key_source" value={opt.value} checked={keySource === opt.value}
+                        onChange={() => setKeySource(opt.value)} className="sr-only" />
+                      <span className="text-sm font-semibold text-pf-text-primary">{opt.label}</span>
+                      <span className="text-[11px] text-pf-text-muted">{opt.hint}</span>
+                    </label>
+                  ))}
+                </div>
+                {keySource === 'own' && !data.has_own_key && (
+                  <p className="text-xs text-pf-error mt-1.5">⚠️ এই tenant এখনো নিজের কোনো key জমা দেয়নি — 'নিজের Key' সিলেক্ট করলে key না দেওয়া পর্যন্ত AI ব্লক থাকবে।</p>
+                )}
+              </div>
+
+              {/* pricing override — শুধু platform key হলে প্রাসঙ্গিক */}
+              {keySource === 'platform' && (
+                <div>
+                  <label className="block text-xs font-semibold text-pf-text-secondary mb-1.5">
+                    Pricing override (না দিলে গ্লোবাল ডিফল্ট প্রযোজ্য হবে)
+                  </label>
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {[
+                      { v: 'default', label: 'গ্লোবাল ডিফল্ট' },
+                      { v: 'flat',    label: 'Flat rate/1k' },
+                      { v: 'percent', label: 'Cost + markup%' },
+                    ].map((m) => (
+                      <label key={m.v} className="flex items-center gap-1.5 text-sm cursor-pointer">
+                        <input type="radio" name="pricing_mode" value={m.v} checked={pricingMode === m.v} onChange={() => setPricingMode(m.v)} />
+                        {m.label}
+                      </label>
+                    ))}
+                  </div>
+                  {pricingMode === 'flat' && (
+                    <input type="number" className={`${inputCls} w-full sm:w-56`} placeholder="পয়সা / ১০০০ token"
+                      value={flatRate} onChange={(e) => setFlatRate(e.target.value)} />
+                  )}
+                  {pricingMode === 'percent' && (
+                    <input type="number" className={`${inputCls} w-full sm:w-56`} placeholder="Markup %"
+                      value={markup} onChange={(e) => setMarkup(e.target.value)} />
+                  )}
+                </div>
+              )}
+
+              <button onClick={save} disabled={saving}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-pf-primary-700 text-white text-sm font-semibold hover:brightness-110 disabled:opacity-60">
+                {saving ? <FiLoader className="animate-spin" /> : null} সেভ করুন
+              </button>
+              {msg && <p className="text-sm text-pf-text-secondary">{msg}</p>}
+            </>
+          )}
         </div>
       )}
     </Card>

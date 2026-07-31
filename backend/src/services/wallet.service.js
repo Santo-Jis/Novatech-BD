@@ -141,15 +141,15 @@ const recharge = async (tenantId, amountPaisa, options = {}) => {
 // ── ক্রেডিট কাটো (SMS/Email charge) ─────────────────────────────
 // ব্যালেন্স অপ্রতুল হলে err.code = 'INSUFFICIENT_BALANCE' সহ throw করে —
 // caller (sms/email service) এটা ধরে send আটকাতে পারবে।
-// options: { type: 'sms_charge'|'email_charge', reference, description }
+// options: { type: 'sms_charge'|'email_charge'|'ai_charge', reference, description }
 const deduct = async (tenantId, amountPaisa, options = {}) => {
     const { type, reference = null, description = null } = options;
 
     if (!Number.isInteger(amountPaisa) || amountPaisa <= 0) {
         throw new Error('amountPaisa একটা positive integer হতে হবে।');
     }
-    if (!['sms_charge', 'email_charge'].includes(type)) {
-        throw new Error("deduct()-এ শুধু 'sms_charge' | 'email_charge' type দেওয়া যাবে।");
+    if (!['sms_charge', 'email_charge', 'ai_charge'].includes(type)) {
+        throw new Error("deduct()-এ শুধু 'sms_charge' | 'email_charge' | 'ai_charge' type দেওয়া যাবে।");
     }
 
     return withTransaction(async (client) => {

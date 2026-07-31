@@ -112,7 +112,16 @@ const callOpenAIFormat = async (providerConfig, apiKey, model, messages, systemP
         ...providerConfig.extraHeaders
     };
     const response = await axios.post(providerConfig.baseUrl, body, { headers, timeout: 60000 });
-    return response.data?.choices?.[0]?.message?.content || '';
+    const text  = response.data?.choices?.[0]?.message?.content || '';
+    const usage = response.data?.usage || {};
+    return {
+        text,
+        usage: {
+            promptTokens:     usage.prompt_tokens || 0,
+            completionTokens: usage.completion_tokens || 0,
+            totalTokens:      usage.total_tokens || ((usage.prompt_tokens || 0) + (usage.completion_tokens || 0)),
+        },
+    };
 };
 
 // Anthropic native format
@@ -125,7 +134,11 @@ const callAnthropicFormat = async (providerConfig, apiKey, model, messages, syst
         ...providerConfig.extraHeaders
     };
     const response = await axios.post(providerConfig.baseUrl, body, { headers, timeout: 60000 });
-    return response.data?.content?.[0]?.text || '';
+    const text  = response.data?.content?.[0]?.text || '';
+    const usage = response.data?.usage || {};
+    const promptTokens     = usage.input_tokens || 0;
+    const completionTokens = usage.output_tokens || 0;
+    return { text, usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens } };
 };
 
 // Google Gemini format
@@ -141,33 +154,138 @@ const callGeminiFormat = async (providerConfig, apiKey, model, messages, systemP
         headers: { 'Content-Type': 'application/json' },
         timeout: 60000
     });
-    return response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const text  = response.data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const usage = response.data?.usageMetadata || {};
+    const promptTokens     = usage.promptTokenCount || 0;
+    const completionTokens = usage.candidatesTokenCount || 0;
+    return {
+        text,
+        usage: { promptTokens, completionTokens, totalTokens: usage.totalTokenCount || (promptTokens + completionTokens) },
+    };
 };
 
+// ============================================================
 // Universal AI কল
-const callAI = async (prompt, taskType = 'daily', systemPrompt = null, chatHistory = []) => {
+// options: { tenantId, userId, source } — দিলে tenant-aware
+// BYOK resolve + token usage log + wallet চার্জ হবে। tenantId না
+// দিলে (background insight job) legacy platform-key আচরণ, কোনো
+// চার্জ/ব্লক হয় না (backward compatible)।
+// রিটার্ন করে: { text, usage, provider, model, keySource, chargePaisa }
+// ============================================================
+const callAI = async (prompt, taskType = 'daily', systemPrompt = null, chatHistory = [], options = {}) => {
+    const { tenantId = null, userId = null, source = 'unknown' } = options;
+    const { resolveAIAccess } = require('./tenantAI.service');
+
+    // ── AI Access resolve করো (own key / platform key / block) ──
+    const access = await resolveAIAccess(tenantId);
+
+    // daily_model/periodic_model config এখনো global ai_config থেকেই আসে
+    // (tenant নিজের key দিলেও, model select করার লজিক একই থাকে)
     const config = await getAIConfig();
-
-    if (!config.api_key_decrypted) {
-        throw new Error('AI API Key সেট করা নেই। Settings থেকে যোগ করুন।');
-    }
-
-    const provider       = config.provider || detectProvider(config.api_key_decrypted);
+    const provider       = access.provider || config.provider || detectProvider(access.apiKey);
     const providerConfig = PROVIDERS[provider];
     if (!providerConfig) throw new Error(`অজানা Provider: ${provider}`);
 
-    const model     = selectModel(config, taskType);
+    const model     = access.modelOverride || selectModel(config, taskType);
     const maxTokens = parseInt(config.max_tokens || '1000');
     const messages  = [...chatHistory, { role: 'user', content: prompt }];
 
-    logger.info(`🤖 AI → Provider: ${providerConfig.name} | Model: ${model}`);
+    logger.info(`🤖 AI → Provider: ${providerConfig.name} | Model: ${model} | KeySource: ${access.keySource || 'legacy'}`);
 
+    let result;
     switch (providerConfig.format) {
-        case 'openai':    return await callOpenAIFormat(providerConfig, config.api_key_decrypted, model, messages, systemPrompt, maxTokens);
-        case 'anthropic': return await callAnthropicFormat(providerConfig, config.api_key_decrypted, model, messages, systemPrompt, maxTokens);
-        case 'gemini':    return await callGeminiFormat(providerConfig, config.api_key_decrypted, model, messages, systemPrompt, maxTokens);
+        case 'openai': {
+            // OpenRouter হলে rate-limit/404-এ ফ্রি ফলব্যাক মডেল দিয়ে retry করো
+            if (provider === 'openrouter') {
+                const FREE_FALLBACKS = [
+                    'meta-llama/llama-3.3-70b-instruct:free',
+                    'google/gemma-3-27b-it:free',
+                    'mistralai/mistral-7b-instruct:free',
+                    'openrouter/auto',
+                ];
+                const modelsToTry = [model, ...FREE_FALLBACKS.filter(m => m !== model)];
+                let lastError = null;
+                for (const tryModel of modelsToTry) {
+                    try {
+                        result = await callOpenAIFormat(providerConfig, access.apiKey, tryModel, messages, systemPrompt, maxTokens);
+                        if (tryModel !== model) logger.warn(`⚠️ Model ${model} ব্যর্থ, ${tryModel} দিয়ে fallback হলো`);
+                        break;
+                    } catch (err) {
+                        const errStatus = err.response?.status;
+                        if (errStatus === 429 || errStatus === 404) { lastError = err; continue; }
+                        throw err;
+                    }
+                }
+                if (!result && lastError) throw lastError;
+            } else {
+                result = await callOpenAIFormat(providerConfig, access.apiKey, model, messages, systemPrompt, maxTokens);
+            }
+            break;
+        }
+        case 'anthropic': result = await callAnthropicFormat(providerConfig, access.apiKey, model, messages, systemPrompt, maxTokens); break;
+        case 'gemini':    result = await callGeminiFormat(providerConfig, access.apiKey, model, messages, systemPrompt, maxTokens); break;
         default: throw new Error(`অসমর্থিত format: ${providerConfig.format}`);
     }
+
+    let chargePaisa = 0;
+
+    // ── Usage log + wallet চার্জ — শুধু tenantId দেওয়া থাকলে ──
+    if (tenantId) {
+        try {
+            const { calculateChargePaisa } = require('./aiPricing.service');
+            const walletService = require('./wallet.service');
+
+            if (access.keySource === 'platform') {
+                const priced = await calculateChargePaisa({
+                    provider, model,
+                    promptTokens:     result.usage.promptTokens,
+                    completionTokens: result.usage.completionTokens,
+                    totalTokens:      result.usage.totalTokens,
+                    tenantSettings:   access.tenantSettings,
+                });
+                chargePaisa = priced.chargePaisa;
+
+                if (chargePaisa > 0) {
+                    try {
+                        await walletService.deduct(tenantId, chargePaisa, {
+                            type: 'ai_charge',
+                            reference: `ai:${source}`,
+                            description: `AI ব্যবহার — ${result.usage.totalTokens} token (${provider}/${model})`,
+                        });
+                    } catch (deductErr) {
+                        // Reply ইতিমধ্যে provider থেকে এসে গেছে (cost হয়ে গেছে) —
+                        // deduct fail (race condition-এ ব্যালেন্স শেষ) হলেও reply আটকানো হবে না,
+                        // শুধু log-এ billed=false থাকবে, পরের রিকোয়েস্ট balance check-এ block হবে।
+                        logger.warn(`⚠️ AI wallet deduct fail (tenant ${tenantId}):`, deductErr.message);
+                        chargePaisa = 0;
+                    }
+                }
+            }
+
+            await query(
+                `INSERT INTO ai_usage_logs
+                    (tenant_id, user_id, source, key_source, provider, model,
+                     prompt_tokens, completion_tokens, total_tokens, pricing_mode, charge_paisa, billed)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+                [
+                    tenantId, userId, source, access.keySource, provider, model,
+                    result.usage.promptTokens, result.usage.completionTokens, result.usage.totalTokens,
+                    access.keySource === 'platform' ? (access.tenantSettings?.pricing_mode || null) : null,
+                    chargePaisa, chargePaisa > 0,
+                ]
+            );
+
+            // tenants.ai_tokens_used — রিপোর্টিং/ড্যাশবোর্ডের জন্য কাউন্টার আপডেট
+            await query(
+                `UPDATE tenants SET ai_tokens_used = COALESCE(ai_tokens_used, 0) + $1 WHERE id = $2`,
+                [result.usage.totalTokens, tenantId]
+            );
+        } catch (logErr) {
+            logger.error('❌ AI usage log/charge Error:', logErr.message);
+        }
+    }
+
+    return { text: result.text, usage: result.usage, provider, model, keySource: access.keySource, chargePaisa };
 };
 
 const callClaudeAPI = callAI; // backward compat
@@ -219,7 +337,7 @@ const generateManagerInsight = async (managerId, managerName) => {
         const data = await collectDailyData(managerId);
         const prompt = `তুমি ZovoriX কোম্পানির একজন AI Business Analyst।\nনিচের ডাটা বিশ্লেষণ করে ${managerName} ম্যানেজারের জন্য একটি সংক্ষিপ্ত বাংলা রিপোর্ট তৈরি করো।\n\nতারিখ: ${data.date}\nহাজিরা:\n${JSON.stringify(data.attendance, null, 2)}\nআজকের বিক্রয়:\n${JSON.stringify(data.sales, null, 2)}\nগত ৭ দিনের ট্রেন্ড:\n${JSON.stringify(data.trend, null, 2)}\nউচ্চ ক্রেডিট ঝুঁকি:\n${JSON.stringify(data.high_credit, null, 2)}\n\nনিচের JSON ফরম্যাটে উত্তর দাও (অন্য কিছু লিখবে না):\n{\n  "summary": "সংক্ষিপ্ত সারসংক্ষেপ (২-৩ বাক্য)",\n  "alerts": [{"type": "warning/critical/info", "title": "শিরোনাম", "message": "বিস্তারিত"}],\n  "recommendations": ["সুপারিশ ১", "সুপারিশ ২"]\n}`;
         const response = await callAI(prompt, 'daily');
-        return JSON.parse(response.replace(/```json|```/g, '').trim());
+        return JSON.parse(response.text.replace(/```json|```/g, '').trim());
     } catch (error) {
         logger.error(`❌ Manager Insight Error (${managerId}):`, error.message);
         return null;
@@ -232,7 +350,7 @@ const generateAdminInsight = async () => {
         const kpi  = await query(`SELECT COUNT(DISTINCT st.worker_id) AS active_sellers, SUM(st.total_amount) AS total_sales, SUM(st.credit_used) AS total_credit, COUNT(a.id) FILTER (WHERE a.status = 'late') AS late_count FROM sales_transactions st LEFT JOIN attendance a ON a.user_id = st.worker_id AND a.date = CURRENT_DATE WHERE st.date = CURRENT_DATE`);
         const prompt = `তুমি ZovoriX কোম্পানির AI Business Analyst।\nনিচের কোম্পানির সামগ্রিক ডাটা বিশ্লেষণ করে Admin এর জন্য রিপোর্ট তৈরি করো।\n\nতারিখ: ${data.date}\nKPI:\n${JSON.stringify(kpi.rows[0], null, 2)}\nবিক্রয় (SR ভিত্তিক):\n${JSON.stringify(data.sales, null, 2)}\nক্রেডিট ঝুঁকি:\n${JSON.stringify(data.high_credit, null, 2)}\n\nনিচের JSON ফরম্যাটে উত্তর দাও:\n{\n  "summary": "কোম্পানির সামগ্রিক অবস্থা (৩-৪ বাক্য)",\n  "kpi_highlights": ["মূল পয়েন্ট ১", "মূল পয়েন্ট ২"],\n  "alerts": [{"type": "warning/critical/info", "title": "শিরোনাম", "message": "বিস্তারিত"}],\n  "recommendations": ["সুপারিশ ১", "সুপারিশ ২"]\n}`;
         const response = await callAI(prompt, 'daily');
-        return JSON.parse(response.replace(/```json|```/g, '').trim());
+        return JSON.parse(response.text.replace(/```json|```/g, '').trim());
     } catch (error) {
         logger.error('❌ Admin Insight Error:', error.message);
         return null;

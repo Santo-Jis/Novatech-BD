@@ -13,6 +13,7 @@
 const { query } = require('../config/db');
 const bcrypt    = require('bcryptjs');
 const { clearTenantCache } = require('../middlewares/tenantResolver');
+const { maskApiKey, decrypt } = require('../config/encryption');
 
 // ✅ ৪-টায়ার প্ল্যান — frontend/src/constants/planPricing.js-এর PLANS-এর
 // সাথে মিলিয়ে (স্ট্যান্ডার্ড/প্রো/ম্যাক্স/ERP)। createTenant ও
@@ -760,6 +761,121 @@ const updateTenantSettings = async (req, res) => {
 };
 
 // ============================================================
+// ✅ Tenant AI Settings — BYOK (Bring Your Own Key) + Token Billing
+// ৩০ জুলাই ২০২৬। SaaS-এ platform-এর নিজের AI key দিয়ে সব tenant না
+// চালিয়ে, প্রতি tenant হয় নিজের key ব্যবহার করবে, নয়তো platform-এর
+// shared key ব্যবহার করবে (wallet থেকে token-ভিত্তিক চার্জ কেটে)।
+// key_source *শুধু* Super Admin বদলাতে পারবে — tenant নিজের key জমা
+// দিতে পারে (ai.controller.js: updateOwnAIKey) কিন্তু সেটা আসলে
+// ব্যবহার হবে কিনা তা এখান থেকেই approve করতে হয়।
+// ============================================================
+const getTenantAISettings = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const tenantCheck = await query(`SELECT id FROM tenants WHERE id = $1`, [tenantId]);
+    if (tenantCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Tenant পাওয়া যায়নি' });
+    }
+
+    const result = await query(`SELECT * FROM tenant_ai_settings WHERE tenant_id = $1`, [tenantId]);
+    const row = result.rows[0] || null;
+
+    let maskedKey = null;
+    if (row?.api_key_encrypted) {
+      try { maskedKey = maskApiKey(decrypt(row.api_key_encrypted)); }
+      catch { maskedKey = maskApiKey(row.api_key_encrypted); }
+    }
+
+    const usage = await query(
+      `SELECT COUNT(*) AS calls, COALESCE(SUM(total_tokens),0) AS tokens, COALESCE(SUM(charge_paisa),0) AS charge_paisa
+       FROM ai_usage_logs WHERE tenant_id = $1 AND created_at > NOW() - INTERVAL '30 days'`,
+      [tenantId]
+    );
+
+    return res.json({
+      success: true,
+      data: {
+        key_source:            row?.key_source || 'platform',
+        provider:              row?.provider || null,
+        has_own_key:           !!row?.api_key_encrypted,
+        masked_key:            maskedKey,
+        model_override:        row?.model_override || null,
+        pricing_mode:          row?.pricing_mode || null,   // null = global default ব্যবহার হচ্ছে
+        flat_rate_paisa_per_1k: row?.flat_rate_paisa_per_1k ?? null,
+        markup_percent:        row?.markup_percent ?? null,
+        updated_at:            row?.updated_at || null,
+        last_30d: {
+          calls:       parseInt(usage.rows[0].calls, 10),
+          tokens:       parseInt(usage.rows[0].tokens, 10),
+          charge_paisa: parseInt(usage.rows[0].charge_paisa, 10),
+        },
+      },
+    });
+  } catch (err) {
+    console.error('[superAdmin.getTenantAISettings]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Body (সবগুলোই optional — যা পাঠানো হবে শুধু সেটাই বদলাবে):
+// { key_source: 'own'|'platform'|'blocked', pricing_mode: 'flat'|'percent'|null,
+//   flat_rate_paisa_per_1k: number|null, markup_percent: number|null }
+// pricing_mode/rate-এ null পাঠালে সেই tenant-এর জন্য override মুছে
+// global platform_settings ডিফল্টে ফিরে যাবে।
+const updateTenantAISettings = async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const body = req.body || {};
+
+    const tenantCheck = await query(`SELECT id FROM tenants WHERE id = $1`, [tenantId]);
+    if (tenantCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Tenant পাওয়া যায়নি' });
+    }
+
+    if ('key_source' in body && !['own', 'platform', 'blocked'].includes(body.key_source)) {
+      return res.status(400).json({ success: false, message: "key_source শুধু 'own' | 'platform' | 'blocked' হতে পারে।" });
+    }
+    if ('pricing_mode' in body && body.pricing_mode !== null && !['flat', 'percent'].includes(body.pricing_mode)) {
+      return res.status(400).json({ success: false, message: "pricing_mode শুধু 'flat' | 'percent' অথবা null হতে পারে।" });
+    }
+
+    // row নিশ্চিত করো (না থাকলে ডিফল্ট দিয়ে বানাও), তারপর যা পাঠানো হয়েছে শুধু তাই আপডেট করো
+    await query(
+      `INSERT INTO tenant_ai_settings (tenant_id) VALUES ($1) ON CONFLICT (tenant_id) DO NOTHING`,
+      [tenantId]
+    );
+
+    const castMap = {
+      key_source:             (v) => v,
+      pricing_mode:           (v) => v,
+      flat_rate_paisa_per_1k: (v) => (v === null || v === undefined ? null : parseInt(v, 10)),
+      markup_percent:         (v) => (v === null || v === undefined ? null : parseFloat(v)),
+    };
+
+    const sets   = [];
+    const params = [tenantId];
+    for (const [field, cast] of Object.entries(castMap)) {
+      if (field in body) {
+        params.push(cast(body[field]));
+        sets.push(`${field} = $${params.length}`);
+      }
+    }
+
+    if (sets.length > 0) {
+      sets.push(`updated_at = NOW()`);
+      await query(`UPDATE tenant_ai_settings SET ${sets.join(', ')} WHERE tenant_id = $1`, params);
+    }
+
+    await logAudit(req, 'tenant.ai_settings_update', tenantId, body);
+
+    return res.json({ success: true, message: 'AI সেটিংস আপডেট হয়েছে।' });
+  } catch (err) {
+    console.error('[superAdmin.updateTenantAISettings]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ============================================================
 // ✅ Phase 1 (26 July 2026): PLATFORM SETTINGS — SMS/Email গেটওয়ে
 // এখন প্রতি-tenant নয়, পুরো প্ল্যাটফর্মের জন্য একটাই শেয়ার্ড কনফিগ
 // (platform_settings টেবিল, tenant_id নেই)। শুধু Super Admin (owner)
@@ -1020,6 +1136,8 @@ module.exports = {
   resetStaffPassword,
   getTenantSettings,
   updateTenantSettings,
+  getTenantAISettings,
+  updateTenantAISettings,
   getPlatformSettings,
   updatePlatformSettings,
   getSmsStatus,

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import {
   FiSave, FiRefreshCw, FiCheckCircle, FiLoader,
-  FiAlertCircle, FiMessageSquare, FiMail,
+  FiAlertCircle, FiMessageSquare, FiMail, FiCpu, FiZap, FiEye, FiEyeOff,
 } from 'react-icons/fi'
 import superAdminApi from './api/superAdminApi'
 import { LoadingState, ErrorState } from './components/PanelStates'
@@ -22,6 +22,13 @@ const SMS_PROVIDERS = [
   { value: 'custom',       label: 'Custom API',    hint: 'নিজস্ব URL' },
 ]
 
+const AI_PROVIDERS = [
+  { value: 'openrouter', label: '🔀 OpenRouter', hint: 'sk-or-...' },
+  { value: 'anthropic',  label: '🤖 Anthropic',  hint: 'sk-ant-...' },
+  { value: 'openai',     label: '🧠 OpenAI',     hint: 'sk-...' },
+  { value: 'gemini',     label: '✨ Gemini',      hint: 'AIza...' },
+]
+
 export default function PlatformSettings() {
   const [settings, setSettings] = useState({})
   const [loading,  setLoading]  = useState(true)
@@ -37,6 +44,15 @@ export default function PlatformSettings() {
   const [testPhone,  setTestPhone]  = useState('')
   const [testType,   setTestType]   = useState('test')
   const [testStatus, setTestStatus] = useState(null)
+
+  // ── Global/Platform AI Key (ai_config) — শুধু Super Admin থেকে ──
+  const [aiConfig,      setAiConfig]      = useState({})
+  const [aiLoading,     setAiLoading]     = useState(true)
+  const [aiSaving,      setAiSaving]      = useState(false)
+  const [aiTesting,     setAiTesting]     = useState(false)
+  const [aiShowKey,     setAiShowKey]     = useState(false)
+  const [aiKeyInput,    setAiKeyInput]    = useState('')
+  const [aiProvider,    setAiProvider]    = useState('openrouter')
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -66,6 +82,43 @@ export default function PlatformSettings() {
   }, [])
 
   useEffect(() => { loadSmsStatus() }, [loadSmsStatus])
+
+  const loadAIConfig = useCallback(async () => {
+    setAiLoading(true)
+    try {
+      const res = await superAdminApi.get('/ai/config')
+      const cfg = res.data.data
+      setAiConfig(cfg)
+      if (cfg.detected_provider) setAiProvider(cfg.detected_provider)
+    } catch { /* silent — নতুন সেটআপে খালি থাকতে পারে */ }
+    finally { setAiLoading(false) }
+  }, [])
+
+  useEffect(() => { loadAIConfig() }, [loadAIConfig])
+
+  const saveAIConfig = async () => {
+    setAiSaving(true)
+    try {
+      const payload = { ...aiConfig, provider_override: aiProvider }
+      if (aiKeyInput.trim()) payload.api_key = aiKeyInput.trim()
+      await superAdminApi.put('/ai/config', payload)
+      toast.success('Platform AI Key সেভ হয়েছে।')
+      setAiKeyInput('')
+      await loadAIConfig()
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।')
+    } finally { setAiSaving(false) }
+  }
+
+  const testAIConnection = async () => {
+    setAiTesting(true)
+    try {
+      const res = await superAdminApi.post('/ai/test')
+      toast.success(`✅ ${res.data.message}`)
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'সংযোগ ব্যর্থ।')
+    } finally { setAiTesting(false) }
+  }
 
   const set = (key, val) => setSettings((prev) => ({ ...prev, [key]: val }))
 
@@ -300,6 +353,129 @@ export default function PlatformSettings() {
           <div className="sm:col-span-2">
             <label className={labelCls}>From</label>
             <input className={inputCls} placeholder="ZovoriX <noreply@novatechbd.com>" value={settings.email_from || ''} onChange={(e) => set('email_from', e.target.value)} />
+          </div>
+        </div>
+      </div>
+
+      {/* Platform AI Key — গ্লোবাল/শেয়ার্ড, শুধু Super Admin এখান থেকে বদলাতে পারবে */}
+      <div className={cardCls}>
+        <h2 className="font-pf-head font-semibold text-pf-text-primary flex items-center gap-2">
+          <FiCpu /> Platform AI Key (Shared)
+        </h2>
+        <p className="text-xs text-pf-text-secondary -mt-2">
+          এই key ব্যবহার হয় সেই সব tenant-এর জন্য যাদের key_source = 'platform' (তাদের ওয়ালেট থেকে
+          টোকেন-ভিত্তিক চার্জ কাটা হয়)। যারা নিজের key দিয়েছে (BYOK, key_source='own') তাদের জন্য এটা প্রযোজ্য না।
+        </p>
+
+        {aiLoading ? (
+          <div className="h-20 bg-pf-bg-body rounded-lg animate-pulse" />
+        ) : (
+          <>
+            <div>
+              <label className={labelCls}>প্রোভাইডার</label>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {AI_PROVIDERS.map((p) => (
+                  <label key={p.value}
+                    className={`flex flex-col items-center justify-center border-2 rounded-lg p-2.5 cursor-pointer text-center transition-all
+                      ${aiProvider === p.value ? 'border-pf-primary-700 bg-pf-primary-700/5' : 'border-pf-border hover:border-pf-primary-700/40'}`}>
+                    <input type="radio" name="ai_provider" value={p.value} checked={aiProvider === p.value}
+                      onChange={() => setAiProvider(p.value)} className="sr-only" />
+                    <span className="text-sm font-semibold text-pf-text-primary">{p.label}</span>
+                    <span className="text-[11px] text-pf-text-muted font-mono">{p.hint}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>
+                  API Key
+                  {aiConfig.api_key && (
+                    <span className="ml-2 inline-flex items-center gap-1 text-xs text-pf-success font-normal">
+                      <FiCheckCircle className="text-xs" /> সেট করা আছে
+                    </span>
+                  )}
+                </label>
+                <div className="relative">
+                  <input
+                    type={aiShowKey ? 'text' : 'password'}
+                    placeholder={aiConfig.api_key ? '••••••••••••  (অপরিবর্তিত)' : 'API Key দিন'}
+                    value={aiKeyInput}
+                    onChange={(e) => setAiKeyInput(e.target.value)}
+                    className={`${inputCls} font-mono pr-10`}
+                  />
+                  <button type="button" onClick={() => setAiShowKey((p) => !p)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-pf-text-muted">
+                    {aiShowKey ? <FiEyeOff size={14} /> : <FiEye size={14} />}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Daily Model</label>
+                <input className={`${inputCls} font-mono`} placeholder="meta-llama/llama-3.3-70b-instruct:free"
+                  value={aiConfig.daily_model || ''} onChange={(e) => setAiConfig((p) => ({ ...p, daily_model: e.target.value }))} />
+              </div>
+              <div>
+                <label className={labelCls}>Periodic Model</label>
+                <input className={`${inputCls} font-mono`} placeholder="deepseek/deepseek-r1:free"
+                  value={aiConfig.periodic_model || ''} onChange={(e) => setAiConfig((p) => ({ ...p, periodic_model: e.target.value }))} />
+              </div>
+              <div>
+                <label className={labelCls}>Max Tokens</label>
+                <input type="number" className={inputCls} placeholder="1000"
+                  value={aiConfig.max_tokens || ''} onChange={(e) => setAiConfig((p) => ({ ...p, max_tokens: e.target.value }))} />
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button onClick={saveAIConfig} disabled={aiSaving}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-pf-primary-700 text-white text-sm font-semibold hover:brightness-110 disabled:opacity-60">
+                {aiSaving ? <FiLoader className="animate-spin" /> : <FiSave />} AI Key সেভ করুন
+              </button>
+              <button onClick={testAIConnection} disabled={aiTesting}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-pf-border text-sm font-medium hover:bg-pf-bg-body disabled:opacity-60">
+                {aiTesting ? <FiLoader className="animate-spin" /> : <FiZap />} সংযোগ পরীক্ষা
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* AI প্রাইসিং — global default (প্রতি-tenant override /superadmin থেকে Tenant Detail-এ) */}
+      <div className={cardCls}>
+        <h2 className="font-pf-head font-semibold text-pf-text-primary">AI প্রাইসিং (Global Default)</h2>
+        <p className="text-xs text-pf-text-secondary -mt-2">
+          Platform key ব্যবহারকারী tenant-দের কাছ থেকে এই হারে চার্জ কাটা হবে (প্রতি-tenant override না থাকলে)।
+        </p>
+        <div>
+          <label className={labelCls}>Pricing Mode</label>
+          <div className="flex gap-3">
+            {[{ v: 'flat', label: 'Flat rate / 1000 token' }, { v: 'percent', label: 'Provider cost + % markup' }].map((m) => (
+              <label key={m.v} className="flex items-center gap-2 cursor-pointer text-sm">
+                <input type="radio" name="ai_pricing_mode" value={m.v}
+                  checked={(settings.ai_pricing_mode || 'flat') === m.v}
+                  onChange={() => set('ai_pricing_mode', m.v)} />
+                {m.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div>
+            <label className={labelCls}>প্রতি ১০০০ token (পয়সা)</label>
+            <input type="number" className={inputCls} value={settings.ai_flat_rate_paisa_per_1k || ''}
+              onChange={(e) => set('ai_flat_rate_paisa_per_1k', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>Markup %</label>
+            <input type="number" className={inputCls} value={settings.ai_markup_percent || ''}
+              onChange={(e) => set('ai_markup_percent', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>USD → BDT রেট</label>
+            <input type="number" className={inputCls} value={settings.ai_usd_to_bdt_rate || ''}
+              onChange={(e) => set('ai_usd_to_bdt_rate', e.target.value)} />
           </div>
         </div>
       </div>
