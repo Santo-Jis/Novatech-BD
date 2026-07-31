@@ -1,0 +1,112 @@
+// ============================================================
+// components/ecommerce/ProductCard.jsx
+// ============================================================
+// শপ গ্রিডে একটা প্রোডাক্ট কার্ড।
+//
+//  - ছবি/নামে ট্যাপ করলে → ডিটেইল শিট খোলে (onOpen)
+//  - কার্টে না থাকলে → "+ কার্টে যোগ" বাটন
+//  - কার্টে থাকলে → বাটনের জায়গায় ইনলাইন -/qty/+ স্টেপার (কার্ড না
+//    খুলেই qty বাড়ানো/কমানো যায়), কার্ডের বর্ডার হাইলাইট হয়ে যায়,
+//    আর ছবির কোণায় qty ব্যাজ বসে — কার্টে কী কী আছে এক নজরে বোঝা যায়।
+//  - স্টক কম (≤৫) থাকলে সতর্কতা ব্যাজ; নইলে কোনো ব্যাজ দেখাই না
+//    (ডিজাইন সিস্টেমের নিয়ম: green/success শুধু "ভেরিফায়েড/পরিশোধিত"
+//    টাইপ অবস্থার জন্য, স্টক-ইন-হ্যান্ড সাজানোর জন্য সবুজ ব্যাজ বসানো
+//    ঠিক না — তাই স্বাভাবিক স্টকে কার্ড নিরিবিলি থাকে)।
+// ============================================================
+import { useState } from 'react'
+import clsx from 'clsx'
+import { FiPlus, FiMinus, FiPackage } from 'react-icons/fi'
+import CpBadge from '../ui/CpBadge'
+import { LOW_STOCK_THRESHOLD } from './constants'
+
+export default function ProductCard({ product, qty = 0, onOpen, onAdd, onInc, onDec }) {
+  const [imgError, setImgError] = useState(false)
+
+  const stock    = Number(product.available_stock) || 0
+  const inCart   = qty > 0
+  const lowStock = stock > 0 && stock <= LOW_STOCK_THRESHOLD
+  const price    = Number(product.final_price ?? product.base_price) || 0
+
+  return (
+    <div
+      onClick={() => onOpen(product)}
+      className={clsx(
+        'bg-white rounded-2xl border overflow-hidden cursor-pointer transition-colors',
+        inCart ? 'border-cp-trust-500 border-2' : 'border-cp-border'
+      )}
+    >
+      {/* ছবি */}
+      <div className="aspect-square bg-cp-bg-alt relative">
+        {product.image_url && !imgError ? (
+          <img
+            src={product.image_url}
+            alt={product.name}
+            onError={() => setImgError(true)}
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center">
+            <FiPackage className="w-7 h-7 text-cp-text-muted" />
+          </div>
+        )}
+        {inCart && (
+          <span className="absolute top-1.5 right-1.5 min-w-[20px] h-5 px-1 bg-cp-trust-900 text-white text-[10px] font-cp-head font-bold rounded-full flex items-center justify-center shadow-sm">
+            {qty}
+          </span>
+        )}
+      </div>
+
+      {/* তথ্য */}
+      <div className="p-2.5 flex flex-col gap-1.5">
+        <p className="font-cp-body font-semibold text-[12.5px] text-cp-text-primary leading-snug line-clamp-2 min-h-[32px]">
+          {product.name}
+        </p>
+
+        <div className="flex items-baseline gap-1">
+          <span className="font-cp-head font-bold text-[15px] text-cp-trust-700">
+            ৳{price.toFixed(0)}
+          </span>
+          {product.unit && (
+            <span className="text-[10px] text-cp-text-muted">/{product.unit}</span>
+          )}
+        </div>
+
+        {lowStock && (
+          <CpBadge variant="warning" className="self-start">
+            মাত্র {stock}টি বাকি
+          </CpBadge>
+        )}
+
+        {/* অ্যাকশন */}
+        {inCart ? (
+          <div
+            onClick={e => e.stopPropagation()}
+            className="flex items-center justify-between bg-cp-trust-100 rounded-xl h-9 px-1 mt-0.5"
+          >
+            <button
+              onClick={() => onDec(product.id)}
+              className="w-7 h-7 rounded-lg bg-white text-cp-trust-700 flex items-center justify-center active:bg-cp-trust-100"
+            >
+              <FiMinus className="w-3.5 h-3.5" />
+            </button>
+            <span className="font-cp-head font-bold text-[13px] text-cp-trust-900">{qty}</span>
+            <button
+              onClick={() => onInc(product.id)}
+              disabled={qty >= stock}
+              className="w-7 h-7 rounded-lg bg-white text-cp-trust-700 flex items-center justify-center active:bg-cp-trust-100 disabled:opacity-40 disabled:pointer-events-none"
+            >
+              <FiPlus className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={e => { e.stopPropagation(); onAdd(product) }}
+            className="w-full h-9 rounded-xl bg-cp-trust-500 active:bg-cp-trust-900 text-white text-[12px] font-cp-head font-bold flex items-center justify-center gap-1 mt-0.5"
+          >
+            <FiPlus className="w-3.5 h-3.5" /> কার্টে যোগ
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
