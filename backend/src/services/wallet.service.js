@@ -1,4 +1,5 @@
 const { query, withTransaction } = require('../config/db');
+const logger = require('../config/logger');
 
 /**
  * ওয়ালেট / ক্রেডিট সিস্টেম (Phase 2, 26 July 2026)
@@ -16,6 +17,63 @@ const { query, withTransaction } = require('../config/db');
  * email.service.js এখান থেকে deduct() কল করবে; Phase 4-এ Super Admin
  * API এখান থেকে recharge()/getHistory() কল করবে)।
  */
+
+// ── Low-balance প্রোঅ্যাকটিভ এলার্ট (Phase 5, 30 July 2026) ──────
+// থ্রেশহোল্ড centralize করা হলো — admin.controller.js-এর wallet
+// endpoint-ও এখান থেকেই import করে, যাতে দুই জায়গায় magic number
+// আলাদা না হয়ে যায়।
+// dedup সিদ্ধান্তমূলকভাবে DB কলামে না রেখে in-memory রাখা হয়েছে —
+// deduct()/recharge() হলো সবচেয়ে hot/critical path (প্রতিটা SMS/Email
+// এখান দিয়ে যায়); নতুন কলামের উপর নির্ভরশীল করলে migration না চলা
+// পর্যন্ত পুরো billing flow ভেঙে যাওয়ার ঝুঁকি থাকে। সীমাবদ্ধতা:
+// সার্ভার রিস্টার্ট/একাধিক instance হলে dedup রিসেট হয় — তাতে worst-case
+// একটা বাড়তি এলার্ট ইমেইল যাবে, কিন্তু কখনো silent থাকবে না।
+const LOW_BALANCE_THRESHOLD_PAISA = 10000; // ৳১০০
+const LOW_BALANCE_ALERT_COOLDOWN_MS = 6 * 60 * 60 * 1000; // ৬ ঘণ্টা
+const _lowBalanceAlertedAt = new Map(); // tenantId -> timestamp
+
+const notifyLowBalance = async (tenantId, balancePaisa, blocked = false) => {
+    try {
+        const admins = await query(
+            `SELECT email FROM users WHERE tenant_id = $1 AND role = 'admin' AND email IS NOT NULL`,
+            [tenantId]
+        );
+        if (admins.rows.length === 0) return;
+
+        // lazy require — email.service.js এই ফাইল require করে, তাই
+        // top-level require দিলে circular dependency হয়ে যেত
+        const { sendEmail } = require('./email.service');
+
+        const balanceTaka = (Number(balancePaisa) / 100).toFixed(2);
+        const subject = blocked
+            ? '🚨 ZovoriX — ব্যালেন্স শেষ, SMS/Email পাঠানো বন্ধ হয়ে যাচ্ছে'
+            : '⚠️ ZovoriX — ওয়ালেট ব্যালেন্স কমে গেছে';
+        const html = `
+            <p>${blocked
+                ? `আপনার ওয়ালেট ব্যালেন্স শেষ (৳${balanceTaka})। এখন থেকে নতুন SMS/Email পাঠানোর অনুরোধ ব্লক হয়ে যাচ্ছে, যতক্ষণ না রিচার্জ করা হয়।`
+                : `আপনার ওয়ালেট ব্যালেন্স কমে ৳${balanceTaka}-এ নেমে এসেছে (সীমা: ৳${(LOW_BALANCE_THRESHOLD_PAISA / 100).toFixed(2)})। শীঘ্রই SMS/Email পাঠানো বন্ধ হয়ে যেতে পারে।`}</p>
+            <p>Admin প্যানেল → ওয়ালেট পেজ থেকে বিস্তারিত দেখুন, রিচার্জের জন্য সাপোর্টের সাথে যোগাযোগ করুন।</p>
+        `;
+
+        for (const admin of admins.rows) {
+            // tenant_id ইচ্ছাকৃতভাবে দেওয়া হচ্ছে না — এই সতর্কতা ইমেইলে
+            // charge করা হয় না, নাহলে ব্যালেন্স শূন্য থাকা অবস্থায় এই
+            // এলার্টই পাঠানো যেত না।
+            await sendEmail(admin.email, subject, html, '', { type: 'low_balance_alert' }).catch((e) => {
+                logger.error('⚠️ Low balance alert email পাঠাতে ব্যর্থ:', e.message);
+            });
+        }
+    } catch (err) {
+        logger.error('⚠️ notifyLowBalance ব্যর্থ:', err.message);
+    }
+};
+
+const maybeAlertLowBalance = (tenantId, balancePaisa, blocked) => {
+    const last = _lowBalanceAlertedAt.get(tenantId);
+    if (last && Date.now() - last < LOW_BALANCE_ALERT_COOLDOWN_MS) return;
+    _lowBalanceAlertedAt.set(tenantId, Date.now());
+    notifyLowBalance(tenantId, balancePaisa, blocked).catch(() => {});
+};
 
 // ── বর্তমান ব্যালেন্স ────────────────────────────────────────────
 // wallet না থাকলে (নতুন/পুরনো edge-case tenant) ০ ব্যালেন্সে বানিয়ে দেয়
@@ -59,6 +117,10 @@ const recharge = async (tenantId, amountPaisa, options = {}) => {
             [tenantId]
         );
         const newBalance = Number(walletRes.rows[0].balance_paisa) + amountPaisa;
+
+        if (newBalance >= LOW_BALANCE_THRESHOLD_PAISA) {
+            _lowBalanceAlertedAt.delete(tenantId);
+        }
 
         await client.query(
             `UPDATE tenant_wallets SET balance_paisa = $1, updated_at = NOW() WHERE tenant_id = $2`,
@@ -104,6 +166,7 @@ const deduct = async (tenantId, amountPaisa, options = {}) => {
         const currentBalance = Number(walletRes.rows[0].balance_paisa);
 
         if (currentBalance < amountPaisa) {
+            maybeAlertLowBalance(tenantId, currentBalance, true); // ব্লকড — সবচেয়ে urgent
             const err = new Error('অপ্রতুল ব্যালেন্স।');
             err.code = 'INSUFFICIENT_BALANCE';
             err.balance_paisa = currentBalance;
@@ -111,6 +174,10 @@ const deduct = async (tenantId, amountPaisa, options = {}) => {
         }
 
         const newBalance = currentBalance - amountPaisa;
+
+        if (newBalance < LOW_BALANCE_THRESHOLD_PAISA) {
+            maybeAlertLowBalance(tenantId, newBalance, false);
+        }
 
         await client.query(
             `UPDATE tenant_wallets SET balance_paisa = $1, updated_at = NOW() WHERE tenant_id = $2`,
@@ -182,4 +249,5 @@ module.exports = {
     getHistory,
     getPricing,
     clearPricingCache,
+    LOW_BALANCE_THRESHOLD_PAISA,
 };

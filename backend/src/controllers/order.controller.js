@@ -166,10 +166,14 @@ const createOrder = async (req, res) => {
         // Admin ও Manager কে Email নোটিফিকেশন
         // ============================================================
         try {
+            // ⚠️ আগে এখানে tenant_id filter ছিল না — মানে এক tenant-এর অর্ডার
+            // নোটিফিকেশন অন্য সব tenant-এর admin-এর কাছেও চলে যেত। ফিক্স করা হলো।
             const adminResult = await query(
                 `SELECT email, name_bn FROM users
                  WHERE role = 'admin' AND status = 'active'
-                   AND email IS NOT NULL AND email != ''`
+                   AND email IS NOT NULL AND email != ''
+                   AND tenant_id = $1`,
+                [req.tenantId]
             );
 
             let managerName  = null;
@@ -191,7 +195,7 @@ const createOrder = async (req, res) => {
             const allEmails   = [...new Set([...adminEmails, ...(managerEmail ? [managerEmail] : [])])];
 
             if (allEmails.length > 0) {
-                await sendOrderNotificationEmail(allEmails, {
+                const emailResults = await sendOrderNotificationEmail(allEmails, {
                     orderId,
                     workerName:  req.user.name_bn || req.user.name,
                     workerCode:  req.user.employee_code || 'N/A',
@@ -202,7 +206,16 @@ const createOrder = async (req, res) => {
                     note:        note || null,
                     requestedAt: new Date().toISOString()
                 }, { tenant_id: req.tenantId });
-                logger.info(`📧 Order Email → ${allEmails.join(', ')}`);
+
+                // ⚠️ আগে ফলাফল না দেখেই সবসময় একই "পাঠানো হয়েছে" লগ হতো —
+                // ব্লকড/ফেইলড হলেও কোথাও ধরা পড়ত না। এখন প্রকৃত ফলাফল লগ হয়।
+                const okEmails      = emailResults.filter(r => r.success).map(r => r.email);
+                const blockedEmails = emailResults.filter(r => r.blocked).map(r => r.email);
+                const failedEmails  = emailResults.filter(r => !r.success && !r.blocked).map(r => r.email);
+
+                if (okEmails.length > 0) logger.info(`📧 Order Email → ${okEmails.join(', ')}`);
+                if (blockedEmails.length > 0) logger.warn(`⚠️ Order Email ব্লকড (ব্যালেন্স কম) → ${blockedEmails.join(', ')}`);
+                if (failedEmails.length > 0)  logger.warn(`⚠️ Order Email ব্যর্থ → ${failedEmails.join(', ')}`);
             } else {
                 logger.info('⚠️ কোনো Admin/Manager এর email পাওয়া যায়নি।');
             }

@@ -222,8 +222,6 @@ const updateSettings = async (req, res) => {
 // কিন্তু রিচার্জ করার ক্ষমতা এখানে নেই (ইচ্ছাকৃতভাবে), সেটা এখনো
 // শুধু Super Admin API (/api/superadmin/tenants/:id/wallet/recharge)।
 // ============================================================
-const LOW_BALANCE_THRESHOLD_PAISA = 10000; // ৳১০০ — নিচে নামলে warning
-
 const getWalletStatus = async (req, res) => {
     try {
         const { page = 1, limit = 20 } = req.query;
@@ -239,8 +237,8 @@ const getWalletStatus = async (req, res) => {
             data: {
                 balance_paisa: Number(wallet.balance_paisa),
                 updated_at:    wallet.updated_at,
-                low_balance:   Number(wallet.balance_paisa) < LOW_BALANCE_THRESHOLD_PAISA,
-                low_balance_threshold_paisa: LOW_BALANCE_THRESHOLD_PAISA,
+                low_balance:   Number(wallet.balance_paisa) < walletService.LOW_BALANCE_THRESHOLD_PAISA,
+                low_balance_threshold_paisa: walletService.LOW_BALANCE_THRESHOLD_PAISA,
                 pricing:       pricing,
                 transactions:  history.rows,
                 pagination:    history.pagination,

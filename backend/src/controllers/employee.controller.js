@@ -535,13 +535,15 @@ const approveEmployee = async (req, res) => {
                   <p>ধন্যবাদ,<br><strong>ZovoriX টিম</strong></p>
                 </div>
               </div>`;
-              await sendEmail(employee.email, 'ZovoriX - অ্যাকাউন্ট অনুমোদিত ✅', html, '', { type: 'account_approved', tenant_id: req.tenantId });
+              var _approveEmailResult = await sendEmail(employee.email, 'ZovoriX - অ্যাকাউন্ট অনুমোদিত ✅', html, '', { type: 'account_approved', tenant_id: req.tenantId });
             }
         }
 
         return res.status(200).json({
             success: true,
-            message: `কর্মচারী অনুমোদন সফল। কোড: ${employeeCode}`,
+            message: `কর্মচারী অনুমোদন সফল। কোড: ${employeeCode}` + (typeof _approveEmailResult !== 'undefined' && _approveEmailResult && !_approveEmailResult.success
+                ? (_approveEmailResult.blocked ? ' (ইমেইল পাঠানো যায়নি — ব্যালেন্স কম)' : ' (ইমেইল পাঠানো যায়নি)')
+                : ''),
             data: { employee_code: employeeCode }
         });
 
@@ -1019,7 +1021,7 @@ const broadcastEmail = async (req, res) => {
     if (employees.length === 0) return res.status(200).json({ success: false, message: 'কোনো email পাওয়া যায়নি।' });
 
     const { sendEmail } = require('../services/email.service');
-    let sent = 0;
+    let sent = 0, blocked = 0, failed = 0;
     for (const emp of employees) {
       const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden">
         <div style="background:#1e3a8a;padding:20px;text-align:center">
@@ -1037,10 +1039,24 @@ const broadcastEmail = async (req, res) => {
           <p>ধন্যবাদ,<br><strong>ZovoriX টিম</strong></p>
         </div>
       </div>`;
-      await sendEmail(emp.email, subject, html, '', { type: 'broadcast', tenant_id: req.tenantId });
-      sent++;
+      // ⚠️ আগে এখানে sendEmail()-এর ফলাফল না দেখেই sent++ করা হতো —
+      // ব্লক/ফেইল হলেও Admin "সবাইকে পাঠানো হয়েছে" success message পেতো।
+      // এখন প্রকৃত ফলাফল অনুযায়ী গোনা হয় এবং response-এ সততার সাথে জানানো হয়।
+      const result = await sendEmail(emp.email, subject, html, '', { type: 'broadcast', tenant_id: req.tenantId });
+      if (result && result.success) sent++;
+      else if (result && result.blocked) blocked++;
+      else failed++;
     }
-    res.status(200).json({ success: true, message: `${sent} জনকে email পাঠানো হয়েছে।` });
+
+    const parts = [`${sent} জনকে email পাঠানো হয়েছে`];
+    if (blocked > 0) parts.push(`${blocked} জনকে ব্যালেন্স কম থাকায় পাঠানো যায়নি`);
+    if (failed > 0)  parts.push(`${failed} জনকে অন্য কারণে পাঠানো যায়নি`);
+
+    res.status(200).json({
+      success: blocked === 0 && failed === 0,
+      message: parts.join(', ') + '।',
+      data: { total: employees.length, sent, blocked, failed },
+    });
   } catch (err) {
     logger.error('Broadcast Email Error:', err.message);
     res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
@@ -1058,12 +1074,19 @@ const resetPassword = async (req, res) => {
              AND tenant_id = $3
              RETURNING name_bn, email`, [hashed, id, req.tenantId]);
     if (emp.rows.length === 0) return res.status(404).json({ success: false, message: 'কর্মচারী পাওয়া যায়নি।' });
+    let _resetEmailResult = null;
     if (send_email && emp.rows[0].email) {
       const { sendEmail } = require('../services/email.service');
       const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden"><div style="background:#1e3a8a;padding:20px;text-align:center"><h2 style="color:white;margin:0">ZovoriX</h2></div><div style="padding:24px"><p>আস্সালামু আলাইকুম <strong>${emp.rows[0].name_bn}</strong>,</p><p>আপনার পাসওয়ার্ড রিসেট করা হয়েছে।</p><div style="background:#f0f4ff;border-radius:8px;padding:16px"><p>🔑 নতুন পাসওয়ার্ড: <strong>${newPass}</strong></p></div><p style="color:red">প্রথম লগইনের পর পাসওয়ার্ড পরিবর্তন করুন।</p><div style="text-align:center;margin:20px 0"><a href="https://zovorix-kqrn.vercel.app" style="background:#1e3a8a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">🚀 অ্যাপে লগইন করুন</a></div><p style="font-size:13px;color:#666;text-align:center">অথবা এই লিংকে যান: <a href="https://zovorix-kqrn.vercel.app" style="color:#1e3a8a">https://zovorix-kqrn.vercel.app</a></p><p>ধন্যবাদ,<br><strong>ZovoriX টিম</strong></p></div></div>`;
-      await sendEmail(emp.rows[0].email, 'ZovoriX - পাসওয়ার্ড রিসেট 🔑', html, '', { type: 'password_reset', tenant_id: req.tenantId });
+      _resetEmailResult = await sendEmail(emp.rows[0].email, 'ZovoriX - পাসওয়ার্ড রিসেট 🔑', html, '', { type: 'password_reset', tenant_id: req.tenantId });
     }
-    res.status(200).json({ success: true, message: 'পাসওয়ার্ড রিসেট সফল।', data: { new_password: newPass, name_bn: emp.rows[0].name_bn } });
+    res.status(200).json({
+      success: true,
+      message: 'পাসওয়ার্ড রিসেট সফল।' + (_resetEmailResult && !_resetEmailResult.success
+          ? (_resetEmailResult.blocked ? ' (ইমেইল পাঠানো যায়নি — ব্যালেন্স কম, পাসওয়ার্ড নিচে দেখুন)' : ' (ইমেইল পাঠানো যায়নি, পাসওয়ার্ড নিচে দেখুন)')
+          : ''),
+      data: { new_password: newPass, name_bn: emp.rows[0].name_bn },
+    });
   } catch (err) {
     logger.error('Reset Password Error:', err.message);
     res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
@@ -1143,12 +1166,14 @@ const reactivateEmployee = async (req, res) => {
                   <p>ধন্যবাদ,<br><strong>ZovoriX টিম</strong></p>
                 </div>
               </div>`;
-            await sendEmail(employee.email, 'ZovoriX - পুনরায় যুক্ত হয়েছেন ✅', html, '', { type: 'reactivated', tenant_id: req.tenantId });
+            var _reactivateEmailResult = await sendEmail(employee.email, 'ZovoriX - পুনরায় যুক্ত হয়েছেন ✅', html, '', { type: 'reactivated', tenant_id: req.tenantId });
         }
 
         return res.status(200).json({
             success: true,
-            message: `${employee.name_bn} কে পুনরায় যুক্ত করা হয়েছে। নতুন কোড: ${newCode}`,
+            message: `${employee.name_bn} কে পুনরায় যুক্ত করা হয়েছে। নতুন কোড: ${newCode}` + (typeof _reactivateEmailResult !== 'undefined' && _reactivateEmailResult && !_reactivateEmailResult.success
+                ? (_reactivateEmailResult.blocked ? ' (ইমেইল পাঠানো যায়নি — ব্যালেন্স কম)' : ' (ইমেইল পাঠানো যায়নি)')
+                : ''),
             data: { employee_code: newCode, new_password: newPassword }
         });
 

@@ -142,7 +142,15 @@ const triggerPasswordReset = async (req, res) => {
           </div>
         </div>`;
 
-        await sendEmail(user.email, 'ZovoriX - পাসওয়ার্ড রিসেট OTP (Support সহায়তা) 🔑', html, '', { type: 'otp', tenant_id: user.tenant_id });
+        const emailResult = await sendEmail(user.email, 'ZovoriX - পাসওয়ার্ড রিসেট OTP (Support সহায়তা) 🔑', html, '', { type: 'otp', tenant_id: user.tenant_id });
+        if (emailResult.success === false) {
+            return res.status(502).json({
+                success: false,
+                message: emailResult.blocked
+                    ? 'Email পাঠানো যায়নি — ব্যালেন্স কম, SMS দিয়ে চেষ্টা করুন।'
+                    : 'Email পাঠানো যায়নি, আবার চেষ্টা করুন।',
+            });
+        }
 
         return res.json({ success: true, message: `${user.name_bn}-এর ইমেইলে reset OTP পাঠানো হয়েছে।` });
     } catch (err) {
