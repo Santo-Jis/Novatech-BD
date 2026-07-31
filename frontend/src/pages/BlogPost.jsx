@@ -323,7 +323,7 @@ export default function BlogPost() {
                 আপনার ব্যবসায় এই সুবিধাগুলো পেতে চান?
               </div>
               <p style={{ fontSize: '13.5px', color: T.primary100, margin: '0 0 20px', lineHeight: 1.7 }}>
-                ৩ মাসের ফ্রি ট্রায়াল দিয়ে ZovoriX ব্যবহার শুরু করুন — কোনো কার্ড লাগবে না।
+                ৩ মাসের ফ্রি ট্রায়াল দিয়ে ZovoriX ব্যবহার শুরু করুন।
               </p>
               <button
                 onClick={() => navigate('/start-trial')}

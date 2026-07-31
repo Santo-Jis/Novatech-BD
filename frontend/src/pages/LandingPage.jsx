@@ -6,6 +6,8 @@ import { FaXTwitter, FaTiktok, FaInstagram, FaFacebookF, FaDiscord, FaRedditAlie
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
 import HeroImageSlider from '../components/HeroImageSlider'
+import BlogPostCard from '../components/BlogPostCard'
+import { BLOG_POSTS } from '../constants/blogPosts'
 import { PLAN_ORDER, PLANS, formatTaka } from '../constants/planPricing'
 
 // ============================================================
@@ -41,6 +43,7 @@ export default function LandingPage() {
   const navigate = useNavigate()
   const [mgmtOpen, setMgmtOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [faqOpen, setFaqOpen] = useState(null)
   const dropRef = useRef(null)
 
   // ── লুকানো Platform Panel অ্যাক্সেস ──────────────────────────
@@ -83,6 +86,30 @@ export default function LandingPage() {
     { icon: <HiOutlineClipboardDocumentCheck />, step: '০২', title: 'ম্যানেজার রিয়েল-টাইমে দেখেন', desc: 'প্রতিটা অর্ডার ও টিমের পারফরম্যান্স সাথে সাথে দেখতে ও অনুমোদন দিতে পারেন' },
     { icon: <HiOutlineChartBarSquare />, step: '০৩', title: 'এডমিন পুরো নেটওয়ার্ক নিয়ন্ত্রণ করেন', desc: 'সব ডিস্ট্রিবিউটর, স্টক ও রিপোর্ট এক ড্যাশবোর্ড থেকে মনিটর করেন' },
     { icon: <HiOutlineBuildingStorefront />, step: '০৪', title: 'রিটেইলার নিজের হিসাব দেখেন', desc: 'নিজের অর্ডার হিস্ট্রি ও পেমেন্ট স্ট্যাটাস নিজের লগইন দিয়ে যেকোনো সময় দেখতে পারেন' },
+  ]
+
+  // প্রাইসিং পেইজের FAQ শুধু বিলিং নিয়ে — এখানে সাধারণ প্রশ্নগুলো রাখা হলো
+  const landingFaq = [
+    {
+      q: 'এই সফটওয়্যারটা কাদের জন্য?',
+      a: 'ডিস্ট্রিবিউটর, পাইকারি ব্যবসা ও FMCG সেলস টিমের জন্য তৈরি — যেখানে SR মাঠে অর্ডার নেন, ম্যানেজার টিম দেখেন, এবং অ্যাডমিন পুরো নেটওয়ার্ক পরিচালনা করেন।',
+    },
+    {
+      q: 'ইন্টারনেট না থাকলে কি ব্যবহার করা যাবে?',
+      a: 'হ্যাঁ। নেটওয়ার্ক দুর্বল বা না থাকা এলাকাতেও SR অর্ডার এন্ট্রি করতে পারবেন — সংযোগ ফিরলেই ডেটা অটোমেটিক সার্ভারে সিঙ্ক হয়ে যায়।',
+    },
+    {
+      q: 'আমার ব্যবসার ডেটা কতটা নিরাপদ?',
+      a: 'সব ডেটা এনক্রিপ্টেড অবস্থায় সংরক্ষিত হয় এবং প্রতিটা ইউজারের অ্যাক্সেস তার রোল (SR/ম্যানেজার/অ্যাডমিন/রিটেইলার) অনুযায়ী নিয়ন্ত্রিত থাকে।',
+    },
+    {
+      q: 'ফ্রি ট্রায়াল কীভাবে শুরু করবো?',
+      a: '৩ মাসের ফ্রি ট্রায়ালে সাইন আপ করলেই পুরো ফিচার-সেট ব্যবহার করা যায়। ট্রায়াল শেষে আপনার প্রয়োজন অনুযায়ী একটা প্ল্যান বেছে নিতে হবে।',
+    },
+    {
+      q: 'কোনো সমস্যা হলে সাপোর্ট কীভাবে পাবো?',
+      a: 'ফোন (+৮৮০ ১৩০৯-৫৪০২৮২), ইমেইল (support@zovorix.com) অথবা হোয়াটসঅ্যাপে সরাসরি যোগাযোগ করতে পারেন — আমাদের টিম সাহায্য করবে।',
+    },
   ]
 
   const roles = [
@@ -487,6 +514,14 @@ export default function LandingPage() {
           </button>
         </div>
 
+        <p style={{
+          fontSize: '12.5px',
+          color: T.textMuted,
+          margin: '16px 0 0',
+        }}>
+          ৩ মাসের ট্রায়ালে পুরো ফিচার-সেট ফ্রি ব্যবহার করা যায়
+        </p>
+
         {/* ৫টি ছবি/প্যানেল নির্দিষ্ট সময় পর পর অটো-স্লাইড হবে */}
         <HeroImageSlider />
 
@@ -724,6 +759,44 @@ export default function LandingPage() {
         </p>
       </section>
 
+      {/* FAQ */}
+      <section style={{ padding: '8px 24px 72px', maxWidth: '760px', margin: '0 auto' }}>
+        <h2 style={{
+          textAlign: 'center', fontFamily: T.fontHead, fontSize: '24px', fontWeight: 600,
+          color: T.primary700, margin: '48px 0 8px',
+        }}>
+          সাধারণ জিজ্ঞাসা
+        </h2>
+        <p style={{ textAlign: 'center', color: T.textSecondary, fontSize: '14px', maxWidth: '480px', margin: '0 auto 32px' }}>
+          প্রাইসিং সংক্রান্ত প্রশ্নের বিস্তারিত উত্তর পাবেন প্রাইসিং পেইজে
+        </p>
+        <div style={{ border: `1px solid ${T.borderDefault}`, borderRadius: '12px', background: T.bgSurface, overflow: 'hidden' }}>
+          {landingFaq.map((item, i) => {
+            const isOpen = faqOpen === i
+            return (
+              <div key={i} style={{ borderTop: i === 0 ? 'none' : `1px solid ${T.borderDefault}` }}>
+                <button
+                  onClick={() => setFaqOpen(isOpen ? null : i)}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    gap: '12px', padding: '16px 18px', background: 'transparent', border: 'none',
+                    cursor: 'pointer', textAlign: 'left', fontFamily: T.fontBody,
+                  }}
+                >
+                  <span style={{ fontSize: '14px', fontWeight: 600, color: T.textPrimary }}>{item.q}</span>
+                  <FiChevronDown style={{ transition: 'transform 0.2s', transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', color: T.textMuted, flexShrink: 0 }} />
+                </button>
+                {isOpen && (
+                  <div style={{ padding: '0 18px 16px', fontSize: '13px', color: T.textSecondary, lineHeight: 1.8 }}>
+                    {item.a}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </section>
+
       {/* Stats */}
       <section style={{ padding: '8px 24px 64px', maxWidth: '960px', margin: '0 auto' }}>
         <div style={{
@@ -739,6 +812,43 @@ export default function LandingPage() {
                 {s.label}
               </div>
             </div>
+          ))}
+        </div>
+      </section>
+
+      {/* সাম্প্রতিক ব্লগ পোস্ট — নতুনগুলো constants/blogPosts.js-এর শুরুতে থাকে বলে প্রথম ৩টাই নেওয়া হলো */}
+      <section style={{ padding: '8px 24px 72px', maxWidth: '1040px', margin: '0 auto' }}>
+        <div style={{
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+          flexWrap: 'wrap', gap: '12px', margin: '48px 0 28px',
+        }}>
+          <div>
+            <h2 style={{ fontFamily: T.fontHead, fontSize: '24px', fontWeight: 600, color: T.primary700, margin: '0 0 6px' }}>
+              ব্লগ থেকে
+            </h2>
+            <p style={{ color: T.textSecondary, fontSize: '14px', margin: 0 }}>
+              বিক্রয় বৃদ্ধি, টিম ম্যানেজমেন্ট ও অপারেশনস নিয়ে সাম্প্রতিক গাইড
+            </p>
+          </div>
+          <button
+            onClick={() => { setMobileMenuOpen(false); navigate('/blog') }}
+            style={{
+              background: 'transparent', border: 'none', color: T.accent600,
+              fontSize: '13.5px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            সব পোস্ট দেখুন →
+          </button>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+          gap: '20px',
+        }}>
+          {BLOG_POSTS.slice(0, 3).map((post) => (
+            <BlogPostCard key={post.slug} post={post} />
           ))}
         </div>
       </section>

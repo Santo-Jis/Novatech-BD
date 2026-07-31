@@ -464,7 +464,7 @@ export default function StartTrial() {
                 background: T.accent100, borderRadius: '20px', fontSize: '12px', fontWeight: 700,
                 color: T.accent600, marginBottom: '18px', fontFamily: T.fontMono,
               }}>
-                <FiShield /> ৯০ দিন ফ্রি — কোনো কার্ড লাগবে না
+                <FiShield /> ৯০ দিন ফ্রি ট্রায়াল
               </div>
               <h1 style={{
                 fontFamily: T.fontHead, fontSize: 'clamp(26px, 5vw, 34px)', fontWeight: 600,
