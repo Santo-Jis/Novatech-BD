@@ -94,7 +94,7 @@ export default function ContactUs() {
       />
       {/* Navbar */}
       <style>{`
-        @media (max-width: 480px) {
+        @media (max-width: 640px) {
           .zx-navbar { flex-direction: column !important; flex-wrap: nowrap !important; align-items: stretch !important; padding: 10px 14px !important; row-gap: 10px !important; }
           .zx-navbar-top { width: 100% !important; }
           .zx-brand { gap: 6px !important; justify-content: flex-start !important; }

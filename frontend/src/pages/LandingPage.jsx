@@ -158,7 +158,7 @@ export default function LandingPage() {
         /* মোবাইল স্ক্রিনে নেভবার — ৩টা আলাদা লাইনে ভাগ হয়ে যাবে: লোগো, তারপর নেভ লিংক,
            তারপর লগইন বাটন — flex-direction:column দিয়ে, তাই ওভারল্যাপ হওয়ার সুযোগ নেই।
            ট্যাব/ল্যাপটপে (৪৮০px-এর উপরে) কোনো পরিবর্তন নেই — বেস স্টাইলই বহাল থাকবে (এক লাইনেই সব)। */
-        @media (max-width: 480px) {
+        @media (max-width: 640px) {
           .zx-navbar { flex-direction: column !important; flex-wrap: nowrap !important; align-items: stretch !important; padding: 10px 14px !important; row-gap: 10px !important; }
           .zx-navbar-top { width: 100% !important; }
           .zx-brand { gap: 6px !important; justify-content: flex-start !important; }
