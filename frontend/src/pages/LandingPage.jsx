@@ -45,6 +45,7 @@ export default function LandingPage() {
   const [mgmtOpen, setMgmtOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [faqOpen, setFaqOpen] = useState(null)
+  const [showFloatingCta, setShowFloatingCta] = useState(false)
   const dropRef = useRef(null)
 
   // ── লুকানো Platform Panel অ্যাক্সেস ──────────────────────────
@@ -72,6 +73,15 @@ export default function LandingPage() {
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // হিরো সেকশন পার হয়ে গেলে ফ্লোটিং "ট্রায়াল শুরু করুন" বাটন দেখানো —
+  // পুরো পেজেই নিচে স্ক্রল করলে ট্রায়াল CTA যেন সবসময় হাতের কাছে থাকে
+  useEffect(() => {
+    const onScroll = () => setShowFloatingCta(window.scrollY > 560)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    onScroll()
+    return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
   const features = [
@@ -1080,6 +1090,59 @@ export default function LandingPage() {
           </div>
         </div>
       </footer>
+
+      {/* স্টিকি ফ্লোটিং CTA — হিরো পার হয়ে গেলে দেখা যাবে, ট্রায়াল বাটন সবসময় হাতের কাছে রাখতে */}
+      <style>{`
+        @keyframes zx-fab-in {
+          from { opacity: 0; transform: translateY(14px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .zx-floating-cta {
+          animation: zx-fab-in 0.25s ease-out;
+        }
+        @media (max-width: 640px) {
+          .zx-floating-cta {
+            left: 16px !important;
+            right: 16px !important;
+            bottom: 16px !important;
+            width: auto !important;
+          }
+          .zx-floating-cta button {
+            width: 100% !important;
+            justify-content: center !important;
+          }
+        }
+      `}</style>
+      {showFloatingCta && (
+        <div className="zx-floating-cta" style={{
+          position: 'fixed',
+          right: '24px',
+          bottom: '24px',
+          zIndex: 200,
+        }}>
+          <button
+            onClick={() => navigate('/start-trial')}
+            style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '13px 22px',
+              background: T.primary700,
+              border: `1px solid ${T.primary700}`,
+              borderRadius: '999px',
+              color: '#fff',
+              fontSize: '14px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              fontFamily: T.fontBody,
+              boxShadow: '0 10px 28px rgba(15,27,46,0.28)',
+              transition: 'background 0.15s, transform 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = T.primary900; e.currentTarget.style.transform = 'translateY(-1px)' }}
+            onMouseLeave={e => { e.currentTarget.style.background = T.primary700; e.currentTarget.style.transform = 'translateY(0)' }}
+          >
+            ৩ মাসের ফ্রি ট্রায়াল শুরু করুন
+          </button>
+        </div>
+      )}
     </div>
   )
 }
