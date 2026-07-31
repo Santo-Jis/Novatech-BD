@@ -416,6 +416,9 @@ const getPayableCommissions = async (req, res) => {
         const currentYear  = parseInt(year  || new Date().getFullYear());
         const currentMonth = parseInt(month || new Date().getMonth() + 1);
 
+        // 🚨 CRITICAL FIX (31 July 2026): tenant_id filter ছিল না —
+        // প্রতিটা tenant-এর worker commission/salary ডেটা অন্য সব
+        // tenant-এর কাছেও visible ছিল।
         const result = await query(
             `SELECT
                 u.id          AS worker_id,
@@ -436,11 +439,12 @@ const getPayableCommissions = async (req, res) => {
                 ON u.id = c.user_id
                 AND EXTRACT(YEAR  FROM c.date) = $1
                 AND EXTRACT(MONTH FROM c.date) = $2
-             WHERE u.role   = 'worker'
-               AND u.status = 'active'
+             WHERE u.role      = 'worker'
+               AND u.status    = 'active'
+               AND u.tenant_id = $3
              GROUP BY u.id, u.name_bn, u.employee_code, u.basic_salary
              ORDER BY unpaid_amount DESC, u.name_bn ASC`,
-            [currentYear, currentMonth]
+            [currentYear, currentMonth, req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });

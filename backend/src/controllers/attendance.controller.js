@@ -708,16 +708,21 @@ const getAllLeaveRequests = async (req, res) => {
             )
         `);
 
+        // 🚨 CRITICAL FIX (31 July 2026): tenant_id filter ছিল না — অন্য
+        // সব tenant-এর leave request (নাম-সহ কারণ) দেখা যেত। leave_requests
+        // টেবিলে নিজে tenant_id কলাম নেই, তাই joined users দিয়ে scope করা হলো।
         const result = await query(
             `SELECT lr.id, lr.start_date, lr.end_date, lr.leave_type,
                     lr.reason, lr.status, lr.reviewer_note, lr.reviewed_at, lr.created_at,
                     u.name_bn AS employee_name, u.employee_code AS employee_id, u.role
              FROM leave_requests lr
              JOIN users u ON u.id = lr.user_id
+             WHERE u.tenant_id = $1
              ORDER BY
                CASE WHEN lr.status = 'pending' THEN 0 ELSE 1 END,
                lr.created_at DESC
-             LIMIT 100`
+             LIMIT 100`,
+            [req.tenantId]
         );
 
         return res.json({

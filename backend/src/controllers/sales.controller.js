@@ -1124,9 +1124,11 @@ const getTeamSales = async (req, res) => {
         const fromDate                = from || today;
         const toDate                  = to   || today;
 
-        let conditions = ['st.date BETWEEN $1 AND $2'];
-        let params     = [fromDate, toDate];
-        let paramCount = 2;
+        // 🚨 CRITICAL FIX (31 July 2026): tenant_id filter ছিল না — অন্য
+        // tenant-এর sales transaction (কাস্টমার, টাকার অংক সহ) দেখা যেত।
+        let conditions = ['st.date BETWEEN $1 AND $2', 'u.tenant_id = $3'];
+        let params     = [fromDate, toDate, req.tenantId];
+        let paramCount = 3;
 
         if (req.teamFilter) {
             paramCount++;

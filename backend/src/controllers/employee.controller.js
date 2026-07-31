@@ -161,9 +161,13 @@ const getEmployees = async (req, res) => {
         const { role, status, search, page = 1, limit = 20 } = req.query;
         const offset = (page - 1) * limit;
 
-        let conditions = ['u.status != $1'];
-        let params     = ['archived'];
-        let paramCount = 1;
+        // 🚨 CRITICAL FIX (31 July 2026): এখানে tenant_id filter ছিল না —
+        // যেকোনো tenant-এর Admin/Manager প্ল্যাটফর্মের সব tenant-এর
+        // পুরো কর্মচারী তালিকা (নাম, ফোন, salary, outstanding dues সহ)
+        // দেখতে পেত। এটা এখন সবার আগে filter হিসেবে বসানো হলো।
+        let conditions = ['u.tenant_id = $1', 'u.status != $2'];
+        let params     = [req.tenantId, 'archived'];
+        let paramCount = 2;
 
         // Team filter (Manager শুধু নিজের টিম)
         if (req.teamFilter) {

@@ -803,9 +803,11 @@ const getAllSettlements = async (req, res) => {
         const fromDate = from || today;
         const toDate   = to   || today;
 
-        let conditions = ['ds.settlement_date BETWEEN $1 AND $2'];
-        let params     = [fromDate, toDate];
-        let paramCount = 2;
+        // 🚨 CRITICAL FIX (31 July 2026): tenant_id filter ছিল না — অন্য
+        // tenant-এর দৈনিক settlement (আর্থিক তথ্য) দেখা যেত।
+        let conditions = ['ds.settlement_date BETWEEN $1 AND $2', 'u.tenant_id = $3'];
+        let params     = [fromDate, toDate, req.tenantId];
+        let paramCount = 3;
 
         if (status) {
             paramCount++;

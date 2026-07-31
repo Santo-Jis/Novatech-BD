@@ -46,14 +46,18 @@ const getNotices = async (req, res) => {
                 ? `target_role IN ('all', 'manager')`
                 : `target_role IN ('all', 'worker')`;
 
+        // 🚨 CRITICAL FIX (31 July 2026): tenant_id filter ছিল না —
+        // অন্য tenant-এর internal নোটিশও সবাই দেখতে পেত।
         const result = await query(
             `SELECT n.*, u.name_bn AS creator_name
              FROM notices n
              LEFT JOIN users u ON n.created_by = u.id
              WHERE ${roleFilter}
                AND n.is_active = true
+               AND n.tenant_id = $1
                AND (n.expires_at IS NULL OR n.expires_at > NOW())
-             ORDER BY n.created_at DESC`
+             ORDER BY n.created_at DESC`,
+            [req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });
@@ -69,12 +73,15 @@ const getNotices = async (req, res) => {
 // ============================================================
 const getAllNotices = async (req, res) => {
     try {
+        // 🚨 CRITICAL FIX (31 July 2026): tenant_id filter ছিল না।
         const result = await query(
             `SELECT n.*, u.name_bn AS creator_name
              FROM notices n
              LEFT JOIN users u ON n.created_by = u.id
+             WHERE n.tenant_id = $1
              ORDER BY n.created_at DESC
-             LIMIT 100`
+             LIMIT 100`,
+            [req.tenantId]
         );
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
