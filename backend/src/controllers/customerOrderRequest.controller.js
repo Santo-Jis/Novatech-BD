@@ -8,6 +8,7 @@ const logger = require('../config/logger');
 
 const { query }  = require('../config/db');
 const { sendPushToMany, sendCustomerPush } = require('../services/fcm.service');
+const { getResolvedPrices } = require('../services/priceList.utils'); // ← নতুন (Step ৫: মাল্টিপল প্রাইস লিস্ট)
 
 // ============================================================
 // HELPER — Admin ও Manager দের userId নাও
@@ -50,20 +51,14 @@ const createOrderRequest = async (req, res) => {
             }
         }
 
-        // ✅ Pending check — block নয়, শুধু frontend-কে জানাও
-        const pendingCheck = await query(
-            `SELECT id FROM customer_order_requests
-             WHERE customer_id = $1 AND status = 'pending'
-             AND tenant_id = $2
-             LIMIT 1`,
-            [customer_id,
-                req.tenantId]
-        );
-        const hasPendingOrder = pendingCheck.rows.length > 0;
-
         // কাস্টমার তথ্য নাও
+        // ⚠️ BUG FIX: portalAuth রুটে কোনো tenant-resolver middleware চলে না,
+        // তাই req.tenantId এখানে সবসময় undefined ছিল — নিচের INSERT-এ
+        // customer_order_requests.tenant_id NOT NULL হওয়ায় এটা সবসময় 500
+        // error দিত (অর্ডার পাঠানোই যেত না)। এখন customer row থেকেই
+        // tenant_id/route_id নির্ভরযোগ্যভাবে নেওয়া হচ্ছে।
         const custResult = await query(
-            `SELECT shop_name, owner_name, customer_code FROM customers WHERE id = $1`,
+            `SELECT shop_name, owner_name, customer_code, tenant_id, route_id FROM customers WHERE id = $1`,
             [customer_id]
         );
         if (custResult.rows.length === 0) {
@@ -71,14 +66,34 @@ const createOrderRequest = async (req, res) => {
         }
         const customer = custResult.rows[0];
 
+        // ✅ Pending check — block নয়, শুধু frontend-কে জানাও
+        const pendingCheck = await query(
+            `SELECT id FROM customer_order_requests
+             WHERE customer_id = $1 AND status = 'pending'
+             AND tenant_id = $2
+             LIMIT 1`,
+            [customer_id,
+                customer.tenant_id]
+        );
+        const hasPendingOrder = pendingCheck.rows.length > 0;
+
         // product_id গুলো DB থেকে যাচাই করো এবং নাম নাও
         const productIds = items.map(i => i.product_id);
         const prodResult = await query(
-            `SELECT id, name, price FROM products WHERE id = ANY($1::uuid[]) AND is_active = true`,
-            [productIds]
+            `SELECT id, name, price FROM products WHERE id = ANY($1::uuid[]) AND is_active = true AND tenant_id = $2`,
+            [productIds, customer.tenant_id]
         );
         const productMap = {};
         prodResult.rows.forEach(p => { productMap[p.id] = p; });
+
+        // ─── Step ৫: মাল্টিপল প্রাইস লিস্ট — app_ecommerce চ্যানেল ───
+        const { prices: resolvedPrices } = await getResolvedPrices(query, {
+            tenantId:   customer.tenant_id,
+            customerId: customer_id,
+            routeId:    customer.route_id,
+            channel:    'app_ecommerce',
+            productIds
+        });
 
         // items enrichment — product_name যোগ করো
         const enrichedItems = items.map(item => {
@@ -87,7 +102,7 @@ const createOrderRequest = async (req, res) => {
             return {
                 product_id:   item.product_id,
                 product_name: prod.name,
-                unit_price:   parseFloat(prod.price),
+                unit_price:   resolvedPrices[item.product_id] ?? parseFloat(prod.price),
                 qty:          parseInt(item.qty),
                 item_note:    item.item_note || ''
             };
@@ -106,7 +121,7 @@ const createOrderRequest = async (req, res) => {
         const result = await query(
             `INSERT INTO customer_order_requests (customer_id, items, note, status, tenant_id) VALUES ($1, $2::jsonb, $3, 'pending', $4)
              RETURNING id, created_at`,
-            [customer_id, JSON.stringify(enrichedItems), note || null, req.tenantId]
+            [customer_id, JSON.stringify(enrichedItems), note || null, customer.tenant_id]
         );
 
         const newRequest = result.rows[0];
@@ -528,50 +543,63 @@ const updateOrderRequest = async (req, res) => {
 // ============================================================
 const getPortalProducts = async (req, res) => {
     try {
+        const { customer_id } = req.portalUser;
         const page   = Math.max(1, parseInt(req.query.page)  || 1);
         const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 30));
         const offset = (page - 1) * limit;
         const search = (req.query.search || '').trim();
 
-        // Search filter — নাম দিয়ে partial match (ILIKE)
-        // search থাকলে: $1=search_term (count-এ), $1=limit $2=offset $3=search_term (list-এ)
-        // search না থাকলে: $1=limit $2=offset
-        const searchCondition = search ? `AND name ILIKE $3` : '';
+        // ⚠️ BUG FIX: আগে এখানে tenant_id ফিল্টার ছিলই না — একজন কাস্টমার
+        // অন্য tenant-এর প্রোডাক্টও দেখতে পেত। এখন কাস্টমারের নিজের
+        // tenant_id/route_id দিয়ে ফিল্টার করা হচ্ছে (এবং Step ৫ price-list-এর
+        // জন্যও এই route_id লাগবে)।
+        const custResult = await query(`SELECT tenant_id, route_id FROM customers WHERE id = $1`, [customer_id]);
+        if (custResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
+        }
+        const { tenant_id: tenantId, route_id: routeId } = custResult.rows[0];
 
-        // Count query — search থাকলে $1 = search term
+        // Search filter — নাম দিয়ে partial match (ILIKE)
+
         const countRes = await query(
             `SELECT COUNT(*) AS total
              FROM products
-             WHERE is_active = true
+             WHERE is_active = true AND tenant_id = $1
                AND (stock - COALESCE(reserved_stock, 0)) > 0
-               ${search ? 'AND name ILIKE $1' : ''}`,
-            search ? [`%${search}%`] : []
+               ${search ? 'AND name ILIKE $2' : ''}`,
+            search ? [tenantId, `%${search}%`] : [tenantId]
         );
         const total      = parseInt(countRes.rows[0].total);
         const totalPages = Math.ceil(total / limit);
 
-        // List query — $1=limit, $2=offset, ($3=search যদি থাকে)
+        // List query — $1=tenantId, $2=limit, $3=offset, ($4=search যদি থাকে)
         const listParams = search
-            ? [limit, offset, `%${search}%`]
-            : [limit, offset];
+            ? [tenantId, limit, offset, `%${search}%`]
+            : [tenantId, limit, offset];
 
-        // Paginated product list
         const { rows } = await query(
             `SELECT id, name, price, vat, tax, unit, description, image_url,
                     (stock - COALESCE(reserved_stock, 0)) AS available_stock
              FROM products
-             WHERE is_active = true
+             WHERE is_active = true AND tenant_id = $1
                AND (stock - COALESCE(reserved_stock, 0)) > 0
-               ${searchCondition}
+               ${search ? 'AND name ILIKE $4' : ''}
              ORDER BY name ASC
-             LIMIT $1 OFFSET $2`,
+             LIMIT $2 OFFSET $3`,
             listParams
         );
+
+        // ─── Step ৫: মাল্টিপল প্রাইস লিস্ট — app_ecommerce চ্যানেল ───
+        const { prices: resolvedPrices } = await getResolvedPrices(query, {
+            tenantId, customerId: customer_id, routeId, channel: 'app_ecommerce',
+            productIds: rows.map(p => p.id)
+        });
 
         // কাস্টমার যা দেবে সেটা final_price (VAT + Tax সহ)
         const { calcFinalPrice } = require('../services/price.utils');
         const enriched = rows.map(p => {
-            const { vatAmount, taxAmount, finalPrice } = calcFinalPrice(p.price, p.vat, p.tax);
+            const basePrice = resolvedPrices[p.id] ?? parseFloat(p.price);
+            const { vatAmount, taxAmount, finalPrice } = calcFinalPrice(basePrice, p.vat, p.tax);
             return {
                 id:              p.id,
                 name:            p.name,
@@ -579,7 +607,7 @@ const getPortalProducts = async (req, res) => {
                 description:     p.description,
                 image_url:       p.image_url,
                 available_stock: p.available_stock,
-                base_price:      parseFloat(p.price),
+                base_price:      basePrice,
                 vat_amount:      vatAmount,
                 tax_amount:      taxAmount,
                 final_price:     finalPrice,
@@ -803,6 +831,15 @@ const createReturnRequest = async (req, res) => {
         const { invoice_number, note } = req.body;
         let { items } = req.body;
 
+        // ⚠️ BUG FIX: portalAuth রুটে req.tenantId সেট হয় না (একই কারণ যা
+        // createOrderRequest-এ ছিল) — customer_return_requests.tenant_id
+        // NOT NULL হওয়ায় এই INSERT আগে সবসময় fail করত।
+        const custTenantResult = await query(`SELECT tenant_id FROM customers WHERE id = $1`, [customer_id]);
+        if (custTenantResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
+        }
+        const requestTenantId = custTenantResult.rows[0].tenant_id;
+
         // type: 'return' (বিক্রি হয়নি) অথবা 'replacement' (warranty-তে নষ্ট)
         const VALID_TYPES = ['return', 'replacement'];
         const type = VALID_TYPES.includes(req.body.type) ? req.body.type : 'return';
@@ -903,7 +940,7 @@ const createReturnRequest = async (req, res) => {
                 customer_id, invoice_number.trim(), type,
                 JSON.stringify(sanitizedItems),
                 parseFloat(totalReturnValue.toFixed(2)),
-                note || null, req.tenantId]
+                note || null, requestTenantId]
         );
         const newRequest = result.rows[0];
 
@@ -1031,14 +1068,22 @@ const getMyReturnRequests = async (req, res) => {
 const getPortalProductDetail = async (req, res) => {
     try {
         const { id } = req.params;
+        const { customer_id } = req.portalUser;
+
+        // কাস্টমারের tenant_id/route_id — tenant filter + price-list দুটোর জন্যই লাগবে
+        const custResult = await query(`SELECT tenant_id, route_id FROM customers WHERE id = $1`, [customer_id]);
+        if (custResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
+        }
+        const { tenant_id: tenantId, route_id: routeId } = custResult.rows[0];
 
         const { rows } = await query(
             `SELECT id, name, price, vat, tax, unit, description, image_url,
                     (stock - COALESCE(reserved_stock, 0)) AS available_stock
              FROM products
              WHERE id = $1::uuid
-               AND is_active = true`,
-            [id]
+               AND is_active = true AND tenant_id = $2`,
+            [id, tenantId]
         );
 
         if (rows.length === 0) {
@@ -1047,9 +1092,15 @@ const getPortalProductDetail = async (req, res) => {
 
         const p = rows[0];
 
+        // ─── Step ৫: মাল্টিপল প্রাইস লিস্ট — app_ecommerce চ্যানেল ───
+        const { prices: resolvedPrices } = await getResolvedPrices(query, {
+            tenantId, customerId: customer_id, routeId, channel: 'app_ecommerce', productIds: [p.id]
+        });
+        const basePrice = resolvedPrices[p.id] ?? parseFloat(p.price);
+
         // ── Price breakdown ───────────────────────────────────
         const { calcFinalPrice } = require('../services/price.utils');
-        const { vatAmount, taxAmount, finalPrice } = calcFinalPrice(p.price, p.vat, p.tax);
+        const { vatAmount, taxAmount, finalPrice } = calcFinalPrice(basePrice, p.vat, p.tax);
 
         return res.status(200).json({
             success: true,
@@ -1063,7 +1114,7 @@ const getPortalProductDetail = async (req, res) => {
                 in_stock:        parseInt(p.available_stock) > 0,
                 // Price breakdown — কাস্টমার দেখতে পাবে কোথায় কত যাচ্ছে
                 pricing: {
-                    base_price:  parseFloat(p.price),
+                    base_price:  basePrice,
                     vat_amount:  vatAmount,
                     tax_amount:  taxAmount,
                     final_price: finalPrice,

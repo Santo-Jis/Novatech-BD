@@ -98,6 +98,7 @@ const AdminProducts          = IS_CUSTOMER_APP ? null : lazy(() => import('./pag
 const AdminSuppliers         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Suppliers'))
 const AdminPurchaseOrders    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PurchaseOrders'))
 const AdminBatches           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Batches'))
+const AdminPriceLists        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PriceLists'))
 const AdminNotices           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Notices'))
 const AuditLogs              = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AuditLogs'))
 const AdminWallet            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Wallet'))
@@ -501,6 +502,7 @@ function AppWithPermissions() {
                 <Route path="suppliers"         element={<AdminSuppliers />} />
                 <Route path="purchase-orders"   element={<AdminPurchaseOrders />} />
                 <Route path="batches"           element={<AdminBatches />} />
+                <Route path="price-lists"       element={<AdminPriceLists />} />
                 <Route path="audit-logs"        element={<AuditLogs />} />
                 <Route path="wallet"            element={<AdminWallet />} />
                 <Route path="portal-returns"    element={<PortalReturnRequests />} />

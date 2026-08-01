@@ -1,5 +1,6 @@
 const { query, withTransaction } = require('../config/db');
 const { calcFromProduct }        = require('../services/price.utils');
+const { getResolvedPrices }      = require('../services/priceList.utils'); // ← নতুন (Step ৫: মাল্টিপল প্রাইস লিস্ট)
 const { generateOTP }            = require('../config/encryption');
 const crypto                     = require('crypto');
 const logger = require('../config/logger');
@@ -230,6 +231,20 @@ const createSale = async (req, res) => {
             [allProductIds]
         );
         const productMap = Object.fromEntries(prodResult.rows.map(p => [p.id, p]));
+
+        // ─── Step ৫: মাল্টিপল প্রাইস লিস্ট (পাইকারি/খুচরা/এলাকাভিত্তিক) ───
+        // এই কাস্টমারের জন্য van_sales চ্যানেলে কোনো override দাম থাকলে বসিয়ে দাও।
+        // যেসব প্রোডাক্টের override নেই সেগুলো products.price-ই থাকবে (আগের মতো)।
+        const { prices: resolvedPrices } = await getResolvedPrices(query, {
+            tenantId:   req.tenantId,
+            customerId: cust.id,
+            routeId:    cust.route_id,
+            channel:    'van_sales',
+            productIds: items.map(i => i.product_id)
+        });
+        for (const pid of Object.keys(resolvedPrices)) {
+            if (productMap[pid]) productMap[pid] = { ...productMap[pid], price: resolvedPrices[pid] };
+        }
 
         // মোট হিসাব
         let totalAmount       = 0;
