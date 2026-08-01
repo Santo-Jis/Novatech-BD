@@ -290,77 +290,101 @@ const callAI = async (prompt, taskType = 'daily', systemPrompt = null, chatHisto
 
 const callClaudeAPI = callAI; // backward compat
 
-// ডেইলি ডাটা
-const collectDailyData = async (managerId = null) => {
+// ডেইলি ডাটা — tenantId বাধ্যতামূলক (এর আগে managerId=null হলে এই ফাংশন
+// কোনো tenant filter ছাড়াই পুরো প্ল্যাটফর্মের সব tenant-এর attendance/sales/
+// credit ডাটা একসাথে টেনে আনতো — সেই cross-tenant leak এখানে ফিক্স করা হলো)
+const collectDailyData = async (managerId, tenantId) => {
+    if (!tenantId) throw new Error('collectDailyData()-এ tenantId আবশ্যক (cross-tenant leak এড়াতে)।');
+
     const today = new Date().toISOString().split('T')[0];
-    let workerFilter = '', workerFilterParams = [];
-    if (managerId) { workerFilter = 'AND u.manager_id = $2'; workerFilterParams = [managerId]; }
+
+    const attParams = [today, tenantId];
+    let attFilter = 'AND a.tenant_id = $2';
+    if (managerId) { attParams.push(managerId); attFilter += ` AND u.manager_id = $${attParams.length}`; }
 
     const attendance = await query(
         `SELECT u.name_bn, a.status, a.late_minutes, a.salary_deduction
          FROM attendance a JOIN users u ON a.user_id = u.id
-         WHERE a.date = $1 ${workerFilter}`,
-        managerId ? [today, ...workerFilterParams] : [today]
+         WHERE a.date = $1 ${attFilter}`,
+        attParams
     );
+
+    const salesParams = [today, tenantId];
+    let salesFilter = 'AND st.tenant_id = $2';
+    if (managerId) { salesParams.push(managerId); salesFilter += ` AND u.manager_id = $${salesParams.length}`; }
 
     const sales = await query(
         `SELECT u.name_bn, SUM(st.total_amount) AS total_sales, COUNT(st.id) AS invoice_count, SUM(st.credit_used) AS credit_given
          FROM sales_transactions st JOIN users u ON st.worker_id = u.id
-         WHERE st.date = $1 ${workerFilter}
+         WHERE st.date = $1 ${salesFilter}
          GROUP BY u.id, u.name_bn`,
-        managerId ? [today, ...workerFilterParams] : [today]
+        salesParams
     );
+
+    const trendParams = [today, tenantId];
+    let trendFilter = 'AND st.tenant_id = $2';
+    if (managerId) { trendParams.push(managerId); trendFilter += ` AND u.manager_id = $${trendParams.length}`; }
 
     const trend = await query(
         `SELECT st.date, SUM(st.total_amount) AS total
          FROM sales_transactions st JOIN users u ON st.worker_id = u.id
          WHERE st.date >= $1::date - INTERVAL '7 days'
-           AND st.date <= $1 ${workerFilter}
+           AND st.date <= $1 ${trendFilter}
          GROUP BY st.date ORDER BY st.date`,
-        managerId ? [today, ...workerFilterParams] : [today]
+        trendParams
     );
+
+    const creditParams = [tenantId];
+    let creditFilter = 'AND c.tenant_id = $1';
+    if (managerId) { creditParams.push(managerId); creditFilter += ` AND r.manager_id = $${creditParams.length}`; }
 
     const highCredit = await query(
         `SELECT c.shop_name, c.current_credit, c.credit_limit,
                 ROUND((c.current_credit / NULLIF(c.credit_limit,0) * 100)::numeric, 1) AS usage_pct
          FROM customers c LEFT JOIN routes r ON c.route_id = r.id
-         WHERE c.current_credit > 0 ${managerId ? 'AND r.manager_id = $1' : ''}
+         WHERE c.current_credit > 0 ${creditFilter}
          ORDER BY usage_pct DESC NULLS LAST LIMIT 5`,
-        managerId ? [managerId] : []
+        creditParams
     );
 
     return { date: today, attendance: attendance.rows, sales: sales.rows, trend: trend.rows, high_credit: highCredit.rows };
 };
 
-const generateManagerInsight = async (managerId, managerName) => {
+const generateManagerInsight = async (managerId, managerName, tenantId) => {
     try {
-        const data = await collectDailyData(managerId);
-        const prompt = `তুমি ZovoriX কোম্পানির একজন AI Business Analyst।\nনিচের ডাটা বিশ্লেষণ করে ${managerName} ম্যানেজারের জন্য একটি সংক্ষিপ্ত বাংলা রিপোর্ট তৈরি করো।\n\nতারিখ: ${data.date}\nহাজিরা:\n${JSON.stringify(data.attendance, null, 2)}\nআজকের বিক্রয়:\n${JSON.stringify(data.sales, null, 2)}\nগত ৭ দিনের ট্রেন্ড:\n${JSON.stringify(data.trend, null, 2)}\nউচ্চ ক্রেডিট ঝুঁকি:\n${JSON.stringify(data.high_credit, null, 2)}\n\nনিচের JSON ফরম্যাটে উত্তর দাও (অন্য কিছু লিখবে না):\n{\n  "summary": "সংক্ষিপ্ত সারসংক্ষেপ (২-৩ বাক্য)",\n  "alerts": [{"type": "warning/critical/info", "title": "শিরোনাম", "message": "বিস্তারিত"}],\n  "recommendations": ["সুপারিশ ১", "সুপারিশ ২"]\n}`;
-        const response = await callAI(prompt, 'daily');
+        const data = await collectDailyData(managerId, tenantId);
+        const prompt = `তুমি এই কোম্পানির একজন AI Business Analyst।\nনিচের ডাটা বিশ্লেষণ করে ${managerName} ম্যানেজারের জন্য একটি সংক্ষিপ্ত বাংলা রিপোর্ট তৈরি করো।\n\nতারিখ: ${data.date}\nহাজিরা:\n${JSON.stringify(data.attendance, null, 2)}\nআজকের বিক্রয়:\n${JSON.stringify(data.sales, null, 2)}\nগত ৭ দিনের ট্রেন্ড:\n${JSON.stringify(data.trend, null, 2)}\nউচ্চ ক্রেডিট ঝুঁকি:\n${JSON.stringify(data.high_credit, null, 2)}\n\nনিচের JSON ফরম্যাটে উত্তর দাও (অন্য কিছু লিখবে না):\n{\n  "summary": "সংক্ষিপ্ত সারসংক্ষেপ (২-৩ বাক্য)",\n  "alerts": [{"type": "warning/critical/info", "title": "শিরোনাম", "message": "বিস্তারিত"}],\n  "recommendations": ["সুপারিশ ১", "সুপারিশ ২"]\n}`;
+        const response = await callAI(prompt, 'daily', null, [], { tenantId, source: 'insight_job_manager' });
         return JSON.parse(response.text.replace(/```json|```/g, '').trim());
     } catch (error) {
-        logger.error(`❌ Manager Insight Error (${managerId}):`, error.message);
+        logger.error(`❌ Manager Insight Error (${managerId}, tenant ${tenantId}):`, error.message);
         return null;
     }
 };
 
-const generateAdminInsight = async () => {
+const generateAdminInsight = async (tenantId) => {
     try {
-        const data = await collectDailyData(null);
-        const kpi  = await query(`SELECT COUNT(DISTINCT st.worker_id) AS active_sellers, SUM(st.total_amount) AS total_sales, SUM(st.credit_used) AS total_credit, COUNT(a.id) FILTER (WHERE a.status = 'late') AS late_count FROM sales_transactions st LEFT JOIN attendance a ON a.user_id = st.worker_id AND a.date = CURRENT_DATE WHERE st.date = CURRENT_DATE`);
-        const prompt = `তুমি ZovoriX কোম্পানির AI Business Analyst।\nনিচের কোম্পানির সামগ্রিক ডাটা বিশ্লেষণ করে Admin এর জন্য রিপোর্ট তৈরি করো।\n\nতারিখ: ${data.date}\nKPI:\n${JSON.stringify(kpi.rows[0], null, 2)}\nবিক্রয় (SR ভিত্তিক):\n${JSON.stringify(data.sales, null, 2)}\nক্রেডিট ঝুঁকি:\n${JSON.stringify(data.high_credit, null, 2)}\n\nনিচের JSON ফরম্যাটে উত্তর দাও:\n{\n  "summary": "কোম্পানির সামগ্রিক অবস্থা (৩-৪ বাক্য)",\n  "kpi_highlights": ["মূল পয়েন্ট ১", "মূল পয়েন্ট ২"],\n  "alerts": [{"type": "warning/critical/info", "title": "শিরোনাম", "message": "বিস্তারিত"}],\n  "recommendations": ["সুপারিশ ১", "সুপারিশ ২"]\n}`;
-        const response = await callAI(prompt, 'daily');
+        if (!tenantId) throw new Error('generateAdminInsight()-এ tenantId আবশ্যক (cross-tenant leak এড়াতে)।');
+        const data = await collectDailyData(null, tenantId);
+        const kpi  = await query(
+            `SELECT COUNT(DISTINCT st.worker_id) AS active_sellers, SUM(st.total_amount) AS total_sales, SUM(st.credit_used) AS total_credit, COUNT(a.id) FILTER (WHERE a.status = 'late') AS late_count
+             FROM sales_transactions st LEFT JOIN attendance a ON a.user_id = st.worker_id AND a.date = CURRENT_DATE AND a.tenant_id = $1
+             WHERE st.date = CURRENT_DATE AND st.tenant_id = $1`,
+            [tenantId]
+        );
+        const prompt = `তুমি এই কোম্পানির AI Business Analyst।\nনিচের কোম্পানির সামগ্রিক ডাটা বিশ্লেষণ করে Admin এর জন্য রিপোর্ট তৈরি করো।\n\nতারিখ: ${data.date}\nKPI:\n${JSON.stringify(kpi.rows[0], null, 2)}\nবিক্রয় (SR ভিত্তিক):\n${JSON.stringify(data.sales, null, 2)}\nক্রেডিট ঝুঁকি:\n${JSON.stringify(data.high_credit, null, 2)}\n\nনিচের JSON ফরম্যাটে উত্তর দাও:\n{\n  "summary": "কোম্পানির সামগ্রিক অবস্থা (৩-৪ বাক্য)",\n  "kpi_highlights": ["মূল পয়েন্ট ১", "মূল পয়েন্ট ২"],\n  "alerts": [{"type": "warning/critical/info", "title": "শিরোনাম", "message": "বিস্তারিত"}],\n  "recommendations": ["সুপারিশ ১", "সুপারিশ ২"]\n}`;
+        const response = await callAI(prompt, 'daily', null, [], { tenantId, source: 'insight_job_admin' });
         return JSON.parse(response.text.replace(/```json|```/g, '').trim());
     } catch (error) {
-        logger.error('❌ Admin Insight Error:', error.message);
+        logger.error(`❌ Admin Insight Error (tenant ${tenantId}):`, error.message);
         return null;
     }
 };
 
-const saveInsight = async (insightType, targetRole, targetUserId, title, description, data, severity) => {
+const saveInsight = async (insightType, targetRole, targetUserId, title, description, data, severity, tenantId) => {
     await query(
-        `INSERT INTO ai_insights (insight_type, target_role, target_user_id, title, description, data, severity) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [insightType, targetRole, targetUserId || null, title, description, JSON.stringify(data || {}), severity || 'info']
+        `INSERT INTO ai_insights (insight_type, target_role, target_user_id, title, description, data, severity, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [insightType, targetRole, targetUserId || null, title, description, JSON.stringify(data || {}), severity || 'info', tenantId]
     );
 };
 

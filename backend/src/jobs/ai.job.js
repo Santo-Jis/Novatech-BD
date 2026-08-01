@@ -10,107 +10,100 @@ const {
 // ============================================================
 // AI Insights Background Job
 // প্রতিদিন রাত ১:০০ তে চলবে
+//
+// ⚠️ ৩১ জুলাই ২০২৬ ফিক্স: আগে এই জব সব tenant-এর manager/admin একসাথে
+// প্রসেস করতো, আর collectDailyData()/generateAdminInsight()-এ কোনো
+// tenant_id filter ছিল না — ফলে Admin Insight একবার *পুরো প্ল্যাটফর্মের*
+// সব tenant মিলিয়ে generate হতো, আর সেই একই insight প্রতিটা tenant-এর
+// প্রতিটা admin-কে "আপনার কোম্পানির সারসংক্ষেপ" বলে দেখানো হতো — মানে এক
+// tenant-এর admin আরেক tenant-এর sales/credit/attendance ডাটা (aggregate
+// আকারে) দেখতে পেতো। এখন পুরো জব tenant-ভিত্তিক loop-এ চলে, প্রতিটা ধাপে
+// tenant_id pass হয়, আর ai_insights টেবিলেও এখন tenant_id কলাম আছে।
 // ============================================================
+
+const runForTenant = async (tenantId, tenantName) => {
+    // ১. এই tenant-এর সব Active Manager এর জন্য Insight
+    const managers = await query(
+        "SELECT id, name_bn FROM users WHERE role = 'manager' AND status = 'active' AND tenant_id = $1",
+        [tenantId]
+    );
+
+    for (const manager of managers.rows) {
+        try {
+            logger.info(`🔍 [${tenantName}] ${manager.name_bn} এর Insight তৈরি হচ্ছে...`);
+
+            const insight = await generateManagerInsight(manager.id, manager.name_bn, tenantId);
+            if (!insight) continue;
+
+            await saveInsight(
+                'daily_summary', 'manager', manager.id,
+                `${manager.name_bn} এর দৈনিক সারসংক্ষেপ`,
+                insight.summary, insight, 'info', tenantId
+            );
+
+            if (insight.alerts?.length > 0) {
+                for (const alert of insight.alerts) {
+                    await saveInsight(
+                        alert.type === 'critical' ? 'critical_alert' : 'warning_alert',
+                        'manager', manager.id, alert.title, alert.message, alert,
+                        alert.type || 'warning', tenantId
+                    );
+                }
+            }
+
+            logger.info(`✅ [${tenantName}] ${manager.name_bn}: ${insight.alerts?.length || 0} টি alert`);
+            await new Promise(resolve => setTimeout(resolve, 1500));
+
+        } catch (managerError) {
+            logger.error(`❌ [${tenantName}] ${manager.name_bn} Insight Error:`, managerError.message);
+        }
+    }
+
+    // ২. এই tenant-এর Admin(দের) জন্য Insight (একটাই তৈরি হয়, সব admin-কে দেওয়া হয়)
+    const adminInsight = await generateAdminInsight(tenantId);
+    if (adminInsight) {
+        const admins = await query(
+            "SELECT id FROM users WHERE role = 'admin' AND status = 'active' AND tenant_id = $1",
+            [tenantId]
+        );
+
+        for (const admin of admins.rows) {
+            await saveInsight(
+                'company_overview', 'admin', admin.id,
+                'কোম্পানির দৈনিক সারসংক্ষেপ', adminInsight.summary, adminInsight, 'info', tenantId
+            );
+
+            if (adminInsight.alerts?.length > 0) {
+                for (const alert of adminInsight.alerts) {
+                    await saveInsight(
+                        'admin_alert', 'admin', admin.id, alert.title, alert.message, alert,
+                        alert.type || 'warning', tenantId
+                    );
+                }
+            }
+        }
+
+        logger.info(`✅ [${tenantName}] Admin Insight: ${adminInsight.alerts?.length || 0} টি alert`);
+    }
+};
 
 const runAIInsightsJob = async () => {
     logger.info('\n🤖 AI Insights Job শুরু...');
 
     try {
-        const config = await query(
-            "SELECT config_value FROM ai_config WHERE config_key = 'api_key'"
+        const tenants = await query(
+            "SELECT id, company_name FROM tenants WHERE status = 'active'"
         );
+        logger.info(`🏢 Tenant সংখ্যা: ${tenants.rows.length}`);
 
-        if (!config.rows[0]?.config_value) {
-            logger.info('⚠️ Claude API Key নেই। AI Job বাদ দেওয়া হলো।');
-            return;
-        }
-
-        // ১. সব Active Manager এর জন্য Insight
-        const managers = await query(
-            "SELECT id, name_bn FROM users WHERE role = 'manager' AND status = 'active'"
-        );
-
-        logger.info(`📊 Manager সংখ্যা: ${managers.rows.length}`);
-
-        for (const manager of managers.rows) {
+        for (const tenant of tenants.rows) {
             try {
-                logger.info(`🔍 ${manager.name_bn} এর Insight তৈরি হচ্ছে...`);
-
-                const insight = await generateManagerInsight(manager.id, manager.name_bn);
-                if (!insight) continue;
-
-                // সারসংক্ষেপ সেভ
-                await saveInsight(
-                    'daily_summary',
-                    'manager',
-                    manager.id,
-                    `${manager.name_bn} এর দৈনিক সারসংক্ষেপ`,
-                    insight.summary,
-                    insight,
-                    'info'
-                );
-
-                // Alerts সেভ
-                if (insight.alerts?.length > 0) {
-                    for (const alert of insight.alerts) {
-                        await saveInsight(
-                            alert.type === 'critical' ? 'critical_alert' : 'warning_alert',
-                            'manager',
-                            manager.id,
-                            alert.title,
-                            alert.message,
-                            alert,
-                            alert.type || 'warning'
-                        );
-                    }
-                }
-
-                logger.info(`✅ ${manager.name_bn}: ${insight.alerts?.length || 0} টি alert`);
-
-                // Rate limit এড়াতে একটু অপেক্ষা
-                await new Promise(resolve => setTimeout(resolve, 2000));
-
-            } catch (managerError) {
-                logger.error(`❌ ${manager.name_bn} Insight Error:`, managerError.message);
+                await runForTenant(tenant.id, tenant.company_name || tenant.id);
+            } catch (tenantError) {
+                // একটা tenant fail করলে (blocked AI, key নেই, balance শেষ ইত্যাদি)
+                // বাকি tenant-দের প্রসেসিং যেন থেমে না যায়
+                logger.error(`❌ Tenant ${tenant.company_name || tenant.id} Insight Job Error:`, tenantError.message);
             }
-        }
-
-        // ২. Admin এর জন্য Insight
-        logger.info('🔍 Admin এর Insight তৈরি হচ্ছে...');
-
-        const adminInsight = await generateAdminInsight();
-        if (adminInsight) {
-            const admins = await query(
-                "SELECT id FROM users WHERE role = 'admin' AND status = 'active'"
-            );
-
-            for (const admin of admins.rows) {
-                await saveInsight(
-                    'company_overview',
-                    'admin',
-                    admin.id,
-                    'কোম্পানির দৈনিক সারসংক্ষেপ',
-                    adminInsight.summary,
-                    adminInsight,
-                    'info'
-                );
-
-                if (adminInsight.alerts?.length > 0) {
-                    for (const alert of adminInsight.alerts) {
-                        await saveInsight(
-                            'admin_alert',
-                            'admin',
-                            admin.id,
-                            alert.title,
-                            alert.message,
-                            alert,
-                            alert.type || 'warning'
-                        );
-                    }
-                }
-            }
-
-            logger.info(`✅ Admin Insight: ${adminInsight.alerts?.length || 0} টি alert`);
         }
 
         // ৩. পুরনো Insight মুছে দাও (৩০ দিনের বেশি পুরনো)

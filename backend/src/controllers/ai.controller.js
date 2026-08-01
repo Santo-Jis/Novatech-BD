@@ -80,9 +80,9 @@ const getInsights = async (req, res) => {
         const userId = req.user.id;
         const role   = req.user.role;
 
-        let conditions = [`(target_user_id = $1 OR target_user_id IS NULL)`, `target_role = $2`];
-        let params     = [userId, role === 'admin' ? 'admin' : 'manager'];
-        let paramCount = 2;
+        let conditions = [`tenant_id = $1`, `(target_user_id = $2 OR target_user_id IS NULL)`, `target_role = $3`];
+        let params     = [req.tenantId, userId, role === 'admin' ? 'admin' : 'manager'];
+        let paramCount = 3;
 
         if (unread_only === 'true') conditions.push('is_read = false');
 
@@ -98,9 +98,9 @@ const getInsights = async (req, res) => {
 
         const unreadCount = await query(
             `SELECT COUNT(*) AS count FROM ai_insights
-             WHERE (target_user_id = $1 OR target_user_id IS NULL)
-               AND target_role = $2 AND is_read = false`,
-            [userId, role === 'admin' ? 'admin' : 'manager']
+             WHERE tenant_id = $1 AND (target_user_id = $2 OR target_user_id IS NULL)
+               AND target_role = $3 AND is_read = false`,
+            [req.tenantId, userId, role === 'admin' ? 'admin' : 'manager']
         );
 
         return res.status(200).json({
@@ -119,7 +119,17 @@ const getInsights = async (req, res) => {
 
 const markInsightRead = async (req, res) => {
     try {
-        await query('UPDATE ai_insights SET is_read = true WHERE id = $1', [req.params.id]);
+        // tenant_id + নিজের target_user_id (অথবা broadcast NULL) না মিললে আপডেট হবে না —
+        // আগে এখানে কোনো ownership check-ই ছিল না, যেকোনো id দিয়ে যেকোনো tenant-এর
+        // insight read মার্ক করা যেত।
+        const result = await query(
+            `UPDATE ai_insights SET is_read = true
+             WHERE id = $1 AND tenant_id = $2 AND (target_user_id = $3 OR target_user_id IS NULL)`,
+            [req.params.id, req.tenantId, req.user.id]
+        );
+        if (result.rowCount === 0) {
+            return res.status(404).json({ success: false, message: 'Insight পাওয়া যায়নি।' });
+        }
         return res.status(200).json({ success: true, message: 'পড়া হয়েছে হিসেবে চিহ্নিত।' });
     } catch (error) {
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
