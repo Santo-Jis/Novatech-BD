@@ -61,7 +61,8 @@ export function Card({ children, title, subtitle, action, className = '', paddin
   )
 }
 
-export function KPICard({ title, value, subtitle, icon, color = 'primary', trend, trendLabel = 'গত সপ্তাহের তুলনায়' }) {
+export function KPICard({ title, value, subtitle, icon, color = 'primary', trend, trendLabel = 'গত সপ্তাহের তুলনায়', invertTrend = false }) {
+  const trendIsGood = invertTrend ? trend < 0 : trend > 0;
   const colors = {
     primary:   { bg: 'bg-primary/10',   text: 'text-primary',     icon: 'bg-primary' },
     secondary: { bg: 'bg-secondary/10', text: 'text-secondary',   icon: 'bg-secondary' },
@@ -78,7 +79,7 @@ export function KPICard({ title, value, subtitle, icon, color = 'primary', trend
           <p className={`text-2xl font-bold mt-1 ${c.text}`}>{value}</p>
           {subtitle && <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">{subtitle}</p>}
           {trend && (
-            <p className={`text-xs mt-2 font-medium ${trend > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+            <p className={`text-xs mt-2 font-medium ${trendIsGood ? 'text-emerald-600' : 'text-red-500'}`}>
               {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}% {trendLabel}
             </p>
           )}

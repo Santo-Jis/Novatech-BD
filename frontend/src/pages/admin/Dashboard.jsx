@@ -24,9 +24,16 @@ import {
 //  2. "এখনই নজর দিন" rail — pending approval + স্টক-আউট + রিটার্ন +
 //     সিট-লিমিট, একসাথে এক জায়গায় (আগে শুধু pending approval banner ছিল)।
 //  3. KPICard-এ trend% এখন সত্যিই ব্যবহার হচ্ছে (component-এ prop হিসেবে
-//     ছিল, কোথাও পাস করা হতো না) — শুধু sales/net-এর জন্য, কারণ dues ও
-//     active-SR backend snapshot ভ্যালু (তারিখ দিয়ে ফিল্টার হয় না),
-//     তাই ওগুলোর জন্য trend দেখানো ভুল/misleading হতো।
+//     ছিল, কোথাও পাস করা হতো না) — sales ও net-এর জন্য from/to-ফিল্টার্ড
+//     query থেকেই সরাসরি পাওয়া যায়।
+//  3a. dues ও active-SR প্রথমে trend ছাড়াই রাখা হয়েছিল, কারণ ওই দুইটার
+//     backend query তারিখ দিয়ে ফিল্টার হয় না (সবসময় "এখন"-এর snapshot) —
+//     তুলনা করার মতো ঐতিহাসিক ডেটা কোথাও রাখা হতো না। এখন backend/src/jobs/
+//     kpiSnapshot.job.js প্রতি রাত ১১:৫৫ (Dhaka)-য় প্রতিটা tenant-এর জন্য
+//     daily_kpi_snapshots-এ একটা "photo" রাখে, আর getSystemStats() নতুন
+//     history ফিল্ড হিসেবে সেটা ফেরত পাঠায় — তাই এখন ওই দুইটাতেও সত্যিকারের
+//     trend% দেখানো যাচ্ছে (দেখুন curDues/curActiveSR নিচে)। এই job আজ থেকেই
+//     শুরু, তাই deploy-এর প্রথম দিন trend দেখাবে না — ধীরে ধীরে জমবে।
 //  4. নীট আয় (sales − expense) কার্ড নতুন — kpi.expenses আগে থেকেই
 //     backend পাঠাতো, dashboard কখনো দেখাতো না।
 //  5. শীর্ষ SR — kpi.top_workers আগে থেকেই backend পাঠাতো, ব্যবহার হতো না।
@@ -85,9 +92,11 @@ const RANGE_OPTIONS = [
   { key: 'month', label: 'এই মাস',    trendLabel: 'গত মাসের একই সময়ের তুলনায়' },
 ]
 
-// prev না থাকলে বা baseline ০ হলে trend % অর্থহীন — null মানে KPICard এটা লুকাবে
-function pctChange(cur, prev, hasPrev) {
-  if (!hasPrev) return null
+// prev===null মানে তুলনার মতো ঐতিহাসিক ডেটা এখনো নেই (prevKpi লোড হয়নি,
+// অথবা daily_kpi_snapshots-এ ওই তারিখের রেকর্ড নেই) — null ফেরত দিলে
+// KPICard trend arrow লুকিয়ে ফেলে, ভুল/আন্দাজি সংখ্যা দেখায় না।
+function pctChange(cur, prev) {
+  if (prev === null || prev === undefined) return null
   if (prev === 0) return cur > 0 ? 100 : null
   return Math.round(((cur - prev) / prev) * 100)
 }
@@ -225,15 +234,27 @@ export default function AdminDashboard() {
   ].filter(Boolean)
 
   // ---------- KPI + trend (শুধু তারিখ-ফিল্টার হওয়া ফিল্ডে) ----------
-  const curSales   = parseFloat(kpi?.sales?.total_sales      || 0)
-  const curExpense = parseFloat(kpi?.expenses?.total_expense || 0)
-  const curNet     = curSales - curExpense
-  const prevSales   = parseFloat(prevKpi?.sales?.total_sales      || 0)
-  const prevExpense = parseFloat(prevKpi?.expenses?.total_expense || 0)
-  const prevNet      = prevSales - prevExpense
+  const curSales    = parseFloat(kpi?.sales?.total_sales          || 0)
+  const curExpense  = parseFloat(kpi?.expenses?.total_expense     || 0)
+  const curNet      = curSales - curExpense
+  const curDues     = parseFloat(kpi?.customers?.total_outstanding || 0)
+  const curActiveSR = parseInt(kpi?.workers?.active                || 0)
 
-  const salesTrend = pctChange(curSales, prevSales, !!prevKpi)
-  const netTrend    = pctChange(curNet, prevNet, !!prevKpi)
+  // prevKpi লোড না হওয়া পর্যন্ত, বা snapshot না থাকলে — null-ই রাখা হচ্ছে
+  // (0 ধরে নিলে "০ থেকে বেড়েছে" এর মতো ভুল trend% বের হতো)
+  const prevSales    = prevKpi?.sales?.total_sales           != null ? parseFloat(prevKpi.sales.total_sales)      : null
+  const prevExpense  = prevKpi?.expenses?.total_expense       != null ? parseFloat(prevKpi.expenses.total_expense) : null
+  const prevNet      = (prevSales !== null && prevExpense !== null) ? (prevSales - prevExpense) : null
+  // ✅ dues/active-SR-এর ঐতিহাসিক তুলনা এখন daily_kpi_snapshots থেকে আসে
+  // (kpiSnapshot.job.js প্রতি রাতে রাখে) — prevKpi.customers/.workers না,
+  // কারণ ওগুলো সবসময় "এখন"-এর লাইভ ভ্যালু, তারিখ দিয়ে ফিল্টার হয় না।
+  const prevDues     = prevKpi?.history?.total_outstanding   != null ? parseFloat(prevKpi.history.total_outstanding) : null
+  const prevActiveSR = prevKpi?.history?.active_workers      != null ? parseInt(prevKpi.history.active_workers)      : null
+
+  const salesTrend   = pctChange(curSales, prevSales)
+  const netTrend      = pctChange(curNet, prevNet)
+  const duesTrend      = pctChange(curDues, prevDues)
+  const activeSRTrend  = pctChange(curActiveSR, prevActiveSR)
 
   const cashSales   = parseFloat(kpi?.sales?.cash_sales   || 0)
   const creditSales = parseFloat(kpi?.sales?.credit_sales || 0)
@@ -331,17 +352,22 @@ export default function AdminDashboard() {
         />
         <KPICard
           title="মোট বকেয়া"
-          value={`৳${parseInt(kpi?.customers?.total_outstanding || 0).toLocaleString()}`}
+          value={`৳${curDues.toLocaleString()}`}
           subtitle={`${kpi?.customers?.customers_with_dues || 0}টি দোকান — চলমান ব্যালেন্স`}
           icon={<FiDollarSign />}
           color="accent"
+          trend={duesTrend}
+          trendLabel={meta.trendLabel}
+          invertTrend
         />
         <KPICard
           title="সক্রিয় SR"
-          value={kpi?.workers?.active || 0}
+          value={curActiveSR}
           subtitle={`${kpi?.workers?.pending || 0} জন অনুমোদনের অপেক্ষায়${kpi?.workers?.suspended > 0 ? ` · ${kpi.workers.suspended} সাসপেন্ড` : ''}`}
           icon={<FiUsers />}
           color="primary"
+          trend={activeSRTrend}
+          trendLabel={meta.trendLabel}
         />
       </div>
 

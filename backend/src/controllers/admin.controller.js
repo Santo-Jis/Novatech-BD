@@ -429,6 +429,7 @@ const getSystemStats = async (req, res) => {
             topSR,
             expenses,
             returns,
+            history,
         ] = await Promise.all([
 
             // ── কর্মচারী ────────────────────────────────────────────────
@@ -538,6 +539,18 @@ const getSystemStats = async (req, res) => {
                 FROM customer_return_requests
                 WHERE created_at::date BETWEEN $1 AND $2 AND tenant_id = $3
             `, [from, to, tenantId]),
+
+            // ── ঐতিহাসিক Snapshot (শুধু trend% এর জন্য) ──────────────────
+            // "মোট বকেয়া" আর "সক্রিয় SR" তারিখ দিয়ে ফিল্টার হয় না (উপরের
+            // customers/workers query সবসময় "এখন"-এর ভ্যালু দেয়), তাই আলাদা
+            // করে kpiSnapshot.job.js-এর রাখা পুরনো দিনের রেকর্ড খোঁজা হচ্ছে।
+            // কোনো snapshot না থাকলে (এখনো এত পুরনো ডেটা জমেনি) → NULL,
+            // frontend তখন trend arrow দেখাবে না — ভুল/আন্দাজি সংখ্যা না।
+            query(`
+                SELECT total_outstanding, active_workers
+                FROM daily_kpi_snapshots
+                WHERE tenant_id = $1 AND snapshot_date = $2::date
+            `, [tenantId, to]),
         ]);
 
         return res.status(200).json({
@@ -554,6 +567,12 @@ const getSystemStats = async (req, res) => {
                 top_workers: topSR.rows,
                 expenses:    expenses.rows[0],
                 returns:     returns.rows[0],
+                // snapshot না থাকলে rows[0] undefined — দুটোই null থাকবে,
+                // Dashboard.jsx-এর pctChange() সেটাকে "trend দেখাবে না" ধরে নেবে
+                history: {
+                    total_outstanding: history.rows[0]?.total_outstanding ?? null,
+                    active_workers:    history.rows[0]?.active_workers    ?? null,
+                },
             },
         });
 

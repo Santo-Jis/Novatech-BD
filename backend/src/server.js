@@ -350,6 +350,7 @@ const { startGpsTrailCleanupJob }   = require('./jobs/gpsTrail.job');
 const { scheduleCreditReminderJob } = require('./jobs/creditReminder.job');
 const { startReservedStockJob }     = require('./jobs/reservedStock.job');
 const { startSessionCleanupJob }    = require('./jobs/sessionCleanup.job');
+const { startKpiSnapshotJob }       = require('./jobs/kpiSnapshot.job');
 
 
 // ============================================================
@@ -401,6 +402,7 @@ seedPlatformStaffFromEnv();
         scheduleCreditReminderJob();
         startReservedStockJob();
         startSessionCleanupJob();
+        startKpiSnapshotJob();
 
         logger.info('✅ Background jobs চালু হয়েছে');
 
