@@ -17,8 +17,9 @@
 // filtered list থেকে না) — তাই সার্চ পাল্টালেও কার্টের আইটেমের
 // নাম "product_id" হয়ে যাওয়ার পুরনো বাগ এখানে হয় না।
 // ============================================================
-import { FiX, FiMinus, FiPlus, FiTrash2, FiPackage, FiAlertTriangle, FiAlertCircle, FiSend } from 'react-icons/fi'
+import { FiX, FiPlus, FiTrash2, FiPackage, FiAlertTriangle, FiAlertCircle, FiSend } from 'react-icons/fi'
 import CpButton from '../ui/CpButton'
+import QtyStepper from './QtyStepper'
 
 function PriceRow({ label, value, bold = false }) {
   return (
@@ -39,6 +40,7 @@ export default function CheckoutSheet({
   onNoteChange,
   onInc,
   onDec,
+  onSetQty,
   onRemove,
   pendingCount = 0,
   submitting = false,
@@ -51,6 +53,24 @@ export default function CheckoutSheet({
   const taxTotal  = items.reduce((s, { product, qty }) => s + (Number(product.tax_amount) || 0) * qty, 0)
   const grandTotal = items.reduce((s, { product, qty }) => s + (Number(product.final_price ?? product.base_price) || 0) * qty, 0)
   const isEmpty = items.length === 0
+
+  // ✅ মাল্টি-ভেন্ডর — কার্টে একাধিক কোম্পানির প্রোডাক্ট থাকতে পারে।
+  // seller_id দিয়ে গ্রুপ করা হচ্ছে যাতে কাস্টমার আগে থেকেই বুঝতে পারে
+  // সাবমিট করলে কয়টা আলাদা অর্ডার রিকোয়েস্টে ভাগ হবে (ব্যাকএন্ডও
+  // ঠিক এই একই লজিকে ভাগ করে)।
+  const sellerGroups = items.reduce((acc, entry) => {
+    const sid = entry.product.seller_id || 'unknown'
+    if (!acc[sid]) {
+      acc[sid] = {
+        sellerName: entry.product.seller_name_bn || entry.product.seller_name || 'বিক্রেতা',
+        entries: [],
+      }
+    }
+    acc[sid].entries.push(entry)
+    return acc
+  }, {})
+  const sellerGroupList = Object.values(sellerGroups)
+  const sellerCount = sellerGroupList.length
 
   return (
     <div
@@ -87,62 +107,71 @@ export default function CheckoutSheet({
             </div>
           ) : (
             <>
-              {/* আইটেম লিস্ট */}
-              <div className="flex flex-col gap-3">
-                {items.map(({ product, qty }) => {
-                  const stock = Number(product.available_stock) || 0
-                  const lineTotal = (Number(product.final_price ?? product.base_price) || 0) * qty
-                  return (
-                    <div key={product.id} className="flex gap-3 items-center">
-                      <div className="w-12 h-12 rounded-xl bg-cp-bg-alt overflow-hidden flex-shrink-0">
-                        {product.image_url ? (
-                          <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center">
-                            <FiPackage className="w-4 h-4 text-cp-text-muted" />
+              {/* একাধিক কোম্পানি থাকলে স্প্লিট নোটিশ */}
+              {sellerCount > 1 && (
+                <div className="bg-cp-trust-100 rounded-xl p-3 flex gap-2 items-start">
+                  <FiPackage className="w-4 h-4 text-cp-trust-700 flex-shrink-0 mt-0.5" />
+                  <p className="text-[12px] text-cp-trust-700 leading-relaxed font-cp-body">
+                    এই কার্টে <strong>{sellerCount}টি ভিন্ন কোম্পানির</strong> প্রোডাক্ট আছে — সাবমিট করলে {sellerCount}টি আলাদা অর্ডার রিকোয়েস্ট তৈরি হবে, প্রতিটা কোম্পানি নিজের অংশ আলাদাভাবে পূরণ করবে।
+                  </p>
+                </div>
+              )}
+
+              {/* আইটেম লিস্ট — বিক্রেতা অনুযায়ী গ্রুপ করা */}
+              <div className="flex flex-col gap-4">
+                {sellerGroupList.map((group, gi) => (
+                  <div key={gi} className="flex flex-col gap-3">
+                    {sellerCount > 1 && (
+                      <p className="text-[11px] font-cp-head font-bold text-cp-text-muted uppercase tracking-wide">
+                        🏪 {group.sellerName}
+                      </p>
+                    )}
+                    {group.entries.map(({ product, qty }) => {
+                      const stock = Number(product.available_stock) || 0
+                      const lineTotal = (Number(product.final_price ?? product.base_price) || 0) * qty
+                      return (
+                        <div key={product.id} className="flex gap-3 items-center">
+                          <div className="w-12 h-12 rounded-xl bg-cp-bg-alt overflow-hidden flex-shrink-0">
+                            {product.image_url ? (
+                              <img src={product.image_url} alt={product.name} loading="lazy" decoding="async" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <FiPackage className="w-4 h-4 text-cp-text-muted" />
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
 
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[12.5px] font-semibold text-cp-text-primary line-clamp-1 font-cp-body">
-                          {product.name}
-                        </p>
-                        <p className="text-[11px] text-cp-text-muted font-cp-body">
-                          ৳{lineTotal.toFixed(2)}
-                        </p>
-                      </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[12.5px] font-semibold text-cp-text-primary line-clamp-1 font-cp-body">
+                              {product.name}
+                            </p>
+                            <p className="text-[11px] text-cp-text-muted font-cp-body">
+                              ৳{lineTotal.toFixed(2)}
+                            </p>
+                          </div>
 
-                      <div className="flex items-center gap-1 bg-cp-bg-alt rounded-lg px-0.5 flex-shrink-0">
-                        <button
-                          onClick={() => onDec(product.id)}
-                          disabled={submitting}
-                          className="w-7 h-7 rounded-md flex items-center justify-center text-cp-trust-700 disabled:opacity-40"
-                        >
-                          <FiMinus className="w-3.5 h-3.5" />
-                        </button>
-                        <span className="w-5 text-center text-[13px] font-cp-head font-bold text-cp-text-primary">
-                          {qty}
-                        </span>
-                        <button
-                          onClick={() => onInc(product.id)}
-                          disabled={submitting || qty >= stock}
-                          className="w-7 h-7 rounded-md flex items-center justify-center text-cp-trust-700 disabled:opacity-40"
-                        >
-                          <FiPlus className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                          <QtyStepper
+                            qty={qty}
+                            stock={stock}
+                            disabled={submitting}
+                            onInc={() => onInc(product.id)}
+                            onDec={() => onDec(product.id)}
+                            onSetQty={q => onSetQty(product.id, q)}
+                            size="sm"
+                          />
 
-                      <button
-                        onClick={() => onRemove(product.id)}
-                        disabled={submitting}
-                        className="w-7 h-7 rounded-md flex items-center justify-center text-cp-error flex-shrink-0 disabled:opacity-40"
-                      >
-                        <FiTrash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  )
-                })}
+                          <button
+                            onClick={() => onRemove(product.id)}
+                            disabled={submitting}
+                            className="w-7 h-7 rounded-md flex items-center justify-center text-cp-error flex-shrink-0 disabled:opacity-40"
+                          >
+                            <FiTrash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
               </div>
 
               {/* দামের ব্রেকডাউন */}

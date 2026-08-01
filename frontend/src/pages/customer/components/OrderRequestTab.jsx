@@ -26,6 +26,14 @@
 // UUID দেখাত। এখন productCache (ref) প্রতিটা fetch/add-এ প্রতিটা
 // প্রোডাক্ট জমা রাখে, id দিয়ে — তাই যেকোনো সময় কার্টে থাকা যেকোনো
 // আইটেমের নাম/দাম/স্টক নির্ভরযোগ্যভাবে পাওয়া যায়।
+//
+// ✅ পরের আপডেট (৩টা ফিক্স):
+//   ১. বাল্ক কোয়ান্টিটি — QtyStepper-এর সংখ্যায় ট্যাপ করে সরাসরি
+//      টাইপ করা যায় এখন (আগে শুধু +/- ট্যাপ, ৫০ পিসের জন্য ৫০ ট্যাপ লাগত)
+//   ২. ক্যাটাগরি ফিল্টার — /portal/categories (নতুন এন্ডপয়েন্ট) +
+//      getPortalProducts-এ ?category= প্যারাম। কোনো ক্যাটাগরি/অ্যাসাইনমেন্ট
+//      না থাকলে চিপ রো-ই দেখাবে না (graceful — কিছু ভাঙে না)
+//   ৩. ছবি lazy-loading + fade-in — স্লো নেটওয়ার্কে ভালো অভিজ্ঞতা
 // ============================================================
 import { useState, useEffect, useRef } from 'react'
 import { FiShoppingBag, FiClock } from 'react-icons/fi'
@@ -54,6 +62,8 @@ export default function OrderRequestTab({ portalJWT }) {
   const [page,            setPage]            = useState(1)
   const [hasNext,         setHasNext]         = useState(false)
   const [total,           setTotal]           = useState(0)
+  const [categories,      setCategories]      = useState([])   // ✅ নতুন
+  const [categoryId,      setCategoryId]      = useState('')   // ✅ নতুন — '' = সব
 
   // প্রতিটা fetch/add-এ প্রতিটা প্রোডাক্ট এখানে জমা হয় (id → product)
   const productCache = useRef({})
@@ -75,12 +85,17 @@ export default function OrderRequestTab({ portalJWT }) {
   const [successMsg,      setSuccessMsg]      = useState('')
 
   // ── ডেটা লোড ───────────────────────────────────────────────
-  const loadProducts = async (searchTerm = '', pageNum = 1, append = false) => {
+  // categoryFilter override না দিলে বর্তমান categoryId state ব্যবহার
+  // হয় (search-এর overrideValue প্যাটার্নের মতোই — চিপ ট্যাপে stale
+  // closure এড়াতে explicit override পাঠানো হয়)
+  const loadProducts = async (searchTerm = '', pageNum = 1, append = false, categoryFilter) => {
     if (append) setLoadingMore(true); else setInitialLoading(true)
     setProductsError(null)
     try {
+      const cat = categoryFilter !== undefined ? categoryFilter : categoryId
       const params = new URLSearchParams({ page: pageNum, limit: PAGE_SIZE })
       if (searchTerm) params.set('search', searchTerm)
+      if (cat) params.set('category', cat)
       const data = await portalFetch(`/portal/products?${params}`, {
         headers: { Authorization: `Bearer ${portalJWT}` }
       })
@@ -96,6 +111,18 @@ export default function OrderRequestTab({ portalJWT }) {
       setInitialLoading(false)
       setLoadingMore(false)
     }
+  }
+
+  // ✅ নতুন — ক্যাটাগরি চিপ লিস্ট। ব্যর্থ হলে চুপচাপ (চিপ রো-ই দেখাবে
+  // না, শপিং-এ বাধা দেবে না — migration না চালানো থাকলেও অ্যাপ
+  // স্বাভাবিকভাবে চলবে)
+  const loadCategories = async () => {
+    try {
+      const data = await portalFetch('/portal/categories', {
+        headers: { Authorization: `Bearer ${portalJWT}` }
+      })
+      setCategories(data.data || [])
+    } catch { /* silent — ক্যাটাগরি ফিচার optional, ব্যর্থ হলে শুধু চিপ রো লুকানো থাকবে */ }
   }
 
   const loadRequests = async () => {
@@ -119,6 +146,7 @@ export default function OrderRequestTab({ portalJWT }) {
   useEffect(() => {
     loadProducts()
     loadRequests()
+    loadCategories()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -190,6 +218,18 @@ export default function OrderRequestTab({ portalJWT }) {
     })
   }
 
+  // ✅ নতুন — QtyStepper-এ সংখ্যায় ট্যাপ করে সরাসরি টাইপ করলে এটা
+  // কল হয় (বাল্ক অর্ডারের জন্য, ৫০ বার ট্যাপ করা লাগবে না)
+  const setExactQty = (productId, qty) => {
+    setCart(prev => {
+      if (qty <= 0) {
+        const { [productId]: _drop, ...rest } = prev
+        return rest
+      }
+      return { ...prev, [productId]: qty }
+    })
+  }
+
   const cartEntries = Object.entries(cart).filter(([, qty]) => qty > 0)
   const cartCount   = cartEntries.length
   const itemCount   = cartEntries.reduce((s, [, qty]) => s + qty, 0)
@@ -217,7 +257,13 @@ export default function OrderRequestTab({ portalJWT }) {
   const runSearch = (overrideValue) => {
     const q = overrideValue !== undefined ? overrideValue : search
     setCommittedSearch(q)
-    loadProducts(q, 1, false)
+    loadProducts(q, 1, false, categoryId)
+  }
+
+  // ✅ নতুন — ক্যাটাগরি চিপে ট্যাপ করলে, বর্তমান সার্চ বজায় রেখে page ১ থেকে রিলোড
+  const selectCategory = (id) => {
+    setCategoryId(id)
+    loadProducts(committedSearch, 1, false, id)
   }
 
   // ── সর্ট (ক্লায়েন্ট-সাইড, লোড-করা প্রোডাক্টের উপর) ────────────
@@ -246,11 +292,10 @@ export default function OrderRequestTab({ portalJWT }) {
       setCart({})
       setNote('')
       setShowCheckout(false)
-      setSuccessMsg(
-        res.has_pending_order
-          ? '✅ অর্ডার পাঠানো হয়েছে। তবে আগের একটি অর্ডার এখনো pending আছে — SR শীঘ্রই আসবে। 🎉'
-          : 'অর্ডার রিকোয়েস্ট পাঠানো হয়েছে! শীঘ্রই SR আসবে। 🎉'
-      )
+      // ✅ ব্যাকএন্ডের নিজের message সরাসরি ব্যবহার — এতে "একাধিক কোম্পানিতে
+      // ভাগ হয়ে গেছে" কেসটাও সঠিকভাবে দেখা যাবে (আগে এখানে client-side
+      // আলাদা করে মেসেজ বানানো হতো যা শুধু ২টা কেস জানত, split-এর কথা জানত না)
+      setSuccessMsg(res.message || 'অর্ডার রিকোয়েস্ট পাঠানো হয়েছে!')
       setSubTab('history')
       loadRequests()
     } catch (e) {
@@ -308,10 +353,14 @@ export default function OrderRequestTab({ portalJWT }) {
           onAdd={addToCart}
           onInc={incQty}
           onDec={decQty}
+          onSetQty={setExactQty}
           hasNext={hasNext}
           onLoadMore={() => loadProducts(committedSearch, page + 1, true)}
           total={total}
           onRetry={() => loadProducts(committedSearch, 1)}
+          categories={categories}
+          selectedCategory={categoryId}
+          onSelectCategory={selectCategory}
         />
       ) : (
         <OrderHistoryView
@@ -335,6 +384,7 @@ export default function OrderRequestTab({ portalJWT }) {
         onAdd={addToCart}
         onInc={incQty}
         onDec={decQty}
+        onSetQty={setExactQty}
       />
 
       {!showCheckout && (
@@ -353,6 +403,7 @@ export default function OrderRequestTab({ portalJWT }) {
           onNoteChange={setNote}
           onInc={incQty}
           onDec={decQty}
+          onSetQty={setExactQty}
           onRemove={removeFromCart}
           pendingCount={pendingCount}
           submitting={submitting}

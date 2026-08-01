@@ -51,10 +51,14 @@ export default function ShopView({
   onAdd,
   onInc,
   onDec,
+  onSetQty,
   hasNext = false,
   onLoadMore,
   total = 0,
   onRetry,
+  categories = [],
+  selectedCategory = '',
+  onSelectCategory,
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -83,6 +87,28 @@ export default function ShopView({
         </CpButton>
       </div>
 
+      {/* ক্যাটাগরি চিপ — শুধু ক্যাটাগরি থাকলেই দেখা যাবে (না থাকলে
+          আগের মতোই স্বাভাবিক, খালি রো দেখাবে না) */}
+      {categories.length > 0 && (
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+          <button
+            onClick={() => onSelectCategory('')}
+            className={clsxChip(selectedCategory === '')}
+          >
+            সব
+          </button>
+          {categories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => onSelectCategory(cat.id)}
+              className={clsxChip(selectedCategory === cat.id)}
+            >
+              {cat.name_bn || cat.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* সর্ট চিপ + মোট সংখ্যা */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
@@ -90,7 +116,7 @@ export default function ShopView({
             <button
               key={opt.key}
               onClick={() => onSortChange(opt.key)}
-              className={clsxSort(sort === opt.key)}
+              className={clsxChip(sort === opt.key)}
             >
               {opt.label}
             </button>
@@ -138,6 +164,7 @@ export default function ShopView({
                 onAdd={onAdd}
                 onInc={onInc}
                 onDec={onDec}
+                onSetQty={onSetQty}
               />
             ))}
           </div>
@@ -157,7 +184,7 @@ export default function ShopView({
   )
 }
 
-function clsxSort(active) {
+function clsxChip(active) {
   return active
     ? 'px-3 h-7 rounded-full bg-cp-trust-500 text-white text-[11px] font-cp-head font-semibold whitespace-nowrap flex-shrink-0'
     : 'px-3 h-7 rounded-full bg-cp-bg-alt text-cp-text-secondary text-[11px] font-cp-head font-semibold whitespace-nowrap flex-shrink-0'

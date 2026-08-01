@@ -12,8 +12,10 @@
 // করলেই in-place স্টেপারে বদলে যায় — শিট বন্ধ হয়ে যায় না, চাইলে
 // সাথে সাথে আরও বাড়ানো যায়।
 // ============================================================
-import { FiX, FiMinus, FiPlus, FiPackage } from 'react-icons/fi'
+import { useState } from 'react'
+import { FiX, FiPlus, FiPackage } from 'react-icons/fi'
 import CpBadge from '../ui/CpBadge'
+import QtyStepper from './QtyStepper'
 import { LOW_STOCK_THRESHOLD } from './constants'
 
 function PriceRow({ label, value, bold = false }) {
@@ -29,7 +31,9 @@ function PriceRow({ label, value, bold = false }) {
   )
 }
 
-export default function ProductDetailSheet({ product, qty = 0, onClose, onAdd, onInc, onDec }) {
+export default function ProductDetailSheet({ product, qty = 0, onClose, onAdd, onInc, onDec, onSetQty }) {
+  const [imgLoaded, setImgLoaded] = useState(false)
+
   if (!product) return null
 
   const stock      = Number(product.available_stock) || 0
@@ -58,7 +62,14 @@ export default function ProductDetailSheet({ product, qty = 0, onClose, onAdd, o
         {/* ছবি */}
         <div className="h-[200px] bg-cp-bg-alt overflow-hidden">
           {product.image_url ? (
-            <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+            <img
+              src={product.image_url}
+              alt={product.name}
+              loading="lazy"
+              decoding="async"
+              onLoad={() => setImgLoaded(true)}
+              className={`w-full h-full object-cover transition-opacity duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+            />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <FiPackage className="w-10 h-10 text-cp-text-muted" />
@@ -79,6 +90,13 @@ export default function ProductDetailSheet({ product, qty = 0, onClose, onAdd, o
               <FiX className="w-4 h-4" />
             </button>
           </div>
+
+          {(product.seller_name_bn || product.seller_name) && (
+            <p className="text-[12px] text-cp-text-muted mb-2 leading-snug">
+              🏪 বিক্রেতা: <span className="font-medium text-cp-text-secondary">{product.seller_name_bn || product.seller_name}</span>
+              {product.seller_address && <span> · {product.seller_address}</span>}
+            </p>
+          )}
 
           {/* দাম */}
           <p className="text-[24px] font-extrabold font-cp-head text-cp-trust-700 mb-2.5 leading-none">
@@ -117,22 +135,14 @@ export default function ProductDetailSheet({ product, qty = 0, onClose, onAdd, o
           {/* কার্ট কন্ট্রোল */}
           {!outOfStock && (
             inCart ? (
-              <div className="flex items-center justify-between bg-cp-trust-100 rounded-xl h-12 px-1.5">
-                <button
-                  onClick={() => onDec(product.id)}
-                  className="w-9 h-9 rounded-lg bg-white text-cp-trust-700 flex items-center justify-center active:bg-cp-trust-100"
-                >
-                  <FiMinus className="w-4 h-4" />
-                </button>
-                <span className="font-cp-head font-extrabold text-[16px] text-cp-trust-900">{qty}</span>
-                <button
-                  onClick={() => onInc(product.id)}
-                  disabled={qty >= stock}
-                  className="w-9 h-9 rounded-lg bg-white text-cp-trust-700 flex items-center justify-center active:bg-cp-trust-100 disabled:opacity-40 disabled:pointer-events-none"
-                >
-                  <FiPlus className="w-4 h-4" />
-                </button>
-              </div>
+              <QtyStepper
+                qty={qty}
+                stock={stock}
+                onInc={() => onInc(product.id)}
+                onDec={() => onDec(product.id)}
+                onSetQty={q => onSetQty(product.id, q)}
+                size="lg"
+              />
             ) : (
               <button
                 onClick={() => onAdd(product)}

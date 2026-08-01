@@ -15,12 +15,14 @@
 // ============================================================
 import { useState } from 'react'
 import clsx from 'clsx'
-import { FiPlus, FiMinus, FiPackage } from 'react-icons/fi'
+import { FiPlus, FiPackage } from 'react-icons/fi'
 import CpBadge from '../ui/CpBadge'
+import QtyStepper from './QtyStepper'
 import { LOW_STOCK_THRESHOLD } from './constants'
 
-export default function ProductCard({ product, qty = 0, onOpen, onAdd, onInc, onDec }) {
-  const [imgError, setImgError] = useState(false)
+export default function ProductCard({ product, qty = 0, onOpen, onAdd, onInc, onDec, onSetQty }) {
+  const [imgError, setImgError]   = useState(false)
+  const [imgLoaded, setImgLoaded] = useState(false)
 
   const stock    = Number(product.available_stock) || 0
   const inCart   = qty > 0
@@ -41,8 +43,11 @@ export default function ProductCard({ product, qty = 0, onOpen, onAdd, onInc, on
           <img
             src={product.image_url}
             alt={product.name}
+            loading="lazy"
+            decoding="async"
+            onLoad={() => setImgLoaded(true)}
             onError={() => setImgError(true)}
-            className="w-full h-full object-cover"
+            className={`w-full h-full object-cover transition-opacity duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
@@ -62,6 +67,12 @@ export default function ProductCard({ product, qty = 0, onOpen, onAdd, onInc, on
           {product.name}
         </p>
 
+        {(product.seller_name_bn || product.seller_name) && (
+          <p className="text-[10px] text-cp-text-muted leading-snug -mt-1 line-clamp-1">
+            🏪 {product.seller_name_bn || product.seller_name}
+          </p>
+        )}
+
         <div className="flex items-baseline gap-1">
           <span className="font-cp-head font-bold text-[15px] text-cp-trust-700">
             ৳{price.toFixed(0)}
@@ -79,25 +90,14 @@ export default function ProductCard({ product, qty = 0, onOpen, onAdd, onInc, on
 
         {/* অ্যাকশন */}
         {inCart ? (
-          <div
-            onClick={e => e.stopPropagation()}
-            className="flex items-center justify-between bg-cp-trust-100 rounded-xl h-9 px-1 mt-0.5"
-          >
-            <button
-              onClick={() => onDec(product.id)}
-              className="w-7 h-7 rounded-lg bg-white text-cp-trust-700 flex items-center justify-center active:bg-cp-trust-100"
-            >
-              <FiMinus className="w-3.5 h-3.5" />
-            </button>
-            <span className="font-cp-head font-bold text-[13px] text-cp-trust-900">{qty}</span>
-            <button
-              onClick={() => onInc(product.id)}
-              disabled={qty >= stock}
-              className="w-7 h-7 rounded-lg bg-white text-cp-trust-700 flex items-center justify-center active:bg-cp-trust-100 disabled:opacity-40 disabled:pointer-events-none"
-            >
-              <FiPlus className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          <QtyStepper
+            qty={qty}
+            stock={stock}
+            onInc={() => onInc(product.id)}
+            onDec={() => onDec(product.id)}
+            onSetQty={q => onSetQty(product.id, q)}
+            size="md"
+          />
         ) : (
           <button
             onClick={e => { e.stopPropagation(); onAdd(product) }}

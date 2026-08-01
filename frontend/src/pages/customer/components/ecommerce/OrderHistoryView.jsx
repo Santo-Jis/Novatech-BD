@@ -108,6 +108,11 @@ export default function OrderHistoryView({
                       <p className="text-[13px] font-semibold text-cp-text-primary mt-0.5 font-cp-body">
                         {items.length}টি পণ্য
                       </p>
+                      {(req.seller_name_bn || req.seller_name) && (
+                        <p className="text-[10.5px] text-cp-text-muted font-cp-body mt-0.5">
+                          🏪 {req.seller_name_bn || req.seller_name}
+                        </p>
+                      )}
                     </div>
                     <CpBadge variant={meta.variant}>{meta.text}</CpBadge>
                   </div>
