@@ -121,6 +121,33 @@ const getRecentSms = async (tenantId, phone, limit = 15) => {
   return result.rows;
 };
 
+// ─── সাম্প্রতিক Email লগ (tenant-wide, বা নির্দিষ্ট email দিয়ে filter) ──
+// email.service.js-এর logEmail-এর সাথে মেলানো (email, subject, message_type,
+// status, error_message, tenant_id)। ⚠️ email_logs-এর timestamp কলামের নাম
+// কোনো SELECT-এ কোথাও confirm করা যায়নি (শুধু INSERT-এই আছে কোডে) — sms_logs-এর
+// sent_at কনভেনশন ধরে নেওয়া হলো (একই ডেভেলপার, একই Phase 3/26 July 2026-এ
+// বানানো)। deploy-এর আগে verify করে নিও — না মিললে শুধু এই ORDER BY লাইনটা বদলাতে হবে।
+const getRecentEmails = async (tenantId, email, limit = 15) => {
+  const conditions = ['tenant_id = $1'];
+  const params     = [tenantId];
+
+  if (email && email.trim()) {
+    params.push(`%${email.trim()}%`);
+    conditions.push(`email ILIKE $${params.length}`);
+  }
+
+  params.push(limit);
+  const result = await query(
+    `SELECT id, email, subject, message_type, status, error_message, sent_at
+     FROM email_logs
+     WHERE ${conditions.join(' AND ')}
+     ORDER BY sent_at DESC
+     LIMIT $${params.length}`,
+    params
+  );
+  return result.rows;
+};
+
 /**
  * একটা tenant-এর জন্য পূর্ণ diagnostics স্ন্যাপশট।
  * options.includeBilling — wallet/AI token ব্যবহার শুধু তখনই যোগ হবে
@@ -128,8 +155,9 @@ const getRecentSms = async (tenantId, phone, limit = 15) => {
  *   billing_email/billing_name-এর মতোই এগুলো billing-sensitive বলে
  *   support scope-এ বাদ)।
  * options.phone — দিলে SMS লগ শুধু সেই নম্বরে filter হবে।
+ * options.email — দিলে Email লগ শুধু সেই ঠিকানায় filter হবে।
  */
-const getTenantDiagnostics = async (tenantId, { includeBilling = false, phone = null } = {}) => {
+const getTenantDiagnostics = async (tenantId, { includeBilling = false, phone = null, email = null } = {}) => {
   const tenantRes = await query(
     `SELECT id, slug, company_name, status, plan, max_customers,
             ai_tokens_monthly, ai_tokens_used, trial_ends_at, subscription_ends_at
@@ -139,10 +167,11 @@ const getTenantDiagnostics = async (tenantId, { includeBilling = false, phone = 
   if (tenantRes.rows.length === 0) return null;
   const tenant = tenantRes.rows[0];
 
-  const [customers, seats, smsRecent, wallet] = await Promise.all([
+  const [customers, seats, smsRecent, emailRecent, wallet] = await Promise.all([
     getCustomerUsage(tenantId, tenant.max_customers),
     getSeatUsage(tenantId),
     getRecentSms(tenantId, phone),
+    getRecentEmails(tenantId, email),
     includeBilling ? walletService.getWallet(tenantId) : Promise.resolve(null),
   ]);
 
@@ -171,6 +200,7 @@ const getTenantDiagnostics = async (tenantId, { includeBilling = false, phone = 
     customers,
     seats,
     sms_recent: smsRecent,
+    email_recent: emailRecent,
     wallet: wallet ? {
       balance_paisa: Number(wallet.balance_paisa),
       low_balance:   Number(wallet.balance_paisa) < LOW_BALANCE_THRESHOLD_PAISA,

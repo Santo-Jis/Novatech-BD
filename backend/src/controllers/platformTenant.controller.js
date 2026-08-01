@@ -141,12 +141,14 @@ const getTenantDetail = async (req, res) => {
 const getTenantDiagnostics = async (req, res) => {
   const { tenantId } = req.params;
   const phone = (req.query.phone || '').trim() || null;
+  const email = (req.query.email || '').trim() || null;
 
   try {
     const scope = req.platformStaff.scope;
     const data = await tenantDiagnosticsService.getTenantDiagnostics(tenantId, {
       includeBilling: scope === 'full',
       phone,
+      email,
     });
 
     if (!data) {

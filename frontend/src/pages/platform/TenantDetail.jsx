@@ -93,6 +93,26 @@ export default function TenantDetail() {
           <Field label="ঠিকানা" value={tenant.company_address} />
           <Field label="ফোন" value={tenant.company_phone} />
           <Field label="ইমেইল" value={tenant.company_email} />
+
+          {/* ✅ signup ফর্মের ধাপ ২/৩-এ নেওয়া হয়, tenants টেবিলে সেভ হয়,
+              আগে কোথাও দেখানো হতো না — ডেটা যেই ভাষায় লেখা হয়েছিল
+              (dropdown value) সেই ভাষাতেই raw দেখানো হচ্ছে, কোনো translate না */}
+          <div className="px-4 py-2 bg-pf-bg-alt text-xs font-semibold text-pf-text-muted">সাইনআপ প্রোফাইল</div>
+          <Field label="ব্যবসার ধরন" value={tenant.industry} />
+          <Field label="কোম্পানির আকার" value={tenant.company_size} />
+          <Field label="দেশ" value={tenant.country} />
+          <Field label="বিভাগ / জেলা" value={[tenant.division, tenant.city].filter(Boolean).join(' / ')} />
+          <Field label="টাইমজোন" value={tenant.timezone} />
+          <Field
+            label="ওয়েবসাইট"
+            value={
+              tenant.website
+                ? <a href={tenant.website} target="_blank" rel="noopener noreferrer" className="text-pf-accent-600 underline">{tenant.website}</a>
+                : null
+            }
+          />
+          <Field label="কীভাবে জানলেন" value={tenant.referral_source} />
+
           <Field label="সর্বোচ্চ কর্মী" value={tenant.max_employees} />
           <Field label="সর্বোচ্চ কাস্টমার" value={tenant.max_customers} />
           <Field

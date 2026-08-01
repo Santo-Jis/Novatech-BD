@@ -4,9 +4,9 @@ import platformApi from '../api/platformApi'
 
 // ============================================================
 // TenantDiagnostics — "কেন করা যাচ্ছে না" প্রশ্নের উত্তর এক জায়গায়।
-// tenants/tenant_seats/tenant_wallets/customers/sms_logs — এই ৫টা
-// আলাদা জায়গার ডেটা backend-এর tenantDiagnostics.service.js এক
-// রেসপন্সে জোড়া লাগিয়ে দেয়, এখানে শুধু রেন্ডার করা হচ্ছে।
+// tenants/tenant_seats/tenant_wallets/customers/sms_logs/email_logs —
+// এই ৬টা আলাদা জায়গার ডেটা backend-এর tenantDiagnostics.service.js
+// এক রেসপন্সে জোড়া লাগিয়ে দেয়, এখানে শুধু রেন্ডার করা হচ্ছে।
 //
 // wallet/ai_tokens শুধু scope==='full'-এ আসে (backend থেকেই null আসে
 // support scope-এ) — TenantDetail.jsx-এর বাকি billing ফিল্ডের মতোই।
@@ -19,14 +19,16 @@ export default function TenantDiagnostics({ tenantId, isFull }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
 
-  const load = async (phoneFilter) => {
+  const load = async (filters = {}) => {
     setLoading(true)
     setError('')
     try {
-      const res = await platformApi.get(`/tenants/${tenantId}/diagnostics`, {
-        params: phoneFilter ? { phone: phoneFilter } : {},
-      })
+      const params = {}
+      if (filters.phone) params.phone = filters.phone
+      if (filters.email) params.email = filters.email
+      const res = await platformApi.get(`/tenants/${tenantId}/diagnostics`, { params })
       setData(res.data.data)
     } catch (err) {
       if (!err._toastShown) setError('ডায়াগনস্টিকস লোড করা যায়নি।')
@@ -40,9 +42,11 @@ export default function TenantDiagnostics({ tenantId, isFull }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId])
 
-  const handleSearch = (e) => {
+  // ফোন আর ইমেইল সার্চ বক্স দুটো আলাদা কার্ডে, কিন্তু একটায় সার্চ করলে
+  // অন্যটার বর্তমান ফিল্টার হারিয়ে যায় না — দুটোই একসাথে পাঠানো হয়।
+  const handleFilterSearch = (e) => {
     e.preventDefault()
-    load(phone)
+    load({ phone, email })
   }
 
   if (loading && !data) {
@@ -104,7 +108,32 @@ export default function TenantDiagnostics({ tenantId, isFull }) {
         </p>
       )}
 
-      <SmsLogCard smsRecent={data.sms_recent} phone={phone} setPhone={setPhone} onSearch={handleSearch} />
+      <ActivityLogCard
+        title="সাম্প্রতিক SMS কার্যকলাপ"
+        logs={data.sms_recent}
+        searchValue={phone}
+        onSearchChange={setPhone}
+        onSearch={handleFilterSearch}
+        placeholder="ফোন নম্বর দিয়ে খুঁজুন..."
+        renderIdentifier={(log) => <p className="font-pf-mono text-pf-text-primary truncate">{log.phone}</p>}
+        renderMeta={(log) => `${log.message_type} · ${log.provider || '—'} · ${new Date(log.sent_at).toLocaleString('bn-BD')}`}
+      />
+
+      <ActivityLogCard
+        title="সাম্প্রতিক Email কার্যকলাপ"
+        logs={data.email_recent}
+        searchValue={email}
+        onSearchChange={setEmail}
+        onSearch={handleFilterSearch}
+        placeholder="Email দিয়ে খুঁজুন..."
+        renderIdentifier={(log) => (
+          <>
+            <p className="font-pf-mono text-pf-text-primary truncate">{log.email}</p>
+            {log.subject && <p className="text-xs text-pf-text-secondary truncate">{log.subject}</p>}
+          </>
+        )}
+        renderMeta={(log) => `${log.message_type} · ${new Date(log.sent_at).toLocaleString('bn-BD')}`}
+      />
     </div>
   )
 }
@@ -198,18 +227,42 @@ function AiTokenCard({ aiTokens }) {
   )
 }
 
-function SmsLogCard({ smsRecent, phone, setPhone, onSearch }) {
-  const logs = smsRecent || []
+// SMS/Email দুই status vocabulary-ই এক (sms.service.js/email.service.js
+// দেখো): sent/failed/blocked/disabled/dev। 'blocked' আলাদা রঙে রাখা
+// হলো (amber, error না) — কারণ এটা "ভাঙা" না, ব্যালেন্স রিচার্জ করলেই
+// ঠিক হয়ে যাবে, ঠিক এইজন্যই এই কার্ডটা বানানো হয়েছে।
+const STATUS_META = {
+  sent:     { label: 'পাঠানো হয়েছে',      cls: 'bg-pf-success-bg text-pf-success' },
+  failed:   { label: 'ব্যর্থ',              cls: 'bg-pf-error-bg text-pf-error' },
+  blocked:  { label: 'ব্লকড (ব্যালেন্স কম)', cls: 'bg-pf-warning-bg text-pf-warning' },
+  disabled: { label: 'গেটওয়ে বন্ধ',        cls: 'bg-pf-bg-sunken text-pf-text-muted' },
+  dev:      { label: 'ডেভ মোড',            cls: 'bg-pf-bg-sunken text-pf-text-muted' },
+}
+const DEFAULT_STATUS_META = { label: '—', cls: 'bg-pf-bg-sunken text-pf-text-muted' }
+
+function StatusPill({ status }) {
+  const meta = STATUS_META[status] || DEFAULT_STATUS_META
+  return (
+    <span className={`flex-shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full ${meta.cls}`}>
+      {meta.label}
+    </span>
+  )
+}
+
+// SMS আর Email কার্ড — গঠন হুবহু এক, শুধু identifier/meta রেন্ডার আলাদা,
+// তাই একটা shared কম্পোনেন্ট (কোড ডুপ্লিকেশন এড়াতে)।
+function ActivityLogCard({ title, logs, searchValue, onSearchChange, onSearch, placeholder, renderIdentifier, renderMeta }) {
+  const items = logs || []
   return (
     <div className="bg-pf-bg-surface border border-pf-border rounded-xl overflow-hidden">
       <div className="px-4 py-3 border-b border-pf-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-        <h3 className="font-pf-head font-semibold text-pf-primary-700 text-sm">সাম্প্রতিক SMS কার্যকলাপ</h3>
+        <h3 className="font-pf-head font-semibold text-pf-primary-700 text-sm">{title}</h3>
         <form onSubmit={onSearch} className="flex items-center gap-2">
           <input
             type="text"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="ফোন নম্বর দিয়ে খুঁজুন..."
+            value={searchValue}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder={placeholder}
             className="text-xs px-3 py-1.5 rounded-lg border border-pf-border bg-pf-bg-base focus:outline-none focus:border-pf-border-focus w-40"
           />
           <button
@@ -221,28 +274,20 @@ function SmsLogCard({ smsRecent, phone, setPhone, onSearch }) {
         </form>
       </div>
 
-      {logs.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-pf-text-muted text-center">কোনো SMS লগ পাওয়া যায়নি।</p>
+      {items.length === 0 ? (
+        <p className="px-4 py-6 text-sm text-pf-text-muted text-center">কোনো লগ পাওয়া যায়নি।</p>
       ) : (
         <div className="divide-y divide-pf-border max-h-80 overflow-y-auto">
-          {logs.map((log) => (
+          {items.map((log) => (
             <div key={log.id} className="px-4 py-2.5 flex items-center justify-between gap-3 text-sm">
               <div className="min-w-0">
-                <p className="font-pf-mono text-pf-text-primary">{log.phone}</p>
-                <p className="text-xs text-pf-text-muted">
-                  {log.message_type} · {log.provider || '—'} · {new Date(log.sent_at).toLocaleString('bn-BD')}
-                </p>
-                {log.status === 'failed' && log.error_message && (
+                {renderIdentifier(log)}
+                <p className="text-xs text-pf-text-muted">{renderMeta(log)}</p>
+                {(log.status === 'failed' || log.status === 'blocked') && log.error_message && (
                   <p className="text-xs text-pf-error mt-0.5 break-words">{log.error_message}</p>
                 )}
               </div>
-              <span
-                className={`flex-shrink-0 text-xs font-semibold px-2 py-0.5 rounded-full ${
-                  log.status === 'sent' ? 'bg-pf-success-bg text-pf-success' : 'bg-pf-error-bg text-pf-error'
-                }`}
-              >
-                {log.status === 'sent' ? 'পাঠানো হয়েছে' : 'ব্যর্থ'}
-              </span>
+              <StatusPill status={log.status} />
             </div>
           ))}
         </div>
