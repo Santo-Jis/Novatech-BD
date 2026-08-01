@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS ai_usage_logs (
 
 CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_tenant_created ON ai_usage_logs(tenant_id, created_at);
 
+-- RLS enable করা হলো নতুন ২টা টেবিলে (২২ জুলাই থেকে established convention —
+-- backend `postgres` role দিয়ে connect করে যেটা bypassrls=true, তাই কোনো প্রভাব
+-- পড়বে না, কিন্তু anon/authenticated key দিয়ে সরাসরি এক্সেস বন্ধ থাকবে)।
+ALTER TABLE tenant_ai_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ai_usage_logs ENABLE ROW LEVEL SECURITY;
+
 -- ৩. Global pricing defaults (platform_settings-এ, প্রতি-tenant override না থাকলে এগুলো ব্যবহার হবে)
 INSERT INTO platform_settings (key, value, description) VALUES
     ('ai_pricing_mode',            'flat', 'ডিফল্ট AI pricing mode: flat | percent'),
