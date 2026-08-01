@@ -28,7 +28,6 @@ const getMyProgress = async (req, res) => {
              WHERE worker_id = $1
                AND EXTRACT(MONTH FROM created_at) = $2
                AND EXTRACT(YEAR  FROM created_at) = $3
-               AND status = 'verified'
              AND tenant_id = $4`,
             [workerId, month, year, req.tenantId]
         );
@@ -84,7 +83,6 @@ const getTeamProgress = async (req, res) => {
                 ON st.worker_id = u.id
                 AND EXTRACT(MONTH FROM st.created_at) = $2
                 AND EXTRACT(YEAR  FROM st.created_at) = $3
-                AND st.status = 'verified'
              WHERE u.team_id = $1 AND u.role = 'worker'
              GROUP BY u.id, u.name_bn, u.monthly_invoice_target
              ORDER BY achieved DESC`,

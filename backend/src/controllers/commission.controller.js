@@ -478,8 +478,7 @@ const getLiveCommission = async (req, res) => {
                 paid_at
              FROM commission
              WHERE user_id = $1 AND date = $2 AND type = 'daily'`,
-            [workerId, today,
-                req.tenantId]
+            [workerId, today]
         );
 
         // আজকের বিক্রয় সংখ্যা
@@ -496,7 +495,9 @@ const getLiveCommission = async (req, res) => {
             `SELECT slab_min, slab_max, rate
              FROM commission_settings
              WHERE is_active = true
-             ORDER BY slab_min ASC`
+               AND tenant_id = $1
+             ORDER BY slab_min ASC`,
+            [req.tenantId]
         );
 
         const commission   = commRes.rows[0] || null;

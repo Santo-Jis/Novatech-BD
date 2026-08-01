@@ -41,7 +41,6 @@ const getMyRank = async (req, res) => {
                     ON st.worker_id = u.id
                     AND EXTRACT(MONTH FROM st.created_at) = $2
                     AND EXTRACT(YEAR  FROM st.created_at) = $3
-                    AND st.status = 'verified'
                  LEFT JOIN visits v
                     ON v.worker_id = u.id
                     AND EXTRACT(MONTH FROM v.created_at) = $2
@@ -77,7 +76,6 @@ const getMyRank = async (req, res) => {
                     ON st.worker_id = u.id
                     AND EXTRACT(MONTH FROM st.created_at) = $2
                     AND EXTRACT(YEAR  FROM st.created_at) = $3
-                    AND st.status = 'verified'
                  LEFT JOIN visits v
                     ON v.worker_id = u.id
                     AND EXTRACT(MONTH FROM v.created_at) = $2
@@ -164,7 +162,6 @@ const getTeamLeaderboard = async (req, res) => {
                 ON st.worker_id = u.id
                 AND EXTRACT(MONTH FROM st.created_at) = $2
                 AND EXTRACT(YEAR  FROM st.created_at) = $3
-                AND st.status = 'verified'
              LEFT JOIN visits v
                 ON v.worker_id = u.id
                 AND EXTRACT(MONTH FROM v.created_at) = $2

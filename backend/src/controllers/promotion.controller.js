@@ -184,8 +184,9 @@ const getActivePromotions = async (req, res) => {
              WHERE is_active = true
                AND start_date <= $1
                AND end_date   >= $1
+               AND tenant_id  = $2
              ORDER BY created_at DESC`,
-            [today]
+            [today, req.tenantId]
         );
         return res.json({ success: true, data: result.rows });
 

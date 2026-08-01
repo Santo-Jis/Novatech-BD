@@ -17,6 +17,7 @@ const {
     getTeamSales,
     getTeamVisits,
     getTodaySummary,
+    getDashboardSummary,
     getSaleDetail,
     getMyMonthlySales,
     getMyVisitStats,
@@ -70,6 +71,7 @@ router.get('/my',       auth, allowRoles('worker'), getMySales);
 
 // আজকের সারসংক্ষেপ (SR ড্যাশবোর্ড)
 router.get('/today-summary',  auth, getTodaySummary);
+router.get('/dashboard-summary', auth, allowRoles('worker'), getDashboardSummary);
 
 // টিমের বিক্রয় (Manager/Admin)
 router.get('/team',

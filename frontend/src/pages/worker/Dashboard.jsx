@@ -9,36 +9,30 @@ import PullToRefreshIndicator from '../../components/PullToRefreshIndicator'
 import {
   FiMapPin, FiShoppingBag, FiDollarSign,
   FiRefreshCw, FiAlertTriangle, FiCheckCircle,
-  FiChevronDown, FiChevronUp, FiPackage
+  FiChevronDown, FiChevronUp, FiPackage,
+  FiTarget, FiAward, FiTag, FiZap
 } from 'react-icons/fi'
 
 export default function WorkerDashboard() {
   const navigate            = useNavigate()
   const { user }            = useAuthStore()
-  const { setTodaySummary, notifications, markNotificationRead } = useAppStore()
+  const { setTodaySummary, notifications, markNotificationRead, selectedRoute } = useAppStore()
 
   // অনুমোদন/বাতিল নোটিফিকেশন যেগুলো এখনো পড়া হয়নি
   const approvalNotifs = notifications.filter(n => n.type === 'approval' && !n.read)
   const [summary,   setSummary]   = useState(null)
-  const [order,     setOrder]     = useState(null)
-  const [allOrders, setAllOrders] = useState([])
-  const [remainingSlots, setRemainingSlots] = useState(3)
   const [loading,   setLoading]   = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [showOrderDetail, setShowOrderDetail] = useState(false)
   const [expandedOrderId, setExpandedOrderId] = useState(null)
 
+  // ✅ একটাই aggregate কল — আগে today-summary + orders/today + my-progress +
+  // commission/live + leaderboard/my-rank + promotions/active + notices — এই ৭টা
+  // আলাদা কল লাগতো। ফিল্ডে নেটওয়ার্ক দুর্বল থাকে বলে সব এখন এক round-trip-এ।
   const fetchData = async () => {
     try {
-      const [summRes, orderRes] = await Promise.all([
-        api.get('/sales/today-summary'),
-        api.get('/orders/today')
-      ])
-      setSummary(summRes.data.data)
-      setTodaySummary(summRes.data.data)
-      setOrder(orderRes.data.data)
-      setAllOrders(orderRes.data.all_orders || [])
-      setRemainingSlots(orderRes.data.remaining_slots ?? 3)
+      const res = await api.get('/sales/dashboard-summary')
+      setSummary(res.data.data)
+      setTodaySummary(res.data.data)
     } catch (err) {
       console.error(err)
     } finally {
@@ -58,7 +52,7 @@ export default function WorkerDashboard() {
   if (loading) {
     return (
       <div className="p-4 space-y-4">
-        {[...Array(4)].map((_, i) => (
+        {[...Array(6)].map((_, i) => (
           <div key={i} className="h-24 bg-white rounded-2xl animate-pulse" />
         ))}
       </div>
@@ -67,11 +61,20 @@ export default function WorkerDashboard() {
 
   const sales    = summary?.sales    || {}
   const visits   = summary?.visits   || {}
-  const dues     = parseFloat(summary?.outstanding_dues || 0)
-  const cashDues = parseFloat(summary?.cash_dues        || 0)
+  const dues     = parseFloat(summary?.dues?.outstanding_dues || 0)
+  const cashDues = parseFloat(summary?.dues?.cash_dues        || 0)
   const prodDues = Math.max(0, dues - cashDues)
-  const todayAtt = summary?.today_order
-  const checkedIn = summary?.checked_in ?? false  // ✅ FIX #2: API fail হলে false — true রাখলে চেক-ইন ছাড়াই সব করা যেত  // ✅ চেক-ইন স্ট্যাটাস
+  const checkedIn = summary?.checked_in ?? false  // ✅ API fail হলে false — true রাখলে চেক-ইন ছাড়াই সব করা যেত
+
+  const allOrders      = summary?.orders?.all_orders || []
+  const remainingSlots = summary?.orders?.remaining_slots ?? 3
+
+  const target      = summary?.target      || { target: 0, achieved: 0, pct: 0, days_left: 0 }
+  const commission  = summary?.commission  || { rate: 0, amount: 0, next_slab: null }
+  const rank        = summary?.rank        || { has_team: false }
+  const stockAlerts = summary?.stock_alerts || []
+  const activePromotion = summary?.active_promotion || null
+  const notice          = summary?.notice          || null
 
   return (
     <div ref={containerRef} className="p-4 space-y-4 animate-fade-in overflow-y-auto">
@@ -187,6 +190,110 @@ export default function WorkerDashboard() {
             হিসাব পেজে যান →
           </button>
         </div>
+      )}
+
+      {/* ✨ নতুন — আজকের প্ল্যান (রুট + ভিজিট প্রোগ্রেস একসাথে) */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <FiMapPin className="text-primary" />
+            <p className="font-semibold text-sm text-gray-800">
+              আজকের প্ল্যান{selectedRoute ? ` — ${selectedRoute.name}` : ''}
+            </p>
+          </div>
+          <button onClick={refresh} className="text-gray-400 hover:text-gray-600">
+            <FiRefreshCw className={`text-sm ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+        <ProgressBar
+          value={parseInt(visits.total_visits || 0)}
+          max={parseInt(visits.total_customers || 1)}
+          label={`${visits.total_visits || 0} / ${visits.total_customers || 0} দোকান`}
+          color="primary"
+        />
+        <div className="flex gap-4 mt-3 text-xs text-gray-500">
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 bg-emerald-500 rounded-full" />
+            বিক্রি: {visits.sold_visits || 0}
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 bg-red-400 rounded-full" />
+            রাখেনি: {visits.no_sell_visits || 0}
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2 h-2 bg-gray-300 rounded-full" />
+            বাকি: {Math.max(0, (visits.total_customers || 0) - (visits.total_visits || 0))}
+          </span>
+        </div>
+        {!selectedRoute && (
+          <button
+            onClick={() => navigate('/worker/route')}
+            className="mt-3 w-full py-2 bg-secondary text-white rounded-xl text-xs font-semibold"
+          >
+            রুট সিলেক্ট করুন →
+          </button>
+        )}
+      </div>
+
+      {/* ✨ নতুন — মাসিক টার্গেট + আজকের কমিশন (একটা কম্প্যাক্ট কার্ডে) */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+        <div className="grid grid-cols-2 divide-x divide-gray-100">
+          <div className="pr-3">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <FiTarget className="text-primary" size={14} />
+              <p className="text-xs font-semibold text-gray-500">মাসিক টার্গেট</p>
+            </div>
+            {target.target > 0 ? (
+              <>
+                <p className="text-lg font-bold text-gray-800">
+                  {target.achieved}<span className="text-xs font-medium text-gray-400"> / {target.target} কাস্টমার</span>
+                </p>
+                <div className="mt-1.5">
+                  <ProgressBar value={target.achieved} max={target.target} showPercent={false} color="accent" />
+                </div>
+                <p className="text-xs text-gray-400 mt-1">{target.pct}% · আর {target.days_left} দিন বাকি</p>
+              </>
+            ) : (
+              <p className="text-xs text-gray-400 mt-2">এই মাসে টার্গেট সেট করা হয়নি</p>
+            )}
+          </div>
+          <div className="pl-3">
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <FiDollarSign className="text-secondary" size={14} />
+              <p className="text-xs font-semibold text-gray-500">আজকের কমিশন</p>
+            </div>
+            <p className="text-lg font-bold text-secondary">৳{Math.round(commission.amount || 0).toLocaleString()}</p>
+            <p className="text-xs text-gray-400 mt-1.5">বর্তমান রেট: {commission.rate || 0}%</p>
+          </div>
+        </div>
+        {commission.next_slab && (
+          <div className="mt-3 bg-amber-50 border border-amber-100 rounded-xl p-2.5 flex items-center gap-2">
+            <FiZap className="text-amber-500 flex-shrink-0" size={16} />
+            <p className="text-xs text-amber-700">
+              আর <span className="font-bold">৳{Math.round(commission.next_slab.needed_sales).toLocaleString()}</span> বিক্রি করলে রেট{' '}
+              <span className="font-bold">{commission.next_slab.rate}%</span> হবে
+              {commission.next_slab.bonus_if_reached > 0 && (
+                <> — বোনাস <span className="font-bold">+৳{commission.next_slab.bonus_if_reached.toLocaleString()}</span></>
+              )}
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* ✨ নতুন — টিম র‍্যাংক */}
+      {rank.has_team && rank.my_rank && (
+        <button
+          onClick={() => navigate('/worker/leaderboard')}
+          className="w-full flex items-center justify-between rounded-2xl px-4 py-3 bg-white shadow-sm border border-gray-100"
+        >
+          <div className="flex items-center gap-2.5">
+            <FiAward className="text-amber-500" size={18} />
+            <p className="text-sm text-gray-700">
+              এই মাসে টিমে <span className="font-bold text-gray-900">#{rank.my_rank}</span> — {rank.total_members} জনের মধ্যে
+            </p>
+          </div>
+          <span className="text-xs text-primary font-semibold">লিডারবোর্ড →</span>
+        </button>
       )}
 
       {/* Order Status */}
@@ -307,48 +414,16 @@ export default function WorkerDashboard() {
         </div>
       )}
 
-      {/* Visit Progress */}
-      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <FiMapPin className="text-primary" />
-            <p className="font-semibold text-sm text-gray-800">আজকের ভিজিট</p>
-          </div>
-          <button onClick={refresh} className="text-gray-400 hover:text-gray-600">
-            <FiRefreshCw className={`text-sm ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
-        <ProgressBar
-          value={parseInt(visits.total_visits || 0)}
-          max={parseInt(visits.total_customers || 1)}
-          label={`${visits.total_visits || 0} / ${visits.total_customers || 0} দোকান`}
-          color="primary"
-        />
-        <div className="flex gap-4 mt-3 text-xs text-gray-500">
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-emerald-500 rounded-full" />
-            বিক্রি: {visits.sold_visits || 0}
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-red-400 rounded-full" />
-            রাখেনি: {visits.no_sell_visits || 0}
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-2 h-2 bg-gray-300 rounded-full" />
-            বাকি: {Math.max(0, (visits.total_customers || 0) - (visits.total_visits || 0))}
-          </span>
-        </div>
-      </div>
-
-      {/* Sales Summary */}
+      {/* Sales Summary (+ ✨ নতুন ৫ম কার্ড: বকেয়া আদায়) */}
       <div className="grid grid-cols-2 gap-3">
         {[
-          { label: 'মোট বিক্রয়',      value: `৳${parseInt(sales.total_amount || 0).toLocaleString()}`, icon: '💰', color: 'bg-primary/10 text-primary' },
-          { label: 'নগদ সংগ্রহ',       value: `৳${parseInt(sales.cash_received || 0).toLocaleString()}`, icon: '💵', color: 'bg-secondary/10 text-secondary' },
-          { label: 'বাকি দেওয়া',       value: `৳${parseInt(sales.credit_given || 0).toLocaleString()}`, icon: '📋', color: 'bg-amber-50 text-amber-600' },
-          { label: 'রিপ্লেসমেন্ট',    value: `৳${parseInt(sales.replacement_value || 0).toLocaleString()}`, icon: '🔄', color: 'bg-purple-50 text-purple-600' },
+          { label: 'মোট বিক্রয়',   value: `৳${parseInt(sales.total_amount || 0).toLocaleString()}`,     icon: '💰', color: 'bg-primary/10 text-primary',     span: false },
+          { label: 'নগদ সংগ্রহ',    value: `৳${parseInt(sales.cash_received || 0).toLocaleString()}`,    icon: '💵', color: 'bg-secondary/10 text-secondary', span: false },
+          { label: 'বাকি দেওয়া',    value: `৳${parseInt(sales.credit_given || 0).toLocaleString()}`,     icon: '📋', color: 'bg-amber-50 text-amber-600',     span: false },
+          { label: 'রিপ্লেসমেন্ট', value: `৳${parseInt(sales.replacement_value || 0).toLocaleString()}`, icon: '🔄', color: 'bg-purple-50 text-purple-600', span: false },
+          { label: 'বকেয়া আদায় (পুরনো দেনা)', value: `৳${parseInt(sales.credit_collected || 0).toLocaleString()}`, icon: '🧾', color: 'bg-teal-50 text-teal-700', span: true },
         ].map(item => (
-          <div key={item.label} className={`rounded-2xl p-3 ${item.color}`}>
+          <div key={item.label} className={`rounded-2xl p-3 ${item.color} ${item.span ? 'col-span-2' : ''}`}>
             <div className="flex items-center gap-2">
               <span className="text-lg">{item.icon}</span>
               <div>
@@ -359,6 +434,47 @@ export default function WorkerDashboard() {
           </div>
         ))}
       </div>
+
+      {/* ✨ নতুন — স্টক কম সতর্কতা (শর্তসাপেক্ষ) */}
+      {stockAlerts.length > 0 && (
+        <div className="flex items-center gap-3 bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <FiPackage className="text-orange-500 flex-shrink-0" size={20} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-800">কিছু পণ্যের স্টক কম</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {stockAlerts.map(s => s.product_name).join(', ')} — পরের বিক্রির আগে দেখে নাও
+            </p>
+          </div>
+          <button onClick={() => navigate('/worker/stock-status')} className="text-xs text-primary font-semibold flex-shrink-0">
+            দেখুন →
+          </button>
+        </div>
+      )}
+
+      {/* ✨ নতুন — চলমান অফার রিমাইন্ডার (শর্তসাপেক্ষ) */}
+      {activePromotion && (
+        <div className="flex items-center gap-3 bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <FiTag className="text-secondary flex-shrink-0" size={20} />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-800">আজ চলছে</p>
+            <p className="text-xs text-gray-500 mt-0.5">{activePromotion.name}</p>
+          </div>
+        </div>
+      )}
+
+      {/* ✨ নতুন — নোটিশ প্রিভিউ (শর্তসাপেক্ষ) */}
+      {notice && (
+        <div className="flex items-center gap-3 bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+          <span className="text-xl flex-shrink-0">📢</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-800">{notice.title}</p>
+            <p className="text-xs text-gray-500 mt-0.5 truncate">{notice.message}</p>
+          </div>
+          <button onClick={() => navigate('/worker/notices')} className="text-xs text-primary font-semibold flex-shrink-0">
+            সব →
+          </button>
+        </div>
+      )}
 
       {/* Quick Actions */}
       <div className="grid grid-cols-2 gap-3">

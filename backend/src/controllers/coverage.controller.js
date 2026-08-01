@@ -27,7 +27,8 @@ const getMyCustomerCoverage = async (req, res) => {
 
         // active products
         const prodRes = await query(
-            `SELECT id, name, sku FROM products WHERE is_active = true ORDER BY name`
+            `SELECT id, name, sku FROM products WHERE is_active = true AND tenant_id = $1 ORDER BY name`,
+            [req.tenantId]
         );
         const products = prodRes.rows;
         const totalProducts = products.length;
@@ -48,7 +49,6 @@ const getMyCustomerCoverage = async (req, res) => {
              FROM sales_transactions st,
                   jsonb_array_elements(st.items) AS si
              WHERE st.customer_id = ANY($1::uuid[])
-               AND st.status = 'verified'
                AND (si->>'product_id') IS NOT NULL
              AND st.tenant_id = $2
              GROUP BY st.customer_id, si->>'product_id'`,
@@ -134,7 +134,8 @@ const getVisitAlert = async (req, res) => {
 
         // active products
         const prodRes = await query(
-            `SELECT id, name FROM products WHERE is_active = true`
+            `SELECT id, name FROM products WHERE is_active = true AND tenant_id = $1`,
+            [req.tenantId]
         );
 
         // এই দোকানে কোন products কখনো বিক্রি হয়েছে
@@ -142,7 +143,7 @@ const getVisitAlert = async (req, res) => {
             `SELECT DISTINCT (si->>'product_id')::uuid AS product_id
              FROM sales_transactions st,
                   jsonb_array_elements(st.items) AS si
-             WHERE st.customer_id = $1 AND st.status = 'verified'
+             WHERE st.customer_id = $1
              AND st.tenant_id = $2`,
             [customerId, req.tenantId]
         );
@@ -158,7 +159,6 @@ const getVisitAlert = async (req, res) => {
              FROM sales_transactions st,
                   jsonb_array_elements(st.items) AS si
              WHERE st.customer_id = $1
-               AND st.status = 'verified'
                AND st.created_at < NOW() - INTERVAL '30 days'
              AND st.tenant_id = $2
              GROUP BY si->>'product_id'`,
@@ -229,7 +229,6 @@ const getTeamCoverageSummary = async (req, res) => {
                       jsonb_array_elements(st.items) AS si
                  WHERE st.customer_id = ANY($1::uuid[])
                    AND (si->>'product_id')::uuid = $2
-                   AND st.status = 'verified'
              AND st.tenant_id = $3`,
                 [customerIds, prod.id, req.tenantId]
             );

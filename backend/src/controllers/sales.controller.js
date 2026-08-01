@@ -1127,6 +1127,202 @@ const getTodaySummary = async (req, res) => {
 };
 
 // ============================================================
+// GET /api/sales/dashboard-summary
+// SR হোম ড্যাশবোর্ডের জন্য — একটা কলেই সব ডেটা।
+// আগে ৭-৮টা আলাদা endpoint লাগতো (today-summary, orders/today,
+// invoice-target/my-progress, commission/live, leaderboard/my-rank,
+// promotions/active, notices) — field app-এ network দুর্বল থাকে,
+// তাই একটাই round-trip-এ সব একসাথে আনা হলো।
+// ============================================================
+
+const getDashboardSummary = async (req, res) => {
+    try {
+        const workerId = req.user.id;
+        const tenantId = req.tenantId;
+        const today    = getBDToday();
+        const now      = new Date();
+        const month    = now.getMonth() + 1;
+        const year     = now.getFullYear();
+
+        // আগে লাগবে — team_id, target, dues (নিচের কিছু query এর উপর নির্ভর করে)
+        const userRes = await query(
+            `SELECT team_id, COALESCE(monthly_invoice_target, 0) AS invoice_target,
+                    outstanding_dues, cash_dues
+             FROM users WHERE id = $1 AND tenant_id = $2`,
+            [workerId, tenantId]
+        );
+        const teamId        = userRes.rows[0]?.team_id || null;
+        const invoiceTarget = parseInt(userRes.rows[0]?.invoice_target || 0);
+
+        const [
+            salesRes, visitRes, custRes, ordersRes, orderCountRes, attRes,
+            progressRes, commRes, saleCountRes, slabRes,
+            teamRankRes, stockRes, promoRes, noticeRes
+        ] = await Promise.all([
+            query(
+                `SELECT COUNT(*) AS total_sales, COALESCE(SUM(total_amount),0) AS total_amount,
+                        COALESCE(SUM(cash_received),0) AS cash_received, COALESCE(SUM(credit_used),0) AS credit_given,
+                        COALESCE(SUM(replacement_value),0) AS replacement_value, COALESCE(SUM(credit_balance_used),0) AS credit_collected
+                 FROM sales_transactions WHERE worker_id=$1 AND date=$2 AND tenant_id=$3`,
+                [workerId, today, tenantId]
+            ),
+            query(
+                `SELECT COUNT(*) AS total_visits, COUNT(CASE WHEN will_sell=true THEN 1 END) AS sold_visits,
+                        COUNT(CASE WHEN will_sell=false THEN 1 END) AS no_sell_visits
+                 FROM visits WHERE worker_id=$1 AND visit_date=$2 AND tenant_id=$3`,
+                [workerId, today, tenantId]
+            ),
+            query(
+                `SELECT COUNT(*) AS total FROM customer_assignments
+                 WHERE worker_id=$1 AND is_active=true AND customer_id IS NOT NULL AND tenant_id=$2`,
+                [workerId, tenantId]
+            ),
+            query(
+                `SELECT * FROM orders WHERE worker_id=$1 AND DATE(requested_at)=$2 AND tenant_id=$3
+                 ORDER BY requested_at DESC`,
+                [workerId, today, tenantId]
+            ),
+            query(
+                `SELECT COUNT(*) AS count FROM orders
+                 WHERE worker_id=$1 AND DATE(requested_at)=$2 AND status NOT IN ('rejected','cancelled') AND tenant_id=$3`,
+                [workerId, today, tenantId]
+            ),
+            query(
+                `SELECT check_in_time FROM attendance WHERE user_id=$1 AND date=$2 AND tenant_id=$3 LIMIT 1`,
+                [workerId, today, tenantId]
+            ),
+            query(
+                `SELECT COUNT(DISTINCT customer_id)::INTEGER AS achieved
+                 FROM sales_transactions
+                 WHERE worker_id=$1 AND EXTRACT(MONTH FROM created_at)=$2 AND EXTRACT(YEAR FROM created_at)=$3
+                 AND tenant_id=$4`,
+                [workerId, month, year, tenantId]
+            ),
+            query(
+                `SELECT sales_amount AS total_sales, commission_rate AS rate, commission_amount AS amount, paid
+                 FROM commission WHERE user_id=$1 AND date=$2 AND type='daily'`,
+                [workerId, today]
+            ),
+            query(
+                `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount),0) AS total
+                 FROM sales_transactions WHERE worker_id=$1 AND date=$2 AND tenant_id=$3`,
+                [workerId, today, tenantId]
+            ),
+            query(
+                `SELECT slab_min, slab_max, rate FROM commission_settings
+                 WHERE is_active=true AND tenant_id=$1 ORDER BY slab_min ASC`,
+                [tenantId]
+            ),
+            teamId
+                ? query(
+                    `SELECT u.id, COALESCE(SUM(st.net_amount),0)::NUMERIC AS total_sales
+                     FROM users u
+                     LEFT JOIN sales_transactions st
+                        ON st.worker_id=u.id
+                        AND EXTRACT(MONTH FROM st.created_at)=$2 AND EXTRACT(YEAR FROM st.created_at)=$3
+                     WHERE u.team_id=$1 AND u.role='worker' AND u.tenant_id=$4
+                     GROUP BY u.id ORDER BY total_sales DESC`,
+                    [teamId, month, year, tenantId]
+                  )
+                : Promise.resolve({ rows: [] }),
+            // ⚠️ sr_stock_ledger.product_id (integer) আর products.id (uuid) টাইপ মেলে না
+            // (join করলে DB error দেয়), তাই reorder_point দিয়ে না করে simple threshold (≤৫) দিয়ে করা হলো।
+            query(
+                `SELECT product_id, product_name, SUM(qty*direction) AS in_hand_qty
+                 FROM sr_stock_ledger WHERE worker_id=$1
+                 GROUP BY product_id, product_name
+                 HAVING SUM(qty*direction) > 0 AND SUM(qty*direction) <= 5
+                 ORDER BY in_hand_qty ASC LIMIT 5`,
+                [workerId]
+            ),
+            query(
+                `SELECT name FROM promotions
+                 WHERE is_active=true AND start_date<=$1 AND end_date>=$1 AND tenant_id=$2
+                 ORDER BY created_at DESC LIMIT 1`,
+                [today, tenantId]
+            ),
+            query(
+                `SELECT title, message FROM notices
+                 WHERE (target_role='all' OR target_role='worker') AND is_active=true AND tenant_id=$1
+                 AND (expires_at IS NULL OR expires_at > NOW())
+                 ORDER BY created_at DESC LIMIT 1`,
+                [tenantId]
+            )
+        ]);
+
+        const totalCustomers = parseInt(custRes.rows[0]?.total || 0);
+        const visits          = visitRes.rows[0];
+
+        const achieved    = parseInt(progressRes.rows[0]?.achieved || 0);
+        const remaining   = Math.max(0, invoiceTarget - achieved);
+        const pct         = invoiceTarget > 0 ? Math.min(100, Math.round(achieved / invoiceTarget * 100)) : 0;
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const daysLeft    = daysInMonth - now.getDate();
+
+        const usedCount      = parseInt(orderCountRes.rows[0]?.count || 0);
+        const remainingSlots = Math.max(0, 3 - usedCount);
+
+        const commission  = commRes.rows[0] || null;
+        const todaySales   = parseFloat(saleCountRes.rows[0]?.total || 0);
+        const currentRate  = parseFloat(commission?.rate || 0);
+        const earnedAmount = parseFloat(commission?.amount || 0);
+        const currentSlab  = slabRes.rows.find(s => todaySales >= parseFloat(s.slab_min) && (s.slab_max === null || todaySales <= parseFloat(s.slab_max)));
+        const nextSlab     = slabRes.rows.find(s => parseFloat(s.slab_min) > todaySales);
+
+        const rankIdx = teamId ? teamRankRes.rows.findIndex(r => r.id === workerId) : -1;
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                date:       today,
+                checked_in: attRes.rows.length > 0 && !!attRes.rows[0].check_in_time,
+                sales:      salesRes.rows[0],
+                visits: {
+                    ...visits,
+                    total_customers:  totalCustomers,
+                    visit_percentage: totalCustomers > 0 ? Math.round((visits.total_visits / totalCustomers) * 100) : 0
+                },
+                dues: {
+                    outstanding_dues: userRes.rows[0]?.outstanding_dues || 0,
+                    cash_dues:        userRes.rows[0]?.cash_dues        || 0
+                },
+                orders: {
+                    all_orders:      ordersRes.rows,
+                    used_count:      usedCount,
+                    remaining_slots: remainingSlots,
+                    can_order_again: remainingSlots > 0
+                },
+                target: { target: invoiceTarget, achieved, remaining, pct, days_left: daysLeft },
+                commission: {
+                    total_sales:  todaySales,
+                    rate:         currentRate,
+                    amount:       earnedAmount,
+                    current_slab: currentSlab ? { min: currentSlab.slab_min, max: currentSlab.slab_max, rate: currentSlab.rate } : null,
+                    next_slab:    nextSlab ? {
+                        min:              nextSlab.slab_min,
+                        rate:             nextSlab.rate,
+                        needed_sales:     parseFloat(nextSlab.slab_min) - todaySales,
+                        bonus_if_reached: Math.round((parseFloat(nextSlab.slab_min) * parseFloat(nextSlab.rate) / 100) - earnedAmount)
+                    } : null
+                },
+                rank: {
+                    has_team:      !!teamId,
+                    my_rank:       rankIdx >= 0 ? rankIdx + 1 : null,
+                    total_members: teamId ? teamRankRes.rows.length : 0
+                },
+                stock_alerts:     stockRes.rows,
+                active_promotion: promoRes.rows[0] || null,
+                notice:           noticeRes.rows[0] || null
+            }
+        });
+
+    } catch (error) {
+        logger.error('❌ Dashboard Summary Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // TEAM SALES
 // GET /api/sales/team
 // ============================================================
@@ -1653,6 +1849,7 @@ module.exports = {
     getTeamSales,
     getTeamVisits,
     getTodaySummary,
+    getDashboardSummary,
     getSaleDetail,
     getMyMonthlySales,
     getMyVisitStats,
