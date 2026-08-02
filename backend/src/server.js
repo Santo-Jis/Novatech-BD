@@ -176,6 +176,7 @@ const reportRoutes      = require('./routes/report.routes');
 const aiRoutes          = require('./routes/ai.routes');
 const adminRoutes       = require('./routes/admin.routes');
 const noticeRoutes      = require('./routes/notice.routes');
+const notificationRoutes = require('./routes/notification.routes');   // ← নতুন (Notification/Announcement Management)
 const recruitmentRoutes = require('./routes/recruitment.routes');
 const teamRoutes        = require('./routes/team.routes');
 const ledgerRoutes      = require('./routes/ledger.routes');
@@ -235,6 +236,7 @@ app.use('/api/reports',     reportRoutes);
 app.use('/api/ai',          aiRoutes);
 app.use('/api/admin',       adminRoutes);
 app.use('/api/notices',     noticeRoutes);
+app.use('/api/notifications', notificationRoutes);   // ← নতুন (Notification/Announcement Management)
 app.use('/api/recruitment', recruitmentRoutes);
 app.use('/api/teams',      teamRoutes);
 app.use('/api/salary',     salaryRoutes);
@@ -350,7 +352,6 @@ const { startGpsTrailCleanupJob }   = require('./jobs/gpsTrail.job');
 const { scheduleCreditReminderJob } = require('./jobs/creditReminder.job');
 const { startReservedStockJob }     = require('./jobs/reservedStock.job');
 const { startSessionCleanupJob }    = require('./jobs/sessionCleanup.job');
-const { startKpiSnapshotJob }       = require('./jobs/kpiSnapshot.job');
 
 
 // ============================================================
@@ -402,7 +403,6 @@ seedPlatformStaffFromEnv();
         scheduleCreditReminderJob();
         startReservedStockJob();
         startSessionCleanupJob();
-        startKpiSnapshotJob();
 
         logger.info('✅ Background jobs চালু হয়েছে');
 

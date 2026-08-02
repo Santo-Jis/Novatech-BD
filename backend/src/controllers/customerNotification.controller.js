@@ -239,19 +239,25 @@ const saveCustomerFCMToken = async (req, res) => {
 // ============================================================
 const sendCustomerNotificationFull = async (customerId, { title, body, type = 'general' }) => {
     try {
-        // ১. In-App notification (সবসময়)
-        await query(`
-            INSERT INTO customer_notifications (customer_id, title, body, type, tenant_id) VALUES ($1, $2, $3, $4, $5)
-        `, [customerId, title, body, type, req.tenantId]);
-
-        // ২. Web Push চেষ্টা করো
+        // 🚨 FIX (Notification Module): আগে req.tenantId ব্যবহার হতো, কিন্তু এই ফাংশনে
+        // req parameter-ই নেই (jobs/creditReminder.job.js থেকেও কল হয়, যেখানে req নেই) —
+        // ফলে ReferenceError-এ পুরো ফাংশনটাই silently ব্যর্থ হচ্ছিল।
+        // এখন customer row থেকেই tenant_id নেওয়া হচ্ছে।
         const { rows } = await query(
-            `SELECT fcm_token, email FROM customers WHERE id = $1`,
+            `SELECT tenant_id, fcm_token, email FROM customers WHERE id = $1`,
             [customerId]
         );
 
-        const customer    = rows[0] || {};
-        let   pushSuccess = false;
+        const customer = rows[0];
+        if (!customer) return;
+
+        // ১. In-App notification (সবসময়)
+        await query(`
+            INSERT INTO customer_notifications (customer_id, title, body, type, tenant_id) VALUES ($1, $2, $3, $4, $5)
+        `, [customerId, title, body, type, customer.tenant_id]);
+
+        // ২. Web Push চেষ্টা করো
+        let pushSuccess = false;
 
         if (customer.fcm_token) {
             try {

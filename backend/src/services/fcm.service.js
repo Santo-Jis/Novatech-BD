@@ -32,8 +32,10 @@ const saveFCMToken = async (userId, fcmToken) => {
 const getFCMTokens = async (userIds) => {
   if (!userIds?.length) return []
   const { rows } = await query(
+    // 🚨 FIX (Notification Module): users.id UUID, int[] cast এ runtime error হতো —
+    // ফলে সব staff push notification silently ব্যর্থ হচ্ছিল।
     `SELECT id, fcm_token FROM users
-     WHERE id = ANY($1::int[]) AND fcm_token IS NOT NULL`,
+     WHERE id = ANY($1::uuid[]) AND fcm_token IS NOT NULL`,
     [userIds]
   )
   return rows.map(r => r.fcm_token).filter(Boolean)

@@ -1,0 +1,24 @@
+const express = require('express');
+const router = express.Router();
+const { auth } = require('../middlewares/auth');
+const { allowRoles } = require('../middlewares/roleCheck');
+const {
+    createNotification,
+    getMyNotifications,
+    markRead,
+    markAllRead,
+    getSentHistory,
+    deleteNotification,
+} = require('../controllers/notification.controller');
+
+// নিজের bell — যেকোনো logged-in staff
+router.get('/',           auth, getMyNotifications);
+router.patch('/read-all', auth, markAllRead);
+router.patch('/:id/read', auth, markRead);
+
+// পাঠানো/ম্যানেজ — আপাতত শুধু Admin ও Manager (Phase 1 সিদ্ধান্ত অনুযায়ী)
+router.get('/sent',    auth, allowRoles('admin', 'manager'), getSentHistory);
+router.post('/',       auth, allowRoles('admin', 'manager'), createNotification);
+router.delete('/:id',  auth, allowRoles('admin', 'manager'), deleteNotification);
+
+module.exports = router;
