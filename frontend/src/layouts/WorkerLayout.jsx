@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import ErrorBoundary from '../components/ErrorBoundary'
+import NotificationBell from '../components/NotificationBell'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore }  from '../store/app.store'
@@ -293,7 +294,10 @@ export default function WorkerLayout() {
             {darkMode ? <FiSun className="text-lg" /> : <FiMoon className="text-lg" />}
           </button>
 
-          {/* Notification bell */}
+          {/* Notification bell (নতুন — broadcast notification, read-tracking সহ) */}
+          <NotificationBell />
+
+          {/* Notification bell (পুরনো — notice board) */}
           <button
             onClick={() => navigate('/worker/notices')}
             className="relative p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors"

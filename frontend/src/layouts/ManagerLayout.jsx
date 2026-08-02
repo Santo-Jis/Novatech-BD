@@ -3,9 +3,10 @@ import { Outlet, NavLink, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
 import ErrorBoundary from '../components/ErrorBoundary'
+import NotificationBell from '../components/NotificationBell'
 import {
   FiHome, FiUsers, FiShoppingCart, FiCheckSquare, FiInbox,
-  FiCalendar, FiMapPin, FiUser, FiBell, FiMenu, FiX,
+  FiCalendar, FiMapPin, FiUser, FiBell, FiSend, FiMenu, FiX,
   FiLogOut, FiMessageSquare, FiList, FiFileText,
   FiRefreshCw, FiShield, FiDollarSign, FiCreditCard,
   FiBarChart2, FiBookOpen, FiChevronDown, FiTarget, FiLink
@@ -16,6 +17,7 @@ const pinnedItems = [
   { path: '/manager/dashboard', icon: <FiHome />,          label: 'ড্যাশবোর্ড' },
   { path: '/manager/ai-chat',   icon: <FiMessageSquare />, label: 'AI চ্যাট' },
   { path: '/manager/notices',   icon: <FiBell />,          label: 'নোটিশ' },
+  { path: '/manager/notifications', icon: <FiSend />,      label: 'নোটিফিকেশন পাঠান' },
 ]
 
 // বাকি সব আইটেম বিষয়ভিত্তিক গ্রুপে ভাগ করা — collapsible sidebar-এর জন্য
@@ -266,6 +268,7 @@ export default function ManagerLayout() {
           <button onClick={toggleDarkMode} className="text-white/80 hover:text-white text-lg">
             {darkMode ? '☀️' : '🌙'}
           </button>
+          <NotificationBell />
           <button onClick={() => setNotifPanelOpen(true)} className="relative text-white">
             <FiBell className="text-xl" />
             {allUnreadCount > 0 && (

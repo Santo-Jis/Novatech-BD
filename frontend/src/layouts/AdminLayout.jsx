@@ -3,13 +3,15 @@ import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
 import ErrorBoundary from '../components/ErrorBoundary'
-import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag, FiLink, FiTruck, FiClipboard, FiArchive } from 'react-icons/fi'
+import NotificationBell from '../components/NotificationBell'
+import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiSend, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag, FiLink, FiTruck, FiClipboard, FiArchive } from 'react-icons/fi'
 
 // সবসময় দেখা যাবে — গ্রুপের বাইরে (ঘন ঘন ব্যবহার হয়)
 const pinnedItems = [
   { path: '/admin/dashboard', icon: <FiHome />,          label: 'ড্যাশবোর্ড' },
   { path: '/admin/ai-chat',   icon: <FiMessageSquare />, label: 'AI চ্যাট' },
   { path: '/admin/notices',   icon: <FiBell />,          label: 'নোটিশ বোর্ড' },
+  { path: '/admin/notifications', icon: <FiSend />,      label: 'নোটিফিকেশন পাঠান' },
 ]
 
 // বাকি সব আইটেম বিষয়ভিত্তিক গ্রুপে ভাগ করা — collapsible sidebar-এর জন্য
@@ -188,6 +190,7 @@ export default function AdminLayout() {
           <button onClick={toggleDarkMode} className="text-white/80 hover:text-white text-lg">
             {darkMode ? '☀️' : '🌙'}
           </button>
+          <NotificationBell />
           <div className="relative">
             <FiBell className="text-white text-xl" />
             {allUnreadCount > 0 && (

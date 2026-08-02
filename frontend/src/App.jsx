@@ -83,6 +83,7 @@ const SuperAdminPlatformSettings = IS_CUSTOMER_APP ? null : lazy(() => import('.
 // Shared — Customer APK-এ নেই
 const AIChat      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/AIChat'))
 const NoticesView = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/NoticesView'))
+const NotificationsManage = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/NotificationsManage'))
 
 // ── Admin pages — Customer APK-এ bundle হবে না ──────────────
 const AdminDashboard         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Dashboard'))
@@ -494,6 +495,7 @@ function AppWithPermissions() {
                 <Route path="ai-insights"       element={<AIInsights />} />
                 <Route path="ai-chat"           element={<AIChat />} />
                 <Route path="notices"           element={<AdminNotices />} />
+                <Route path="notifications"     element={<NotificationsManage />} />
                 <Route path="recruitment"       element={<SRRecruitmentDashboard />} />
                 <Route path="teams"             element={<AdminTeams />} />
                 <Route path="settings"          element={<AdminSettings />} />
@@ -541,6 +543,7 @@ function AppWithPermissions() {
                 <Route path="commission/team"            element={<CommissionTeam />} />
                 <Route path="ai-chat"                    element={<AIChat />} />
                 <Route path="notices"                    element={<NoticesView />} />
+                <Route path="notifications"              element={<NotificationsManage />} />
                 <Route path="customer-requests"          element={<CustomerRequestsPage />} />
                 <Route path="network-discovery"          element={<AdminNetworkDiscovery />} />
                 <Route path="credit-approvals"           element={<ManagerCreditApprovals />} />

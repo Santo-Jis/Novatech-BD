@@ -39,10 +39,12 @@ const sendFallbackEmail = async (customerId, { title, body, type }) => {
     if (!emailEnabled || !transporter) return;
     try {
         const { rows } = await query(
-            `SELECT email, owner_name, shop_name FROM customers WHERE id = $1 AND email IS NOT NULL AND email != ''
-             AND tenant_id = $2`,
-            [customerId,
-                req.tenantId]
+            // 🚨 FIX (Notification Module, ২য় দফা): এখানেও req.tenantId ব্যবহার হতো,
+            // কিন্তু এই ফাংশনেও req parameter নেই — একই ReferenceError bug।
+            // customerId (UUID primary key) নিজেই unique, তাই tenant_id filter
+            // বাদ দেওয়া নিরাপদ — অতিরিক্ত filter কোনো সুরক্ষা যোগ করছিল না।
+            `SELECT email, owner_name, shop_name FROM customers WHERE id = $1 AND email IS NOT NULL AND email != ''`,
+            [customerId]
         );
         if (!rows.length) return; // email নেই — skip
 
