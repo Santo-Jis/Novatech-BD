@@ -18,6 +18,7 @@ const logger = require('../config/logger');
 const { query } = require('../config/db');
 const { sendPushToMany } = require('../services/fcm.service');
 const { sendCustomerNotification } = require('./customerNotification.controller');
+const { computeOnce, computeNextRun } = require('../services/scheduleTime.service');
 
 const STAFF_TARGET_TYPES    = ['all_staff', 'role', 'team', 'individual'];
 const CUSTOMER_TARGET_TYPES = ['all_customers', 'customer_area'];
@@ -346,11 +347,148 @@ const deleteNotification = async (req, res) => {
     }
 };
 
+// ============================================================
+// SCHEDULED / RECURRING NOTIFICATION
+// ============================================================
+
+const RECURRENCE_TYPES = ['once', 'daily', 'weekly', 'monthly'];
+
+const validateRecurrenceMeta = (recurrence_type, recurrence_meta = {}) => {
+    const { hour, minute } = recurrence_meta;
+    if (
+        !Number.isInteger(hour) || hour < 0 || hour > 23 ||
+        !Number.isInteger(minute) || minute < 0 || minute > 59
+    ) {
+        return 'সময় (hour/minute) ঠিকভাবে দিন।';
+    }
+    if (recurrence_type === 'once' && !recurrence_meta.date) {
+        return 'কোন তারিখে পাঠাবেন সেটা দিন।';
+    }
+    if (recurrence_type === 'weekly') {
+        const d = recurrence_meta.day_of_week;
+        if (!Number.isInteger(d) || d < 0 || d > 6) return 'সপ্তাহের কোন দিন সেটা দিন।';
+    }
+    if (recurrence_type === 'monthly') {
+        const d = recurrence_meta.day_of_month;
+        if (!Number.isInteger(d) || d < 1 || d > 31) return 'মাসের কোন তারিখে (১-৩১) সেটা দিন।';
+    }
+    return null;
+};
+
+// ── তৈরি করা ──────────────────────────────────────────────
+// POST /api/notifications/schedule
+const createSchedule = async (req, res) => {
+    try {
+        const {
+            title, body, category = 'general', is_urgent = false,
+            audience, target_type, target_value,
+            result_expires_in_hours,
+            recurrence_type, recurrence_meta,
+        } = req.body;
+
+        if (!title?.trim() || !body?.trim()) {
+            return res.status(400).json({ success: false, message: 'শিরোনাম ও বার্তা দিন।' });
+        }
+        if (!['staff', 'customer'].includes(audience)) {
+            return res.status(400).json({ success: false, message: 'audience অবশ্যই staff অথবা customer হতে হবে।' });
+        }
+        const validTargets = audience === 'staff' ? STAFF_TARGET_TYPES : CUSTOMER_TARGET_TYPES;
+        if (!validTargets.includes(target_type)) {
+            return res.status(400).json({ success: false, message: `${audience}-এর জন্য target_type সঠিক নয়।` });
+        }
+        if (!RECURRENCE_TYPES.includes(recurrence_type)) {
+            return res.status(400).json({ success: false, message: 'recurrence_type সঠিক নয়।' });
+        }
+        const metaError = validateRecurrenceMeta(recurrence_type, recurrence_meta);
+        if (metaError) return res.status(400).json({ success: false, message: metaError });
+
+        // 'team' টার্গেটে manager_id না দেওয়া থাকলে, Manager নিজে হলে নিজের id বসিয়ে দাও —
+        // schedule row-টা যেন cron job-এ (session context ছাড়াই) স্বয়ংসম্পূর্ণ থাকে।
+        let finalTargetValue = target_value || {};
+        if (target_type === 'team' && !finalTargetValue.manager_id && req.user.role === 'manager') {
+            finalTargetValue = { ...finalTargetValue, manager_id: req.user.id };
+        }
+
+        const nextRunAt = recurrence_type === 'once'
+            ? computeOnce(recurrence_meta)
+            : computeNextRun(recurrence_type, recurrence_meta);
+
+        if (recurrence_type === 'once' && nextRunAt <= new Date()) {
+            return res.status(400).json({ success: false, message: 'ভবিষ্যতের কোনো সময় দিন — অতীতের সময় দেওয়া যাবে না।' });
+        }
+
+        const { rows } = await query(
+            `INSERT INTO notification_schedules
+                (tenant_id, sender_id, title, body, category, is_urgent, audience, target_type,
+                 target_value, result_expires_in_hours, recurrence_type, recurrence_meta, next_run_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+             RETURNING *`,
+            [
+                req.tenantId, req.user.id, title.trim(), body.trim(), category, !!is_urgent,
+                audience, target_type, JSON.stringify(finalTargetValue),
+                result_expires_in_hours || null, recurrence_type, JSON.stringify(recurrence_meta), nextRunAt,
+            ]
+        );
+
+        logger.info(`[NotificationSchedule] ${req.user.role} (${req.user.id}) scheduled "${title}" — next run: ${nextRunAt.toISOString()}`);
+
+        return res.status(201).json({ success: true, message: 'নোটিফিকেশন নির্ধারণ করা হয়েছে।', data: rows[0] });
+    } catch (error) {
+        logger.error('❌ Create Schedule Error:', error.message);
+        return res.status(500).json({ success: false, message: 'নির্ধারণ করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ── তালিকা (Admin সব দেখে, Manager নিজেরটা) ─────────────────
+// GET /api/notifications/schedule
+const listSchedules = async (req, res) => {
+    try {
+        const isAdmin = req.user.role === 'admin';
+        const params  = isAdmin ? [req.tenantId] : [req.tenantId, req.user.id];
+
+        const { rows } = await query(
+            `SELECT s.*, u.name_bn AS sender_name
+             FROM notification_schedules s
+             LEFT JOIN users u ON u.id = s.sender_id
+             WHERE s.tenant_id = $1 ${isAdmin ? '' : 'AND s.sender_id = $2'}
+             ORDER BY s.is_active DESC, s.next_run_at ASC
+             LIMIT 100`,
+            params
+        );
+
+        return res.status(200).json({ success: true, data: rows });
+    } catch (error) {
+        logger.error('❌ List Schedules Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
+// ── বাতিল করা (soft) ─────────────────────────────────────
+// DELETE /api/notifications/schedule/:id
+const cancelSchedule = async (req, res) => {
+    try {
+        await query(
+            `UPDATE notification_schedules SET is_active = false
+             WHERE id = $1 AND sender_id = $2 AND tenant_id = $3`,
+            [req.params.id, req.user.id, req.tenantId]
+        );
+        return res.status(200).json({ success: true, message: 'বাতিল করা হয়েছে।' });
+    } catch (error) {
+        logger.error('❌ Cancel Schedule Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
+    resolveStaffRecipientIds,
+    resolveCustomerRecipientIds,
     createNotification,
     getMyNotifications,
     markRead,
     markAllRead,
     getSentHistory,
     deleteNotification,
+    createSchedule,
+    listSchedules,
+    cancelSchedule,
 };

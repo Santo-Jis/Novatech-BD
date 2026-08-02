@@ -9,6 +9,9 @@ const {
     markAllRead,
     getSentHistory,
     deleteNotification,
+    createSchedule,
+    listSchedules,
+    cancelSchedule,
 } = require('../controllers/notification.controller');
 
 // নিজের bell — যেকোনো logged-in staff
@@ -20,5 +23,10 @@ router.patch('/:id/read', auth, markRead);
 router.get('/sent',    auth, allowRoles('admin', 'manager'), getSentHistory);
 router.post('/',       auth, allowRoles('admin', 'manager'), createNotification);
 router.delete('/:id',  auth, allowRoles('admin', 'manager'), deleteNotification);
+
+// নির্ধারিত/পুনরাবৃত্ত (scheduled/recurring) — Admin ও Manager
+router.get('/schedule',       auth, allowRoles('admin', 'manager'), listSchedules);
+router.post('/schedule',      auth, allowRoles('admin', 'manager'), createSchedule);
+router.delete('/schedule/:id', auth, allowRoles('admin', 'manager'), cancelSchedule);
 
 module.exports = router;

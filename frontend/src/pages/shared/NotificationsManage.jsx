@@ -59,10 +59,31 @@ const CUSTOMER_TARGET_OPTIONS = [
 const CATEGORY_LABEL = Object.fromEntries(CATEGORY_OPTIONS.map(o => [o.value, o.label]))
 const ROLE_LABEL      = Object.fromEntries(ROLE_OPTIONS.map(o => [o.value, o.label]))
 
+const RECURRENCE_OPTIONS = [
+  { value: 'once',    label: '📅 একবার — নির্দিষ্ট তারিখ-সময়ে' },
+  { value: 'daily',   label: '🔁 প্রতিদিন' },
+  { value: 'weekly',  label: '🔁 প্রতি সপ্তাহে' },
+  { value: 'monthly', label: '🔁 প্রতি মাসে' },
+]
+
+const WEEKDAY_OPTIONS = [
+  { value: '0', label: 'রবিবার' }, { value: '1', label: 'সোমবার' },
+  { value: '2', label: 'মঙ্গলবার' }, { value: '3', label: 'বুধবার' },
+  { value: '4', label: 'বৃহস্পতিবার' }, { value: '5', label: 'শুক্রবার' },
+  { value: '6', label: 'শনিবার' },
+]
+const WEEKDAY_LABEL = Object.fromEntries(WEEKDAY_OPTIONS.map(o => [Number(o.value), o.label]))
+const RECURRENCE_LABEL = Object.fromEntries(RECURRENCE_OPTIONS.map(o => [o.value, o.label]))
+
+const pad2 = (n) => String(n).padStart(2, '0')
+
 const DEFAULT_FORM = {
   title: '', body: '', category: 'general', is_urgent: false,
   audience: 'staff', target_type: 'all_staff', target_value: {},
   expires_in_hours: 'forever',
+  send_mode: 'now',                                    // 'now' | 'schedule'
+  recurrence_type: 'once',
+  recurrence_meta: { date: '', hour: 9, minute: 0, day_of_week: 0, day_of_month: 1 },
 }
 
 export default function NotificationsManage() {
@@ -83,6 +104,11 @@ export default function NotificationsManage() {
 
   const [deleteTarget, setDeleteTarget] = useState(null)
 
+  // ── Scheduled/Recurring notification ──────────────────────
+  const [schedules,        setSchedules]        = useState([])
+  const [schedulesLoading, setSchedulesLoading] = useState(true)
+  const [cancelScheduleTarget, setCancelScheduleTarget] = useState(null)
+
   // ── Sent history আনা ──────────────────────────────────────
   const fetchHistory = useCallback(async () => {
     try {
@@ -96,6 +122,20 @@ export default function NotificationsManage() {
   }, [])
 
   useEffect(() => { fetchHistory() }, [fetchHistory])
+
+  // ── Schedule তালিকা আনা ────────────────────────────────────
+  const fetchSchedules = useCallback(async () => {
+    try {
+      const res = await api.get('/notifications/schedule')
+      setSchedules(res.data.data)
+    } catch {
+      toast.error('নির্ধারিত নোটিফিকেশন আনতে সমস্যা হয়েছে।')
+    } finally {
+      setSchedulesLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchSchedules() }, [fetchSchedules])
 
   // ── Picker ডেটা lazy-load ─────────────────────────────────
   const ensureTeams = async () => {
@@ -167,6 +207,10 @@ export default function NotificationsManage() {
       toast.error('অন্তত একটা এলাকা/রুট বেছে নিন।')
       return false
     }
+    if (form.send_mode === 'schedule' && form.recurrence_type === 'once' && !form.recurrence_meta.date) {
+      toast.error('কোন তারিখে পাঠাবেন সেটা বেছে নিন।')
+      return false
+    }
     return true
   }
 
@@ -174,15 +218,58 @@ export default function NotificationsManage() {
     if (!validate()) return
     setSaving(true)
     try {
-      const res = await api.post('/notifications', form)
-      toast.success(res.data.message || 'নোটিফিকেশন পাঠানো হয়েছে।')
+      if (form.send_mode === 'schedule') {
+        const payload = {
+          title: form.title, body: form.body, category: form.category, is_urgent: form.is_urgent,
+          audience: form.audience, target_type: form.target_type, target_value: form.target_value,
+          result_expires_in_hours: form.expires_in_hours === 'forever' ? null : parseInt(form.expires_in_hours, 10),
+          recurrence_type: form.recurrence_type,
+          recurrence_meta: {
+            hour: Number(form.recurrence_meta.hour), minute: Number(form.recurrence_meta.minute),
+            ...(form.recurrence_type === 'once'    ? { date: form.recurrence_meta.date } : {}),
+            ...(form.recurrence_type === 'weekly'  ? { day_of_week: Number(form.recurrence_meta.day_of_week) } : {}),
+            ...(form.recurrence_type === 'monthly' ? { day_of_month: Number(form.recurrence_meta.day_of_month) } : {}),
+          },
+        }
+        const res = await api.post('/notifications/schedule', payload)
+        toast.success(res.data.message || 'নির্ধারণ করা হয়েছে।')
+        fetchSchedules()
+      } else {
+        const res = await api.post('/notifications', form)
+        toast.success(res.data.message || 'নোটিফিকেশন পাঠানো হয়েছে।')
+        fetchHistory()
+      }
       setModal(false)
       setForm(DEFAULT_FORM)
-      fetchHistory()
     } catch (err) {
-      toast.error(err.response?.data?.message || 'নোটিফিকেশন পাঠাতে সমস্যা হয়েছে।')
+      toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const confirmCancelSchedule = async () => {
+    if (!cancelScheduleTarget) return
+    try {
+      await api.delete(`/notifications/schedule/${cancelScheduleTarget.id}`)
+      toast.success('বাতিল করা হয়েছে।')
+      setSchedules(prev => prev.map(s => s.id === cancelScheduleTarget.id ? { ...s, is_active: false } : s))
+    } catch {
+      toast.error('বাতিল করতে সমস্যা হয়েছে।')
+    } finally {
+      setCancelScheduleTarget(null)
+    }
+  }
+
+  const describeRecurrence = (s) => {
+    const m = s.recurrence_meta || {}
+    const time = `${pad2(m.hour)}:${pad2(m.minute)}`
+    switch (s.recurrence_type) {
+      case 'once':    return `📅 ${m.date} — ${time}`
+      case 'daily':   return `🔁 প্রতিদিন ${time}`
+      case 'weekly':  return `🔁 প্রতি ${WEEKDAY_LABEL[m.day_of_week]} — ${time}`
+      case 'monthly': return `🔁 প্রতি মাসের ${m.day_of_month} তারিখ — ${time}`
+      default:        return s.recurrence_type
     }
   }
 
@@ -298,13 +385,44 @@ export default function NotificationsManage() {
         </div>
       )}
 
+      {/* ── নির্ধারিত/পুনরাবৃত্ত নোটিফিকেশন ── */}
+      {schedules.some(s => s.is_active) && (
+        <div>
+          <h2 className="text-sm font-bold text-gray-500 dark:text-gray-400 mb-2 mt-6">⏰ নির্ধারিত নোটিফিকেশন</h2>
+          <div className="space-y-2">
+            {schedules.filter(s => s.is_active).map(s => (
+              <div key={s.id} className="bg-white dark:bg-slate-800 rounded-2xl border border-amber-100 dark:border-amber-900/30 p-3.5 flex items-center justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="font-bold text-sm text-gray-800 dark:text-gray-100">{s.title}</p>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 font-medium">
+                      {describeRecurrence(s)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-1">
+                    পরের বার: {new Date(s.next_run_at).toLocaleString('bn-BD', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {s.run_count > 0 && ` — এ পর্যন্ত ${s.run_count} বার পাঠানো হয়েছে`}
+                  </p>
+                </div>
+                <button onClick={() => setCancelScheduleTarget(s)}
+                  className="p-2 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors flex-shrink-0">
+                  <FiTrash2 />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ── Compose Modal ── */}
       <Modal isOpen={modal} onClose={() => setModal(false)} size="lg"
         title="✏️ নতুন নোটিফিকেশন পাঠান"
         footer={
           <>
             <Button variant="ghost" onClick={() => setModal(false)}>বাতিল</Button>
-            <Button onClick={send} loading={saving} icon={<FiSend />}>পাঠান</Button>
+            <Button onClick={send} loading={saving} icon={<FiSend />}>
+              {form.send_mode === 'schedule' ? 'নির্ধারণ করুন' : 'পাঠান'}
+            </Button>
           </>
         }>
         <div className="space-y-4">
@@ -327,6 +445,64 @@ export default function NotificationsManage() {
               className="w-4 h-4 accent-red-500" />
             🔴 এটা জরুরি বার্তা (urgent)
           </label>
+
+          <div>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">⏰ কখন পাঠাবেন</label>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setForm(p => ({ ...p, send_mode: 'now' }))}
+                className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                  form.send_mode === 'now'
+                    ? 'bg-primary text-white border-primary'
+                    : 'border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-300'
+                }`}>
+                ⚡ এখনই
+              </button>
+              <button type="button" onClick={() => setForm(p => ({ ...p, send_mode: 'schedule' }))}
+                className={`flex-1 py-2 rounded-xl text-sm font-medium border transition-colors ${
+                  form.send_mode === 'schedule'
+                    ? 'bg-primary text-white border-primary'
+                    : 'border-gray-200 dark:border-slate-600 text-gray-600 dark:text-gray-300'
+                }`}>
+                ⏰ নির্ধারণ করুন
+              </button>
+            </div>
+          </div>
+
+          {form.send_mode === 'schedule' && (
+            <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-900/30 rounded-xl p-3 space-y-3">
+              <Select label="কত ঘন ঘন" options={RECURRENCE_OPTIONS} value={form.recurrence_type}
+                onChange={e => setForm(p => ({ ...p, recurrence_type: e.target.value }))} />
+
+              {form.recurrence_type === 'once' && (
+                <Input type="date" label="তারিখ" value={form.recurrence_meta.date}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={e => setForm(p => ({ ...p, recurrence_meta: { ...p.recurrence_meta, date: e.target.value } }))} />
+              )}
+
+              {form.recurrence_type === 'weekly' && (
+                <Select label="সপ্তাহের কোন দিন" options={WEEKDAY_OPTIONS} value={String(form.recurrence_meta.day_of_week)}
+                  onChange={e => setForm(p => ({ ...p, recurrence_meta: { ...p.recurrence_meta, day_of_week: e.target.value } }))} />
+              )}
+
+              {form.recurrence_type === 'monthly' && (
+                <Input type="number" label="মাসের কোন তারিখ (১-৩১)" min={1} max={31}
+                  value={form.recurrence_meta.day_of_month}
+                  onChange={e => setForm(p => ({ ...p, recurrence_meta: { ...p.recurrence_meta, day_of_month: e.target.value } }))} />
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <Input type="number" label="ঘণ্টা (0-23)" min={0} max={23}
+                  value={form.recurrence_meta.hour}
+                  onChange={e => setForm(p => ({ ...p, recurrence_meta: { ...p.recurrence_meta, hour: e.target.value } }))} />
+                <Input type="number" label="মিনিট (0-59)" min={0} max={59}
+                  value={form.recurrence_meta.minute}
+                  onChange={e => setForm(p => ({ ...p, recurrence_meta: { ...p.recurrence_meta, minute: e.target.value } }))} />
+              </div>
+              <p className="text-xs text-amber-700 dark:text-amber-400">
+                🕒 সময় বাংলাদেশ (Asia/Dhaka) সময় অনুযায়ী ধরা হবে।
+              </p>
+            </div>
+          )}
 
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">👥 কাকে পাঠাবেন</label>
@@ -447,6 +623,17 @@ export default function NotificationsManage() {
         title="নোটিফিকেশন তুলে নেবেন?"
         message={`"${deleteTarget?.title}" — এটা তুলে নিলে যাদের কাছে এখনো দেখানো হচ্ছে তাদের bell থেকে সরে যাবে।`}
         confirmLabel="তুলে নিন"
+        danger
+      />
+
+      {/* ── Cancel Schedule Confirm ── */}
+      <ConfirmModal
+        isOpen={!!cancelScheduleTarget}
+        onClose={() => setCancelScheduleTarget(null)}
+        onConfirm={confirmCancelSchedule}
+        title="নির্ধারিত নোটিফিকেশন বাতিল করবেন?"
+        message={`"${cancelScheduleTarget?.title}" — এটা বাতিল করলে আর পাঠানো হবে না।`}
+        confirmLabel="বাতিল করুন"
         danger
       />
     </div>
