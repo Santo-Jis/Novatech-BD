@@ -14,21 +14,24 @@ const { query } = require('../config/db');
 const { sendCustomerPush } = require('../services/fcm.service');
 
 // ── Manager route filter (adminDevice.controller থেকে অনুসরণ) ──
-const buildManagerRouteFilter = async (user, params, alias = 'c') => {
-    if (user.role === 'admin') return { clause: '', params };
+const buildManagerRouteFilter = async (user, params, tenantId, alias = 'c') => {
+    params.push(tenantId);
+    const tenantClause = `AND ${alias}.tenant_id = $${params.length}`;
+
+    if (user.role === 'admin') return { clause: tenantClause, params };
 
     const routeResult = await query(
-        'SELECT id FROM routes WHERE manager_id = $1',
-        [user.id]
+        'SELECT id FROM routes WHERE manager_id = $1 AND tenant_id = $2',
+        [user.id, tenantId]
     );
 
     if (routeResult.rows.length === 0) {
-        return { clause: `AND 1=0`, params }; // route নেই → empty
+        return { clause: `${tenantClause} AND 1=0`, params }; // route নেই → empty
     }
 
     const routeIds = routeResult.rows.map(r => r.id);
     params.push(routeIds);
-    return { clause: `AND ${alias}.route_id = ANY($${params.length})`, params };
+    return { clause: `${tenantClause} AND ${alias}.route_id = ANY($${params.length})`, params };
 };
 
 // ============================================================
@@ -70,7 +73,7 @@ const getPortalReturnRequests = async (req, res) => {
         }
 
         // ✅ নতুন — Manager route filter
-        const { clause, params: updatedParams } = await buildManagerRouteFilter(req.user, params);
+        const { clause, params: updatedParams } = await buildManagerRouteFilter(req.user, params, req.tenantId);
         params = updatedParams;
         if (clause) filters.push(clause.replace(/^AND /, ''));
 

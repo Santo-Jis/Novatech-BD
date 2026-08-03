@@ -20,29 +20,46 @@ const isValidUUID = (id) => UUID_REGEX.test(id);
 // ── Manager route filter helper ──────────────────────────────
 // manager হলে তার route_id list বের করে WHERE clause বানায়
 // admin হলে null → no filter
-const buildManagerRouteFilter = async (user, params) => {
-    if (user.role === 'admin') return { clause: '', params };
+// 🚨 CRITICAL FIX (31 July 2026): admin হলে আগে clause একদম খালি
+// রিটার্ন হতো — মানে admin role-এর জন্য কোনো tenant scoping-ই হতো
+// না, প্ল্যাটফর্মের সব tenant-এর customer/device দেখা যেত। এখন
+// tenant_id সবসময় বাধ্যতামূলক, manager হলে route filter উপরে যোগ হয়।
+const buildManagerRouteFilter = async (user, params, tenantId) => {
+    params.push(tenantId);
+    const tenantClause = `AND c.tenant_id = $${params.length}`;
+
+    if (user.role === 'admin') return { clause: tenantClause, params };
 
     // manager/supervisor → শুধু নিজের route-এর customer
     const routeResult = await query(
-        'SELECT id FROM routes WHERE manager_id = $1',
-        [user.id]
+        'SELECT id FROM routes WHERE manager_id = $1 AND tenant_id = $2',
+        [user.id, tenantId]
     );
 
     if (routeResult.rows.length === 0) {
-        return { clause: 'AND 1=0', params }; // কোনো route নেই → empty result
+        return { clause: `${tenantClause} AND 1=0`, params }; // কোনো route নেই → empty result
     }
 
     const routeIds = routeResult.rows.map(r => r.id);
     params.push(routeIds);
-    return { clause: `AND c.route_id = ANY($${params.length})`, params };
+    return { clause: `${tenantClause} AND c.route_id = ANY($${params.length})`, params };
 };
 
 // ── Customer ownership verify (single customer) ──────────────
-// admin → সব customer OK
+// admin → নিজের tenant-এর মধ্যে সব customer OK
 // manager → customer তার route-এ আছে কিনা যাচাই
-const verifyCustomerAccess = async (user, customerId) => {
-    if (user.role === 'admin') return true;
+// 🚨 CRITICAL FIX (31 July 2026): admin branch আগে tenant_id চেক করত
+// না (যেকোনো tenant-এর customer UUID দিয়ে access পেত), আর manager
+// branch-এ `req.tenantId` reference করা হতো যদিও `req` এই ফাংশনের
+// parameter-ই ছিল না — রানটাইমে ReferenceError হতো।
+const verifyCustomerAccess = async (user, customerId, tenantId) => {
+    if (user.role === 'admin') {
+        const result = await query(
+            `SELECT id FROM customers WHERE id = $1 AND tenant_id = $2`,
+            [customerId, tenantId]
+        );
+        return result.rows.length > 0;
+    }
 
     const result = await query(
         `SELECT c.id
@@ -50,9 +67,8 @@ const verifyCustomerAccess = async (user, customerId) => {
          JOIN routes r ON r.id = c.route_id
          WHERE c.id = $1
            AND r.manager_id = $2
-             AND c.tenant_id = $3`,
-        [customerId, user.id,
-                req.tenantId]
+           AND c.tenant_id = $3`,
+        [customerId, user.id, tenantId]
     );
     return result.rows.length > 0;
 };
@@ -85,8 +101,8 @@ const getPortalOverview = async (req, res) => {
             filters.push(`(SELECT COUNT(*) FROM customer_portal_devices cpd WHERE cpd.customer_id = c.id AND cpd.is_active = true) = 0`);
         }
 
-        // Manager route filter
-        const { clause, params: updatedParams } = await buildManagerRouteFilter(req.user, params);
+        // Manager route filter (+ tenant scoping, always applied now)
+        const { clause, params: updatedParams } = await buildManagerRouteFilter(req.user, params, req.tenantId);
         params = updatedParams;
         if (clause) filters.push(clause.replace(/^AND /, ''));
 
@@ -158,7 +174,7 @@ const getCustomerDevices = async (req, res) => {
         }
 
         // Access check
-        const hasAccess = await verifyCustomerAccess(req.user, customerId);
+        const hasAccess = await verifyCustomerAccess(req.user, customerId, req.tenantId);
         if (!hasAccess) {
             return res.status(403).json({
                 success: false,
@@ -231,7 +247,7 @@ const revokeDevice = async (req, res) => {
             return res.status(400).json({ success: false, message: 'অবৈধ ID ফরম্যাট।' });
         }
 
-        const hasAccess = await verifyCustomerAccess(req.user, customerId);
+        const hasAccess = await verifyCustomerAccess(req.user, customerId, req.tenantId);
         if (!hasAccess) {
             return res.status(403).json({ success: false, message: 'এই কাস্টমার আপনার রুটে নেই।' });
         }
@@ -284,7 +300,7 @@ const revokeAllDevices = async (req, res) => {
             return res.status(400).json({ success: false, message: 'অবৈধ customer ID।' });
         }
 
-        const hasAccess = await verifyCustomerAccess(req.user, customerId);
+        const hasAccess = await verifyCustomerAccess(req.user, customerId, req.tenantId);
         if (!hasAccess) {
             return res.status(403).json({ success: false, message: 'এই কাস্টমার আপনার রুটে নেই।' });
         }
@@ -395,13 +411,16 @@ const restoreDevice = async (req, res) => {
 // ============================================================
 const getPortalStats = async (req, res) => {
     try {
-        let routeFilter = '';
-        let routeParams = [];
+        // 🚨 CRITICAL FIX (31 July 2026): admin-এর জন্য আগে কোনো filter-ই
+        // ছিল না (routeFilter খালি স্ট্রিং থাকত) — প্ল্যাটফর্মের সব
+        // tenant-এর portal statistics একসাথে দেখা যেত।
+        let routeFilter = 'AND c.tenant_id = $1';
+        let routeParams = [req.tenantId];
 
         if (req.user.role !== 'admin') {
             const routeResult = await query(
-                'SELECT id FROM routes WHERE manager_id = $1',
-                [req.user.id]
+                'SELECT id FROM routes WHERE manager_id = $1 AND tenant_id = $2',
+                [req.user.id, req.tenantId]
             );
             const routeIds = routeResult.rows.map(r => r.id);
             if (routeIds.length === 0) {
@@ -414,11 +433,11 @@ const getPortalStats = async (req, res) => {
                     }
                 });
             }
-            routeParams = [routeIds];
-            routeFilter = `AND c.route_id = ANY($1)`;
+            routeParams = [req.tenantId, routeIds];
+            routeFilter = `AND c.tenant_id = $1 AND c.route_id = ANY($2)`;
         }
 
-        const p1 = routeParams.length > 0 ? routeParams : [];
+        const p1 = routeParams;
 
         const [overview, recentLogins, deviceDist] = await Promise.all([
             query(

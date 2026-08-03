@@ -26,7 +26,7 @@ const getTeams = async (req, res) => {
             FROM teams t
             LEFT JOIN users m  ON m.id = t.manager_id
             LEFT JOIN users sr ON sr.team_id = t.id
-             AND t.tenant_id = $1
+             WHERE t.tenant_id = $1
              GROUP BY t.id, m.id
             ORDER BY t.is_active DESC, t.name
         `, [req.tenantId]);
@@ -100,11 +100,19 @@ const createTeam = async (req, res) => {
             return res.status(400).json({ success: false, message: 'টিমের নাম দিন।' });
         }
 
-        // একজন ম্যানেজার শুধু একটি টিমে থাকতে পারবে
+        // একজন ম্যানেজার শুধু একটি টিমে থাকতে পারবে (নিজের tenant-এর মধ্যে)
         if (manager_id) {
+            const managerCheck = await query(
+                "SELECT id FROM users WHERE id = $1 AND tenant_id = $2 AND role = 'manager'",
+                [manager_id, req.tenantId]
+            );
+            if (managerCheck.rows.length === 0) {
+                return res.status(400).json({ success: false, message: 'এই ম্যানেজার পাওয়া যায়নি।' });
+            }
+
             const existCheck = await query(
-                'SELECT id FROM teams WHERE manager_id = $1',
-                [manager_id]
+                'SELECT id FROM teams WHERE manager_id = $1 AND tenant_id = $2',
+                [manager_id, req.tenantId]
             );
             if (existCheck.rows.length > 0) {
                 return res.status(400).json({
@@ -149,16 +157,24 @@ const updateTeam = async (req, res) => {
         const { name, manager_id, monthly_target, description, is_active } = req.body;
 
         // টিম আছে কিনা চেক
-        const existing = await query('SELECT * FROM teams WHERE id = $1', [id]);
+        const existing = await query('SELECT * FROM teams WHERE id = $1 AND tenant_id = $2', [id, req.tenantId]);
         if (existing.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'টিম পাওয়া যায়নি।' });
         }
 
         // ম্যানেজার অন্য টিমে আছে কিনা চেক
         if (manager_id && manager_id !== existing.rows[0].manager_id) {
+            const managerCheck = await query(
+                "SELECT id FROM users WHERE id = $1 AND tenant_id = $2 AND role = 'manager'",
+                [manager_id, req.tenantId]
+            );
+            if (managerCheck.rows.length === 0) {
+                return res.status(400).json({ success: false, message: 'এই ম্যানেজার পাওয়া যায়নি।' });
+            }
+
             const conflict = await query(
-                'SELECT id FROM teams WHERE manager_id = $1 AND id != $2',
-                [manager_id, id]
+                'SELECT id FROM teams WHERE manager_id = $1 AND id != $2 AND tenant_id = $3',
+                [manager_id, id, req.tenantId]
             );
             if (conflict.rows.length > 0) {
                 return res.status(400).json({
@@ -280,7 +296,7 @@ const assignSRToTeam = async (req, res) => {
         }
 
         // টিম আছে কিনা চেক
-        const teamCheck = await query('SELECT id, manager_id FROM teams WHERE id = $1', [id]);
+        const teamCheck = await query('SELECT id, manager_id FROM teams WHERE id = $1 AND tenant_id = $2', [id, req.tenantId]);
         if (teamCheck.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'টিম পাওয়া যায়নি।' });
         }
@@ -414,9 +430,10 @@ const getAvailableManagers = async (req, res) => {
             LEFT JOIN teams t ON t.manager_id = u.id
             WHERE u.role = 'manager'
               AND u.status = 'active'
+              AND u.tenant_id = $1
               AND t.id IS NULL
             ORDER BY u.name_bn
-        `);
+        `, [req.tenantId]);
 
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {
@@ -436,9 +453,10 @@ const getUnassignedSRs = async (req, res) => {
             FROM users
             WHERE role = 'worker'
               AND status = 'active'
+              AND tenant_id = $1
               AND (team_id IS NULL)
             ORDER BY name_bn
-        `);
+        `, [req.tenantId]);
 
         return res.status(200).json({ success: true, data: result.rows });
     } catch (error) {

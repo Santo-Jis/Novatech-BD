@@ -20,17 +20,17 @@ const getSalarySheet = async (req, res) => {
         const isManager = req.user.role === 'manager';
 
         // মোট active worker count (pagination-এর জন্য) — parameterized
-        const countParams = isManager ? [req.user.id] : [];
-        const countFilter = isManager ? ' AND manager_id = $1' : '';
+        const countParams = isManager ? [req.tenantId, req.user.id] : [req.tenantId];
+        const countFilter = isManager ? ' AND manager_id = $2' : '';
         const countRes = await query(
-            `SELECT COUNT(*) FROM users WHERE role = 'worker' AND status = 'active'${countFilter}`,
+            `SELECT COUNT(*) FROM users WHERE role = 'worker' AND status = 'active' AND tenant_id = $1${countFilter}`,
             countParams
         );
         const totalWorkers = parseInt(countRes.rows[0].count);
 
-        // main query: $1=year, $2=month, $3=limit, $4=offset, $5=managerId (optional)
-        const managerFilter = isManager ? ' AND u.manager_id = $5' : '';
-        const queryParams   = [currentYear, currentMonth, limitNum, offset];
+        // main query: $1=year, $2=month, $3=limit, $4=offset, $5=tenantId, $6=managerId (optional)
+        const managerFilter = isManager ? ' AND u.manager_id = $6' : '';
+        const queryParams   = [currentYear, currentMonth, limitNum, offset, req.tenantId];
         if (isManager) queryParams.push(req.user.id);
 
         const result = await query(
@@ -83,7 +83,8 @@ const getSalarySheet = async (req, res) => {
              LEFT JOIN users approver ON sp.approved_by = approver.id
 
              WHERE u.role   = 'worker'
-               AND u.status = 'active'${managerFilter}
+               AND u.status = 'active'
+               AND u.tenant_id = $5${managerFilter}
 
              GROUP BY
                 u.id, u.name_bn, u.employee_code, u.basic_salary, u.outstanding_dues,

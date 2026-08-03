@@ -11,6 +11,7 @@ const getAllPromotions = async (req, res) => {
         const { active_only } = req.query;
         const today = new Date().toISOString().slice(0, 10);
 
+        const params = [req.tenantId];
         let sql = `
             SELECT p.*,
                    u.name_bn AS created_by_name,
@@ -19,10 +20,10 @@ const getAllPromotions = async (req, res) => {
             FROM promotions p
             LEFT JOIN users u ON u.id = p.created_by
             LEFT JOIN promotion_uses pu ON pu.promotion_id = p.id
+            WHERE p.tenant_id = $1
         `;
-        const params = [];
         if (active_only === 'true') {
-            sql += ` WHERE p.is_active = true AND p.start_date <= $1 AND p.end_date >= $1`;
+            sql += ` AND p.is_active = true AND p.start_date <= $2 AND p.end_date >= $2`;
             params.push(today);
         }
         sql += ` GROUP BY p.id, u.name_bn ORDER BY p.created_at DESC`;
@@ -211,8 +212,8 @@ const calculatePromotions = async (req, res) => {
         const today = new Date().toISOString().slice(0, 10);
         const promoRes = await query(
             `SELECT * FROM promotions
-             WHERE is_active = true AND start_date <= $1 AND end_date >= $1`,
-            [today]
+             WHERE is_active = true AND start_date <= $1 AND end_date >= $1 AND tenant_id = $2`,
+            [today, req.tenantId]
         );
 
         const cartTotal  = items.reduce((sum, i) => sum + (i.price || 0) * (i.qty || 0), 0);
@@ -312,7 +313,7 @@ const getPromotionReport = async (req, res) => {
     try {
         const { id } = req.params;
 
-        const promoRes = await query(`SELECT * FROM promotions WHERE id = $1`, [id]);
+        const promoRes = await query(`SELECT * FROM promotions WHERE id = $1 AND tenant_id = $2`, [id, req.tenantId]);
         if (!promoRes.rows.length) {
             return res.status(404).json({ success: false, message: 'পাওয়া যায়নি।' });
         }

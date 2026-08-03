@@ -879,8 +879,8 @@ const verifyOTP = async (req, res) => {
         const { sale_id, otp } = req.body;
 
         const sale = await query(
-            'SELECT id, otp_code, otp_expires_at, otp_verified FROM sales_transactions WHERE id = $1',
-            [sale_id]
+            'SELECT id, otp_code, otp_expires_at, otp_verified FROM sales_transactions WHERE id = $1 AND tenant_id = $2',
+            [sale_id, req.tenantId]
         );
 
         if (sale.rows.length === 0) {

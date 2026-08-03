@@ -318,9 +318,9 @@ const getTodayOrder = async (req, res) => {
 
 const getPendingOrders = async (req, res) => {
     try {
-        let conditions = ["o.status = 'pending'"];
+        let conditions = ["o.status = 'pending'", 'o.tenant_id = $1'];
         let params = [req.tenantId];
-    let paramCount = 1;
+        let paramCount = 1;
 
         // Manager শুধু নিজের টিমের অর্ডার
         if (req.user.role !== 'admin') {

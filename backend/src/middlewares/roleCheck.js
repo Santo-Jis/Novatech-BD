@@ -127,32 +127,37 @@ const selfOrAdmin = async (req, res, next) => {
     const user     = req.user;
     const targetId = req.params.id;
 
-    // Admin সব দেখতে পারবে
-    if (user.role === 'admin') return next();
-
-    // নিজের ডাটা — সবাই দেখতে পারবে
+    // নিজের ডাটা — সবাই দেখতে পারবে (tenant প্রশ্নই আসে না, নিজের id)
     if (user.id === targetId) return next();
 
-    // Manager/Supervisor — শুধু নিজের টিমের সদস্য
-    if (['manager', 'supervisor'].includes(user.role)) {
-        try {
-            const result = await dbQuery(
-                'SELECT manager_id FROM users WHERE id = $1',
-                [targetId]
-            );
-            // Target user পাওয়া না গেলে controller-এ 404 দেবে
-            if (result.rows.length === 0) return next();
+    // 🚨 CRITICAL FIX (31 July 2026): admin আগে কোনো tenant check ছাড়াই
+    // যেকোনো tenant-এর employee-এর ID দিয়ে দেখতে/এডিট করতে পারত।
+    // Admin/Manager/Supervisor — সবার জন্যই এখন target user একই
+    // tenant-এর কিনা যাচাই করা হয়।
+    try {
+        const result = await dbQuery(
+            'SELECT manager_id, tenant_id FROM users WHERE id = $1',
+            [targetId]
+        );
+        // Target user পাওয়া না গেলে controller-এ 404 দেবে
+        if (result.rows.length === 0) return next();
 
+        if (result.rows[0].tenant_id !== req.tenantId) {
+            return res.status(404).json({ success: false, message: 'কর্মচারী পাওয়া যায়নি।' });
+        }
+
+        if (user.role === 'admin') return next();
+
+        if (['manager', 'supervisor'].includes(user.role)) {
             if (result.rows[0].manager_id === user.id) return next();
-
             return res.status(403).json({
                 success: false,
                 message: 'এই কর্মচারী আপনার টিমের সদস্য নন।'
             });
-        } catch (err) {
-            logger.error('❌ selfOrAdmin DB Error:', err.message);
-            return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
         }
+    } catch (err) {
+        logger.error('❌ selfOrAdmin DB Error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 
     return res.status(403).json({

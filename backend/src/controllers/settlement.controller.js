@@ -409,9 +409,9 @@ const getMySettlements = async (req, res) => {
 
 const getPendingSettlements = async (req, res) => {
     try {
-        let conditions = ["ds.status = 'pending'"];
+        let conditions = ["ds.status = 'pending'", 'ds.tenant_id = $1'];
         let params = [req.tenantId];
-    let paramCount = 1;
+        let paramCount = 1;
 
         if (req.user.role !== 'admin') {
             paramCount++;

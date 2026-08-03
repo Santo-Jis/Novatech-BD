@@ -13,12 +13,13 @@ const { getResolvedPrices } = require('../services/priceList.utils'); // ← ন
 // ============================================================
 // HELPER — Admin ও Manager দের userId নাও
 // ============================================================
-const getAdminManagerIds = async () => {
+const getAdminManagerIds = async (tenantId) => {
     const { rows } = await query(
         `SELECT id FROM users
          WHERE role IN ('admin', 'manager', 'supervisor')
-           AND status = 'active'`,
-        []
+           AND status = 'active'
+           AND tenant_id = $1`,
+        [tenantId]
     );
     return rows.map(r => r.id);
 };
@@ -128,7 +129,7 @@ const createOrderRequest = async (req, res) => {
 
         // Admin ও Manager দের Push Notification পাঠাও
         try {
-            const adminIds = await getAdminManagerIds();
+            const adminIds = await getAdminManagerIds(customer.tenant_id);
             if (adminIds.length > 0) {
                 await sendPushToMany(adminIds, {
                     title: `🛒 নতুন অর্ডার রিকোয়েস্ট`,
@@ -310,9 +311,9 @@ const getAllOrderRequests = async (req, res) => {
     try {
         const { status = 'pending', limit = 50, offset = 0, route_id, worker_id, from, to } = req.query;
 
-        const conditions = [];
-        const params     = [];
-        let   pIdx       = 1;
+        const conditions = [`cor.tenant_id = $1`];
+        const params     = [req.tenantId];
+        let   pIdx       = 2;
 
         if (status && status !== 'all') {
             conditions.push(`cor.status = $${pIdx++}`);
@@ -549,51 +550,62 @@ const getPortalProducts = async (req, res) => {
         const offset = (page - 1) * limit;
         const search = (req.query.search || '').trim();
 
-        // ⚠️ BUG FIX: আগে এখানে tenant_id ফিল্টার ছিলই না — একজন কাস্টমার
-        // অন্য tenant-এর প্রোডাক্টও দেখতে পেত। এখন কাস্টমারের নিজের
-        // tenant_id/route_id দিয়ে ফিল্টার করা হচ্ছে (এবং Step ৫ price-list-এর
-        // জন্যও এই route_id লাগবে)।
-        const custResult = await query(`SELECT tenant_id, route_id FROM customers WHERE id = $1`, [customer_id]);
+        // ✅ CORRECTED (2 Aug 2026): আগে এখানে ভুলবশত কাস্টমারের নিজের
+        // tenant_id দিয়ে ফিল্টার করা হয়েছিল, ধরে নিয়ে যে এটা single-company
+        // storefront। কিন্তু এটা আসলে multi-vendor marketplace — একজন
+        // customer একাধিক (এমনকি শত) company-র সাথে connected থাকতে পারে,
+        // আর product browsing platform-wide open (connection ছাড়াও)।
+        // এখন সব tenant-এর active product দেখানো হয়, company নাম-সহ।
+        const custResult = await query(`SELECT route_id FROM customers WHERE id = $1`, [customer_id]);
         if (custResult.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
         }
-        const { tenant_id: tenantId, route_id: routeId } = custResult.rows[0];
-
-        // Search filter — নাম দিয়ে partial match (ILIKE)
+        const { route_id: routeId } = custResult.rows[0];
 
         const countRes = await query(
             `SELECT COUNT(*) AS total
              FROM products
-             WHERE is_active = true AND tenant_id = $1
+             WHERE is_active = true
                AND (stock - COALESCE(reserved_stock, 0)) > 0
-               ${search ? 'AND name ILIKE $2' : ''}`,
-            search ? [tenantId, `%${search}%`] : [tenantId]
+               ${search ? 'AND name ILIKE $1' : ''}`,
+            search ? [`%${search}%`] : []
         );
         const total      = parseInt(countRes.rows[0].total);
         const totalPages = Math.ceil(total / limit);
 
-        // List query — $1=tenantId, $2=limit, $3=offset, ($4=search যদি থাকে)
+        // List query — $1=limit, $2=offset, ($3=search যদি থাকে)
         const listParams = search
-            ? [tenantId, limit, offset, `%${search}%`]
-            : [tenantId, limit, offset];
+            ? [limit, offset, `%${search}%`]
+            : [limit, offset];
 
         const { rows } = await query(
-            `SELECT id, name, price, vat, tax, unit, description, image_url,
-                    (stock - COALESCE(reserved_stock, 0)) AS available_stock
-             FROM products
-             WHERE is_active = true AND tenant_id = $1
-               AND (stock - COALESCE(reserved_stock, 0)) > 0
-               ${search ? 'AND name ILIKE $4' : ''}
-             ORDER BY name ASC
-             LIMIT $2 OFFSET $3`,
+            `SELECT p.id, p.name, p.price, p.vat, p.tax, p.unit, p.description, p.image_url,
+                    p.tenant_id,
+                    t.company_name,
+                    (p.stock - COALESCE(p.reserved_stock, 0)) AS available_stock
+             FROM products p
+             JOIN tenants t ON t.id = p.tenant_id
+             WHERE p.is_active = true
+               AND (p.stock - COALESCE(p.reserved_stock, 0)) > 0
+               ${search ? 'AND p.name ILIKE $3' : ''}
+             ORDER BY p.name ASC
+             LIMIT $1 OFFSET $2`,
             listParams
         );
 
-        // ─── Step ৫: মাল্টিপল প্রাইস লিস্ট — app_ecommerce চ্যানেল ───
-        const { prices: resolvedPrices } = await getResolvedPrices(query, {
-            tenantId, customerId: customer_id, routeId, channel: 'app_ecommerce',
-            productIds: rows.map(p => p.id)
-        });
+        // ─── Step ৫: মাল্টিপল প্রাইস লিস্ট — প্রতিটা tenant-এর নিজস্ব
+        // price-list rule সেই tenant-এর প্রোডাক্টেই প্রযোজ্য, তাই tenant
+        // অনুযায়ী group করে আলাদাভাবে resolve করা হচ্ছে।
+        const byTenant = {};
+        rows.forEach(p => { (byTenant[p.tenant_id] ??= []).push(p.id); });
+
+        const resolvedPrices = {};
+        await Promise.all(Object.entries(byTenant).map(async ([tId, productIds]) => {
+            const { prices } = await getResolvedPrices(query, {
+                tenantId: tId, customerId: customer_id, routeId, channel: 'app_ecommerce', productIds
+            });
+            Object.assign(resolvedPrices, prices);
+        }));
 
         // কাস্টমার যা দেবে সেটা final_price (VAT + Tax সহ)
         const { calcFinalPrice } = require('../services/price.utils');
@@ -607,6 +619,8 @@ const getPortalProducts = async (req, res) => {
                 description:     p.description,
                 image_url:       p.image_url,
                 available_stock: p.available_stock,
+                tenant_id:       p.tenant_id,
+                company_name:    p.company_name,
                 base_price:      basePrice,
                 vat_amount:      vatAmount,
                 tax_amount:      taxAmount,
@@ -646,7 +660,7 @@ const notifyAdminStockWarning = async (req, res) => {
 
         // Order info নাও
         const orderRes = await query(
-            `SELECT cor.id, c.shop_name, c.customer_code
+            `SELECT cor.id, cor.tenant_id, c.shop_name, c.customer_code
              FROM customer_order_requests cor
              JOIN customers c ON cor.customer_id = c.id
              WHERE cor.id = $1`,
@@ -659,7 +673,8 @@ const notifyAdminStockWarning = async (req, res) => {
 
         // Admin দের ID নাও
         const adminRes = await query(
-            `SELECT id FROM users WHERE role = 'admin' AND status = 'active'`
+            `SELECT id FROM users WHERE role = 'admin' AND status = 'active' AND tenant_id = $1`,
+            [order.tenant_id]
         );
         const adminIds = adminRes.rows.map(r => r.id);
 
@@ -678,7 +693,7 @@ const notifyAdminStockWarning = async (req, res) => {
             await query(
                 `INSERT INTO notifications (user_id, title, body, type, reference_id, tenant_id) VALUES ($1, $2, $3, 'stock_warning', $4, $5)
                  ON CONFLICT DO NOTHING`,
-                [adminId, title, body, id, req.tenantId]
+                [adminId, title, body, id, order.tenant_id]
             ).catch(() => {}); // notifications table না থাকলেও চলবে
         }
 
@@ -951,7 +966,7 @@ const createReturnRequest = async (req, res) => {
                 [customer_id]
             );
             const customer = custRes.rows[0] || {};
-            const adminIds = await getAdminManagerIds();
+            const adminIds = await getAdminManagerIds(requestTenantId);
             if (adminIds.length > 0) {
                 await sendPushToMany(adminIds, {
                     title: type === 'replacement' ? `🔄 রিপ্লেসমেন্ট অনুরোধ` : `↩️ পণ্য ফেরতের অনুরোধ`,
@@ -1070,20 +1085,23 @@ const getPortalProductDetail = async (req, res) => {
         const { id } = req.params;
         const { customer_id } = req.portalUser;
 
-        // কাস্টমারের tenant_id/route_id — tenant filter + price-list দুটোর জন্যই লাগবে
-        const custResult = await query(`SELECT tenant_id, route_id FROM customers WHERE id = $1`, [customer_id]);
+        // ✅ CORRECTED (2 Aug 2026): একই কারণে — marketplace-এ যেকোনো
+        // company-র product দেখা যাবে, শুধু নিজের tenant-এর না।
+        const custResult = await query(`SELECT route_id FROM customers WHERE id = $1`, [customer_id]);
         if (custResult.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
         }
-        const { tenant_id: tenantId, route_id: routeId } = custResult.rows[0];
+        const { route_id: routeId } = custResult.rows[0];
 
         const { rows } = await query(
-            `SELECT id, name, price, vat, tax, unit, description, image_url,
-                    (stock - COALESCE(reserved_stock, 0)) AS available_stock
-             FROM products
-             WHERE id = $1::uuid
-               AND is_active = true AND tenant_id = $2`,
-            [id, tenantId]
+            `SELECT p.id, p.name, p.price, p.vat, p.tax, p.unit, p.description, p.image_url,
+                    p.tenant_id, t.company_name,
+                    (p.stock - COALESCE(p.reserved_stock, 0)) AS available_stock
+             FROM products p
+             JOIN tenants t ON t.id = p.tenant_id
+             WHERE p.id = $1::uuid
+               AND p.is_active = true`,
+            [id]
         );
 
         if (rows.length === 0) {
@@ -1092,9 +1110,10 @@ const getPortalProductDetail = async (req, res) => {
 
         const p = rows[0];
 
-        // ─── Step ৫: মাল্টিপল প্রাইস লিস্ট — app_ecommerce চ্যানেল ───
+        // ─── Step ৫: মাল্টিপল প্রাইস লিস্ট — এই product যে tenant-এর, সেই
+        // tenant-এর নিজস্ব price-list rule অনুযায়ী resolve হবে ───
         const { prices: resolvedPrices } = await getResolvedPrices(query, {
-            tenantId, customerId: customer_id, routeId, channel: 'app_ecommerce', productIds: [p.id]
+            tenantId: p.tenant_id, customerId: customer_id, routeId, channel: 'app_ecommerce', productIds: [p.id]
         });
         const basePrice = resolvedPrices[p.id] ?? parseFloat(p.price);
 
@@ -1110,6 +1129,8 @@ const getPortalProductDetail = async (req, res) => {
                 unit:            p.unit,
                 description:     p.description || '',
                 image_url:       p.image_url   || null,
+                tenant_id:       p.tenant_id,
+                company_name:    p.company_name,
                 available_stock: parseInt(p.available_stock),
                 in_stock:        parseInt(p.available_stock) > 0,
                 // Price breakdown — কাস্টমার দেখতে পাবে কোথায় কত যাচ্ছে

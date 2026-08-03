@@ -140,11 +140,12 @@ const getTeamCommission = async (req, res) => {
         let conditions = [
             "u.role = 'worker'",
             "u.status = 'active'",
-            'EXTRACT(YEAR FROM c.date) = $1',
-            'EXTRACT(MONTH FROM c.date) = $2'
+            'u.tenant_id = $1',
+            'EXTRACT(YEAR FROM c.date) = $2',
+            'EXTRACT(MONTH FROM c.date) = $3'
         ];
-        let params     = [currentYear, currentMonth];
-        let paramCount = 2;
+        let params     = [req.tenantId, currentYear, currentMonth];
+        let paramCount = 3;
 
         if (req.teamFilter) {
             paramCount++;
@@ -159,8 +160,8 @@ const getTeamCommission = async (req, res) => {
                     COALESCE(SUM(CASE WHEN c.type='attendance_bonus' THEN c.commission_amount END), 0) AS bonus
              FROM users u
              LEFT JOIN commission c ON u.id = c.user_id
-                AND EXTRACT(YEAR FROM c.date)  = $1
-                AND EXTRACT(MONTH FROM c.date) = $2
+                AND EXTRACT(YEAR FROM c.date)  = $2
+                AND EXTRACT(MONTH FROM c.date) = $3
              WHERE ${conditions.join(' AND ')}
              GROUP BY u.id, u.name_bn, u.employee_code
              ORDER BY total_sales DESC`,
@@ -188,10 +189,11 @@ const getAllCommission = async (req, res) => {
 
         let conditions = [
             'EXTRACT(YEAR FROM c.date) = $1',
-            'EXTRACT(MONTH FROM c.date) = $2'
+            'EXTRACT(MONTH FROM c.date) = $2',
+            'u.tenant_id = $3'
         ];
-        let params     = [currentYear, currentMonth];
-        let paramCount = 2;
+        let params     = [currentYear, currentMonth, req.tenantId];
+        let paramCount = 3;
 
         if (worker_id) {
             paramCount++;
@@ -302,8 +304,9 @@ const getCommissionSummary = async (req, res) => {
                 COALESCE(SUM(commission_amount), 0)  AS grand_total
              FROM commission
              WHERE EXTRACT(YEAR  FROM date) = $1
-               AND EXTRACT(MONTH FROM date) = $2`,
-            [currentYear, currentMonth]
+               AND EXTRACT(MONTH FROM date) = $2
+               AND user_id IN (SELECT id FROM users WHERE tenant_id = $3)`,
+            [currentYear, currentMonth, req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows[0] });

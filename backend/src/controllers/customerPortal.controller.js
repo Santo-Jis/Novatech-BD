@@ -98,8 +98,8 @@ const sendPortalLink = async (req, res) => {
         const { customerId } = req.params;
 
         const customer = await query(
-            'SELECT id, shop_name, owner_name, whatsapp, email, customer_code FROM customers WHERE id = $1 AND is_active = true',
-            [customerId]
+            'SELECT id, shop_name, owner_name, whatsapp, email, customer_code FROM customers WHERE id = $1 AND is_active = true AND tenant_id = $2',
+            [customerId, req.tenantId]
         );
 
         if (customer.rows.length === 0) {

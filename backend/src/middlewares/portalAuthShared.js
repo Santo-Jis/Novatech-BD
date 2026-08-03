@@ -64,7 +64,7 @@ const portalAuth = async (req, res, next) => {
 
         let cached = await getCached(customerId);
 
-        if (!cached) {
+        if (!cached || cached.tenant_id === undefined) {
             try {
                 const authCheck = await query(
                     `SELECT c.id, c.is_active, c.tenant_id, cpt.token_version AS current_version
@@ -97,7 +97,12 @@ const portalAuth = async (req, res, next) => {
                 }
 
                 const currentVersion = authCheck.rows[0].current_version || 1;
-                cached = { token_version: currentVersion, cachedAt: Date.now() };
+                // 🚨 CRITICAL FIX (31 July 2026): cache-এ tenant_id-ও রাখা হচ্ছে
+                // এখন — আগে req.tenantId কখনোই সেট হতো না, তাই portal
+                // controller-গুলোর tenant scoping করার কোনো নির্ভরযোগ্য উপায়
+                // ছিল না (যেমন getPortalProducts প্ল্যাটফর্মের সব tenant-এর
+                // পণ্য দেখাত)।
+                cached = { token_version: currentVersion, tenant_id: authCheck.rows[0].tenant_id, cachedAt: Date.now() };
                 await setCache(customerId, cached);
 
             } catch (dbErr) {
@@ -116,6 +121,7 @@ const portalAuth = async (req, res, next) => {
         }
 
         req.portalUser = decoded;
+        req.tenantId   = cached.tenant_id;
         next();
 
     } catch (err) {

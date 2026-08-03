@@ -24,10 +24,11 @@ const getCommissionReport = async (req, res) => {
         let conditions = [
             'EXTRACT(YEAR FROM c.date) = $1',
             'EXTRACT(MONTH FROM c.date) = $2',
-            "u.role = 'worker'"
+            "u.role = 'worker'",
+            'u.tenant_id = $3'
         ];
-        let params     = [currentYear, currentMonth];
-        let paramCount = 2;
+        let params     = [currentYear, currentMonth, req.tenantId];
+        let paramCount = 3;
 
         if (req.teamFilter) {
             paramCount++;
@@ -89,9 +90,9 @@ const getCreditReport = async (req, res) => {
     try {
         const { route_id, export: exportType } = req.query;
 
-        let conditions = ['c.is_active = true', 'c.current_credit > 0'];
+        let conditions = ['c.is_active = true', 'c.current_credit > 0', 'c.tenant_id = $1'];
         let params = [req.tenantId];
-    let paramCount = 1;
+        let paramCount = 1;
 
         if (req.teamFilter) {
             paramCount++;

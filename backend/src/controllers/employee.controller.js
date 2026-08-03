@@ -441,14 +441,14 @@ const getPendingEmployees = async (req, res) => {
     try {
         // Manager শুধু নিজের টিমের pending employee দেখবে
         const isManager = req.user.role === 'manager';
-        const params = isManager ? [req.user.id] : [];
-        const whereExtra = isManager ? ' AND manager_id = $1' : '';
+        const params = isManager ? [req.tenantId, req.user.id] : [req.tenantId];
+        const whereExtra = isManager ? ' AND manager_id = $2' : '';
 
         const result = await query(
             `SELECT id, role, name_bn, name_en, email, phone,
                     join_date, profile_photo, created_at, manager_id
              FROM users
-             WHERE status = 'pending'${whereExtra}
+             WHERE status = 'pending' AND tenant_id = $1${whereExtra}
              ORDER BY created_at DESC`,
             params
         );
@@ -902,8 +902,8 @@ const rejectEdit = async (req, res) => {
 const getEmployeePDF = async (req, res) => {
     try {
         const result = await query(
-            'SELECT * FROM users WHERE id = $1',
-            [req.params.id]
+            'SELECT * FROM users WHERE id = $1 AND tenant_id = $2',
+            [req.params.id, req.tenantId]
         );
 
         if (result.rows.length === 0) {

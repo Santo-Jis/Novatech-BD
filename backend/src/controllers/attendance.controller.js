@@ -340,9 +340,9 @@ const getTodayLive = async (req, res) => {
     try {
         const today = new Date().toISOString().split('T')[0];
 
-        let conditions = ['a.date = $1', "u.role = 'worker'", "u.status = 'active'"];
-        let params     = [today];
-        let paramCount = 1;
+        let conditions = ['a.date = $1', "u.role = 'worker'", "u.status = 'active'", 'u.tenant_id = $2'];
+        let params     = [today, req.tenantId];
+        let paramCount = 2;
 
         if (req.teamFilter) {
             paramCount++;
@@ -390,9 +390,9 @@ const getTeamAttendance = async (req, res) => {
         const fromDate = from || new Date().toISOString().split('T')[0];
         const toDate   = to   || fromDate;
 
-        let conditions = ['a.date BETWEEN $1 AND $2', "u.status = 'active'"];
-        let params     = [fromDate, toDate];
-        let paramCount = 2;
+        let conditions = ['a.date BETWEEN $1 AND $2', "u.status = 'active'", 'u.tenant_id = $3'];
+        let params     = [fromDate, toDate, req.tenantId];
+        let paramCount = 3;
 
         if (req.teamFilter) {
             paramCount++;
@@ -436,9 +436,9 @@ const getAllAttendance = async (req, res) => {
         const fromDate = from || new Date().toISOString().split('T')[0];
         const toDate   = to   || fromDate;
 
-        let conditions = ['a.date BETWEEN $1 AND $2'];
-        let params     = [fromDate, toDate];
-        let paramCount = 2;
+        let conditions = ['a.date BETWEEN $1 AND $2', 'a.tenant_id = $3'];
+        let params     = [fromDate, toDate, req.tenantId];
+        let paramCount = 3;
 
         if (worker_id) {
             paramCount++;
@@ -486,10 +486,11 @@ const getMonthlyReport = async (req, res) => {
             'EXTRACT(YEAR FROM a.date) = $1',
             'EXTRACT(MONTH FROM a.date) = $2',
             "u.role = 'worker'",
-            "u.status = 'active'"
+            "u.status = 'active'",
+            'u.tenant_id = $3'
         ];
-        let params = [currentYear, currentMonth];
-        let paramCount = 2;
+        let params = [currentYear, currentMonth, req.tenantId];
+        let paramCount = 3;
 
         if (req.teamFilter) {
             paramCount++;
@@ -927,8 +928,8 @@ const getLeaveBalance = async (req, res) => {
         `);
 
         // Manager শুধু নিজের টিমের দেখবে — parameterized
-        const params      = [year];
-        const teamFilter  = isManager ? 'AND u.manager_id = $2' : '';
+        const params      = [year, req.tenantId];
+        const teamFilter  = isManager ? 'AND u.manager_id = $3' : '';
         if (isManager) params.push(req.user.id);
 
         const result = await query(
@@ -965,6 +966,7 @@ const getLeaveBalance = async (req, res) => {
 
              WHERE u.role = 'worker'
                AND u.status = 'active'
+               AND u.tenant_id = $2
                ${teamFilter}
 
              GROUP BY u.id, u.name_bn, u.employee_code

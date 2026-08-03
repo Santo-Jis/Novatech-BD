@@ -25,13 +25,13 @@ const getDashboardKPI = async (req, res) => {
         const fromDate = from || firstOfMonth;
         const toDate   = to   || today;
 
-        let workerFilter = '';
-        let workerParams = [fromDate, toDate];
-        let paramCount   = 2;
+        let workerFilter = 'AND u.tenant_id = $3';
+        let workerParams = [fromDate, toDate, req.tenantId];
+        let paramCount   = 3;
 
         if (req.teamFilter) {
             paramCount++;
-            workerFilter = `AND u.manager_id = $${paramCount}`;
+            workerFilter += ` AND u.manager_id = $${paramCount}`;
             workerParams.push(req.teamFilter);
         }
 
@@ -57,9 +57,9 @@ const getDashboardKPI = async (req, res) => {
                 COUNT(u.id)                                                 AS total_workers
              FROM users u
              LEFT JOIN attendance a ON u.id = a.user_id AND a.date = $1
-             WHERE u.role = 'worker' AND u.status = 'active'
-               ${req.teamFilter ? 'AND u.manager_id = $2' : ''}`,
-            req.teamFilter ? [today, req.teamFilter] : [today]
+             WHERE u.role = 'worker' AND u.status = 'active' AND u.tenant_id = $2
+               ${req.teamFilter ? 'AND u.manager_id = $3' : ''}`,
+            req.teamFilter ? [today, req.tenantId, req.teamFilter] : [today, req.tenantId]
         );
 
         const creditKPI = await query(
@@ -69,18 +69,18 @@ const getDashboardKPI = async (req, res) => {
                 COUNT(CASE WHEN c.current_credit > 0 THEN 1 END) AS customers_with_dues
              FROM customers c
              JOIN routes r ON c.route_id = r.id
-             WHERE c.is_active = true
-               ${req.teamFilter ? 'AND r.manager_id = $1' : ''}`,
-            req.teamFilter ? [req.teamFilter] : []
+             WHERE c.is_active = true AND c.tenant_id = $1
+               ${req.teamFilter ? 'AND r.manager_id = $2' : ''}`,
+            req.teamFilter ? [req.tenantId, req.teamFilter] : [req.tenantId]
         );
 
         const pendingSettlements = await query(
             `SELECT COUNT(*) AS count
              FROM daily_settlements ds
              JOIN users u ON ds.worker_id = u.id
-             WHERE ds.status = 'pending'
-               ${req.teamFilter ? 'AND u.manager_id = $1' : ''}`,
-            req.teamFilter ? [req.teamFilter] : []
+             WHERE ds.status = 'pending' AND ds.tenant_id = $1
+               ${req.teamFilter ? 'AND u.manager_id = $2' : ''}`,
+            req.teamFilter ? [req.tenantId, req.teamFilter] : [req.tenantId]
         );
 
         return res.status(200).json({
@@ -198,8 +198,9 @@ const getMonthlyArchive = async (req, res) => {
                     COALESCE(SUM(vat_amount), 0)        AS total_vat
                  FROM sales_transactions
                  WHERE EXTRACT(YEAR FROM date) = $1
-                   AND EXTRACT(MONTH FROM date) = $2`,
-                [year, month]
+                   AND EXTRACT(MONTH FROM date) = $2
+                   AND tenant_id = $3`,
+                [year, month, req.tenantId]
             ),
             query(
                 `SELECT
@@ -209,16 +210,17 @@ const getMonthlyArchive = async (req, res) => {
                     COALESCE(SUM(salary_deduction), 0)             AS total_deduction
                  FROM attendance
                  WHERE EXTRACT(YEAR FROM date) = $1
-                   AND EXTRACT(MONTH FROM date) = $2`,
-                [year, month]
+                   AND EXTRACT(MONTH FROM date) = $2
+                   AND tenant_id = $3`,
+                [year, month, req.tenantId]
             ),
             query(
                 `SELECT
                     COALESCE(SUM(commission_amount), 0) AS total_commission,
                     COALESCE(SUM(net_payable), 0)       AS total_payable
                  FROM monthly_commissions
-                 WHERE year = $1 AND month = $2`,
-                [year, month]
+                 WHERE year = $1 AND month = $2 AND tenant_id = $3`,
+                [year, month, req.tenantId]
             ),
             query(
                 `SELECT u.name_bn, u.employee_code,
@@ -228,10 +230,11 @@ const getMonthlyArchive = async (req, res) => {
                  JOIN users u ON st.worker_id = u.id
                  WHERE EXTRACT(YEAR FROM st.date) = $1
                    AND EXTRACT(MONTH FROM st.date) = $2
+                   AND u.tenant_id = $3
                  GROUP BY u.id, u.name_bn, u.employee_code
                  ORDER BY total_sales DESC
                  LIMIT 5`,
-                [year, month]
+                [year, month, req.tenantId]
             )
         ]);
 
@@ -257,7 +260,7 @@ const getMonthlyArchive = async (req, res) => {
 
 const getEmployeePDFReport = async (req, res) => {
     try {
-        const result = await query('SELECT * FROM users WHERE id = $1', [req.params.id]);
+        const result = await query('SELECT * FROM users WHERE id = $1 AND tenant_id = $2', [req.params.id, req.tenantId]);
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'কর্মচারী পাওয়া যায়নি।' });
         }

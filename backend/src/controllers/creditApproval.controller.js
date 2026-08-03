@@ -337,11 +337,11 @@ const checkApprovalStatus = async (req, res) => {
 // ============================================================
 const getDueLeaderboard = async (req, res) => {
     try {
-        let routeFilter = '';
-        const params = [];
+        let routeFilter = 'AND c.tenant_id = $1';
+        const params = [req.tenantId];
 
         if (req.user.role === 'manager') {
-            routeFilter = `AND r.manager_id = $1`;
+            routeFilter += ` AND r.manager_id = $2`;
             params.push(req.user.id);
         }
 

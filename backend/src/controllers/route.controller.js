@@ -8,7 +8,7 @@ const { query } = require('../config/db');
 
 const getRoutes = async (req, res) => {
     try {
-        let conditions = ['r.is_active = true'];
+        let conditions = ['r.is_active = true', 'r.tenant_id = $1'];
         let params = [req.tenantId];
     let paramCount = 1;
 
@@ -190,12 +190,20 @@ const assignWorkerToRoute = async (req, res) => {
         }
 
         const worker = await query(
-            "SELECT id, name_bn FROM users WHERE id = $1 AND role = 'worker' AND status = 'active'",
-            [worker_id]
+            "SELECT id, name_bn FROM users WHERE id = $1 AND role = 'worker' AND status = 'active' AND tenant_id = $2",
+            [worker_id, req.tenantId]
         );
 
         if (worker.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'SR পাওয়া যায়নি।' });
+        }
+
+        const route = await query(
+            'SELECT id FROM routes WHERE id = $1 AND tenant_id = $2',
+            [routeId, req.tenantId]
+        );
+        if (route.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'রুট পাওয়া যায়নি।' });
         }
 
         await query(
@@ -206,8 +214,8 @@ const assignWorkerToRoute = async (req, res) => {
         );
 
         const customers = await query(
-            'SELECT id FROM customers WHERE route_id = $1 AND is_active = true',
-            [routeId]
+            'SELECT id FROM customers WHERE route_id = $1 AND is_active = true AND tenant_id = $2',
+            [routeId, req.tenantId]
         );
 
         for (const customer of customers.rows) {
@@ -242,10 +250,12 @@ const getRouteWorkers = async (req, res) => {
                     ca.assigned_at
              FROM customer_assignments ca
              JOIN users u ON ca.worker_id = u.id
+             JOIN routes r ON ca.route_id = r.id
              WHERE ca.route_id = $1 AND ca.is_active = true
                AND ca.customer_id IS NULL
+               AND r.tenant_id = $2
              ORDER BY ca.assigned_at DESC`,
-            [req.params.id]
+            [req.params.id, req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });
@@ -287,6 +297,7 @@ const getRouteCustomers = async (req, res) => {
                 c.longitude,
                 ca.visit_order
              FROM customers c
+             JOIN routes r ON r.id = c.route_id
              LEFT JOIN customer_assignments ca
                ON ca.customer_id = c.id
                AND ca.route_id   = $1
@@ -294,8 +305,9 @@ const getRouteCustomers = async (req, res) => {
                AND ca.worker_id IS NULL
              WHERE c.route_id  = $1
                AND c.is_active = true
+               AND r.tenant_id = $2
              ORDER BY ca.visit_order ASC NULLS LAST, c.shop_name ASC`,
-            [routeId]
+            [routeId, req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });
@@ -314,7 +326,7 @@ const getRouteCustomers = async (req, res) => {
 
 const getLiveRouteStatus = async (req, res) => {
     try {
-        let conditions = ['r.is_active = true'];
+        let conditions = ['r.is_active = true', 'r.tenant_id = $1'];
         let params = [req.tenantId];
     let paramCount = 1;
 
@@ -382,7 +394,9 @@ const getPendingRoutes = async (req, res) => {
              LEFT JOIN users u ON u.id = r.manager_id
              WHERE (r.status = 'pending' OR r.status IS NULL)
                AND r.is_active = true
-             ORDER BY r.created_at DESC`
+               AND r.tenant_id = $1
+             ORDER BY r.created_at DESC`,
+            [req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });

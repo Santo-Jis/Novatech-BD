@@ -865,8 +865,8 @@ const requestCustomerEdit = async (req, res) => {
 
 const getPendingCustomerEdits = async (req, res) => {
     try {
-        let whereClause = `cer.status = 'pending'`;
-        const params = [];
+        let whereClause = `cer.status = 'pending' AND cer.tenant_id = $1`;
+        const params = [req.tenantId];
         if (req.user.role === 'manager') {
             params.push(req.user.id);
             whereClause += ` AND c.route_id IN (SELECT id FROM routes WHERE manager_id = $${params.length})`;

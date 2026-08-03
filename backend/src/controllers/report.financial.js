@@ -19,11 +19,11 @@ const getPLStatement = async (req, res) => {
         const from = req.query.from || firstOfMonth;
         const to   = req.query.to   || today;
 
-        let teamCond  = '';
-        let teamParam = [];
+        let teamCond  = 'AND u.tenant_id = $3';
+        let teamParam = [req.tenantId];
         if (req.teamFilter) {
-            teamCond  = 'AND u.manager_id = $3';
-            teamParam = [req.teamFilter];
+            teamCond  += ' AND u.manager_id = $4';
+            teamParam.push(req.teamFilter);
         }
 
         const [salesData, expenseData, payrollData] = await Promise.all([
@@ -62,7 +62,7 @@ const getPLStatement = async (req, res) => {
                  JOIN users u ON mc.worker_id = u.id
                  WHERE mc.year  = EXTRACT(YEAR  FROM $1::date)
                    AND mc.month = EXTRACT(MONTH FROM $1::date)
-                   ${teamCond}`,
+                   ${teamCond.replace('$3', '$2').replace('$4', '$3')}`,
                 [from, ...teamParam]
             )
         ]);
@@ -138,13 +138,13 @@ const getLedger = async (req, res) => {
         const includePayment = !type || type === 'payment';
         const includeExpense = !type || type === 'expense';
 
-        const params     = [fromDate, toDate];
-        let   paramCount = 2;
-        let   workerCond = '';
+        const params     = [fromDate, toDate, req.tenantId];
+        let   paramCount = 3;
+        let   workerCond = 'AND u.tenant_id = $3';
         if (worker_id) {
             paramCount++;
             params.push(worker_id);
-            workerCond = `AND u.id = $${paramCount}`;
+            workerCond += ` AND u.id = $${paramCount}`;
         }
 
         const unions = [];

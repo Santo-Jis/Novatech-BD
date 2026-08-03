@@ -43,9 +43,9 @@ const getSalesReport = async (req, res) => {
             });
         }
 
-        let conditions = ['st.date BETWEEN $1 AND $2'];
-        let params     = [fromDate, toDate];
-        let paramCount = 2;
+        let conditions = ['st.date BETWEEN $1 AND $2', 'st.tenant_id = $3'];
+        let params     = [fromDate, toDate, req.tenantId];
+        let paramCount = 3;
 
         if (req.teamFilter) {
             paramCount++;
@@ -227,11 +227,12 @@ const getAttendanceReport = async (req, res) => {
         let conditions = [
             "u.role = 'worker'",
             "u.status = 'active'",
-            'EXTRACT(YEAR FROM a.date) = $1',
-            'EXTRACT(MONTH FROM a.date) = $2'
+            'u.tenant_id = $1',
+            'EXTRACT(YEAR FROM a.date) = $2',
+            'EXTRACT(MONTH FROM a.date) = $3'
         ];
-        let params     = [currentYear, currentMonth];
-        let paramCount = 2;
+        let params     = [req.tenantId, currentYear, currentMonth];
+        let paramCount = 3;
 
         if (req.teamFilter) {
             paramCount++;
