@@ -1,16 +1,21 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import api from '../../api/axios'
-import Table from '../../components/ui/Table'
+import Table, { Pagination } from '../../components/ui/Table'
 import Button from '../../components/ui/Button'
-import Input, { Textarea } from '../../components/ui/Input'
-import Modal from '../../components/ui/Modal'
+import Input, { Select } from '../../components/ui/Input'
 import Badge from '../../components/ui/Badge'
+import SupplierFormModal, { SUPPLIER_TYPE_CFG } from '../../components/SupplierFormModal'
+import SupplierDetailModal from '../../components/SupplierDetailModal'
+import PurchaseOrderDetailModal from '../../components/PurchaseOrderDetailModal'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit, FiTrash2, FiTruck, FiPhone, FiMail, FiSlash, FiCheckCircle } from 'react-icons/fi'
+import { FiPlus, FiEdit, FiTrash2, FiTruck, FiPhone, FiMail, FiSlash, FiCheckCircle, FiSearch, FiEye } from 'react-icons/fi'
 
-const EMPTY_FORM = {
-  name: '', contact_person: '', phone: '', email: '', address: '', notes: ''
-}
+const SORT_OPTIONS = [
+  { value: 'name_asc',      label: 'নাম (A–Z)' },
+  { value: 'name_desc',     label: 'নাম (Z–A)' },
+  { value: 'purchase_desc', label: 'সর্বোচ্চ ক্রয় অনুযায়ী' },
+  { value: 'po_count_desc', label: 'সর্বোচ্চ PO সংখ্যা অনুযায়ী' },
+]
 
 export default function AdminSuppliers() {
   const [suppliers, setSuppliers] = useState([])
@@ -18,55 +23,45 @@ export default function AdminSuppliers() {
   const [showInactive, setShowInactive] = useState(false)
   const [modal,    setModal]    = useState(null) // 'add' | 'edit'
   const [selected, setSelected] = useState(null)
-  const [form,     setForm]     = useState(EMPTY_FORM)
-  const [saving,   setSaving]   = useState(false)
+  const [detailId,   setDetailId]   = useState(null) // সাপ্লায়ার ডিটেইল মোডাল
+  const [poDetailId, setPoDetailId] = useState(null) // ডিটেইল থেকে ক্লিক করা PO-র মোডাল
 
-  const fetchSuppliers = async () => {
+  const [search,          setSearch]          = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [sort,            setSort]            = useState('name_asc')
+  const [pagination,      setPagination]      = useState({ page: 1, limit: 20, total: 0 })
+
+  // টাইপিং থামার ৪০০ms পর সার্চ প্রয়োগ হয় — প্রতি key-stroke-এ API কল এড়াতে
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 400)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const fetchSuppliers = useCallback(async (page = 1) => {
     setLoading(true)
     try {
-      const res = await api.get(`/suppliers?is_active=${!showInactive}`)
+      const params = new URLSearchParams({ is_active: !showInactive, page, limit: pagination.limit, sort })
+      if (debouncedSearch) params.set('search', debouncedSearch)
+      const res = await api.get(`/suppliers?${params.toString()}`)
       setSuppliers(res.data.data)
+      setPagination(res.data.pagination)
     } catch { toast.error('তথ্য আনতে সমস্যা হয়েছে।') }
     finally { setLoading(false) }
-  }
+  }, [showInactive, sort, debouncedSearch, pagination.limit])
 
-  useEffect(() => { fetchSuppliers() }, [showInactive])
+  useEffect(() => { fetchSuppliers(1) }, [showInactive, sort, debouncedSearch])
 
-  const setField = (key, value) => setForm(prev => ({ ...prev, [key]: value }))
+  const openAdd  = () => { setSelected(null); setModal('add') }
+  const openEdit = (s) => { setSelected(s); setModal('edit') }
 
-  const openAdd = () => { setForm(EMPTY_FORM); setModal('add') }
-  const openEdit = (s) => {
-    setSelected(s)
-    setForm({
-      name: s.name || '', contact_person: s.contact_person || '', phone: s.phone || '',
-      email: s.email || '', address: s.address || '', notes: s.notes || ''
-    })
-    setModal('edit')
-  }
-
-  const handleSave = async () => {
-    if (!form.name.trim()) { toast.error('সাপ্লায়ারের নাম আবশ্যক।'); return }
-    setSaving(true)
-    try {
-      if (modal === 'add') {
-        await api.post('/suppliers', form)
-        toast.success('সাপ্লায়ার যোগ হয়েছে।')
-      } else {
-        await api.put(`/suppliers/${selected.id}`, form)
-        toast.success('আপডেট সফল।')
-      }
-      setModal(null)
-      fetchSuppliers()
-    } catch (err) {
-      toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।')
-    } finally { setSaving(false) }
-  }
+  // SupplierFormModal সেভ শেষে এটা কল করে — নতুন এন্ট্রি হলে ১ম পাতায়, এডিট হলে বর্তমান পাতাতেই থাকে
+  const handleSupplierChanged = (wasAdd) => fetchSuppliers(wasAdd ? 1 : pagination.page)
 
   const toggleActive = async (s) => {
     try {
       await api.put(`/suppliers/${s.id}`, { is_active: !s.is_active })
       toast.success(s.is_active ? 'নিষ্ক্রিয় করা হয়েছে।' : 'সক্রিয় করা হয়েছে।')
-      fetchSuppliers()
+      fetchSuppliers(pagination.page)
     } catch (err) { toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।') }
   }
 
@@ -75,7 +70,7 @@ export default function AdminSuppliers() {
     try {
       await api.delete(`/suppliers/${s.id}`)
       toast.success('সাপ্লায়ার মুছে ফেলা হয়েছে।')
-      fetchSuppliers()
+      fetchSuppliers(pagination.page)
     } catch (err) { toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।') }
   }
 
@@ -93,6 +88,13 @@ export default function AdminSuppliers() {
           </div>
         </div>
       )
+    },
+    {
+      title: 'ধরন',
+      render: (_, row) => {
+        const cfg = SUPPLIER_TYPE_CFG[row.supplier_type] || SUPPLIER_TYPE_CFG.other
+        return <Badge variant={cfg.variant} label={cfg.label} size="xs" />
+      }
     },
     {
       title: 'যোগাযোগ',
@@ -121,6 +123,9 @@ export default function AdminSuppliers() {
       title: 'কার্যক্রম',
       render: (_, row) => (
         <div className="flex gap-1">
+          <button onClick={() => setDetailId(row.id)} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-slate-700 text-gray-500" title="বিস্তারিত">
+            <FiEye size={15} />
+          </button>
           <button onClick={() => openEdit(row)} className="p-1.5 rounded-lg hover:bg-blue-50 text-blue-600" title="সম্পাদনা">
             <FiEdit size={15} />
           </button>
@@ -154,29 +159,47 @@ export default function AdminSuppliers() {
         </div>
       </div>
 
+      {/* সার্চ + সর্ট */}
+      <div className="flex flex-wrap gap-3">
+        <Input
+          icon={<FiSearch />}
+          placeholder="নাম, ফোন বা যোগাযোগকারীর নাম দিয়ে খুঁজুন..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="min-w-[200px] flex-1"
+        />
+        <Select options={SORT_OPTIONS} value={sort} onChange={e => setSort(e.target.value)} className="w-56" />
+      </div>
+
       <Table columns={columns} data={suppliers} loading={loading} emptyText="কোনো সাপ্লায়ার নেই।" />
+      <Pagination
+        page={pagination.page}
+        totalPages={Math.max(1, Math.ceil(pagination.total / pagination.limit))}
+        onChange={(p) => fetchSuppliers(p)}
+      />
 
-      <Modal
+      <SupplierFormModal
         isOpen={modal === 'add' || modal === 'edit'}
+        mode={modal}
+        supplier={selected}
         onClose={() => setModal(null)}
-        title={modal === 'add' ? '➕ নতুন সাপ্লায়ার' : `✏️ সম্পাদনা — ${selected?.name}`}
-      >
-        <div className="space-y-4">
-          <Input label="সাপ্লায়ারের নাম *" value={form.name} onChange={e => setField('name', e.target.value)} placeholder="যেমন: ABC ট্রেডার্স" />
-          <Input label="যোগাযোগকারী ব্যক্তি" value={form.contact_person} onChange={e => setField('contact_person', e.target.value)} />
-          <div className="grid grid-cols-2 gap-3">
-            <Input label="ফোন" value={form.phone} onChange={e => setField('phone', e.target.value)} />
-            <Input label="ইমেইল" value={form.email} onChange={e => setField('email', e.target.value)} />
-          </div>
-          <Textarea label="ঠিকানা" value={form.address} onChange={e => setField('address', e.target.value)} rows={2} />
-          <Textarea label="নোট" value={form.notes} onChange={e => setField('notes', e.target.value)} rows={2} />
-        </div>
+        onChanged={handleSupplierChanged}
+      />
 
-        <div className="flex justify-end gap-2 mt-5 pt-4 border-t border-gray-100 dark:border-slate-700">
-          <Button variant="ghost" onClick={() => setModal(null)}>বাতিল</Button>
-          <Button onClick={handleSave} loading={saving}>সেভ করুন</Button>
-        </div>
-      </Modal>
+      <SupplierDetailModal
+        supplierId={detailId}
+        isOpen={!!detailId}
+        onClose={() => setDetailId(null)}
+        onEdit={(s) => { setDetailId(null); openEdit(s) }}
+        onOpenPO={(poId) => { setDetailId(null); setPoDetailId(poId) }}
+      />
+
+      <PurchaseOrderDetailModal
+        poId={poDetailId}
+        isOpen={!!poDetailId}
+        onClose={() => setPoDetailId(null)}
+        onChanged={() => fetchSuppliers(pagination.page)}
+      />
     </div>
   )
 }
