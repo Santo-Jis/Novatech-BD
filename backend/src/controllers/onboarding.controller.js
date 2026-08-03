@@ -108,6 +108,14 @@ const registerCompany = async (req, res) => {
     website,
     // ─── রেফারেল (সাইনআপ ফর্মের ধাপ ৩) — ঐচ্ছিক ───
     referral_source,
+    // ─── বিলিং তথ্য (ঐচ্ছিক) — ট্রায়ালে বিল হয় না, কিন্তু এখনই নিয়ে
+    // রাখলে পরে paid প্ল্যানে upgrade করার সময় (/book-plan) আবার নতুন
+    // করে চাইতে হয় না, আগে থেকেই ভরা থাকবে ───
+    company_address,
+    company_phone,
+    company_email,
+    billing_name,
+    billing_email,
   } = req.body;
 
   const normalizedSeats = normalizeSeats(seats);
@@ -166,16 +174,20 @@ const registerCompany = async (req, res) => {
         `INSERT INTO tenants
            (slug, company_name, company_name_bn, status, plan,
             trial_ends_at, max_employees, max_customers,
-            industry, company_size, country, division, city, timezone, website, referral_source)
+            industry, company_size, country, division, city, timezone, website, referral_source,
+            company_address, company_phone, company_email, billing_name, billing_email)
          VALUES ($1, $2, $3, 'trial', 'basic',
                  NOW() + INTERVAL '3 months', $4, $5,
-                 $6, $7, $8, $9, $10, $11, $12, $13)
+                 $6, $7, $8, $9, $10, $11, $12, $13,
+                 $14, $15, $16, $17, $18)
          RETURNING *`,
         [
           slug, company_name, company_name_bn || null,
           MAX_TRIAL_EMPLOYEES, MAX_TRIAL_CUSTOMERS,
           industry || null, company_size || null, country || null, division || null,
           city || null, timezone || null, website || null, referral_source || null,
+          company_address || null, company_phone || null, company_email || null,
+          billing_name || null, billing_email || null,
         ]
       );
       const newTenant = tenantResult.rows[0];

@@ -54,4 +54,21 @@ const submitTenantUpgradeBooking = async (req, res) => {
   }
 };
 
-module.exports = { submitPublicBooking, submitTenantUpgradeBooking };
+// ─── লগইন করা tenant admin-এর জন্য — নিজের বিলিং/প্রোফাইল তথ্য দেখা ───
+// (upgrade ফর্ম pre-fill করার জন্য, trial signup-এ আগে থেকে দেওয়া থাকলে)
+// GET /api/plan-bookings/my-profile
+const getMyTenantProfile = async (req, res) => {
+  try {
+    const tenantId = req.tenantId || req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ success: false, message: 'Tenant শনাক্ত করা যায়নি।' });
+    }
+    const profile = await planBookingService.getTenantProfile(tenantId);
+    return res.json({ success: true, data: profile });
+  } catch (err) {
+    console.error('[planBooking.getMyTenantProfile]', err);
+    return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+  }
+};
+
+module.exports = { submitPublicBooking, submitTenantUpgradeBooking, getMyTenantProfile };

@@ -61,6 +61,9 @@ const createBooking = async (payload) => {
     contact_name, contact_phone, contact_email = null,
     company_address = null, company_phone = null, company_email = null,
     billing_name = null, billing_email = null,
+    // StartTrial.jsx-এর ধাপ ২-এর একই ফিল্ড — নতুন কাস্টমার মোডে consistency-র জন্য
+    industry = null, company_size = null, country = null, division = null,
+    city = null, timezone = null, website = null, referral_source = null,
     payment_method = null, trx_id,
   } = payload;
 
@@ -82,12 +85,14 @@ const createBooking = async (payload) => {
        (tenant_id, requested_plan, seat_counts, billing_cycle, estimated_total_paisa,
         company_name, company_name_bn, slug, contact_name, contact_phone, contact_email,
         company_address, company_phone, company_email, billing_name, billing_email,
+        industry, company_size, country, division, city, timezone, website, referral_source,
         payment_method, trx_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
      RETURNING *`,
     [tenant_id, requested_plan, JSON.stringify(seat_counts), billing_cycle, estimated_total_paisa,
      company_name, company_name_bn, slug, contact_name, contact_phone, contact_email,
      company_address, company_phone, company_email, billing_name, billing_email,
+     industry, company_size, country, division, city, timezone, website, referral_source,
      payment_method, trx_id]
   );
 
@@ -200,13 +205,16 @@ const approveBooking = async (id, { reviewerLabel = 'super-admin-key', adminNote
         `INSERT INTO tenants
            (slug, company_name, company_name_bn, plan, max_employees, max_customers, ai_tokens_monthly,
             status, subscription_ends_at, company_address, company_phone, company_email,
-            billing_name, billing_email)
+            billing_name, billing_email, industry, company_size, country, division, city,
+            timezone, website, referral_source)
          VALUES ($1,$2,$3,$4, NULL, NULL, NULL, 'active', NOW() + ($5 || ' days')::interval,
-                 $6,$7,$8,$9,$10)
+                 $6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          RETURNING *`,
         [booking.slug, booking.company_name, booking.company_name_bn, booking.requested_plan,
          String(subscriptionDays), booking.company_address, booking.company_phone, booking.company_email,
-         booking.billing_name, booking.billing_email]
+         booking.billing_name, booking.billing_email, booking.industry, booking.company_size,
+         booking.country, booking.division, booking.city, booking.timezone, booking.website,
+         booking.referral_source]
       );
       tenant = tenantRes.rows[0];
       isNewTenant = true;
@@ -270,11 +278,26 @@ const rejectBooking = async (id, { reviewerLabel = 'super-admin-key', adminNote 
   return { booking_id: id, status: 'rejected' };
 };
 
+// ─── লগইন করা tenant admin upgrade করতে গেলে ফর্ম pre-fill করার জন্য ───
+// trial signup-এ (StartTrial.jsx) যদি বিলিং তথ্য আগে থেকেই দেওয়া থাকে,
+// upgrade ফর্মে সেটা আবার নতুন করে চাওয়া হয় না।
+const getTenantProfile = async (tenantId) => {
+  const result = await query(
+    `SELECT company_name, company_address, company_phone, company_email,
+            billing_name, billing_email, industry, company_size, country,
+            division, city, timezone, website
+     FROM tenants WHERE id = $1`,
+    [tenantId]
+  );
+  return result.rows[0] || null;
+};
+
 module.exports = {
   BOOKABLE_ROLES,
   createBooking,
   listBookings,
   getBooking,
+  getTenantProfile,
   approveBooking,
   rejectBooking,
 };

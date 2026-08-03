@@ -396,16 +396,6 @@ export default function Pricing() {
                 >
                   {plan.name} দিয়ে শুরু করুন
                 </button>
-                <button
-                  onClick={() => navigate(`/book-plan?plan=${key}`)}
-                  style={{
-                    marginTop: '8px', padding: '9px 16px', borderRadius: '8px',
-                    border: `1px solid ${T.borderDefault}`, background: 'transparent', color: T.textSecondary,
-                    fontSize: '12.5px', fontWeight: 600, cursor: 'pointer', fontFamily: T.fontBody,
-                  }}
-                >
-                  ট্রায়াল ছাড়াই সরাসরি বুক করুন
-                </button>
               </div>
             )
           })}

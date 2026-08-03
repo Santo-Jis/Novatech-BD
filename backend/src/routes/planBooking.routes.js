@@ -21,4 +21,7 @@ router.post('/', bookingLimiter, ctrl.submitPublicBooking);
 // বিদ্যমান trial tenant — upgrade করতে চায় (লগইন করা admin-ই পাঠাতে পারবে)
 router.post('/upgrade', auth, isAdmin, bookingLimiter, ctrl.submitTenantUpgradeBooking);
 
+// নিজের বিলিং/প্রোফাইল তথ্য দেখা — upgrade ফর্ম pre-fill করার জন্য
+router.get('/my-profile', auth, isAdmin, ctrl.getMyTenantProfile);
+
 module.exports = router;

@@ -6,7 +6,7 @@ import toast from 'react-hot-toast'
 import {
   FiCheck, FiCheckCircle, FiXCircle, FiLoader, FiArrowRight, FiArrowLeft,
   FiBriefcase, FiUser, FiPhone, FiMail, FiLock, FiShield, FiEye, FiEyeOff,
-  FiGrid, FiUsers, FiMapPin, FiGlobe, FiLink, FiMessageCircle, FiLayers,
+  FiGrid, FiUsers, FiMapPin, FiGlobe, FiLink, FiMessageCircle, FiLayers, FiCreditCard,
 } from 'react-icons/fi'
 import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
@@ -403,6 +403,12 @@ export default function StartTrial() {
         website: data.website || undefined,
         // রেফারেল (ধাপ ৩)
         referral_source: data.referral_source || undefined,
+        // বিলিং তথ্য (ঐচ্ছিক, ধাপ ২-এর নিচে)
+        company_address: data.company_address || undefined,
+        company_phone: data.company_phone || undefined,
+        company_email: data.company_email || undefined,
+        billing_name: data.billing_name || undefined,
+        billing_email: data.billing_email || undefined,
       })
       setResult(res.data?.data || {})
       toast.success('ট্রায়াল শুরু হয়েছে! 🎉')
@@ -705,6 +711,51 @@ export default function StartTrial() {
                       style={inputStyle}
                       placeholder="https://example.com"
                     />
+                  </div>
+
+                  {/* বিলিং তথ্য (ঐচ্ছিক) — ট্রায়ালে বিল হয় না, কিন্তু এখনই দিয়ে
+                      রাখলে পরে পেইড প্ল্যানে upgrade (/book-plan) করার সময়
+                      আবার নতুন করে লিখতে হয় না */}
+                  <div style={{ marginTop: '22px', paddingTop: '18px', borderTop: `1px dashed ${T.borderDefault}` }}>
+                    <p style={{ ...labelStyle, marginBottom: '2px' }}>
+                      <FiCreditCard style={{ verticalAlign: '-2px', marginRight: '5px' }} />
+                      বিলিং তথ্য (ঐচ্ছিক)
+                    </p>
+                    <p style={{ fontSize: '11.5px', color: T.textMuted, margin: '0 0 14px', lineHeight: 1.6 }}>
+                      ট্রায়ালে বিল হয় না — এখনই দিয়ে রাখলে পরে পেইড প্ল্যানে upgrade করার সময় আবার লিখতে হবে না
+                    </p>
+
+                    <div style={fieldWrapStyle}>
+                      <label style={labelStyle}>কোম্পানির ঠিকানা</label>
+                      <FiMapPin style={iconWrapStyle} />
+                      <input {...register('company_address')} style={inputStyle} />
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div style={fieldWrapStyle}>
+                        <label style={labelStyle}>কোম্পানির ফোন</label>
+                        <FiPhone style={iconWrapStyle} />
+                        <input {...register('company_phone')} style={inputStyle} />
+                      </div>
+                      <div style={fieldWrapStyle}>
+                        <label style={labelStyle}>কোম্পানির ইমেইল</label>
+                        <FiMail style={iconWrapStyle} />
+                        <input {...register('company_email')} style={inputStyle} />
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                      <div style={fieldWrapStyle}>
+                        <label style={labelStyle}>Billing Name</label>
+                        <FiUser style={iconWrapStyle} />
+                        <input {...register('billing_name')} style={inputStyle} />
+                      </div>
+                      <div style={fieldWrapStyle}>
+                        <label style={labelStyle}>Billing Email</label>
+                        <FiMail style={iconWrapStyle} />
+                        <input {...register('billing_email')} style={inputStyle} />
+                      </div>
+                    </div>
                   </div>
 
                   <div style={{ display: 'flex', gap: '10px', marginTop: '18px' }}>
