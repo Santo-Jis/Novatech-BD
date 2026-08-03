@@ -387,7 +387,7 @@ export default function Pricing() {
                 </div>
 
                 <button
-                  onClick={() => navigate('/start-trial', { state: { planHint: key } })}
+                  onClick={() => navigate(`/book-plan?plan=${key}`)}
                   style={{
                     marginTop: 'auto', padding: '11px 16px', borderRadius: '8px', border: 'none',
                     background: plan.highlight ? T.accent600 : T.primary700, color: '#fff',
