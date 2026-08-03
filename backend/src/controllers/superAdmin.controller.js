@@ -1119,6 +1119,70 @@ const rechargeTenantWallet = async (req, res) => {
   }
 };
 
+// ─── Plan Booking রিকোয়েস্ট রিভিউ — নতুন কাস্টমার-facing "প্ল্যান বুক
+// করুন" পেজ থেকে জমা হওয়া রিকোয়েস্ট এখানে দেখা/approve/reject করা হয়।
+// আসল create/update লজিক planBooking.service.js-এ (createTenant/
+// updateTenantPlan-এর মতোই, কিন্তু TrxID pending থাকা অবস্থায় কিছু
+// activate হয় না — শুধু approve করলেই)।
+const planBookingService = require('../services/planBooking.service');
+
+const listPlanBookings = async (req, res) => {
+  const { status, page = 1, limit = 20 } = req.query;
+  try {
+    const result = await planBookingService.listBookings({ status: status || null, page: Number(page), limit: Number(limit) });
+    return res.json({ success: true, data: result.rows, pagination: {
+      page: result.page, limit: result.limit, total: result.total, total_pages: result.total_pages,
+    } });
+  } catch (err) {
+    console.error('[superAdmin.listPlanBookings]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const approvePlanBooking = async (req, res) => {
+  const { bookingId } = req.params;
+  const { admin_note } = req.body;
+  try {
+    const result = await planBookingService.approveBooking(bookingId, {
+      reviewerLabel: 'super-admin-key',
+      adminNote: admin_note || null,
+      ip: req.ip || null,
+    });
+    return res.json({
+      success: true,
+      message: result.isNewTenant
+        ? `নতুন Tenant "${result.tenant.company_name}" তৈরি হয়েছে ও activate হয়েছে।`
+        : `Tenant "${result.tenant.company_name}" আপগ্রেড হয়েছে।`,
+      data: {
+        tenant: result.tenant,
+        temp_password: result.tempPassword, // null হলে existing tenant upgrade — নতুন পাসওয়ার্ড লাগেনি
+        is_new_tenant: result.isNewTenant,
+      },
+    });
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) console.error('[superAdmin.approvePlanBooking]', err);
+    return res.status(status).json({ success: false, message: err.message || 'সার্ভারে সমস্যা হয়েছে।' });
+  }
+};
+
+const rejectPlanBooking = async (req, res) => {
+  const { bookingId } = req.params;
+  const { admin_note } = req.body;
+  try {
+    const result = await planBookingService.rejectBooking(bookingId, {
+      reviewerLabel: 'super-admin-key',
+      adminNote: admin_note || null,
+      ip: req.ip || null,
+    });
+    return res.json({ success: true, message: 'রিকোয়েস্ট বাতিল করা হয়েছে।', data: result });
+  } catch (err) {
+    const status = err.status || 500;
+    if (status >= 500) console.error('[superAdmin.rejectPlanBooking]', err);
+    return res.status(status).json({ success: false, message: err.message || 'সার্ভারে সমস্যা হয়েছে।' });
+  }
+};
+
 module.exports = {
   getAllTenants,
   createTenant,
@@ -1144,4 +1208,7 @@ module.exports = {
   testSmsGateway,
   getTenantWallet,
   rechargeTenantWallet,
+  listPlanBookings,
+  approvePlanBooking,
+  rejectPlanBooking,
 };

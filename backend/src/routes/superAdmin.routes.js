@@ -118,4 +118,11 @@ router.post  ('/ai/trigger',  aiCtrl.triggerAIJob);
 router.get   ('/tenants/:tenantId/wallet',          ctrl.getTenantWallet);
 router.post  ('/tenants/:tenantId/wallet/recharge', ctrl.rechargeTenantWallet);
 
+// ✅ Plan Booking — কাস্টমার-facing "প্ল্যান বুক করুন" পেজ থেকে জমা হওয়া
+// রিকোয়েস্ট (নতুন কাস্টমার বা trial tenant upgrade), TrxID ম্যানুয়ালি
+// verify করে approve/reject করা হয় এখান থেকে (planBooking.service.js)
+router.get   ('/plan-bookings',                  ctrl.listPlanBookings);
+router.post  ('/plan-bookings/:bookingId/approve', ctrl.approvePlanBooking);
+router.post  ('/plan-bookings/:bookingId/reject',  ctrl.rejectPlanBooking);
+
 module.exports = router;

@@ -55,6 +55,7 @@ const SRApplicationForm = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/SR
 
 // Start Trial — নতুন company self-signup (৩ মাসের ফ্রি ট্রায়াল) — Customer APK-এ নেই
 const StartTrial = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/StartTrial'))
+const BookPlan = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/BookPlan'))
 
 // ── Platform Support & Admin Panel — Customer APK-এ নেই ──────
 // (platform_staff login, tenant-user auth থেকে সম্পূর্ণ আলাদা সিস্টেম)
@@ -77,6 +78,7 @@ const SuperAdminTenantList  = IS_CUSTOMER_APP ? null : lazy(() => import('./page
 const SuperAdminCreateTenant = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/CreateTenant'))
 const SuperAdminTenantDetail = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/TenantDetail'))
 const SuperAdminStaffList   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/StaffList'))
+const SuperAdminPlanBookings = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/PlanBookings'))
 const SuperAdminAuditLog    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/AuditLog'))
 const SuperAdminPlatformSettings = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/PlatformSettings'))
 
@@ -397,6 +399,13 @@ function AppWithPermissions() {
             <Route path="/start-trial" element={<StartTrial />} />
           )}
 
+          {/* Book Plan — নতুন কাস্টমার (পাবলিক) বা লগইন করা tenant admin
+              (upgrade) দুটোই এখানে আসে, পেজ নিজেই auth state দেখে মোড
+              ঠিক করে — Customer APK-এ নেই (retail কাস্টমারের জন্য না) */}
+          {!IS_CUSTOMER_APP && (
+            <Route path="/book-plan" element={<BookPlan />} />
+          )}
+
           {/* About Us / Contact Us — Customer APK-এ নেই, শুধু মূল ল্যান্ডিং সাইটে */}
           {!IS_CUSTOMER_APP && (
             <>
@@ -463,6 +472,7 @@ function AppWithPermissions() {
                 <Route path="tenants/new"  element={<SuperAdminCreateTenant />} />
                 <Route path="tenants/:tenantId" element={<SuperAdminTenantDetail />} />
                 <Route path="staff"        element={<SuperAdminStaffList />} />
+                <Route path="plan-bookings" element={<SuperAdminPlanBookings />} />
                 <Route path="audit-log"    element={<SuperAdminAuditLog />} />
                 <Route path="platform-settings" element={<SuperAdminPlatformSettings />} />
               </Route>

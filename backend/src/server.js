@@ -201,6 +201,7 @@ const invoiceTargetRoutes       = require('./routes/invoiceTarget.routes');    /
 const batteryRoutes             = require('./routes/battery.routes');          // ← নতুন (Battery Alert)
 const onboardingRoutes          = require('./routes/onboarding.routes');       // ← নতুন (SaaS: company register)
 const superAdminRoutes          = require('./routes/superAdmin.routes');       // ← নতুন (SaaS: super admin panel)
+const planBookingRoutes         = require('./routes/planBooking.routes');      // ← নতুন (Plan Booking: কাস্টমার-facing "প্ল্যান বুক করুন")
 const platformAuthRoutes    = require('./routes/platformAuth.routes');
 const platformTwoFactorRoutes = require('./routes/platformTwoFactor.routes');
 const platformSupportRoutes = require('./routes/platformSupport.routes');
@@ -260,6 +261,7 @@ app.use('/api/invoice-target',          invoiceTargetRoutes);  // ← নতু�
 app.use('/api/battery',                 batteryRoutes);        // ← নতুন
 app.use('/api',          onboardingRoutes);   // ← নতুন (SaaS): POST /api/register, GET /api/register/check-slug/:slug
 app.use('/superadmin/api', superAdminRoutes); // ← নতুন (SaaS): X-Super-Admin-Key দিয়ে protected, /api ও tenant middleware-এর বাইরে
+app.use('/api/plan-bookings', planBookingRoutes); // ← নতুন: POST / (পাবলিক, নতুন কাস্টমার), POST /upgrade (auth, বিদ্যমান tenant)
 app.use('/platform/api/auth', platformAuthRoutes);
 app.use('/platform/api/auth/2fa', platformTwoFactorRoutes); // ← নতুন: TOTP 2FA setup/status/disable
 app.use('/platform/api/support', platformSupportRoutes);
