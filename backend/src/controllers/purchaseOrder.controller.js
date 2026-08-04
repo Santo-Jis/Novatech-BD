@@ -432,8 +432,9 @@ const receivePurchaseOrder = async (req, res) => {
                 if (entry.batch_number || entry.expiry_date) {
                     const batchResult = await client.query(
                         `INSERT INTO product_batches
-                            (tenant_id, product_id, batch_number, quantity, manufacture_date, expiry_date, received_at)
-                         VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                            (tenant_id, product_id, batch_number, quantity, manufacture_date, expiry_date, received_at,
+                             status, unit_cost, supplier_id, purchase_order_id)
+                         VALUES ($1, $2, $3, $4, $5, $6, NOW(), 'active', $7, $8, $9)
                          RETURNING id`,
                         [
                             req.tenantId,
@@ -441,7 +442,10 @@ const receivePurchaseOrder = async (req, res) => {
                             entry.batch_number || null,
                             qtyNow,
                             entry.manufacture_date || null,
-                            entry.expiry_date || null
+                            entry.expiry_date || null,
+                            unitCost,
+                            po.supplier_id || null,
+                            po.id
                         ]
                     );
                     batchId = batchResult.rows[0].id;

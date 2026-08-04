@@ -34,10 +34,12 @@ async function consumeBatchesFEFO(client, {
     if (remaining <= 0) return { consumed, untracked: 0 };
 
     // FEFO অর্ডার: expiry_date যার নেই সে সবার পরে, তারপর যার expiry সবচেয়ে কাছে সে আগে
+    // ✅ Phase ২: শুধু status='active' ব্যাচ থেকে বের হবে — quarantine/damaged/
+    // written_off/returned_to_supplier ব্যাচ থেকে ভুলবশত বিক্রি হবে না
     // FOR UPDATE — একই সময়ে একাধিক approval একই ব্যাচ থেকে ওভার-কনজিউম না করে
     const batchResult = await client.query(
         `SELECT id, quantity FROM product_batches
-         WHERE tenant_id = $1 AND product_id = $2 AND quantity > 0
+         WHERE tenant_id = $1 AND product_id = $2 AND quantity > 0 AND status = 'active'
          ORDER BY (expiry_date IS NULL), expiry_date ASC, created_at ASC
          FOR UPDATE`,
         [tenantId, productId]

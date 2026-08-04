@@ -139,6 +139,71 @@ const exportCreditExcel = async (res, data, totalOutstanding) => {
     res.end();
 };
 
+// ── ব্যাচ ও মেয়াদ EXCEL ──────────────────────────────────────
+const BATCH_STATUS_LABELS = {
+    all:      'সব ব্যাচ',
+    expiring: 'মেয়াদ শেষের পথে',
+    expired:  'মেয়াদোত্তীর্ণ'
+};
+
+const BATCH_STATUS_COL_LABELS = {
+    active:                'সক্রিয়',
+    quarantine:            'কোয়ারেন্টাইন',
+    damaged:                'ক্ষতিগ্রস্ত',
+    written_off:            'রাইট-অফ',
+    returned_to_supplier:  'সাপ্লায়ারে ফেরত'
+};
+
+const exportBatchesExcel = async (res, data, status = 'all') => {
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('ব্যাচ ও মেয়াদ');
+
+    ws.mergeCells('A1:L1');
+    ws.getCell('A1').value     = `ZovoriX — ব্যাচ ও মেয়াদ রিপোর্ট (${BATCH_STATUS_LABELS[status] || 'সব ব্যাচ'})`;
+    ws.getCell('A1').font      = { bold: true, size: 14 };
+    ws.getCell('A1').alignment = { horizontal: 'center' };
+
+    ws.addRow([]);
+    ws.addRow(['পণ্য', 'SKU', 'ব্যাচ নং', 'অবস্থা', 'সাপ্লায়ার', 'PO নং', 'পরিমাণ', 'ইউনিট', 'উৎপাদন তারিখ', 'মেয়াদ উত্তীর্ণ', 'স্টক মূল্য (৳)', 'গৃহীত তারিখ']);
+    ws.getRow(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFB91C1C' } };
+    ws.getRow(3).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+
+    data.forEach(row => {
+        const days = row.days_to_expiry !== null && row.days_to_expiry !== undefined ? parseInt(row.days_to_expiry, 10) : null;
+        const excelRow = ws.addRow([
+            row.product_name,
+            row.sku,
+            row.batch_number || '—',
+            BATCH_STATUS_COL_LABELS[row.status] || row.status || 'সক্রিয়',
+            row.supplier_name || '—',
+            row.po_number || '—',
+            row.quantity,
+            row.unit,
+            row.manufacture_date ? new Date(row.manufacture_date).toLocaleDateString('en-GB') : '—',
+            row.expiry_date ? new Date(row.expiry_date).toLocaleDateString('en-GB') : '—',
+            parseFloat(row.stock_value || 0),
+            row.received_at ? new Date(row.received_at).toLocaleDateString('en-GB') : '—'
+        ]);
+        if (days !== null && days < 0) {
+            excelRow.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFECACA' } }; });
+        } else if (days !== null && days <= 30) {
+            excelRow.eachCell(cell => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; });
+        }
+    });
+
+    const totalValue = data.reduce((sum, r) => sum + parseFloat(r.stock_value || 0), 0);
+    ws.addRow([]);
+    const totalRow = ws.addRow(['', '', '', '', '', '', '', '', '', 'মোট স্টক মূল্য (৳):', totalValue.toFixed(2)]);
+    totalRow.font = { bold: true };
+
+    ws.columns.forEach(col => { col.width = 16; });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="batches_${status}.xlsx"`);
+    await wb.xlsx.write(res);
+    res.end();
+};
+
 // ── SALES PDF ────────────────────────────────────────────────
 const exportSalesPDF = async (res, data, from, to) => {
     const doc    = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape' });
@@ -211,5 +276,6 @@ module.exports = {
     exportAttendanceExcel,
     exportCommissionExcel,
     exportCreditExcel,
+    exportBatchesExcel,
     exportSalesPDF,
 };
