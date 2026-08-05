@@ -39,6 +39,7 @@ export default function AdminPurchaseOrders() {
 
   const [suppliers, setSuppliers] = useState([])
   const [products,  setProducts]  = useState([])
+  const [supplierProductMap, setSupplierProductMap] = useState({}) // { product_id: {unit_price, lead_time_days} } — বর্তমানে বাছাই করা সাপ্লায়ারের দাম-ম্যাপিং
 
   const [createOpen, setCreateOpen] = useState(false)
   const [form, setForm] = useState({ supplier_id: '', order_date: '', expected_date: '', notes: '' })
@@ -78,6 +79,19 @@ export default function AdminPurchaseOrders() {
   useEffect(() => { fetchSuppliers(); fetchProducts() }, [])
   useEffect(() => { fetchPOs(1) }, [statusFilter, supplierFilter, search])
 
+  // সাপ্লায়ার বদলালে সেই সাপ্লায়ারের দাম-ম্যাপিং লোড — item row-এ পণ্য বাছাইয়ের সময় auto-suggest-এ ব্যবহৃত হবে
+  useEffect(() => {
+    if (!form.supplier_id) { setSupplierProductMap({}); return }
+    (async () => {
+      try {
+        const res = await api.get(`/suppliers/${form.supplier_id}/products`)
+        const map = {}
+        res.data.data.forEach(sp => { map[sp.product_id] = { unit_price: sp.unit_price, lead_time_days: sp.lead_time_days } })
+        setSupplierProductMap(map)
+      } catch { setSupplierProductMap({}) /* ম্যাপিং না এলেও generic cost_price ফলব্যাক কাজ করবে */ }
+    })()
+  }, [form.supplier_id])
+
   const supplierOptions = suppliers.map(s => ({ value: s.id, label: s.name }))
   const productOptions  = products.map(p => ({ value: p.id, label: `${p.name} (${p.sku})` }))
 
@@ -85,6 +99,7 @@ export default function AdminPurchaseOrders() {
   const openCreate = () => {
     setForm({ supplier_id: '', order_date: '', expected_date: '', notes: '' })
     setItems([{ ...EMPTY_ITEM }])
+    setSupplierProductMap({})
     setCreateOpen(true)
   }
 
@@ -92,11 +107,16 @@ export default function AdminPurchaseOrders() {
     setItems(prev => prev.map((it, i) => {
       if (i !== idx) return it
       const updated = { ...it, [key]: value }
-      // পণ্য বাছাই করলে সেই পণ্যের cost_price দিয়ে unit_cost প্রি-ফিল করো (থাকলে)
+      // পণ্য বাছাই করলে দাম প্রি-ফিল: আগে এই সাপ্লায়ারের নির্দিষ্ট দর (থাকলে), না থাকলে পণ্যের generic cost_price
       if (key === 'product_id') {
-        const prod = products.find(p => p.id === value)
-        if (prod && prod.cost_price !== undefined && !it.unit_cost) {
-          updated.unit_cost = prod.cost_price || ''
+        if (!it.unit_cost) {
+          const supplierPrice = supplierProductMap[value]
+          if (supplierPrice) {
+            updated.unit_cost = supplierPrice.unit_price
+          } else {
+            const prod = products.find(p => p.id === value)
+            if (prod && prod.cost_price !== undefined) updated.unit_cost = prod.cost_price || ''
+          }
         }
       }
       return updated
@@ -249,6 +269,10 @@ export default function AdminPurchaseOrders() {
                       value={item.product_id}
                       onChange={e => setItemField(idx, 'product_id', e.target.value)}
                     />
+                    {item.product_id && supplierProductMap[item.product_id] &&
+                     parseFloat(item.unit_cost) === parseFloat(supplierProductMap[item.product_id].unit_price) && (
+                      <p className="text-[10px] text-primary mt-1 ml-1">✓ সাপ্লায়ার-নির্দিষ্ট দর</p>
+                    )}
                   </div>
                   <input
                     type="number" min="1" placeholder="পরিমাণ"

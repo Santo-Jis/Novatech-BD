@@ -6,15 +6,18 @@ import Input, { Select } from '../../components/ui/Input'
 import Badge from '../../components/ui/Badge'
 import SupplierFormModal, { SUPPLIER_TYPE_CFG } from '../../components/SupplierFormModal'
 import SupplierDetailModal from '../../components/SupplierDetailModal'
+import SupplierPaymentModal from '../../components/SupplierPaymentModal'
+import SupplierImportModal from '../../components/SupplierImportModal'
 import PurchaseOrderDetailModal from '../../components/PurchaseOrderDetailModal'
 import toast from 'react-hot-toast'
-import { FiPlus, FiEdit, FiTrash2, FiTruck, FiPhone, FiMail, FiSlash, FiCheckCircle, FiSearch, FiEye } from 'react-icons/fi'
+import { FiPlus, FiEdit, FiTrash2, FiTruck, FiPhone, FiMail, FiSlash, FiCheckCircle, FiSearch, FiEye, FiUploadCloud } from 'react-icons/fi'
 
 const SORT_OPTIONS = [
   { value: 'name_asc',      label: 'নাম (A–Z)' },
   { value: 'name_desc',     label: 'নাম (Z–A)' },
   { value: 'purchase_desc', label: 'সর্বোচ্চ ক্রয় অনুযায়ী' },
   { value: 'po_count_desc', label: 'সর্বোচ্চ PO সংখ্যা অনুযায়ী' },
+  { value: 'payable_desc',  label: 'সর্বোচ্চ বকেয়া অনুযায়ী' },
 ]
 
 export default function AdminSuppliers() {
@@ -25,6 +28,8 @@ export default function AdminSuppliers() {
   const [selected, setSelected] = useState(null)
   const [detailId,   setDetailId]   = useState(null) // সাপ্লায়ার ডিটেইল মোডাল
   const [poDetailId, setPoDetailId] = useState(null) // ডিটেইল থেকে ক্লিক করা PO-র মোডাল
+  const [payModalSupplier, setPayModalSupplier] = useState(null) // ডিটেইল থেকে "পেমেন্ট করুন"-এ ক্লিক করা সাপ্লায়ার
+  const [importOpen, setImportOpen] = useState(false)
 
   const [search,          setSearch]          = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
@@ -116,6 +121,15 @@ export default function AdminSuppliers() {
       )
     },
     {
+      title: 'মোট বকেয়া',
+      render: (_, row) => {
+        const payable = Math.max(0, parseFloat(row.total_payable || 0))
+        return payable > 0
+          ? <span className="text-sm font-semibold text-red-600 dark:text-red-400">৳{payable.toLocaleString()}</span>
+          : <span className="text-xs text-gray-300">—</span>
+      }
+    },
+    {
       title: 'অবস্থা',
       render: (_, row) => <Badge variant={row.is_active ? 'active' : 'archived'} label={row.is_active ? 'সক্রিয়' : 'নিষ্ক্রিয়'} size="xs" />
     },
@@ -155,6 +169,7 @@ export default function AdminSuppliers() {
           >
             {showInactive ? 'সক্রিয় দেখুন' : 'নিষ্ক্রিয় দেখুন'}
           </button>
+          <Button icon={<FiUploadCloud />} variant="outline" onClick={() => setImportOpen(true)}>CSV ইম্পোর্ট</Button>
           <Button icon={<FiPlus />} onClick={openAdd}>নতুন সাপ্লায়ার</Button>
         </div>
       </div>
@@ -192,6 +207,7 @@ export default function AdminSuppliers() {
         onClose={() => setDetailId(null)}
         onEdit={(s) => { setDetailId(null); openEdit(s) }}
         onOpenPO={(poId) => { setDetailId(null); setPoDetailId(poId) }}
+        onPay={(s) => { setDetailId(null); setPayModalSupplier(s) }}
       />
 
       <PurchaseOrderDetailModal
@@ -199,6 +215,25 @@ export default function AdminSuppliers() {
         isOpen={!!poDetailId}
         onClose={() => setPoDetailId(null)}
         onChanged={() => fetchSuppliers(pagination.page)}
+      />
+
+      <SupplierPaymentModal
+        isOpen={!!payModalSupplier}
+        supplierId={payModalSupplier?.id}
+        supplierName={payModalSupplier?.name}
+        currentPayable={payModalSupplier?.total_payable}
+        onClose={() => setPayModalSupplier(null)}
+        onPaid={() => {
+          const paidId = payModalSupplier?.id
+          setPayModalSupplier(null)
+          fetchSuppliers(pagination.page)
+          if (paidId) setDetailId(paidId) // পেমেন্টের পর আপডেটেড বকেয়াসহ ডিটেইল ভিউ আবার খুলে যাবে
+        }}
+      />
+      <SupplierImportModal
+        isOpen={importOpen}
+        onClose={() => setImportOpen(false)}
+        onImported={() => fetchSuppliers(1)}
       />
     </div>
   )

@@ -7,6 +7,7 @@ const SUPPLIER_SORT_MAP = {
     name_desc:     's.name DESC',
     purchase_desc: 'total_purchased DESC NULLS LAST',
     po_count_desc: 'po_count DESC',
+    payable_desc:  'total_payable DESC NULLS LAST',
 };
 
 // ============================================================
@@ -49,7 +50,11 @@ const getSuppliers = async (req, res) => {
                     dt.name_bn AS district_name,
                     (SELECT COUNT(*) FROM purchase_orders po WHERE po.supplier_id = s.id) AS po_count,
                     (SELECT COALESCE(SUM(po.total_amount), 0) FROM purchase_orders po
-                        WHERE po.supplier_id = s.id AND po.status IN ('ordered','partial','received')) AS total_purchased
+                        WHERE po.supplier_id = s.id AND po.status IN ('ordered','partial','received')) AS total_purchased,
+                    (SELECT COALESCE(SUM(po.total_amount), 0) FROM purchase_orders po
+                        WHERE po.supplier_id = s.id AND po.status IN ('ordered','partial','received'))
+                    - (SELECT COALESCE(SUM(sp.amount), 0) FROM supplier_payments sp
+                        WHERE sp.supplier_id = s.id) AS total_payable
              FROM suppliers s
              LEFT JOIN bd_divisions d  ON d.id  = s.division_id
              LEFT JOIN bd_districts dt ON dt.id = s.district_id
@@ -91,6 +96,10 @@ const getSupplier = async (req, res) => {
                         WHERE po.supplier_id = s.id AND po.status IN ('ordered','partial','received')) AS completed_po_count,
                     (SELECT COALESCE(SUM(po.total_amount), 0) FROM purchase_orders po
                         WHERE po.supplier_id = s.id AND po.status IN ('ordered','partial','received')) AS total_purchased,
+                    (SELECT COALESCE(SUM(po.total_amount), 0) FROM purchase_orders po
+                        WHERE po.supplier_id = s.id AND po.status IN ('ordered','partial','received'))
+                    - (SELECT COALESCE(SUM(sp.amount), 0) FROM supplier_payments sp
+                        WHERE sp.supplier_id = s.id) AS total_payable,
                     (SELECT MAX(po.order_date) FROM purchase_orders po
                         WHERE po.supplier_id = s.id AND po.status IN ('ordered','partial','received')) AS last_order_date
              FROM suppliers s
