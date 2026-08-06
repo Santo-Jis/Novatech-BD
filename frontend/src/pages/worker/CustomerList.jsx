@@ -106,14 +106,20 @@ const myLocationIcon = L.divIcon({
 function FitBounds({ customers, userLocation }) {
   const map = useMap()
   useEffect(() => {
-    const points = customers
-      .filter(c => c.latitude && c.longitude)
-      .map(c => [parseFloat(c.latitude), parseFloat(c.longitude)])
-    if (userLocation) points.push([userLocation.lat, userLocation.lng])
-    if (points.length === 0) return
-    if (points.length === 1) { map.setView(points[0], 15); return }
-    map.fitBounds(points, { padding: [40, 40] })
-  }, [customers, userLocation])
+    if (!map) return
+    // ⚠️ FIX: map মাউন্ট শেষ না হতেই fitBounds/setView ডাকলে Leaflet-এর internal
+    // position cache (_leaflet_pos) undefined অবস্থায় থাকতে পারে — বিশেষ করে দ্রুত
+    // route পাল্টানোর সময়। whenReady() দিয়ে নিশ্চিত হয়ে তারপর কল করা হচ্ছে।
+    map.whenReady(() => {
+      const points = customers
+        .filter(c => c.latitude && c.longitude)
+        .map(c => [parseFloat(c.latitude), parseFloat(c.longitude)])
+      if (userLocation) points.push([userLocation.lat, userLocation.lng])
+      if (points.length === 0) return
+      if (points.length === 1) { map.setView(points[0], 15); return }
+      map.fitBounds(points, { padding: [40, 40] })
+    })
+  }, [customers, userLocation, map])
   return null
 }
 
@@ -574,6 +580,7 @@ export default function CustomerList() {
           </div>
         ) : (
           <MapContainer
+            key={selectedRoute.id}
             center={mapCenter}
             zoom={14}
             style={{ height: '100%', width: '100%' }}
