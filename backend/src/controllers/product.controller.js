@@ -10,13 +10,13 @@ const getProducts = async (req, res) => {
     try {
         const { search, is_active = true } = req.query;
 
-        let conditions = [`is_active = $1`, `tenant_id = $2`];
+        let conditions = [`p.is_active = $1`, `p.tenant_id = $2`];
         let params     = [is_active, req.tenantId];
         let paramCount = 2;
 
         if (search) {
             paramCount++;
-            conditions.push(`(name ILIKE $${paramCount} OR sku ILIKE $${paramCount})`);
+            conditions.push(`(p.name ILIKE $${paramCount} OR p.sku ILIKE $${paramCount})`);
             params.push(`%${search}%`);
         }
 
