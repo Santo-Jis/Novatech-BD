@@ -25,10 +25,15 @@ const getCustomers = async (req, res) => {
         let params = [req.tenantId];
     let paramCount = 1;
 
-        // SR নিজের অ্যাসাইন করা কাস্টমার দেখবে, প্লাস self-registered "unclaimed"
-        // লিড (route_id নেই, এখনো verified না) — যেকোনো SR এদের দেখে GPS বসাতে
-        // ও প্রথম sale করে verified/assigned করে নিতে পারবে
-        if (req.user.role === 'worker') {
+        // ✅ route_id দেওয়া থাকলে (স্বাভাবিক flow — আগে রুট সিলেক্ট করে তারপর
+        // কাস্টমার লিস্টে আসে) সেই route-এর সব কাস্টমার দেখাবে — শুধু নিজের
+        // assigned গুলো না। কারণ যেকোনো SR যেকোনো দিন যেকোনো রুটে যেতে পারে,
+        // এটা assignment কে access-control হিসেবে ব্যবহার করা থেকে সরিয়ে
+        // এনেছে (primary_worker_id/name নিচে আলাদাভাবে যোগ হচ্ছে, শুধু তথ্যের
+        // জন্য — কার নামে মূলত ধরা তা দেখানোর জন্য)।
+        // route_id ছাড়া কল হলে (যেমন ভবিষ্যতে কোনো "আমার সব কাস্টমার" ভিউ)
+        // আগের কড়া behavior-ই থাকছে — শুধু নিজের assigned + unclaimed leads।
+        if (req.user.role === 'worker' && !route_id) {
             paramCount++;
             conditions.push(
                 `(c.id IN (
@@ -135,7 +140,14 @@ const getCustomers = async (req, res) => {
                     ST_X(c.location::geometry) AS longitude
                     ${distanceSelect},
                     COALESCE(crr.pending_return, 0)::int      AS pending_return_count,
-                    COALESCE(crr.pending_replacement, 0)::int AS pending_replacement_count
+                    COALESCE(crr.pending_replacement, 0)::int AS pending_replacement_count,
+                    pw.primary_worker_id,
+                    pw.primary_worker_name,
+                    lv.last_visited_at,
+                    lv.last_visited_by_name,
+                    CASE WHEN ABS(COALESCE(cs.reconciled_total, 0) - c.current_credit) < 1
+                         THEN COALESCE(cs.since_zero, cs.earliest)
+                         ELSE NULL END AS credit_since
                     ${visitedTodaySelect}
              FROM customers c
              LEFT JOIN routes r ON c.route_id = r.id
@@ -151,6 +163,50 @@ const getCustomers = async (req, res) => {
                  WHERE status = 'approved'
                  GROUP BY customer_id
              ) crr ON crr.customer_id = c.id
+             LEFT JOIN LATERAL (
+                 -- এই কাস্টমার নির্দিষ্টভাবে কার নামে assigned (route-level থেকে আলাদা হতে পারে)
+                 SELECT ca2.worker_id AS primary_worker_id,
+                        u2.name_bn   AS primary_worker_name
+                 FROM customer_assignments ca2
+                 JOIN users u2 ON u2.id = ca2.worker_id
+                 WHERE ca2.customer_id = c.id AND ca2.is_active = true
+                 ORDER BY ca2.assigned_at DESC
+                 LIMIT 1
+             ) pw ON true
+             LEFT JOIN LATERAL (
+                 SELECT v.created_at AS last_visited_at,
+                        u3.name_bn  AS last_visited_by_name
+                 FROM visits v
+                 JOIN users u3 ON v.worker_id = u3.id
+                 WHERE v.customer_id = c.id
+                 ORDER BY v.created_at DESC
+                 LIMIT 1
+             ) lv ON true
+             -- বাকি "কতদিন ধরে" — sales_transactions.credit_used ও credit_payments.amount
+             -- থেকেই current_credit ট্রিগার দিয়ে হিসাব হয় (নতুন কোনো টেবিল লাগেনি)।
+             -- running balance যেই শেষ তারিখে শূন্যে ছিল, সেটাই "since"; কখনো শূন্য না
+             -- হলে প্রথম credit sale-এর তারিখ। reconciled_total বর্তমান current_credit-এর
+             -- সাথে না মিললে (ম্যানুয়াল অ্যাডজাস্টমেন্ট ইত্যাদি) since_zero/earliest বাদ
+             -- দিয়ে NULL দেখানো হয় — ভুল তারিখ দেখানোর চেয়ে না-দেখানো ভালো।
+             LEFT JOIN LATERAL (
+                 SELECT
+                     MAX(event_date) FILTER (WHERE running_balance <= 0.01) AS since_zero,
+                     MIN(event_date) AS earliest,
+                     SUM(delta) AS reconciled_total
+                 FROM (
+                     SELECT event_date, delta,
+                            SUM(delta) OVER (ORDER BY event_date ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) AS running_balance
+                     FROM (
+                         SELECT created_at AS event_date, credit_used AS delta
+                         FROM sales_transactions
+                         WHERE customer_id = c.id AND payment_method = 'credit' AND credit_used > 0
+                         UNION ALL
+                         SELECT created_at AS event_date, -amount AS delta
+                         FROM credit_payments
+                         WHERE customer_id = c.id
+                     ) evt
+                 ) x
+             ) cs ON true
              WHERE ${whereClause}
              ORDER BY ${orderBy}
              LIMIT $${paramCount - 1} OFFSET $${paramCount}`,

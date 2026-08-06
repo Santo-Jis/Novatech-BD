@@ -19,6 +19,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { useAppStore } from '../../store/app.store'
+import { useAuthStore } from '../../store/auth.store'
 import { useCheckinStore } from '../../store/checkin.store'
 import api, { isNetworkError } from '../../api/axios'
 import { saveCache, getCache } from '../../api/offlineQueue'
@@ -145,6 +146,7 @@ export default function CustomerList() {
   const navigate        = useNavigate()
   const location        = useLocation()
   const { selectedRoute, customerListView: viewMode, setCustomerListView: setViewMode } = useAppStore()
+  const currentUserId = useAuthStore(s => s.user?.id)
   const [customers,    setCustomers]    = useState([])
   const [routes,       setRoutes]       = useState([])
   const [loading,      setLoading]      = useState(true)
@@ -159,6 +161,7 @@ export default function CustomerList() {
   const [emailVerified,setEmailVerified]= useState(false)
   const [userLocation, setUserLocation] = useState(null)
   const [activePin,    setActivePin]    = useState(null)   // map pin tap → highlight card
+  const [sortMode,     setSortMode]     = useState('order') // 'order' | 'distance'
   const fileRef    = useRef()
   const cardRefs   = useRef({})   // customer id → DOM ref (scroll করতে)
 
@@ -467,9 +470,23 @@ export default function CustomerList() {
     return closest ? { customer: closest, distance: minDist } : null
   }, [userLocation, customers])
 
-  const filtered = customers.filter(c =>
-    c.shop_name?.includes(search) || c.owner_name?.includes(search)
-  )
+  const filtered = useMemo(() => {
+    const list = customers.filter(c =>
+      c.shop_name?.includes(search) || c.owner_name?.includes(search)
+    )
+    if (sortMode === 'distance') {
+      return [...list].sort((a, b) => {
+        if (!!a.visited_today !== !!b.visited_today) return a.visited_today ? 1 : -1
+        const da = distanceMap[a.id]
+        const db = distanceMap[b.id]
+        if (da == null && db == null) return 0
+        if (da == null) return 1
+        if (db == null) return -1
+        return da - db
+      })
+    }
+    return list
+  }, [customers, search, sortMode, distanceMap])
 
   // Map-এর জন্য সব কাস্টমার যাদের lat/lng আছে
   const mappableCustomers = customers.filter(c => c.latitude && c.longitude)
@@ -730,6 +747,20 @@ export default function CustomerList() {
           />
         </div>
 
+        {/* Sort toggle */}
+        <div className="inline-flex bg-gray-100 rounded-full p-1 gap-1">
+          {[['order', 'ভিজিট অর্ডার'], ['distance', 'দূরত্ব অনুযায়ী']].map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setSortMode(key)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors
+                ${sortMode === key ? 'bg-primary text-white shadow-sm' : 'text-gray-500'}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Customer Cards */}
         <div className="space-y-3">
           {filtered.length === 0 && (
@@ -775,7 +806,17 @@ export default function CustomerList() {
                       <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">🆕 Unverified</span>
                     )}
                   </div>
-                  <p className="text-sm text-gray-500">{c.owner_name}</p>
+                  <p className="text-sm text-gray-500">
+                    {c.owner_name}
+                    {c.primary_worker_id && c.primary_worker_id !== currentUserId && (
+                      <span className="text-gray-400"> · প্রাইমারি: {c.primary_worker_name}</span>
+                    )}
+                  </p>
+                  {c.last_visited_at && (
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      সর্বশেষ ভিজিট: {new Date(c.last_visited_at).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short' })} · {c.last_visited_by_name}
+                    </p>
+                  )}
                   {!c.latitude && (
                     <p className="text-xs text-red-500 mt-0.5 flex items-center gap-1">
                       📍 GPS বসানো হয়নি — এডিট থেকে যোগ করুন
@@ -829,6 +870,15 @@ export default function CustomerList() {
                               <span className="text-[10px] text-gray-400">বাকি: <span className={`font-semibold ${isFull ? 'text-red-500' : 'text-gray-600'}`}>৳{parseInt(used).toLocaleString()}</span></span>
                               <span className="text-[10px] text-gray-400">লিমিট: ৳{parseInt(limit).toLocaleString()}</span>
                             </div>
+                            {c.credit_since && used > 0 && (() => {
+                              const dueDays = Math.floor((Date.now() - new Date(c.credit_since)) / 86400000)
+                              const cls = dueDays >= 15 ? 'text-red-600' : dueDays >= 7 ? 'text-amber-600' : 'text-gray-400'
+                              return (
+                                <p className={`text-[10px] mt-0.5 ${cls}`}>
+                                  {dueDays === 0 ? 'আজকের বাকি' : `${dueDays} দিন ধরে বাকি`}
+                                </p>
+                              )
+                            })()}
                           </div>
                         )}
                         {isFull && (

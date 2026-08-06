@@ -491,13 +491,21 @@ const getWorkerRoutes = async (req, res) => {
 
         const managerId = workerInfo.rows[0].manager_id;
 
-        // শুধু নিজের Manager-এর routes দেখাবে
+        // ✅ টিমের সব রুট দেখাবে (শুধু নিজেরটা না) — যেকোনো SR যেকোনো দিন যেকোনো
+        // রুটে যেতে পারে, এটা তাদের নিজস্ব সিদ্ধান্ত। তাই primary_worker_id/name
+        // দিয়ে বোঝানো হচ্ছে কার নামে মূলত রুটটা ধরা (target/commission হিসাবের
+        // জন্য) — এটা access-control না, শুধু তথ্য। ফ্রন্টএন্ড এটা দিয়ে "আপনার
+        // রুট" বনাম "অন্যান্য SR-দের রুট" — দুই ভাগে সাজায়।
         const result = await query(
             `SELECT r.*,
                     m.name_bn AS manager_name,
                     COUNT(DISTINCT c.id) AS customer_count,
+                    COALESCE(SUM(c.credit_balance), 0) AS total_due,
                     lv.last_visited_at,
-                    lv.last_visited_by_name
+                    lv.last_visited_by_name,
+                    pw.primary_worker_id,
+                    pw.primary_worker_name,
+                    COALESCE(vt.visited_today_count, 0) AS visited_today_count
              FROM routes r
              LEFT JOIN users m ON r.manager_id = m.id
              LEFT JOIN customers c ON c.route_id = r.id AND c.is_active = true
@@ -510,14 +518,37 @@ const getWorkerRoutes = async (req, res) => {
                  ORDER BY v.created_at DESC
                  LIMIT 1
              ) lv ON true
+             LEFT JOIN LATERAL (
+                 -- route-level assignment row (customer_id IS NULL) = কে "প্রাইমারি" এই রুটের
+                 SELECT ca.worker_id AS primary_worker_id,
+                        u2.name_bn  AS primary_worker_name
+                 FROM customer_assignments ca
+                 JOIN users u2 ON u2.id = ca.worker_id
+                 WHERE ca.route_id = r.id AND ca.customer_id IS NULL AND ca.is_active = true
+                 ORDER BY ca.assigned_at DESC
+                 LIMIT 1
+             ) pw ON true
+             LEFT JOIN LATERAL (
+                 SELECT COUNT(DISTINCT v3.customer_id) AS visited_today_count
+                 FROM visits v3
+                 WHERE v3.route_id = r.id AND v3.visit_date = CURRENT_DATE
+             ) vt ON true
              WHERE r.is_active = true
                AND r.manager_id = $1
-             GROUP BY r.id, m.name_bn, lv.last_visited_at, lv.last_visited_by_name
+             GROUP BY r.id, m.name_bn, lv.last_visited_at, lv.last_visited_by_name,
+                      pw.primary_worker_id, pw.primary_worker_name, vt.visited_today_count
              ORDER BY r.created_at DESC`,
             [managerId]
         );
 
-        return res.status(200).json({ success: true, data: result.rows });
+        // "আপনার" রুট প্রথমে, তারপর অন্যান্য SR-দের রুট
+        const sorted = [...result.rows].sort((a, b) => {
+            const aMine = a.primary_worker_id === req.user.id ? 0 : 1;
+            const bMine = b.primary_worker_id === req.user.id ? 0 : 1;
+            return aMine - bMine;
+        });
+
+        return res.status(200).json({ success: true, data: sorted });
 
     } catch (error) {
         logger.error('❌ Get Worker Routes Error:', error.message);
