@@ -62,6 +62,7 @@ const {
     getMyOrderRequests,
     cancelMyOrderRequest,
     getPortalProducts,
+    getProductSellers,
     getPortalProductDetail,
     getOrderTracking,
     createReturnRequest,
@@ -196,6 +197,7 @@ router.patch('/notifications/:id/read',    portalAuth, markOneRead);
 
 router.get('/products',                    portalAuth, getPortalProducts);
 router.get('/products/:id',                portalAuth, getPortalProductDetail);
+router.get('/product-sellers',             portalAuth, getProductSellers); // ✅ NEW (পার্ট ৩)
 router.post('/order-request',              portalAuth, createOrderRequest);
 router.get('/order-requests',              portalAuth, getMyOrderRequests);
 router.patch('/order-requests/:id/cancel', portalAuth, cancelMyOrderRequest);

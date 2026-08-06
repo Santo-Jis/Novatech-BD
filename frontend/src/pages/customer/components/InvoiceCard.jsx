@@ -4,6 +4,7 @@
 import { useState } from 'react'
 import { fmt, fmtDate } from '../utils/helpers'
 import { PayBadge } from './Badges'
+import CompanyTag from './CompanyTag'
 
 // Payment method → left border color
 const BORDER_COLOR = {
@@ -13,7 +14,10 @@ const BORDER_COLOR = {
   replacement: '#2563EB',
 }
 
-export default function InvoiceCard({ sale, companyTag }) {
+// ✅ REDESIGNED (পার্ট ২ — কোম্পানি ভিজ্যুয়াল ট্যাগ সিস্টেম): companyTag
+// আগে একটা প্লেইন স্ট্রিং ছিল (শুধু নাম) — এখন `company` অবজেক্ট
+// { name, logoUrl, colorKey }, যাতে CompanyTag লোগো/রঙ দেখাতে পারে।
+export default function InvoiceCard({ sale, company }) {
   const [open, setOpen] = useState(false)
   const items = typeof sale.items === 'string'
     ? JSON.parse(sale.items)
@@ -50,15 +54,11 @@ export default function InvoiceCard({ sale, companyTag }) {
       >
         {/* Left: date, invoice no, SR */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          {/* ✅ NEW (Session 14): aggregate ভিউয়ে কোন কোম্পানির ইনভয়েস তা বোঝাতে ছোট ট্যাগ */}
-          {companyTag && (
-            <span style={{
-              display: 'inline-block', fontSize: 9.5, fontWeight: 700, color: '#2563EB',
-              background: '#EFF6FF', border: '1px solid #DBEAFE', borderRadius: 999,
-              padding: '2px 8px', marginBottom: 5,
-            }}>
-              {companyTag}
-            </span>
+          {/* ✅ aggregate ভিউয়ে কোন কোম্পানির ইনভয়েস তা বোঝাতে CompanyTag */}
+          {company && (
+            <div style={{ marginBottom: 5 }}>
+              <CompanyTag name={company.name} logoUrl={company.logoUrl} colorKey={company.colorKey} />
+            </div>
           )}
           <p style={{ margin: '0 0 3px', fontSize: 10, color: '#9CA3AF', fontFamily: 'Inter, system-ui' }}>
             {fmtDate(sale.created_at)}

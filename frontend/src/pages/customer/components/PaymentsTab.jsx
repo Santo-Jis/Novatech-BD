@@ -11,6 +11,7 @@ import { portalFetch } from '../utils/api'
 import CpButton from './ui/CpButton'
 import CpCard from './ui/CpCard'
 import CpInput from './ui/CpInput'
+import CompanyTag from './CompanyTag'
 import { fmt, fmtDate } from '../utils/helpers'
 
 export default function PaymentsTab({ portalJWT }) {
@@ -202,8 +203,8 @@ export default function PaymentsTab({ portalJWT }) {
               </div>
               <div className="flex-1 min-w-0">
                 {companies.length > 1 && (
-                  <span className="inline-block text-[9px] font-bold text-cp-trust-700 bg-cp-trust-500/10 border border-cp-trust-500/20 rounded-full px-2 py-0.5 mb-1">
-                    {p.company_name_bn || p.company_name}
+                  <span className="inline-block mb-1">
+                    <CompanyTag name={p.company_name_bn || p.company_name} logoUrl={p.logo_url} colorKey={p.tenant_id} />
                   </span>
                 )}
                 <p className="text-[12px] font-semibold text-cp-text-primary truncate">{p.collected_by} আদায় করেছেন</p>

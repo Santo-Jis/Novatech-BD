@@ -17,6 +17,7 @@ import { portalFetch } from '../utils/api'
 import CpButton from './ui/CpButton'
 import CpCard from './ui/CpCard'
 import CpInput from './ui/CpInput'
+import CompanyTag from './CompanyTag'
 import { fmtDate } from '../utils/helpers'
 
 const TYPE_OPTS = [
@@ -264,8 +265,8 @@ export default function ComplaintsTab({ portalJWT }) {
                 <div className="flex justify-between items-start gap-2">
                   <div className="min-w-0 flex-1">
                     {companies.length > 1 && (
-                      <span className="inline-block text-[9px] font-bold text-cp-trust-700 bg-cp-trust-500/10 border border-cp-trust-500/20 rounded-full px-2 py-0.5 mb-1">
-                        {c.company_name_bn || c.company_name}
+                      <span className="inline-block mb-1">
+                        <CompanyTag name={c.company_name_bn || c.company_name} logoUrl={c.logo_url} colorKey={c.tenant_id} />
                       </span>
                     )}
                     <p className="text-[13px] font-bold text-cp-text-primary">{c.subject}</p>

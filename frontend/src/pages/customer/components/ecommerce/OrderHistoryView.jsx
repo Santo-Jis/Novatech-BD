@@ -17,6 +17,7 @@ import { FiPackage, FiMapPin, FiX, FiAlertTriangle } from 'react-icons/fi'
 import CpCard from '../ui/CpCard'
 import CpButton from '../ui/CpButton'
 import CpBadge from '../ui/CpBadge'
+import CompanyTag from '../CompanyTag'
 
 const STATUS_META = {
   pending:   { text: '⏳ অপেক্ষমাণ', variant: 'pending' },
@@ -108,10 +109,19 @@ export default function OrderHistoryView({
                       <p className="text-[13px] font-semibold text-cp-text-primary mt-0.5 font-cp-body">
                         {items.length}টি পণ্য
                       </p>
-                      {(req.seller_name_bn || req.seller_name) && (
-                        <p className="text-[10.5px] text-cp-text-muted font-cp-body mt-0.5">
-                          🏪 {req.seller_name_bn || req.seller_name}
-                        </p>
+                      {/* ✅ ফিক্স: req.seller_name কখনো ব্যাকএন্ড থেকে আসতোই
+                          না (আসল ফিল্ড company_name) — এই লাইন কখনো দেখাই
+                          যায়নি। এখন all-order-requests থেকে company_name/
+                          logo_url/tenant_id আসে (আগের getMyOrderRequests
+                          এই ডেটা দিতই না)। */}
+                      {(req.company_name_bn || req.company_name) && (
+                        <div className="mt-1">
+                          <CompanyTag
+                            name={req.company_name_bn || req.company_name}
+                            logoUrl={req.logo_url}
+                            colorKey={req.tenant_id}
+                          />
+                        </div>
                       )}
                     </div>
                     <CpBadge variant={meta.variant}>{meta.text}</CpBadge>

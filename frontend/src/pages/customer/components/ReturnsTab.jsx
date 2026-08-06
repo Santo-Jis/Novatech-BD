@@ -18,6 +18,7 @@ import { portalFetch } from '../utils/api'
 import CpButton from './ui/CpButton'
 import CpCard from './ui/CpCard'
 import CpInput from './ui/CpInput'
+import CompanyTag from './CompanyTag'
 import { fmt, fmtDate } from '../utils/helpers'
 
 const STATUS_LABEL = {
@@ -384,8 +385,8 @@ export default function ReturnsTab({ portalJWT }) {
                     <div className="bg-cp-bg-alt px-4 py-2.5 border-b border-cp-border flex justify-between items-start gap-2">
                       <div className="min-w-0">
                         {companies.length > 1 && (
-                          <span className="inline-block text-[9px] font-bold text-cp-trust-700 bg-cp-trust-500/10 border border-cp-trust-500/20 rounded-full px-2 py-0.5 mb-1">
-                            {r.company_name_bn || r.company_name}
+                          <span className="inline-block mb-1">
+                            <CompanyTag name={r.company_name_bn || r.company_name} logoUrl={r.logo_url} colorKey={r.tenant_id} />
                           </span>
                         )}
                         <p className="text-[13px] font-extrabold text-cp-text-primary">INV: {r.invoice_number}</p>
@@ -448,8 +449,8 @@ export default function ReturnsTab({ portalJWT }) {
                     <div className="bg-cp-warning/5 px-4 py-2.5 border-b border-cp-warning/10 flex justify-between items-center">
                       <div className="min-w-0">
                         {companies.length > 1 && (
-                          <span className="inline-block text-[9px] font-bold text-cp-trust-700 bg-cp-trust-500/10 border border-cp-trust-500/20 rounded-full px-2 py-0.5 mb-1">
-                            {r.company_name_bn || r.company_name}
+                          <span className="inline-block mb-1">
+                            <CompanyTag name={r.company_name_bn || r.company_name} logoUrl={r.logo_url} colorKey={r.tenant_id} />
                           </span>
                         )}
                         <p className="text-[12px] font-extrabold text-cp-warning">INV: {r.invoice_number}</p>

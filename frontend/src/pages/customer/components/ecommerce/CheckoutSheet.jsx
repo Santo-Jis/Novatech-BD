@@ -20,6 +20,7 @@
 import { FiX, FiPlus, FiTrash2, FiPackage, FiAlertTriangle, FiAlertCircle, FiSend } from 'react-icons/fi'
 import CpButton from '../ui/CpButton'
 import QtyStepper from './QtyStepper'
+import CompanyTag from '../CompanyTag'
 
 function PriceRow({ label, value, bold = false }) {
   return (
@@ -55,14 +56,22 @@ export default function CheckoutSheet({
   const isEmpty = items.length === 0
 
   // ✅ মাল্টি-ভেন্ডর — কার্টে একাধিক কোম্পানির প্রোডাক্ট থাকতে পারে।
-  // seller_id দিয়ে গ্রুপ করা হচ্ছে যাতে কাস্টমার আগে থেকেই বুঝতে পারে
+  // tenant_id দিয়ে গ্রুপ করা হচ্ছে যাতে কাস্টমার আগে থেকেই বুঝতে পারে
   // সাবমিট করলে কয়টা আলাদা অর্ডার রিকোয়েস্টে ভাগ হবে (ব্যাকএন্ডও
   // ঠিক এই একই লজিকে ভাগ করে)।
+  // ✅ ফিক্স (পার্ট ৩): আগে এখানে entry.product.seller_id দিয়ে গ্রুপ করা
+  // হতো, কিন্তু ব্যাকএন্ড কখনো seller_id/seller_name পাঠায়নি (আসল ফিল্ড
+  // নাম tenant_id/company_name) — ফলে sid সবসময় 'unknown' হতো, মানে
+  // কার্টে যত কোম্পানিরই প্রোডাক্ট থাকুক না কেন সবসময় ১টা গ্রুপ দেখাত,
+  // sellerCount>1 নোটিশ আর প্রতি-গ্রুপ কোম্পানি-লেবেল কখনো দেখাই যায়নি —
+  // ঠিক যে মুহূর্তে (চেকআউট, টাকার হিসাব) এটা সবচেয়ে জরুরি ছিল।
   const sellerGroups = items.reduce((acc, entry) => {
-    const sid = entry.product.seller_id || 'unknown'
+    const sid = entry.product.tenant_id || 'unknown'
     if (!acc[sid]) {
       acc[sid] = {
-        sellerName: entry.product.seller_name_bn || entry.product.seller_name || 'বিক্রেতা',
+        sellerName: entry.product.company_name_bn || entry.product.company_name || 'বিক্রেতা',
+        logoUrl:    entry.product.logo_url,
+        tenantId:   entry.product.tenant_id,
         entries: [],
       }
     }
@@ -122,9 +131,7 @@ export default function CheckoutSheet({
                 {sellerGroupList.map((group, gi) => (
                   <div key={gi} className="flex flex-col gap-3">
                     {sellerCount > 1 && (
-                      <p className="text-[11px] font-cp-head font-bold text-cp-text-muted uppercase tracking-wide">
-                        🏪 {group.sellerName}
-                      </p>
+                      <CompanyTag name={group.sellerName} logoUrl={group.logoUrl} colorKey={group.tenantId} />
                     )}
                     {group.entries.map(({ product, qty }) => {
                       const stock = Number(product.available_stock) || 0

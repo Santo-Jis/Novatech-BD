@@ -468,6 +468,116 @@ const getAllCompanyCreditSummary = async (req, res) => {
 };
 
 // ============================================================
+// GET /api/portal/connections/all-summary
+// ✅ NEW (আর্কিটেকচার ফিক্স, পার্ট ১) — Summary ট্যাব রিডিজাইন
+// getAllCompanyCreditSummary-এর উপরের কমেন্টে (Session 13) যে প্ল্যান
+// লেখা ছিল ("Summary ট্যাব ভবিষ্যতে এটা দিয়ে...") সেটারই বাস্তবায়ন।
+// প্রতিটা connected কোম্পানির এই-মাস + সর্বমোট পরিসংখ্যান, ক্রেডিট তথ্য
+// ও assigned SR — এক লিস্টে, company ট্যাগসহ। "সব মিলিয়ে" গ্র্যান্ড-টোটাল
+// ফ্রন্টএন্ডেই যোগ করে নেওয়া হয় (আলাদা কুয়েরির দরকার নেই)।
+// ============================================================
+const getAllCompanySummary = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser);
+
+        const result = await query(
+            `SELECT
+                 c.id AS customer_id, c.customer_code, c.credit_limit, c.current_credit,
+                 c.is_verified,
+                 t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url,
+                 u.name_bn AS assigned_sr_name, u.phone AS assigned_sr_phone,
+                 u.employee_code AS assigned_sr_code,
+                 COALESCE(monthly.total_invoices, 0) AS monthly_total_invoices,
+                 COALESCE(monthly.total_purchase, 0) AS monthly_total_purchase,
+                 COALESCE(monthly.total_cash, 0)     AS monthly_total_cash,
+                 COALESCE(monthly.total_credit, 0)   AS monthly_total_credit,
+                 COALESCE(overall.total_invoices, 0) AS overall_total_invoices,
+                 COALESCE(overall.total_purchase, 0) AS overall_total_purchase,
+                 COALESCE(overall.total_cash, 0)     AS overall_total_cash,
+                 COALESCE(overall.total_credit, 0)   AS overall_total_credit
+             FROM customer_company_connections ccc
+             JOIN customers c ON c.id = ccc.customer_id
+             JOIN tenants t   ON t.id = ccc.tenant_id
+             LEFT JOIN customer_assignments ca ON ca.customer_id = c.id AND ca.is_active = true
+             LEFT JOIN users u ON u.id = ca.worker_id
+             LEFT JOIN LATERAL (
+                 SELECT
+                     COUNT(*)                        AS total_invoices,
+                     COALESCE(SUM(net_amount), 0)    AS total_purchase,
+                     COALESCE(SUM(cash_received), 0) AS total_cash,
+                     COALESCE(SUM(credit_used), 0)   AS total_credit
+                 FROM sales_transactions st
+                 WHERE st.customer_id = c.id
+                   AND (st.otp_verified = true OR st.otp_skipped = true)
+                   AND date_trunc('month', st.created_at) = date_trunc('month', NOW())
+             ) monthly ON true
+             LEFT JOIN LATERAL (
+                 SELECT
+                     COUNT(*)                        AS total_invoices,
+                     COALESCE(SUM(net_amount), 0)    AS total_purchase,
+                     COALESCE(SUM(cash_received), 0) AS total_cash,
+                     COALESCE(SUM(credit_used), 0)   AS total_credit
+                 FROM sales_transactions st
+                 WHERE st.customer_id = c.id
+                   AND (st.otp_verified = true OR st.otp_skipped = true)
+             ) overall ON true
+             WHERE ccc.person_id = $1 AND ccc.status = 'connected'
+             ORDER BY ccc.created_at ASC`,
+            [personId]
+        );
+
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getAllCompanySummary error:', err.message);
+        res.status(500).json({ success: false, message: 'সারসংক্ষেপ আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/connections/all-monthly-trend
+// ✅ NEW (আর্কিটেকচার ফিক্স, পার্ট ১) — Summary ট্যাবের ট্রেন্ড চার্ট
+// আগে সেশন-স্কোপড এক কোম্পানির (/portal/monthly-summary) উপর নির্ভর
+// করতো। এখন person_id দিয়ে সব connected কোম্পানির মাসিক লেনদেন যোগ
+// করে একটাই "সব মিলিয়ে" ট্রেন্ড লাইন দেখায় — কোম্পানি সুইচ করার দরকার
+// নেই। query params: months (default 6, max 24)
+// ============================================================
+const getAllCompanyMonthlyTrend = async (req, res) => {
+    try {
+        const personId    = await getPersonId(req.portalUser);
+        const monthsBack  = Math.min(24, Math.max(1, parseInt(req.query.months) || 6));
+
+        const result = await query(
+            `SELECT
+                 TO_CHAR(st.created_at, 'YYYY-MM')  AS month_label,
+                 COUNT(*)                            AS total_invoices,
+                 COALESCE(SUM(st.net_amount), 0)     AS total_purchase,
+                 COALESCE(SUM(st.cash_received), 0)  AS total_cash,
+                 COALESCE(SUM(st.credit_used), 0)    AS total_credit
+             FROM sales_transactions st
+             JOIN customers c ON c.id = st.customer_id
+             WHERE c.person_id = $1
+               AND (st.otp_verified = true OR st.otp_skipped = true)
+               AND date_trunc('month', st.created_at) >=
+                   date_trunc('month', NOW()) - ($2 * INTERVAL '1 month')
+             GROUP BY TO_CHAR(st.created_at, 'YYYY-MM')
+             ORDER BY month_label DESC`,
+            [personId, monthsBack - 1]
+        );
+
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getAllCompanyMonthlyTrend error:', err.message);
+        res.status(500).json({ success: false, message: 'মাসিক ট্রেন্ড আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // GET /api/portal/connections/all-payment-history
 // ✅ NEW (Session 15) — Payments ট্যাব redesign
 // পুরনো getPaymentHistory (customerPortal.controller.js)-এর মতোই cash +
@@ -1175,6 +1285,8 @@ module.exports = {
     getAllCompanyOrders,
     getAllCompanyInvoices,
     getAllCompanyCreditSummary,
+    getAllCompanySummary,
+    getAllCompanyMonthlyTrend,
     getAllCompanyPaymentHistory,
     getAllCompanyLimitRequests,
     submitCompanyLimitRequest,

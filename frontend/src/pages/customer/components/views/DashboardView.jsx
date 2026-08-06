@@ -3,13 +3,17 @@
 //
 // এই ফাইল এখন শুধু "শেল/অর্কেস্ট্রেটর" — header, tab navigation, আর নতুন করে
 // রিডিজাইন-হওয়া ট্যাবগুলো আলাদা ফাইল থেকে import করে বসায়।
-// ✅ রিডিজাইন সম্পূর্ণ: Summary, Invoices, Payments, Credit, Complaints, Returns, Orders
+// ✅ রিডিজাইন সম্পূর্ণ: Summary (আর্কিটেকচার ফিক্স, পার্ট ১-সহ — এখন
+// self-contained + aggregate), Invoices, Payments, Credit, Complaints,
+// Returns, Orders
 // ❌ বাকি: AI Chat ট্যাব + শেল-এর কিছু অংশ (toast, statement download, return
 // bottom sheet) এখনো নিচের পুরনো `C` অবজেক্ট/ইনলাইন-স্টাইল ব্যবহার করছে।
 //
 // নতুন ফাইল স্ট্রাকচার (dashboard/ ফোল্ডার):
-//   DashboardHeader.jsx, NotificationBell.jsx, CreditRing.jsx,
+//   TopBar.jsx, AccountMenu.jsx, NotificationBell.jsx, CreditRing.jsx,
 //   SectionLabel.jsx, StatCard.jsx, SummaryTab.jsx
+//   (DashboardHeader.jsx বাদ দেওয়া হয়েছে — অব্যবহৃত ছিল, AccountMenu.jsx
+//   ওর কাজ নিয়ে নিয়েছে অনেক আগেই, কিন্তু ফাইলটা মোছা হয়নি)
 
 import { fmt, fmtDate } from '../../utils/helpers'
 import { useEffect, useState } from 'react'
@@ -94,7 +98,9 @@ export default function DashboardView({
   returnType, setReturnType, returnItems, setReturnItems, returnNote, setReturnNote,
   returnSubmitLoading = false, loadMyReturnReqs, submitReturnRequest,
 }) {
-  const { customer, credit_payments = [], monthly_summary = {}, total_summary = {}, returns = [], sales_note = null } = dashboard
+  const { customer, credit_payments = [], returns = [], sales_note = null } = dashboard
+  // monthly_summary/total_summary আর এখানে destructure করা হয় না —
+  // SummaryTab এখন নিজের all-summary কল করে (আর্কিটেকচার ফিক্স, পার্ট ১)
 
   const [showLogoutConfirm,    setShowLogoutConfirm]    = useState(false)
   const [showComplaintConfirm, setShowComplaintConfirm] = useState(false)
@@ -236,9 +242,14 @@ export default function DashboardView({
               <HomeFeed portalJWT={portalJWT} customer={customer} />
             )}
 
-            {/* ══ সারসংক্ষেপ (এখন "রিপোর্ট" সেকশনের ওভারভিউ সাব-ট্যাব) ══ */}
+            {/* ══ সারসংক্ষেপ (এখন "রিপোর্ট" সেকশনের ওভারভিউ সাব-ট্যাব) ══
+                ✅ REDESIGNED (আর্কিটেকচার ফিক্স, পার্ট ১): এখন Invoices/Credit-এর
+                মতোই self-contained + aggregate + company-ট্যাগ SummaryTab
+                কম্পোনেন্ট — /portal/connections/all-summary endpoint ব্যবহার করে,
+                dashboard.customer/monthly_summary/total_summary prop-drilling
+                আর দরকার নেই */}
             {activeTab === 'summary' && (
-              <SummaryTab customer={customer} monthly_summary={monthly_summary} total_summary={total_summary} portalJWT={portalJWT} />
+              <SummaryTab portalJWT={portalJWT} />
             )}
 
             {/* ══ নেটওয়ার্ক (কানেক্টেড কোম্পানি) ══ */}

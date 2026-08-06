@@ -4,7 +4,8 @@
 // আর্কিটেকচার (01-Requirements-Spec.md ধারা ৩.১ অনুযায়ী সঠিক প্যাটার্ন):
 // ডাটা merge হয় না ব্যাকএন্ডে — সব কানেক্টেড কোম্পানির ইনভয়েস
 // GET /portal/connections/all-invoices দিয়ে এক লিস্টে আনা হয়, প্রতিটার
-// পাশে কোম্পানির নাম-ট্যাগ (InvoiceCard-এর নতুন companyTag prop দিয়ে)।
+// পাশে কোম্পানির ভিজ্যুয়াল ট্যাগ (InvoiceCard-এর `company` prop → CompanyTag
+// কম্পোনেন্ট, পার্ট ২ — লোগো/রঙসহ, পুরো অ্যাপ জুড়ে একই প্যাটার্ন)।
 // সেশন সুইচ করার দরকার নেই (Session 11/12-এর ভুল, Session 13-এ সংশোধিত)।
 //
 // OrderRequestTab.jsx-এর মতোই self-contained: নিজের state/fetch নিজেই
@@ -175,7 +176,11 @@ export default function InvoicesTab({ portalJWT }) {
             <InvoiceCard
               key={`${sale.tenant_id}-${sale.invoice_number}`}
               sale={sale}
-              companyTag={companies.length > 1 ? (sale.company_name_bn || sale.company_name) : null}
+              company={companies.length > 1 ? {
+                name: sale.company_name_bn || sale.company_name,
+                logoUrl: sale.logo_url,
+                colorKey: sale.tenant_id,
+              } : null}
             />
           ))}
           {page < totalPages && (

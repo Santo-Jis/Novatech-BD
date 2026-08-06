@@ -10,7 +10,11 @@ export default function MonthlyTrendChart({ portalJWT }) {
   const [metric,  setMetric]  = useState('total_purchase') // or 'total_invoices'
 
   useEffect(() => {
-    portalFetch('/portal/monthly-summary?months=6', {
+    // ✅ আর্কিটেকচার ফিক্স (পার্ট ১): আগে /portal/monthly-summary
+    // (session-scoped, এক কোম্পানি) থেকে আসতো। এখন সব connected
+    // কোম্পানি মিলিয়ে "সব মিলিয়ে" ট্রেন্ড — কোম্পানি সুইচ করার
+    // দরকার নেই, response shape অপরিবর্তিত।
+    portalFetch('/portal/connections/all-monthly-trend?months=6', {
       headers: { Authorization: `Bearer ${portalJWT}` }
     })
     .then(res => {

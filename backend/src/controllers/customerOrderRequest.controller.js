@@ -6,9 +6,29 @@ const logger = require('../config/logger');
 // কাস্টমার পোর্টাল থেকে অর্ডার রিকোয়েস্ট → Admin/Manager নোটিফিকেশন
 // ============================================================
 
-const { query }  = require('../config/db');
+const { query, withTransaction } = require('../config/db');
 const { sendPushToMany, sendCustomerPush } = require('../services/fcm.service');
 const { getResolvedPrices } = require('../services/priceList.utils'); // ← নতুন (Step ৫: মাল্টিপল প্রাইস লিস্ট)
+const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
+const { generateCustomerCode } = require('../services/employee.service');
+
+// ── Helper: portal customer_id/JWT থেকে person_id বের করো ──
+// customerPortalConnection.controller.js-এর getPersonId-এর হুবহু কপি —
+// শেয়ার্ড সার্ভিসে তোলা হয়নি যাতে এই ফাইলটা স্বনির্ভর থাকে (ওই ফাইলের
+// প্যাটার্নই অনুসরণ করা হলো, যেটা নিজেও একটা লোকাল হেল্পার)।
+async function getPersonId(portalUser) {
+    if (portalUser?.person_id) {
+        return portalUser.person_id;
+    }
+    if (!portalUser?.customer_id) {
+        throw new Error('PERSON_NOT_LINKED');
+    }
+    const r = await query(`SELECT person_id FROM customers WHERE id = $1`, [portalUser.customer_id]);
+    if (r.rows.length === 0 || !r.rows[0].person_id) {
+        throw new Error('PERSON_NOT_LINKED');
+    }
+    return r.rows[0].person_id;
+}
 
 // ============================================================
 // HELPER — Admin ও Manager দের userId নাও
@@ -29,134 +49,198 @@ const getAdminManagerIds = async (tenantId) => {
 // POST /api/portal/order-request
 // portalAuth middleware দরকার
 // ============================================================
+// ✅ ফিক্স (গুরুতর বাগ, একাধিক কোম্পানির কার্ট) — আগে এই ফাংশন সেশনের
+// একটা মাত্র কোম্পানির tenant_id দিয়ে প্রোডাক্ট মেলাত আর একটাই order
+// request বানাত। কার্টে অন্য কোম্পানির প্রোডাক্ট থাকলে সেগুলো productMap-এ
+// পাওয়া যেত না, ফলে চুপচাপ বাদ পড়ে যেত (অথবা পুরো কার্টই অন্য কোম্পানির
+// হলে "পণ্য পাওয়া যায়নি" এরর) — CheckoutSheet যা promise করত (কয়টা
+// কোম্পানিতে ভাগ হবে), আসল সাবমিশন তা রাখত না।
+//
+// ব্যবসায়িক নিয়ম (নিশ্চিত করা হয়েছে): কাস্টমার অচেনা/অসংযুক্ত কোম্পানির
+// প্রোডাক্টও কিনতে পারবে — কেনাকাটা আর "সংযুক্ত হওয়া" আলাদা জিনিস। সংযোগ
+// (customer_company_connections, status='connected') শুধু request/accept
+// বা SR-এর QR স্ক্যানেই হয় — এই ফাংশন কখনো সেটা তৈরি/পরিবর্তন করে না।
+// তবে order_requests.customer_id-এর জন্য customers row লাগবেই (FK) —
+// তাই না থাকলে একটা তৈরি হয় (is_verified=false, registration_source=
+// 'marketplace' — acceptCompanyRequest-এর 'connection'+is_verified=true
+// থেকে ইচ্ছাকৃতভাবে আলাদা, কারণ এখানে কোনো মিউচুয়াল সম্মতি নেই)।
 const createOrderRequest = async (req, res) => {
     try {
-        const { customer_id } = req.portalUser;
         const { items, note } = req.body;
 
-        // Validation
         if (!items || !Array.isArray(items) || items.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'কমপক্ষে একটি পণ্য সিলেক্ট করুন।'
-            });
+            return res.status(400).json({ success: false, message: 'কমপক্ষে একটি পণ্য সিলেক্ট করুন।' });
         }
-
-        // সব item-এ qty > 0 আছে কিনা দেখো
         for (const item of items) {
             if (!item.product_id || !item.qty || item.qty <= 0) {
-                return res.status(400).json({
-                    success: false,
-                    message: 'পণ্যের পরিমাণ সঠিক নয়।'
-                });
+                return res.status(400).json({ success: false, message: 'পণ্যের পরিমাণ সঠিক নয়।' });
             }
         }
 
-        // কাস্টমার তথ্য নাও
-        // ⚠️ BUG FIX: portalAuth রুটে কোনো tenant-resolver middleware চলে না,
-        // তাই req.tenantId এখানে সবসময় undefined ছিল — নিচের INSERT-এ
-        // customer_order_requests.tenant_id NOT NULL হওয়ায় এটা সবসময় 500
-        // error দিত (অর্ডার পাঠানোই যেত না)। এখন customer row থেকেই
-        // tenant_id/route_id নির্ভরযোগ্যভাবে নেওয়া হচ্ছে।
-        const custResult = await query(
-            `SELECT shop_name, owner_name, customer_code, tenant_id, route_id FROM customers WHERE id = $1`,
-            [customer_id]
-        );
-        if (custResult.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
-        }
-        const customer = custResult.rows[0];
+        const personId = await getPersonId(req.portalUser);
 
-        // ✅ Pending check — block নয়, শুধু frontend-কে জানাও
-        const pendingCheck = await query(
-            `SELECT id FROM customer_order_requests
-             WHERE customer_id = $1 AND status = 'pending'
-             AND tenant_id = $2
-             LIMIT 1`,
-            [customer_id,
-                customer.tenant_id]
-        );
-        const hasPendingOrder = pendingCheck.rows.length > 0;
-
-        // product_id গুলো DB থেকে যাচাই করো এবং নাম নাও
+        // ✅ marketplace-wide — tenant_id দিয়ে ফিল্টার না করে সব কোম্পানির
+        // প্রোডাক্ট থেকে খোঁজা হয়, তারপর প্রোডাক্টের নিজের tenant_id দিয়ে গ্রুপ
         const productIds = items.map(i => i.product_id);
         const prodResult = await query(
-            `SELECT id, name, price FROM products WHERE id = ANY($1::uuid[]) AND is_active = true AND tenant_id = $2`,
-            [productIds, customer.tenant_id]
+            `SELECT id, name, price, tenant_id FROM products WHERE id = ANY($1::uuid[]) AND is_active = true`,
+            [productIds]
         );
         const productMap = {};
         prodResult.rows.forEach(p => { productMap[p.id] = p; });
 
-        // ─── Step ৫: মাল্টিপল প্রাইস লিস্ট — app_ecommerce চ্যানেল ───
-        const { prices: resolvedPrices } = await getResolvedPrices(query, {
-            tenantId:   customer.tenant_id,
-            customerId: customer_id,
-            routeId:    customer.route_id,
-            channel:    'app_ecommerce',
-            productIds
-        });
-
-        // items enrichment — product_name যোগ করো
-        const enrichedItems = items.map(item => {
+        const groupsByTenant = {}; // tenant_id -> [{ item, product }]
+        for (const item of items) {
             const prod = productMap[item.product_id];
-            if (!prod) return null;
-            return {
-                product_id:   item.product_id,
-                product_name: prod.name,
-                unit_price:   resolvedPrices[item.product_id] ?? parseFloat(prod.price),
-                qty:          parseInt(item.qty),
-                item_note:    item.item_note || ''
-            };
-        }).filter(Boolean);
+            if (!prod) continue; // পাওয়া যায়নি/inactive — স্কিপ
+            if (!groupsByTenant[prod.tenant_id]) groupsByTenant[prod.tenant_id] = [];
+            groupsByTenant[prod.tenant_id].push({ item, product: prod });
+        }
+        const tenantIds = Object.keys(groupsByTenant);
 
-        if (enrichedItems.length === 0) {
-            return res.status(400).json({
-                success: false,
-                message: 'নির্বাচিত পণ্যগুলো পাওয়া যায়নি।'
-            });
+        if (tenantIds.length === 0) {
+            return res.status(400).json({ success: false, message: 'নির্বাচিত পণ্যগুলো পাওয়া যায়নি।' });
         }
 
-        // DB-তে অর্ডার রিকোয়েস্ট সেভ করো
-        // Customer অর্ডারে reserved_stock বাড়ানো হয় না —
-        // কারণ customer যত খুশি অর্ডার করতে পারবে, stock 24 ঘন্টায় বাড়ানো হয়
-        const result = await query(
-            `INSERT INTO customer_order_requests (customer_id, items, note, status, tenant_id) VALUES ($1, $2::jsonb, $3, 'pending', $4)
-             RETURNING id, created_at`,
-            [customer_id, JSON.stringify(enrichedItems), note || null, customer.tenant_id]
-        );
+        // ── প্রতিটা কোম্পানির জন্য customer row resolve — reuse বা নতুন লাগবে
+        // কিনা ঠিক করো (transaction-এর বাইরে; assertCustomerLimitAvailable
+        // নিজেই soft/lock-ছাড়া চেক, acceptCompanyRequest-এও ঠিক এভাবেই
+        // ব্যবহৃত হয়) ──
+        const resolvedByTenant = {};
+        for (const tenantId of tenantIds) {
+            const existing = await query(
+                `SELECT id, shop_name, owner_name, customer_code, route_id FROM customers
+                 WHERE person_id = $1 AND tenant_id = $2 LIMIT 1`,
+                [personId, tenantId]
+            );
+            if (existing.rows.length > 0) {
+                resolvedByTenant[tenantId] = { isNew: false, customer: existing.rows[0] };
+            } else {
+                // নতুন customer row লাগবে — trial/plan সীমা এখানেই চেক (ছুড়তে
+                // পারে CUSTOMER_LIMIT_REACHED, নিচের catch ব্লকে ধরা হয়)
+                await assertCustomerLimitAvailable(tenantId);
+                resolvedByTenant[tenantId] = { isNew: true, customer: null };
+            }
+        }
 
-        const newRequest = result.rows[0];
+        // ── আসল সব INSERT একটা transaction-এ — একটা কোম্পানির অংশ ব্যর্থ
+        // হলে বাকিগুলোও rollback হবে, "২টা কোম্পানিতে গেল, ৩য়টা চুপচাপ
+        // বাদ" গোছের আধা-অবস্থা এড়াতে ──
+        const createdRequests = await withTransaction(async (client) => {
+            const cq = client.query.bind(client);
+            const results = [];
 
-        // Admin ও Manager দের Push Notification পাঠাও
-        try {
-            const adminIds = await getAdminManagerIds(customer.tenant_id);
-            if (adminIds.length > 0) {
-                await sendPushToMany(adminIds, {
-                    title: `🛒 নতুন অর্ডার রিকোয়েস্ট`,
-                    body:  `${customer.shop_name} (${customer.customer_code}) থেকে ${enrichedItems.length}টি পণ্যের অর্ডার।`,
-                    type:  'customer_order_request',
-                    data:  { request_id: newRequest.id }
+            for (const tenantId of tenantIds) {
+                let { isNew, customer } = resolvedByTenant[tenantId];
+
+                if (isNew) {
+                    const personRes = await cq(`SELECT * FROM persons WHERE id = $1`, [personId]);
+                    const p = personRes.rows[0] || {};
+                    const code = await generateCustomerCode(new Date());
+                    const created = await cq(
+                        `INSERT INTO customers
+                            (customer_code, shop_name, owner_name, whatsapp, sms_phone, email,
+                             created_by, tenant_id, person_id, registration_source, is_verified)
+                         VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8, 'marketplace', false)
+                         RETURNING id, shop_name, owner_name, customer_code, route_id`,
+                        [code, p.full_name || 'নতুন কাস্টমার', p.full_name || 'নতুন কাস্টমার',
+                         p.whatsapp || null, p.phone || null, p.email || null, tenantId, personId]
+                    );
+                    customer = created.rows[0];
+                }
+
+                const group = groupsByTenant[tenantId];
+                const groupProductIds = group.map(g => g.product.id);
+
+                const { prices: resolvedPrices } = await getResolvedPrices(cq, {
+                    tenantId,
+                    customerId: customer.id,
+                    routeId:    customer.route_id,
+                    channel:    'app_ecommerce',
+                    productIds: groupProductIds
+                });
+
+                const enrichedItems = group.map(({ item, product }) => ({
+                    product_id:   product.id,
+                    product_name: product.name,
+                    unit_price:   resolvedPrices[product.id] ?? parseFloat(product.price),
+                    qty:          parseInt(item.qty),
+                    item_note:    item.item_note || ''
+                }));
+
+                const pendingCheck = await cq(
+                    `SELECT id FROM customer_order_requests WHERE customer_id = $1 AND status = 'pending' AND tenant_id = $2 LIMIT 1`,
+                    [customer.id, tenantId]
+                );
+
+                const inserted = await cq(
+                    `INSERT INTO customer_order_requests (customer_id, items, note, status, tenant_id)
+                     VALUES ($1, $2::jsonb, $3, 'pending', $4)
+                     RETURNING id, created_at`,
+                    [customer.id, JSON.stringify(enrichedItems), note || null, tenantId]
+                );
+
+                results.push({
+                    request_id:         inserted.rows[0].id,
+                    created_at:         inserted.rows[0].created_at,
+                    tenant_id:          tenantId,
+                    items_count:        enrichedItems.length,
+                    has_pending_order:  pendingCheck.rows.length > 0,
+                    customer_shop_name: customer.shop_name,
+                    customer_code:      customer.customer_code,
                 });
             }
-        } catch (pushErr) {
-            // Push ব্যর্থ হলেও অর্ডার সেভ হয়েছে — silent fail
-            logger.error('[OrderRequest] Push notification error:', pushErr.message);
+
+            return results;
+        });
+
+        // ── Push notification — transaction-এর বাইরে, প্রতি কোম্পানি আলাদা
+        // (আগের মতোই fire-and-forget, ব্যর্থ হলেও অর্ডার সেভ থাকে) ──
+        for (const r of createdRequests) {
+            try {
+                const adminIds = await getAdminManagerIds(r.tenant_id);
+                if (adminIds.length > 0) {
+                    await sendPushToMany(adminIds, {
+                        title: `🛒 নতুন অর্ডার রিকোয়েস্ট`,
+                        body:  `${r.customer_shop_name} (${r.customer_code}) থেকে ${r.items_count}টি পণ্যের অর্ডার।`,
+                        type:  'customer_order_request',
+                        data:  { request_id: r.request_id }
+                    });
+                }
+            } catch (pushErr) {
+                logger.error('[OrderRequest] Push notification error:', pushErr.message);
+            }
         }
+
+        const anyPending = createdRequests.some(r => r.has_pending_order);
+        const message = createdRequests.length > 1
+            ? `✅ ${createdRequests.length}টি কোম্পানিতে ভাগ করে অর্ডার রিকোয়েস্ট পাঠানো হয়েছে! শীঘ্রই SR আসবে।`
+            : (anyPending
+                ? '✅ অর্ডার পাঠানো হয়েছে। তবে আপনার আগের একটি অর্ডার এখনো pending আছে।'
+                : 'অর্ডার রিকোয়েস্ট পাঠানো হয়েছে! শীঘ্রই SR আসবে।');
 
         return res.status(201).json({
             success: true,
-            message: hasPendingOrder
-                ? '✅ অর্ডার পাঠানো হয়েছে। তবে আপনার আগের একটি অর্ডার এখনো pending আছে।'
-                : 'অর্ডার রিকোয়েস্ট পাঠানো হয়েছে! শীঘ্রই SR আসবে।',
-            has_pending_order: hasPendingOrder,
-            data: {
-                request_id: newRequest.id,
-                created_at: newRequest.created_at,
-                items_count: enrichedItems.length
-            }
+            message,
+            has_pending_order: anyPending,
+            data: createdRequests.map(r => ({
+                request_id:  r.request_id,
+                created_at:  r.created_at,
+                tenant_id:   r.tenant_id,
+                items_count: r.items_count,
+            })),
         });
 
     } catch (error) {
+        if (error.code === 'CUSTOMER_LIMIT_REACHED') {
+            return res.status(403).json({
+                success: false,
+                message: 'দুঃখিত, একটি কোম্পানি এই মুহূর্তে নতুন কাস্টমার নিচ্ছে না। বাকি প্রোডাক্টগুলো বাদ দিয়ে আবার চেষ্টা করুন।',
+            });
+        }
+        if (error.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
         logger.error('❌ createOrderRequest Error:', error.message);
         return res.status(500).json({ success: false, message: 'অর্ডার পাঠাতে সমস্যা হয়েছে।' });
     }
@@ -239,6 +323,79 @@ const getMyOrderRequests = async (req, res) => {
 };
 
 // ============================================================
+// GET /api/portal/connections/all-order-requests
+// ✅ NEW (createOrderRequest মাল্টি-কোম্পানি ফিক্সের সাথের প্রয়োজনীয়
+// সঙ্গী) — createOrderRequest এখন একাধিক কোম্পানিতে ভাগ করে অর্ডার
+// রিকোয়েস্ট বানায়, কিন্তু getMyOrderRequests (উপরে) এখনো সেশনের এক
+// কোম্পানিতে আটকে ছিল — মানে ৩-কোম্পানির অর্ডার সাবমিট করার পরও
+// "আমার অর্ডার"-এ ১টাই দেখাত, বাকি ২টা ডেটাবেজে ঠিকই আছে কিন্তু চোখে
+// পড়ত না। এটা getMyOrderRequests-এর হুবহু response shape রাখে (data
+// row-এর ফিল্ড একই), শুধু person_id দিয়ে সব কোম্পানি জুড়ে + company
+// ট্যাগ যোগ — যাতে ফ্রন্টএন্ডে আগের রেন্ডারিং লজিক প্রায় অপরিবর্তিত থাকে।
+// query params: page, limit, status
+// ============================================================
+const getAllCompanyOrderRequests = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser);
+
+        const page   = Math.max(1, parseInt(req.query.page)  || 1);
+        const limit  = Math.min(50, Math.max(1, parseInt(req.query.limit) || 10));
+        const offset = (page - 1) * limit;
+        const status = req.query.status || 'all';
+
+        const validStatuses = ['pending', 'confirmed', 'assigned', 'delivered', 'cancelled'];
+        const statusFilter  = validStatuses.includes(status) ? `AND cor.status = $2` : '';
+        const baseParams    = validStatuses.includes(status) ? [personId, status] : [personId];
+        const pLimit  = baseParams.length + 1;
+        const pOffset = baseParams.length + 2;
+
+        const countRes = await query(
+            `SELECT COUNT(*) AS total
+             FROM customer_order_requests cor
+             JOIN customers c ON c.id = cor.customer_id
+             WHERE c.person_id = $1 ${statusFilter}`,
+            baseParams
+        );
+        const total      = parseInt(countRes.rows[0].total);
+        const totalPages = Math.ceil(total / limit);
+
+        const { rows } = await query(
+            `SELECT
+                cor.id, cor.items, cor.note, cor.status,
+                cor.admin_note, cor.created_at, cor.updated_at,
+                u.name_bn AS assigned_sr_name,
+                t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+             FROM customer_order_requests cor
+             JOIN customers c ON c.id = cor.customer_id
+             JOIN tenants t   ON t.id = cor.tenant_id
+             LEFT JOIN users u ON cor.assigned_to = u.id
+             WHERE c.person_id = $1 ${statusFilter}
+             ORDER BY cor.created_at DESC
+             LIMIT $${pLimit} OFFSET $${pOffset}`,
+            [...baseParams, limit, offset]
+        );
+
+        return res.status(200).json({
+            success: true,
+            data: rows,
+            pagination: {
+                page, limit, total,
+                total_pages: totalPages,
+                has_next:    page < totalPages,
+                has_prev:    page > 1,
+            },
+        });
+
+    } catch (error) {
+        if (error.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getAllCompanyOrderRequests Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // 2b. কাস্টমার নিজের PENDING অর্ডার বাতিল করবে
 // PATCH /api/portal/order-requests/:id/cancel
 // portalAuth middleware দরকার
@@ -250,14 +407,18 @@ const getMyOrderRequests = async (req, res) => {
 // ============================================================
 const cancelMyOrderRequest = async (req, res) => {
     try {
-        const { customer_id } = req.portalUser;
-        const { id }          = req.params;
+        const personId = await getPersonId(req.portalUser);
+        const { id }    = req.params;
 
-        // অর্ডার আছে কিনা এবং এই কাস্টমারের কিনা — একটি query-তে
+        // ✅ ফিক্স: আগে customer_id (সেশনের এক কোম্পানি) দিয়ে মালিকানা চেক
+        // হতো — অ্যাগ্রিগেট অর্ডার-হিস্ট্রিতে অন্য কোম্পানির অর্ডার cancel
+        // করতে গেলে "পাওয়া যায়নি" দেখাত। এখন person_id দিয়ে (যেকোনো
+        // কোম্পানির নিজের অর্ডার) চেক হয়।
         const existing = await query(
-            `SELECT id, status FROM customer_order_requests
-             WHERE id = $1 AND customer_id = $2`,
-            [id, customer_id]
+            `SELECT cor.id, cor.status FROM customer_order_requests cor
+             JOIN customers c ON c.id = cor.customer_id
+             WHERE cor.id = $1 AND c.person_id = $2`,
+            [id, personId]
         );
 
         if (existing.rows.length === 0) {
@@ -297,6 +458,9 @@ const cancelMyOrderRequest = async (req, res) => {
         });
 
     } catch (error) {
+        if (error.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
         logger.error('❌ cancelMyOrderRequest Error:', error.message);
         return res.status(500).json({ success: false, message: 'বাতিল করতে সমস্যা হয়েছে।' });
     }
@@ -549,6 +713,10 @@ const getPortalProducts = async (req, res) => {
         const limit  = Math.min(100, Math.max(1, parseInt(req.query.limit) || 30));
         const offset = (page - 1) * limit;
         const search = (req.query.search || '').trim();
+        // ✅ NEW (পার্ট ৩ — Shop কোম্পানি ফিল্টার): ?seller=<tenant_id>
+        // দিলে শুধু সেই কোম্পানির প্রোডাক্ট দেখাবে। খালি থাকলে (ডিফল্ট)
+        // আগের মতোই সব কোম্পানির প্রোডাক্ট (marketplace-wide)।
+        const sellerId = (req.query.seller || '').trim();
 
         // ✅ CORRECTED (2 Aug 2026): আগে এখানে ভুলবশত কাস্টমারের নিজের
         // tenant_id দিয়ে ফিল্টার করা হয়েছিল, ধরে নিয়ে যে এটা single-company
@@ -562,32 +730,39 @@ const getPortalProducts = async (req, res) => {
         }
         const { route_id: routeId } = custResult.rows[0];
 
+        // ── কাউন্ট কুয়েরির params: search/seller যেটা আছে সেটাই যোগ হয় ──
+        const countConds  = [];
+        const countParams = [];
+        if (search)   { countParams.push(`%${search}%`); countConds.push(`AND name ILIKE $${countParams.length}`); }
+        if (sellerId) { countParams.push(sellerId);       countConds.push(`AND tenant_id = $${countParams.length}`); }
+
         const countRes = await query(
             `SELECT COUNT(*) AS total
              FROM products
              WHERE is_active = true
                AND (stock - COALESCE(reserved_stock, 0)) > 0
-               ${search ? 'AND name ILIKE $1' : ''}`,
-            search ? [`%${search}%`] : []
+               ${countConds.join(' ')}`,
+            countParams
         );
         const total      = parseInt(countRes.rows[0].total);
         const totalPages = Math.ceil(total / limit);
 
-        // List query — $1=limit, $2=offset, ($3=search যদি থাকে)
-        const listParams = search
-            ? [limit, offset, `%${search}%`]
-            : [limit, offset];
+        // ── লিস্ট কুয়েরির params: limit, offset আগে, তারপর search/seller ──
+        const listParams = [limit, offset];
+        let listConds = '';
+        if (search)   { listParams.push(`%${search}%`); listConds += ` AND p.name ILIKE $${listParams.length}`; }
+        if (sellerId) { listParams.push(sellerId);       listConds += ` AND p.tenant_id = $${listParams.length}`; }
 
         const { rows } = await query(
             `SELECT p.id, p.name, p.price, p.vat, p.tax, p.unit, p.description, p.image_url,
                     p.tenant_id,
-                    t.company_name,
+                    t.company_name, t.company_name_bn, t.logo_url,
                     (p.stock - COALESCE(p.reserved_stock, 0)) AS available_stock
              FROM products p
              JOIN tenants t ON t.id = p.tenant_id
              WHERE p.is_active = true
                AND (p.stock - COALESCE(p.reserved_stock, 0)) > 0
-               ${search ? 'AND p.name ILIKE $3' : ''}
+               ${listConds}
              ORDER BY p.name ASC
              LIMIT $1 OFFSET $2`,
             listParams
@@ -621,6 +796,8 @@ const getPortalProducts = async (req, res) => {
                 available_stock: p.available_stock,
                 tenant_id:       p.tenant_id,
                 company_name:    p.company_name,
+                company_name_bn: p.company_name_bn,
+                logo_url:        p.logo_url,
                 base_price:      basePrice,
                 vat_amount:      vatAmount,
                 tax_amount:      taxAmount,
@@ -645,6 +822,31 @@ const getPortalProducts = async (req, res) => {
     } catch (error) {
         logger.error('❌ getPortalProducts Error:', error.message);
         return res.status(500).json({ success: false, message: 'পণ্য তালিকা আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/product-sellers
+// ✅ NEW (পার্ট ৩ — Shop কোম্পানি ফিল্টার)
+// Shop-এ যেসব কোম্পানির অন্তত ১টা active/in-stock প্রোডাক্ট আছে,
+// তাদের ছোট তালিকা (id + নাম + লোগো) — ফিল্টার চিপ বসানোর জন্য।
+// getPortalProducts-এর মতোই marketplace-wide (customer কোন কোম্পানির
+// সাথে connected তা দিয়ে ফিল্টার হয় না — connection ছাড়াও ব্রাউজ করা যায়)।
+// ============================================================
+const getProductSellers = async (req, res) => {
+    try {
+        const { rows } = await query(
+            `SELECT DISTINCT t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+             FROM products p
+             JOIN tenants t ON t.id = p.tenant_id
+             WHERE p.is_active = true
+               AND (p.stock - COALESCE(p.reserved_stock, 0)) > 0
+             ORDER BY t.company_name ASC`
+        );
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        logger.error('❌ getProductSellers Error:', error.message);
+        res.status(500).json({ success: false, message: 'বিক্রেতা তালিকা আনতে সমস্যা হয়েছে।' });
     }
 };
 
@@ -1153,11 +1355,13 @@ const getPortalProductDetail = async (req, res) => {
 module.exports = {
     createOrderRequest,
     getMyOrderRequests,
+    getAllCompanyOrderRequests,
     cancelMyOrderRequest,
     getAllOrderRequests,
     updateOrderRequest,
     notifyAdminStockWarning,
     getPortalProducts,
+    getProductSellers,
     getPortalProductDetail,
     getOrderTracking,
     createReturnRequest,

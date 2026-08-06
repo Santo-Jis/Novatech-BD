@@ -18,9 +18,14 @@ import clsx from 'clsx'
 import { FiPlus, FiPackage } from 'react-icons/fi'
 import CpBadge from '../ui/CpBadge'
 import QtyStepper from './QtyStepper'
+import CompanyTag from '../CompanyTag'
 import { LOW_STOCK_THRESHOLD } from './constants'
 
-export default function ProductCard({ product, qty = 0, onOpen, onAdd, onInc, onDec, onSetQty }) {
+// ✅ REDESIGNED (পার্ট ৩ — Shop কোম্পানি ফিল্টার + ব্যাজ): seller_name
+// টেক্সট লাইনের বদলে CompanyTag (পার্ট ২-এর সাথে সামঞ্জস্যপূর্ণ), আর
+// isConnected=false হলে "নতুন কোম্পানি" ব্যাজ — অর্ডারের আগেই কাস্টমার
+// বুঝুক এটা তার চেনা ডিস্ট্রিবিউটর কিনা।
+export default function ProductCard({ product, qty = 0, onOpen, onAdd, onInc, onDec, onSetQty, isConnected = true }) {
   const [imgError, setImgError]   = useState(false)
   const [imgLoaded, setImgLoaded] = useState(false)
 
@@ -67,10 +72,18 @@ export default function ProductCard({ product, qty = 0, onOpen, onAdd, onInc, on
           {product.name}
         </p>
 
-        {(product.seller_name_bn || product.seller_name) && (
-          <p className="text-[10px] text-cp-text-muted leading-snug -mt-1 line-clamp-1">
-            🏪 {product.seller_name_bn || product.seller_name}
-          </p>
+        {(product.seller_name_bn || product.seller_name || product.company_name_bn || product.company_name) && (
+          <div className="-mt-1">
+            <CompanyTag
+              name={product.company_name_bn || product.company_name || product.seller_name_bn || product.seller_name}
+              logoUrl={product.logo_url}
+              colorKey={product.tenant_id}
+            />
+          </div>
+        )}
+
+        {!isConnected && (
+          <CpBadge variant="info" className="self-start">নতুন কোম্পানি</CpBadge>
         )}
 
         <div className="flex items-baseline gap-1">

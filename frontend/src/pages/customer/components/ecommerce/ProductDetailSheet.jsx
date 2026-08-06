@@ -16,6 +16,7 @@ import { useState } from 'react'
 import { FiX, FiPlus, FiPackage } from 'react-icons/fi'
 import CpBadge from '../ui/CpBadge'
 import QtyStepper from './QtyStepper'
+import CompanyTag from '../CompanyTag'
 import { LOW_STOCK_THRESHOLD } from './constants'
 
 function PriceRow({ label, value, bold = false }) {
@@ -31,7 +32,7 @@ function PriceRow({ label, value, bold = false }) {
   )
 }
 
-export default function ProductDetailSheet({ product, qty = 0, onClose, onAdd, onInc, onDec, onSetQty }) {
+export default function ProductDetailSheet({ product, qty = 0, onClose, onAdd, onInc, onDec, onSetQty, isConnected = true }) {
   const [imgLoaded, setImgLoaded] = useState(false)
 
   if (!product) return null
@@ -91,11 +92,24 @@ export default function ProductDetailSheet({ product, qty = 0, onClose, onAdd, o
             </button>
           </div>
 
-          {(product.seller_name_bn || product.seller_name) && (
-            <p className="text-[12px] text-cp-text-muted mb-2 leading-snug">
-              🏪 বিক্রেতা: <span className="font-medium text-cp-text-secondary">{product.seller_name_bn || product.seller_name}</span>
-              {product.seller_address && <span> · {product.seller_address}</span>}
-            </p>
+          {/* ✅ ফিক্স (পার্ট ৩): product.seller_name/seller_address কখনো
+              ব্যাকএন্ড থেকে আসতোই না (কোনো এন্ডপয়েন্টেই এই ফিল্ড নেই) —
+              তাই এই লাইনটা বাস্তবে কখনো দেখাই যায়নি। এখন company_name
+              (যেটা আসলেই আসে) দিয়ে CompanyTag, পার্ট ২-এর সাথে সামঞ্জস্যপূর্ণ। */}
+          {(product.company_name_bn || product.company_name) && (
+            <div className="mb-2">
+              <CompanyTag
+                name={product.company_name_bn || product.company_name}
+                logoUrl={product.logo_url}
+                colorKey={product.tenant_id}
+              />
+            </div>
+          )}
+
+          {!isConnected && (
+            <div className="mb-2">
+              <CpBadge variant="info">নতুন কোম্পানি — আগে অর্ডার করেননি</CpBadge>
+            </div>
           )}
 
           {/* দাম */}

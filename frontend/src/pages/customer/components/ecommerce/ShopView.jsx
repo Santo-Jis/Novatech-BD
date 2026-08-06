@@ -14,6 +14,7 @@
 import { FiSearch, FiX, FiPackage, FiAlertTriangle, FiChevronDown } from 'react-icons/fi'
 import ProductCard from './ProductCard'
 import CpButton from '../ui/CpButton'
+import { getCompanyColor } from '../../utils/companyColor'
 
 const SORT_OPTIONS = [
   { key: 'name',       label: 'নাম' },
@@ -59,6 +60,10 @@ export default function ShopView({
   categories = [],
   selectedCategory = '',
   onSelectCategory,
+  sellers = [],
+  selectedSeller = '',
+  onSelectSeller,
+  connectedCompanyIds = null,
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -104,6 +109,31 @@ export default function ShopView({
               className={clsxChip(selectedCategory === cat.id)}
             >
               {cat.name_bn || cat.name}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ✅ নতুন (পার্ট ৩) — কোম্পানি/বিক্রেতা চিপ, ক্যাটাগরির ঠিক নিচে।
+          ক্যাটাগরির মতোই: বিক্রেতা না থাকলে চিপ রো-ই দেখাবে না */}
+      {sellers.length > 0 && (
+        <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+          <button
+            onClick={() => onSelectSeller('')}
+            className={clsxChip(selectedSeller === '')}
+          >
+            সব কোম্পানি
+          </button>
+          {sellers.map(s => (
+            <button
+              key={s.tenant_id}
+              onClick={() => onSelectSeller(s.tenant_id)}
+              className={clsxChip(selectedSeller === s.tenant_id)}
+            >
+              <span
+                className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${getCompanyColor(s.tenant_id).dot}`}
+              />
+              {s.company_name_bn || s.company_name}
             </button>
           ))}
         </div>
@@ -165,6 +195,7 @@ export default function ShopView({
                 onInc={onInc}
                 onDec={onDec}
                 onSetQty={onSetQty}
+                isConnected={connectedCompanyIds === null ? true : connectedCompanyIds.has(p.tenant_id)}
               />
             ))}
           </div>

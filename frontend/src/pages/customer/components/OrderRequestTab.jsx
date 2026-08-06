@@ -34,6 +34,19 @@
 //      getPortalProducts-এ ?category= প্যারাম। কোনো ক্যাটাগরি/অ্যাসাইনমেন্ট
 //      না থাকলে চিপ রো-ই দেখাবে না (graceful — কিছু ভাঙে না)
 //   ৩. ছবি lazy-loading + fade-in — স্লো নেটওয়ার্কে ভালো অভিজ্ঞতা
+//
+// ✅ NEW (পার্ট ৩ — Shop কোম্পানি ফিল্টার + ব্যাজ):
+//   • sellers/sellerId — ক্যাটাগরির মতোই সার্ভার-সাইড ফিল্টার
+//     (/portal/product-sellers + getPortalProducts-এ ?seller=)
+//   • connectedCompanyIds — /portal/connections/my-companies থেকে,
+//     ProductCard-এ "নতুন কোম্পানি" ব্যাজ দেখানোর জন্য
+//   ⚠️ চলার পথে দেখলাম: ক্যাটাগরি ফিল্টার (উপরের #২) আসলে কাজ করে না —
+//   /portal/categories রুটটাই ব্যাকএন্ডে নেই (category.routes.js আছে
+//   কিন্তু /api/categories-এ, admin auth দিয়ে, portalAuth দিয়ে না), আর
+//   getPortalProducts কখনোই ?category= প্যারাম পড়ে না। তাই চিপ রো-টা
+//   silent fail হয়ে কখনো দেখাই যায় না। এই পার্টের স্কোপের বাইরে বলে
+//   ঠিক করিনি — কিন্তু ঠিক এই একই প্যাটার্নে (নতুন ফিল্টার) কাজ করছিলাম
+//   বলে চোখে পড়ল, তাই নোট করে রাখলাম।
 // ============================================================
 import { useState, useEffect, useRef } from 'react'
 import { FiShoppingBag, FiClock } from 'react-icons/fi'
@@ -64,6 +77,13 @@ export default function OrderRequestTab({ portalJWT }) {
   const [total,           setTotal]           = useState(0)
   const [categories,      setCategories]      = useState([])   // ✅ নতুন
   const [categoryId,      setCategoryId]      = useState('')   // ✅ নতুন — '' = সব
+  const [sellers,         setSellers]         = useState([])   // ✅ নতুন (পার্ট ৩)
+  const [sellerId,        setSellerId]        = useState('')   // ✅ নতুন (পার্ট ৩) — '' = সব
+  // ✅ নতুন (পার্ট ৩) — কাস্টমার কোন কোম্পানিগুলোর সাথে connected তার
+  // tenant_id সেট। null = এখনো লোড হয়নি (এই অবস্থায় ProductCard কোনো
+  // "নতুন কোম্পানি" ব্যাজ দেখাবে না — লোড হওয়ার আগে ভুল ব্যাজ ফ্ল্যাশ
+  // করার চেয়ে চুপ থাকা ভালো)
+  const [connectedCompanyIds, setConnectedCompanyIds] = useState(null)
 
   // প্রতিটা fetch/add-এ প্রতিটা প্রোডাক্ট এখানে জমা হয় (id → product)
   const productCache = useRef({})
@@ -85,17 +105,19 @@ export default function OrderRequestTab({ portalJWT }) {
   const [successMsg,      setSuccessMsg]      = useState('')
 
   // ── ডেটা লোড ───────────────────────────────────────────────
-  // categoryFilter override না দিলে বর্তমান categoryId state ব্যবহার
-  // হয় (search-এর overrideValue প্যাটার্নের মতোই — চিপ ট্যাপে stale
-  // closure এড়াতে explicit override পাঠানো হয়)
-  const loadProducts = async (searchTerm = '', pageNum = 1, append = false, categoryFilter) => {
+  // categoryFilter/sellerFilter override না দিলে বর্তমান categoryId/
+  // sellerId state ব্যবহার হয় (search-এর overrideValue প্যাটার্নের
+  // মতোই — চিপ ট্যাপে stale closure এড়াতে explicit override পাঠানো হয়)
+  const loadProducts = async (searchTerm = '', pageNum = 1, append = false, categoryFilter, sellerFilter) => {
     if (append) setLoadingMore(true); else setInitialLoading(true)
     setProductsError(null)
     try {
-      const cat = categoryFilter !== undefined ? categoryFilter : categoryId
+      const cat    = categoryFilter !== undefined ? categoryFilter : categoryId
+      const seller = sellerFilter   !== undefined ? sellerFilter   : sellerId
       const params = new URLSearchParams({ page: pageNum, limit: PAGE_SIZE })
       if (searchTerm) params.set('search', searchTerm)
-      if (cat) params.set('category', cat)
+      if (cat)        params.set('category', cat)
+      if (seller)     params.set('seller', seller)   // ✅ নতুন (পার্ট ৩)
       const data = await portalFetch(`/portal/products?${params}`, {
         headers: { Authorization: `Bearer ${portalJWT}` }
       })
@@ -125,11 +147,40 @@ export default function OrderRequestTab({ portalJWT }) {
     } catch { /* silent — ক্যাটাগরি ফিচার optional, ব্যর্থ হলে শুধু চিপ রো লুকানো থাকবে */ }
   }
 
+  // ✅ নতুন (পার্ট ৩) — বিক্রেতা/কোম্পানি চিপ লিস্ট, loadCategories-এর
+  // মতোই graceful — ব্যর্থ হলে চুপচাপ, চিপ রো লুকানো থাকবে
+  const loadSellers = async () => {
+    try {
+      const data = await portalFetch('/portal/product-sellers', {
+        headers: { Authorization: `Bearer ${portalJWT}` }
+      })
+      setSellers(data.data || [])
+    } catch { /* silent — filter চিপ optional */ }
+  }
+
+  // ✅ নতুন (পার্ট ৩) — কাস্টমার কোন কোম্পানিগুলোর সাথে connected তা
+  // জানার জন্য (ProductCard-এ "নতুন কোম্পানি" ব্যাজ দেখানোর জন্য)।
+  // ব্যর্থ হলেও চুপচাপ — connectedCompanyIds null-ই থেকে যাবে, ব্যাজ
+  // কোথাও দেখাবে না (fail-safe: ভুল করে "নতুন" ট্যাগ লাগানোর চেয়ে
+  // কোনো ট্যাগ না-লাগানো নিরাপদ)
+  const loadConnectedCompanies = async () => {
+    try {
+      const data = await portalFetch('/portal/connections/my-companies', {
+        headers: { Authorization: `Bearer ${portalJWT}` }
+      })
+      setConnectedCompanyIds(new Set((data.data || []).map(c => c.tenant_id)))
+    } catch { /* silent */ }
+  }
+
   const loadRequests = async () => {
     setRequestsLoading(true)
     setRequestsError(null)
     try {
-      const data = await portalFetch('/portal/order-requests', {
+      // ✅ ফিক্স — আগে /portal/order-requests (সেশনের এক কোম্পানি) কল হতো।
+      // createOrderRequest এখন একাধিক কোম্পানিতে ভাগ করে অর্ডার বানায়,
+      // তাই হিস্ট্রিও সব কোম্পানি জুড়ে (aggregate + company-ট্যাগ) হওয়া
+      // দরকার — নাহলে ৩-কোম্পানির অর্ডারের ২টা এখানে দেখাই যেত না।
+      const data = await portalFetch('/portal/connections/all-order-requests', {
         headers: { Authorization: `Bearer ${portalJWT}` }
       })
       setRequests(data.data || [])
@@ -147,6 +198,8 @@ export default function OrderRequestTab({ portalJWT }) {
     loadProducts()
     loadRequests()
     loadCategories()
+    loadSellers()             // ✅ নতুন (পার্ট ৩)
+    loadConnectedCompanies()  // ✅ নতুন (পার্ট ৩)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -165,7 +218,9 @@ export default function OrderRequestTab({ portalJWT }) {
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
-        const data = await portalFetch('/portal/order-requests', {
+        // ✅ ফিক্স — এটাও aggregate এন্ডপয়েন্টে, নাহলে অন্য কোম্পানির
+        // অর্ডার ডেলিভারড হলে "পৌঁছে গেছে" টোস্ট কখনো দেখাত না
+        const data = await portalFetch('/portal/connections/all-order-requests', {
           headers: { Authorization: `Bearer ${portalJWT}` }
         })
         const updated = data.data || []
@@ -257,13 +312,21 @@ export default function OrderRequestTab({ portalJWT }) {
   const runSearch = (overrideValue) => {
     const q = overrideValue !== undefined ? overrideValue : search
     setCommittedSearch(q)
-    loadProducts(q, 1, false, categoryId)
+    loadProducts(q, 1, false, categoryId, sellerId)
   }
 
-  // ✅ নতুন — ক্যাটাগরি চিপে ট্যাপ করলে, বর্তমান সার্চ বজায় রেখে page ১ থেকে রিলোড
+  // ✅ নতুন — ক্যাটাগরি চিপে ট্যাপ করলে, বর্তমান সার্চ/বিক্রেতা-ফিল্টার
+  // বজায় রেখে page ১ থেকে রিলোড
   const selectCategory = (id) => {
     setCategoryId(id)
-    loadProducts(committedSearch, 1, false, id)
+    loadProducts(committedSearch, 1, false, id, sellerId)
+  }
+
+  // ✅ নতুন (পার্ট ৩) — বিক্রেতা চিপে ট্যাপ করলে, বর্তমান সার্চ/ক্যাটাগরি
+  // বজায় রেখে page ১ থেকে রিলোড
+  const selectSeller = (id) => {
+    setSellerId(id)
+    loadProducts(committedSearch, 1, false, categoryId, id)
   }
 
   // ── সর্ট (ক্লায়েন্ট-সাইড, লোড-করা প্রোডাক্টের উপর) ────────────
@@ -361,6 +424,10 @@ export default function OrderRequestTab({ portalJWT }) {
           categories={categories}
           selectedCategory={categoryId}
           onSelectCategory={selectCategory}
+          sellers={sellers}
+          selectedSeller={sellerId}
+          onSelectSeller={selectSeller}
+          connectedCompanyIds={connectedCompanyIds}
         />
       ) : (
         <OrderHistoryView
@@ -385,6 +452,11 @@ export default function OrderRequestTab({ portalJWT }) {
         onInc={incQty}
         onDec={decQty}
         onSetQty={setExactQty}
+        isConnected={
+          connectedCompanyIds === null || !selectedProduct
+            ? true
+            : connectedCompanyIds.has(selectedProduct.tenant_id)
+        }
       />
 
       {!showCheckout && (
