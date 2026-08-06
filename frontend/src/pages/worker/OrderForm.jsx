@@ -6,25 +6,35 @@ import { enqueue, saveCache, getCache } from '../../api/offlineQueue'
 import { FiShoppingCart, FiPlus, FiMinus, FiSend, FiPackage, FiChevronDown, FiChevronUp } from 'react-icons/fi'
 import toast from 'react-hot-toast'
 
-// ─── চূড়ান্ত মূল্য গণনা ───────────────────────────────────
-function calcFinalPrice(p) {
+// ─── মূল্য বিস্তারিত (দাম, ছাড়, VAT, Tax, চূড়ান্ত) ──────────
+function getPriceBreakdown(p) {
   const price    = parseFloat(p.price)    || 0
   const discount = parseFloat(p.discount) || 0
   const vat      = parseFloat(p.vat)      || 0
   const tax      = parseFloat(p.tax)      || 0
   const discAmt  = p.discount_type === 'percent' ? (price * discount) / 100 : discount
-  const after    = Math.max(0, price - discAmt)
-  return after + (after * vat / 100) + (after * tax / 100)
+  const afterDiscount = Math.max(0, price - discAmt)
+  const vatAmt   = afterDiscount * vat / 100
+  const taxAmt   = afterDiscount * tax / 100
+  const final    = afterDiscount + vatAmt + taxAmt
+  return { price, discAmt, afterDiscount, vatAmt, taxAmt, final }
+}
+
+// ─── চূড়ান্ত মূল্য গণনা ───────────────────────────────────
+function calcFinalPrice(p) {
+  return getPriceBreakdown(p).final
 }
 
 // ─── একটি পণ্য কার্ড ──────────────────────────────────────
-function ProductCard({ p, qty, onUpdate }) {
+function ProductCard({ p, qty, onUpdate, onSetQty }) {
   const [expanded, setExpanded] = useState(false)
-  const finalPrice  = calcFinalPrice(p)
-  const hasDiscount = parseFloat(p.discount) > 0
-  const hasVat      = parseFloat(p.vat)      > 0
-  const hasTax      = parseFloat(p.tax)      > 0
-  const hasExtras   = hasDiscount || hasVat || hasTax || p.description
+  const breakdown    = getPriceBreakdown(p)
+  const finalPrice   = breakdown.final
+  const hasDiscount  = parseFloat(p.discount) > 0
+  const hasVat       = parseFloat(p.vat)      > 0
+  const hasTax       = parseFloat(p.tax)      > 0
+  const hasPriceInfo = hasDiscount || hasVat || hasTax
+  const hasExtras    = hasPriceInfo || p.description
 
   return (
     <div className={`bg-white rounded-2xl shadow-sm overflow-hidden transition-all ${qty > 0 ? 'ring-2 ring-primary/30' : ''}`}>
@@ -71,13 +81,27 @@ function ProductCard({ p, qty, onUpdate }) {
             </div>
           </div>
 
-          {/* কাউন্টার */}
-          <div className="flex items-center gap-2 flex-shrink-0">
+          {/* কাউন্টার — পরিমাণ এখন সরাসরি টাইপও করা যায়, শুধু +/- চাপতে হয় না */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             <button onClick={() => onUpdate(p.id, -1)} disabled={qty === 0}
               className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center disabled:opacity-30 active:scale-95">
               <FiMinus size={13} />
             </button>
-            <span className={`w-7 text-center font-bold text-sm ${qty > 0 ? 'text-primary' : 'text-gray-300'}`}>{qty}</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              aria-label="পরিমাণ"
+              value={qty === 0 ? '' : qty}
+              placeholder="0"
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/[^0-9]/g, '')
+                onSetQty(p.id, digits === '' ? 0 : parseInt(digits, 10))
+              }}
+              className={`w-12 text-center font-bold text-sm rounded-lg py-1.5 border outline-none focus:border-primary focus:bg-white
+                ${qty > 0 ? 'text-primary border-primary/30 bg-primary/5' : 'text-gray-400 border-gray-200 bg-gray-50'}`}
+            />
             <button onClick={() => onUpdate(p.id, 1)}
               className="w-8 h-8 bg-primary rounded-full flex items-center justify-center active:scale-95">
               <FiPlus className="text-white" size={13} />
@@ -107,12 +131,46 @@ function ProductCard({ p, qty, onUpdate }) {
         )}
       </div>
 
-      {/* Expanded: description */}
-      {expanded && p.description && (
+      {/* Expanded: মূল্য বিস্তারিত + বিবরণ */}
+      {expanded && (
         <div className="px-4 pb-4">
-          <div className="bg-gray-50 rounded-xl p-3">
-            <p className="text-xs text-gray-400 mb-1 font-medium">বিবরণ</p>
-            <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">{p.description}</p>
+          <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+            {hasPriceInfo && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">মূল্য</span>
+                  <span className="text-gray-700 font-medium">৳{breakdown.price.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+                </div>
+                {hasDiscount && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">ছাড়</span>
+                    <span className="text-green-600 font-medium">− ৳{breakdown.discAmt.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                {hasVat && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">VAT ({p.vat}%)</span>
+                    <span className="text-gray-700 font-medium">+ ৳{breakdown.vatAmt.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                {hasTax && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-gray-500">Tax ({p.tax}%)</span>
+                    <span className="text-gray-700 font-medium">+ ৳{breakdown.taxAmt.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-xs pt-1 border-t border-gray-200">
+                  <span className="text-gray-500 font-medium">সর্বমোট (প্রতি {p.unit || 'pcs'})</span>
+                  <span className="text-primary font-bold">৳{breakdown.final.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            )}
+            {p.description && (
+              <div className={hasPriceInfo ? 'pt-2 border-t border-gray-200' : ''}>
+                <p className="text-xs text-gray-400 mb-1 font-medium">বিবরণ</p>
+                <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">{p.description}</p>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -172,6 +230,12 @@ export default function OrderForm() {
     }))
   }
 
+  // সরাসরি সংখ্যা টাইপ করে পরিমাণ বসানোর জন্য (৫০ বার + চাপার বদলে একবারে "৫০" লেখা যায়)
+  const setQty = (id, value) => {
+    const n = Math.max(0, Math.floor(Number(value) || 0))
+    setQuantities(prev => ({ ...prev, [id]: n }))
+  }
+
   const totalAmount = products.reduce((sum, p) => {
     return sum + (quantities[p.id] || 0) * calcFinalPrice(p)
   }, 0)
@@ -222,7 +286,7 @@ export default function OrderForm() {
   if (loading) return <div className="p-4"><div className="h-64 bg-white rounded-2xl animate-pulse" /></div>
 
   return (
-    <div className="p-4 space-y-4 pb-32">
+    <div className="p-4 space-y-4 pb-56">
       <div>
         <h2 className="font-bold text-gray-800 text-lg">অর্ডার দিন</h2>
         <p className="text-xs text-gray-500">{selectedRoute?.name || 'রুট সিলেক্ট করুন'}</p>
@@ -235,12 +299,13 @@ export default function OrderForm() {
             p={p}
             qty={quantities[p.id] || 0}
             onUpdate={updateQty}
+            onSetQty={setQty}
           />
         ))}
       </div>
 
-      {/* Fixed bottom bar */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 p-4">
+      {/* Fixed bottom bar — নিচের navigation bar এর উপরে (bottom-20 + z-40) */}
+      <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-md z-40 bg-white border-t border-gray-100 p-4">
         <div className="flex justify-between items-center mb-3">
           <span className="text-sm text-gray-500">মোট অর্ডার</span>
           <span className="font-bold text-primary text-lg">
