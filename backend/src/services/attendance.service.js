@@ -130,12 +130,15 @@ const isHoliday = async (date) => {
 };
 
 // ============================================================
-// সাপ্তাহিক ছুটি কিনা যাচাই
-// userId দিলে → সেই user-এর টিমের weekly_off_day চেক করবে
-// না দিলে → global settings থেকে নেবে
+// effective weekly off day বের করা
+// userId দিলে → সেই user-এর টিমের weekly_off_day (override) থাকলে সেটা
+// না থাকলে (বা userId না দিলে) → global settings থেকে নেবে
+// isWeeklyOff() ও attendance settings API — দুই জায়গায়ই এই একই
+// লজিক ব্যবহার করে, যাতে ক্যালেন্ডারে যা দেখায় আর চেক-ইনে যা এনফোর্স
+// হয় তার মধ্যে মিসম্যাচ না হয়
 // ============================================================
 
-const isWeeklyOff = async (date, userId = null) => {
+const getEffectiveWeeklyOffDay = async (userId = null) => {
     const settings = await getSettings();
     let offDay     = parseInt(settings.weekly_off_day || '5'); // global default
 
@@ -164,7 +167,18 @@ const isWeeklyOff = async (date, userId = null) => {
         }
     }
 
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return offDay;
+};
+
+// ============================================================
+// সাপ্তাহিক ছুটি কিনা যাচাই
+// userId দিলে → সেই user-এর টিমের weekly_off_day চেক করবে
+// না দিলে → global settings থেকে নেবে
+// ============================================================
+
+const isWeeklyOff = async (date, userId = null) => {
+    const offDay   = await getEffectiveWeeklyOffDay(userId);
+    const dateObj  = typeof date === 'string' ? new Date(date) : date;
     return dateObj.getDay() === offDay;
 };
 
@@ -303,6 +317,7 @@ module.exports = {
     calculateLateDeduction,
     isHoliday,
     isWeeklyOff,
+    getEffectiveWeeklyOffDay,
     getWorkingDays,
     canCheckOut,
     updateFirebaseAttendance,
