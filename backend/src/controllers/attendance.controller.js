@@ -7,6 +7,7 @@ const {
     calculateLateDeduction,
     isHoliday,
     isWeeklyOff,
+    getEffectiveWeeklyOffDay,
     getWorkingDays,
     updateFirebaseAttendance,
     notifyManagerOnCheckIn,
@@ -24,7 +25,7 @@ const checkIn = async (req, res) => {
         const today  = new Date().toISOString().split('T')[0];
 
         // ১. সময় যাচাই
-        const timeCheck = await canCheckIn();
+        const timeCheck = await canCheckIn(req.tenantId);
         if (!timeCheck.allowed) {
             return res.status(400).json({
                 success: false,
@@ -33,8 +34,8 @@ const checkIn = async (req, res) => {
         }
 
         // ২. ছুটির দিন যাচাই (টিম-ওয়াইজ সাপ্তাহিক ছুটি সহ)
-        const holiday  = await isHoliday(today);
-        const weeklyOff = await isWeeklyOff(today, userId);
+        const holiday  = await isHoliday(today, req.tenantId);
+        const weeklyOff = await isWeeklyOff(today, userId, req.tenantId);
 
         if (holiday || weeklyOff) {
             return res.status(400).json({
@@ -81,7 +82,8 @@ const checkIn = async (req, res) => {
         const checkInTime = new Date();
         const { lateMinutes, deduction, isLate } = await calculateLateDeduction(
             checkInTime,
-            req.user.basic_salary || 0
+            req.user.basic_salary || 0,
+            req.tenantId
         );
 
         // ৭. Attendance সেভ
@@ -296,9 +298,9 @@ const getMyAttendance = async (req, res) => {
         let workingDays = null;
         let workingDaysError = null;
         try {
-            workingDays = await getWorkingDays(currentYear, currentMonth);
+            workingDays = await getWorkingDays(currentYear, currentMonth, req.tenantId);
         } catch (wdErr) {
-            logger.error('❌ getWorkingDays error (getMyAttendance):', wdErr.message);
+            logger.error('❌ getWorkingDays error (getMyAttendance)', { err: wdErr });
             workingDaysError = 'working_days তথ্য আনা যায়নি।';
         }
         const presentDays = summary.present + summary.late;
@@ -520,9 +522,9 @@ const getMonthlyReport = async (req, res) => {
         // ভুল মান = ভুল বেতন। DB error হলে 503 দাও, default fallback নয়।
         let workingDays;
         try {
-            workingDays = await getWorkingDays(currentYear, currentMonth);
+            workingDays = await getWorkingDays(currentYear, currentMonth, req.tenantId);
         } catch (wdErr) {
-            logger.error('❌ getWorkingDays error (getMonthlyReport):', wdErr.message);
+            logger.error('❌ getWorkingDays error (getMonthlyReport)', { err: wdErr });
             return res.status(503).json({
                 success: false,
                 message: 'কার্যদিবস গণনা করা যাচ্ছে না — বেতন হিসাব নিরাপদ নয়। কিছুক্ষণ পরে আবার চেষ্টা করুন অথবা admin-কে জানান।',
@@ -554,7 +556,7 @@ const getMonthlyReport = async (req, res) => {
 
 const getAttendanceSettings = async (req, res) => {
     try {
-        const settings = await getSettings();
+        const settings = await getSettings(req.tenantId);
         // holidays পার্স করে array হিসেবে দাও
         let holidays = [];
         try {
@@ -563,6 +565,10 @@ const getAttendanceSettings = async (req, res) => {
             holidays = [];
         }
 
+        // যে user request করেছে, তার টিমের override থাকলে সেটাই দেখাও —
+        // এতে ক্যালেন্ডার UI আর actual চেক-ইন এনফোর্সমেন্ট একই দিন দেখাবে
+        const weeklyOffDay = await getEffectiveWeeklyOffDay(req.user?.id, req.tenantId);
+
         return res.json({
             success: true,
             data: {
@@ -570,7 +576,7 @@ const getAttendanceSettings = async (req, res) => {
                 attendance_popup_cutoff:  settings.attendance_popup_cutoff  || '14:30',
                 attendance_checkin_end:   settings.attendance_checkin_end   || '10:00',
                 checkout_time:            settings.checkout_time            || '20:30',
-                weekly_off_day:           parseInt(settings.weekly_off_day  || '5'),
+                weekly_off_day:           weeklyOffDay,
                 holidays,
             }
         });

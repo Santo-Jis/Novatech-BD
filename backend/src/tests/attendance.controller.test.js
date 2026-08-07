@@ -39,6 +39,7 @@ jest.mock('../services/attendance.service', () => ({
     calculateLateDeduction:  jest.fn(),
     isHoliday:               jest.fn(),
     isWeeklyOff:             jest.fn(),
+    getEffectiveWeeklyOffDay: jest.fn(),
     getWorkingDays:          jest.fn(),
     updateFirebaseAttendance: jest.fn().mockResolvedValue({}),
     notifyManagerOnCheckIn:  jest.fn().mockResolvedValue({}),
@@ -56,6 +57,7 @@ const {
     calculateLateDeduction,
     isHoliday,
     isWeeklyOff,
+    getEffectiveWeeklyOffDay,
     updateFirebaseAttendance,
     notifyManagerOnCheckIn,
     getSettings,
@@ -108,6 +110,7 @@ beforeEach(() => {
     canCheckOut.mockResolvedValue({ allowed: true });
     isHoliday.mockResolvedValue(false);
     isWeeklyOff.mockResolvedValue(false);
+    getEffectiveWeeklyOffDay.mockResolvedValue(5);
     calculateLateDeduction.mockResolvedValue({ lateMinutes: 0, deduction: 0, isLate: false });
     getSettings.mockResolvedValue({
         attendance_checkin_start: '09:00',
@@ -444,8 +447,10 @@ describe('reviewLeaveRequest — আবেদন অনুমোদন/প্র
 
 describe('getAttendanceSettings — সেটিংস', () => {
 
+    const mockTenantId = 'tenant-1';
+
     test('সেটিংস সফলভাবে আসে', async () => {
-        // getSettings() → query('SELECT key, value FROM system_settings')
+        // getSettings(tenantId) → query('SELECT key, value FROM system_settings WHERE tenant_id = $1')
         query.mockResolvedValueOnce({
             rows: [
                 { key: 'attendance_checkin_start', value: '09:00' },
@@ -455,7 +460,7 @@ describe('getAttendanceSettings — সেটিংস', () => {
         });
 
         const res = mockRes();
-        await getAttendanceSettings({ user: workerUser }, res);
+        await getAttendanceSettings({ user: workerUser, tenantId: mockTenantId }, res);
 
         // controller res.json() সরাসরি call করে (status 200 implicitly)
         expect(res.json).toHaveBeenCalledWith(
@@ -464,6 +469,20 @@ describe('getAttendanceSettings — সেটিংস', () => {
         const data = res.json.mock.calls[0][0].data;
         expect(data).toHaveProperty('attendance_checkin_start');
         expect(data).toHaveProperty('attendance_checkin_end');
+    });
+
+    test('টিমের নিজস্ব weekly_off_day override থাকলে সেটাই দেখায়, global নয়', async () => {
+        // global setting শুক্রবার (৫), কিন্তু এই SR-এর টিমের override রবিবার (০)
+        getEffectiveWeeklyOffDay.mockResolvedValue(0);
+
+        const res = mockRes();
+        await getAttendanceSettings({ user: workerUser, tenantId: mockTenantId }, res);
+
+        // ✅ FIX: getEffectiveWeeklyOffDay এখন tenantId-ও নেয় (multi-tenant
+        // isolation ফিক্সের অংশ) — controller-এর নতুন call signature-এর সাথে মেলানো হলো
+        expect(getEffectiveWeeklyOffDay).toHaveBeenCalledWith(workerUser.id, mockTenantId);
+        const data = res.json.mock.calls[0][0].data;
+        expect(data.weekly_off_day).toBe(0);
     });
 });
 

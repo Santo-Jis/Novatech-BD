@@ -182,7 +182,7 @@ const updateSettings = async (req, res) => {
             }
 
             // original এর মতো UPDATE — নতুন key migration SQL এ insert হবে
-            await query(
+            const updateResult = await query(
                 `UPDATE system_settings
                  SET value = $1, updated_by = $2, updated_at = NOW()
                  WHERE key = $3
@@ -190,6 +190,19 @@ const updateSettings = async (req, res) => {
                 [value, req.user.id, setting.key,
                 req.tenantId]
             );
+
+            // ✅ FIX: এই key-টা এই tenant-এর জন্য আগে কখনো insert না হয়ে থাকলে
+            // (নতুন key, বা migration seed মিস) উপরের UPDATE কোনো row-ই ছোঁয় না —
+            // চুপচাপ কিছুই সেভ হয় না, অথচ endpoint তবু success রিটার্ন করে, তাই
+            // Admin UI-তে "সেভ হয়েছে" দেখালেও আসলে ভ্যালু কখনো বদলায়নি।
+            // rowCount 0 হলে row-টা INSERT করে দাও।
+            if (updateResult.rowCount === 0) {
+                await query(
+                    `INSERT INTO system_settings (key, value, updated_by, updated_at, tenant_id)
+                     VALUES ($1, $2, $3, NOW(), $4)`,
+                    [setting.key, value, req.user.id, req.tenantId]
+                );
+            }
         }
 
         // Audit log

@@ -21,16 +21,22 @@ const DEFAULT_SETTINGS = {
     holidays:                 '[]'
 };
 
-const getSettings = async () => {
+const getSettings = async (tenantId) => {
     try {
-        const result = await query('SELECT key, value FROM system_settings');
+        // ✅ FIX: আগে tenant_id ফিল্টার ছাড়াই সব tenant-এর row পড়ত —
+        // একাধিক tenant থাকলে যেকোনোটার ভ্যালু অন্যেরটাকে ওভাররাইট করে
+        // দিতে পারত (কোন row শেষে আসবে তার উপর নির্ভর করে, ORDER BY ছাড়া)।
+        const result = await query(
+            'SELECT key, value FROM system_settings WHERE tenant_id = $1',
+            [tenantId]
+        );
         const settings = { ...DEFAULT_SETTINGS };
         result.rows.forEach(row => {
             settings[row.key] = row.value;
         });
         return settings;
     } catch (error) {
-        logger.warn('⚠️ system_settings পড়া যায়নি, ডিফল্ট ব্যবহার হচ্ছে:', error.message);
+        logger.warn('⚠️ system_settings পড়া যায়নি, ডিফল্ট ব্যবহার হচ্ছে', { err: error });
         return { ...DEFAULT_SETTINGS };
     }
 };
@@ -39,8 +45,8 @@ const getSettings = async () => {
 // চেক-ইন করা যাবে কিনা যাচাই
 // ============================================================
 
-const canCheckIn = async () => {
-    const settings = await getSettings();
+const canCheckIn = async (tenantId) => {
+    const settings = await getSettings(tenantId);
 
     const now      = new Date();
     const nowBD    = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }));
@@ -76,8 +82,8 @@ const canCheckIn = async () => {
 // লেট মিনিট ও কর্তন হিসাব
 // ============================================================
 
-const calculateLateDeduction = async (checkInTime, basicSalary) => {
-    const settings = await getSettings();
+const calculateLateDeduction = async (checkInTime, basicSalary, tenantId) => {
+    const settings = await getSettings(tenantId);
 
     const [lateH, lateM] = (settings.attendance_checkin_end || '10:00').split(':').map(Number);
     const lateThreshold  = lateH * 60 + lateM; // ১০:০০ = ৬০০ মিনিট
@@ -112,8 +118,8 @@ const calculateLateDeduction = async (checkInTime, basicSalary) => {
 // ছুটির দিন কিনা যাচাই
 // ============================================================
 
-const isHoliday = async (date) => {
-    const settings = await getSettings();
+const isHoliday = async (date, tenantId) => {
+    const settings = await getSettings(tenantId);
 
     let holidays = [];
     try {
@@ -130,24 +136,33 @@ const isHoliday = async (date) => {
 };
 
 // ============================================================
-// সাপ্তাহিক ছুটি কিনা যাচাই
-// userId দিলে → সেই user-এর টিমের weekly_off_day চেক করবে
-// না দিলে → global settings থেকে নেবে
+// effective weekly off day বের করা
+// userId দিলে → সেই user-এর টিমের weekly_off_day (override) থাকলে সেটা
+// না থাকলে (বা userId না দিলে) → global settings থেকে নেবে
+// isWeeklyOff() ও attendance settings API — দুই জায়গায়ই এই একই
+// লজিক ব্যবহার করে, যাতে ক্যালেন্ডারে যা দেখায় আর চেক-ইনে যা এনফোর্স
+// হয় তার মধ্যে মিসম্যাচ না হয়
 // ============================================================
 
-const isWeeklyOff = async (date, userId = null) => {
-    const settings = await getSettings();
+const getEffectiveWeeklyOffDay = async (userId = null, tenantId) => {
+    const settings = await getSettings(tenantId);
     let offDay     = parseInt(settings.weekly_off_day || '5'); // global default
 
     // যদি userId থাকে → টিমের নিজস্ব ছুটির দিন আছে কিনা দেখো
     if (userId) {
         try {
             const { query: dbQuery } = require('../config/db');
+            // ✅ FIX: এই কোডবেসে team membership হয় সরাসরি users.team_id দিয়ে —
+            // team_members নামে আলাদা কোনো join table নেই (team.controller.js-এর
+            // বাকি সব query একই pattern ব্যবহার করে)। আগের ভার্সন এই ভুল টেবিল
+            // ধরে লেখা ছিল, তাই এই lookup প্রতিবার silently fail করে global-এ
+            // fallback করত — টিম override কখনো কার্যকর হতো না।
             const teamResult = await dbQuery(
                 `SELECT t.weekly_off_day
-                 FROM team_members tm
-                 JOIN teams t ON t.id = tm.team_id
-                 WHERE tm.worker_id = $1
+                 FROM users u
+                 JOIN teams t ON t.id = u.team_id
+                 WHERE u.id = $1
+                   AND u.role = 'worker'
                    AND t.is_active = true
                  LIMIT 1`,
                 [userId]
@@ -160,11 +175,24 @@ const isWeeklyOff = async (date, userId = null) => {
                 offDay = parseInt(teamResult.rows[0].weekly_off_day);
             }
         } catch (err) {
-            logger.warn('⚠️ টিমের weekly_off_day পড়া যায়নি, global ব্যবহার হচ্ছে:', err.message);
+            // ✅ FIX: logger দ্বিতীয় argument-এ object চায় (যেমন { err }) —
+            // string দিলে (err.message) character-by-character লগ হয়ে যায়
+            logger.warn('⚠️ টিমের weekly_off_day পড়া যায়নি, global ব্যবহার হচ্ছে', { err });
         }
     }
 
-    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    return offDay;
+};
+
+// ============================================================
+// সাপ্তাহিক ছুটি কিনা যাচাই
+// userId দিলে → সেই user-এর টিমের weekly_off_day চেক করবে
+// না দিলে → global settings থেকে নেবে
+// ============================================================
+
+const isWeeklyOff = async (date, userId = null, tenantId) => {
+    const offDay   = await getEffectiveWeeklyOffDay(userId, tenantId);
+    const dateObj  = typeof date === 'string' ? new Date(date) : date;
     return dateObj.getDay() === offDay;
 };
 
@@ -173,8 +201,8 @@ const isWeeklyOff = async (date, userId = null) => {
 // (শুক্রবার + ছুটি বাদে)
 // ============================================================
 
-const getWorkingDays = async (year, month) => {
-    const settings = await getSettings();
+const getWorkingDays = async (year, month, tenantId) => {
+    const settings = await getSettings(tenantId);
     const offDay   = parseInt(settings.weekly_off_day || '5');
 
     let holidays = [];
@@ -303,6 +331,7 @@ module.exports = {
     calculateLateDeduction,
     isHoliday,
     isWeeklyOff,
+    getEffectiveWeeklyOffDay,
     getWorkingDays,
     canCheckOut,
     updateFirebaseAttendance,

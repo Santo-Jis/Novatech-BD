@@ -2,6 +2,23 @@ const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
 
 // ============================================================
+// টিমের weekly_off_day normalize + validate
+// '' / null / undefined → null (গ্লোবাল সেটিং অনুসরণ করবে)
+// '0'..'6' → সেই সংখ্যা (নির্দিষ্ট override)
+// রিটার্ন { ok, value } — ok=false হলে ভুল ইনপুট
+// ============================================================
+const normalizeWeeklyOffDay = (raw) => {
+    if (raw === '' || raw === null || raw === undefined) {
+        return { ok: true, value: null };
+    }
+    const parsed = parseInt(raw, 10);
+    if (Number.isNaN(parsed) || parsed < 0 || parsed > 6) {
+        return { ok: false, value: null };
+    }
+    return { ok: true, value: parsed };
+};
+
+// ============================================================
 // GET ALL TEAMS (Admin)
 // GET /api/teams
 // ============================================================
@@ -14,6 +31,7 @@ const getTeams = async (req, res) => {
                 t.monthly_target,
                 t.description,
                 t.is_active,
+                t.weekly_off_day,
                 t.created_at,
                 -- ম্যানেজারের তথ্য
                 m.id            AS manager_id,
@@ -94,10 +112,15 @@ const getTeam = async (req, res) => {
 // ============================================================
 const createTeam = async (req, res) => {
     try {
-        const { name, manager_id, monthly_target = 0, description } = req.body;
+        const { name, manager_id, monthly_target = 0, description, weekly_off_day } = req.body;
 
         if (!name?.trim()) {
             return res.status(400).json({ success: false, message: 'টিমের নাম দিন।' });
+        }
+
+        const weeklyOffDay = normalizeWeeklyOffDay(weekly_off_day);
+        if (!weeklyOffDay.ok) {
+            return res.status(400).json({ success: false, message: 'সাপ্তাহিক ছুটির দিন সঠিক নয়।' });
         }
 
         // একজন ম্যানেজার শুধু একটি টিমে থাকতে পারবে (নিজের tenant-এর মধ্যে)
@@ -123,14 +146,14 @@ const createTeam = async (req, res) => {
         }
 
         const result = await query(`
-            INSERT INTO teams (name, manager_id, monthly_target, description, created_by, tenant_id) VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO teams (name, manager_id, monthly_target, description, weekly_off_day, created_by, tenant_id) VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
-        `, [name.trim(), manager_id || null, monthly_target, description || null, req.user.id, req.tenantId]);
+        `, [name.trim(), manager_id || null, monthly_target, description || null, weeklyOffDay.value, req.user.id, req.tenantId]);
 
         // Audit log
         await query(
             `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'CREATE_TEAM', 'teams', $2, $3)`,
-            [req.user.id, JSON.stringify({ name, manager_id, monthly_target }), req.tenantId]
+            [req.user.id, JSON.stringify({ name, manager_id, monthly_target, weekly_off_day: weeklyOffDay.value }), req.tenantId]
         );
 
         return res.status(201).json({
@@ -155,6 +178,18 @@ const updateTeam = async (req, res) => {
     try {
         const { id } = req.params;
         const { name, manager_id, monthly_target, description, is_active } = req.body;
+
+        // weekly_off_day আলাদাভাবে হ্যান্ডল করা হয় — body-তে key না থাকলে অপরিবর্তিত থাকবে,
+        // key থাকলে (এমনকি খালি স্ট্রিং হলেও) নতুন ভ্যালু বসবে (null মানে গ্লোবাল সেটিং অনুসরণ)
+        const bodyHasWeeklyOffDay = Object.prototype.hasOwnProperty.call(req.body, 'weekly_off_day');
+        let weeklyOffDayValue = null;
+        if (bodyHasWeeklyOffDay) {
+            const weeklyOffDay = normalizeWeeklyOffDay(req.body.weekly_off_day);
+            if (!weeklyOffDay.ok) {
+                return res.status(400).json({ success: false, message: 'সাপ্তাহিক ছুটির দিন সঠিক নয়।' });
+            }
+            weeklyOffDayValue = weeklyOffDay.value;
+        }
 
         // টিম আছে কিনা চেক
         const existing = await query('SELECT * FROM teams WHERE id = $1 AND tenant_id = $2', [id, req.tenantId]);
@@ -194,9 +229,10 @@ const updateTeam = async (req, res) => {
                 manager_id     = COALESCE($2, manager_id),
                 monthly_target = COALESCE($3, monthly_target),
                 description    = COALESCE($4, description),
-                is_active      = COALESCE($5, is_active)
-            WHERE id = $6
-             AND tenant_id = $7
+                is_active      = COALESCE($5, is_active),
+                weekly_off_day = CASE WHEN $6 THEN $7 ELSE weekly_off_day END
+            WHERE id = $8
+             AND tenant_id = $9
              RETURNING *
         `, [
             name?.trim() || null,
@@ -204,6 +240,8 @@ const updateTeam = async (req, res) => {
             monthly_target !== undefined ? monthly_target : null,
             description !== undefined ? description : null,
             is_active !== undefined ? is_active : null,
+            bodyHasWeeklyOffDay,
+            weeklyOffDayValue,
             id, req.tenantId]);
 
         // ম্যানেজার বদলালে — এই টিমের সব SR-এর manager_id অটো আপডেট

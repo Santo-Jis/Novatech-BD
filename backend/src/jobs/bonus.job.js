@@ -22,19 +22,52 @@ const runMonthlyBonusJob = async (targetYear = null, targetMonth = null) => {
 
     logger.info(`\n🎁 Bonus Job শুরু: ${year}-${String(month).padStart(2, '0')}`);
 
+    // ✅ FIX: আগে সব tenant-এর worker একসাথে প্রসেস হতো, আর working_days
+    // একবারই (tenant-blind getSettings দিয়ে) হিসাব হতো — মানে সব tenant-এর
+    // SR-দের জন্য একই working_days ব্যবহার হতো, যদিও প্রতিটা tenant-এর
+    // নিজস্ব সাপ্তাহিক-ছুটি/holiday সেটিংস আলাদা হতে পারে। এখন প্রতিটা
+    // tenant আলাদাভাবে প্রসেস হয়, নিজস্ব working_days সহ।
     try {
-        // সব active worker নাও
+        const tenants = await query(
+            `SELECT id, company_name FROM tenants WHERE status IN ('trial', 'active')`
+        );
+
+        logger.info(`🏢 মোট tenant: ${tenants.rows.length}`);
+
+        let totalBonusCount = 0;
+
+        for (const tenant of tenants.rows) {
+            totalBonusCount += await runMonthlyBonusJobForTenant(tenant, year, month);
+        }
+
+        logger.info(`\n🎁 Bonus Job সম্পন্ন (সব tenant মিলিয়ে):`);
+        logger.info(`   ✅ বোনাস প্রাপ্য: ${totalBonusCount}`);
+
+    } catch (error) {
+        logger.error('❌ Bonus Job Error', { err: error });
+    }
+};
+
+// ============================================================
+// একটা tenant-এর জন্য বোনাস হিসাব
+// রিটার্ন করে ওই tenant-এ কতজন SR বোনাস পেয়েছে
+// ============================================================
+
+const runMonthlyBonusJobForTenant = async (tenant, year, month) => {
+    try {
+        // এই tenant-এর সব active worker
         const workers = await query(
             `SELECT id, name_bn, basic_salary
              FROM users
-             WHERE role = 'worker' AND status = 'active'`
+             WHERE role = 'worker' AND status = 'active' AND tenant_id = $1`,
+            [tenant.id]
         );
 
-        logger.info(`📊 মোট SR: ${workers.rows.length}`);
+        logger.info(`📊 ${tenant.company_name} — মোট SR: ${workers.rows.length}`);
 
-        // সেই মাসের কর্মদিবস
-        const workingDays = await getWorkingDays(year, month);
-        logger.info(`📅 কর্মদিবস: ${workingDays}`);
+        // এই tenant-এর নিজস্ব সেটিংস অনুযায়ী সেই মাসের কর্মদিবস
+        const workingDays = await getWorkingDays(year, month, tenant.id);
+        logger.info(`📅 ${tenant.company_name} — কর্মদিবস: ${workingDays}`);
 
         let bonusCount = 0;
 
@@ -85,15 +118,15 @@ const runMonthlyBonusJob = async (targetYear = null, targetMonth = null) => {
                 }
 
             } catch (workerError) {
-                logger.error(`❌ ${worker.name_bn} বোনাস হিসাবে সমস্যা:`, workerError.message);
+                logger.error(`❌ ${worker.name_bn} বোনাস হিসাবে সমস্যা`, { err: workerError });
             }
         }
 
-        logger.info(`\n🎁 Bonus Job সম্পন্ন:`);
-        logger.info(`   ✅ বোনাস প্রাপ্য: ${bonusCount}`);
+        return bonusCount;
 
     } catch (error) {
-        logger.error('❌ Bonus Job Error:', error.message);
+        logger.error(`❌ ${tenant.company_name} — Bonus Job Error`, { err: error });
+        return 0;
     }
 };
 
