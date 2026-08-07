@@ -7,6 +7,7 @@ const {
     calculateLateDeduction,
     isHoliday,
     isWeeklyOff,
+    getEffectiveWeeklyOffDay,
     getWorkingDays,
     updateFirebaseAttendance,
     notifyManagerOnCheckIn,
@@ -563,6 +564,10 @@ const getAttendanceSettings = async (req, res) => {
             holidays = [];
         }
 
+        // যে user request করেছে, তার টিমের override থাকলে সেটাই দেখাও —
+        // এতে ক্যালেন্ডার UI আর actual চেক-ইন এনফোর্সমেন্ট একই দিন দেখাবে
+        const weeklyOffDay = await getEffectiveWeeklyOffDay(req.user?.id);
+
         return res.json({
             success: true,
             data: {
@@ -570,7 +575,7 @@ const getAttendanceSettings = async (req, res) => {
                 attendance_popup_cutoff:  settings.attendance_popup_cutoff  || '14:30',
                 attendance_checkin_end:   settings.attendance_checkin_end   || '10:00',
                 checkout_time:            settings.checkout_time            || '20:30',
-                weekly_off_day:           parseInt(settings.weekly_off_day  || '5'),
+                weekly_off_day:           weeklyOffDay,
                 holidays,
             }
         });
