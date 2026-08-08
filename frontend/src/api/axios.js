@@ -1,5 +1,6 @@
 import axios from 'axios'
 import toast from 'react-hot-toast'
+import { Capacitor } from '@capacitor/core'
 
 // ============================================================
 // IN-MEMORY TOKEN STORE
@@ -20,12 +21,16 @@ export const tokenStore = {
   clear: ()      => { _accessToken = null },
 }
 
-// ✅ COOKIE FIX: production-এ relative '/api' — vercel.json rewrite backend-এ proxy করে,
+// ✅ COOKIE FIX: production-এ (Vercel browser) relative '/api' — vercel.json rewrite backend-এ proxy করে,
 //    তাই refreshToken cookie same-origin থাকে, Chrome third-party cookie block এড়ানো যায়।
+// ✅ NATIVE APP FIX: Capacitor APK-তে এই rewrite নেই (server.url সেট নেই capacitor.config.json-এ),
+//    তাই native platform-এ সবসময় Render-এর পূর্ণ URL ব্যবহার করা হচ্ছে (customer app-এর মতোই ফিক্স)।
 const api = axios.create({
-  baseURL: import.meta.env.DEV
-    ? (import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
-    : '/api',
+  baseURL: Capacitor.isNativePlatform()
+    ? (import.meta.env.VITE_API_URL || 'https://novatechbd-backend.onrender.com/api')
+    : import.meta.env.DEV
+      ? (import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
+      : '/api',
   timeout: 12000,
   withCredentials: true,   // HttpOnly cookie cross-origin পাঠাতে হলে লাগবে
   headers: {

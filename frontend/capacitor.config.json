@@ -8,8 +8,8 @@
   "plugins": {
     "GoogleAuth": {
       "scopes": ["profile", "email"],
-      "serverClientId": "578352842284-taOk3taqrkv7h82nnqnvhl8n2j13kjOn.apps.googleusercontent.com",
-      "androidClientId": "PENDING_AFTER_ANDROID_APP_ADDED",
+      "serverClientId": "754818100492-34oehjcgbhhav2olugcplvrmub3epf1p.apps.googleusercontent.com",
+      "androidClientId": "PENDING_NEW_ANDROID_CLIENT_FOR_com.zovorix.customer",
       "forceCodeForRefreshToken": false
     },
     "PushNotifications": {

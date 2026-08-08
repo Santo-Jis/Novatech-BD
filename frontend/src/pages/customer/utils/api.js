@@ -1,16 +1,24 @@
 // utils/api.js
 // Backend URL এবং portalFetch (token auto-inject + 401 refresh + timeout + retry)
 
+import { Capacitor } from '@capacitor/core'
 import { portalTokenStore } from './portalTokenStore'
 
-// ✅ COOKIE FIX: production-এ relative '/api' পাথ ব্যবহার করা হচ্ছে (cross-origin URL না)।
+// ✅ COOKIE FIX: production-এ (Vercel browser) relative '/api' পাথ ব্যবহার করা হচ্ছে।
 //    Vercel-এর vercel.json rewrite এটাকে Render backend-এ proxy করে দেয়।
 //    ফলে browser-এর কাছে request same-origin মনে হয় → portal_rt cookie
 //    third-party হিসেবে ব্লক হয় না (Chrome-এর third-party cookie block বাইপাস হয়)।
 //    Dev-এ (localhost) সরাসরি backend URL লাগে যেহেতু rewrite proxy কাজ করে না।
-export const BACKEND = import.meta.env.DEV
-  ? (import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
-  : '/api'
+//
+// ✅ NATIVE APP FIX: Capacitor APK-তে কোনো Vercel rewrite নেই — app টা
+//    local bundled asset থেকে চলে (server.url সেট নেই capacitor.config.json-এ)।
+//    তাই relative '/api' APK-তে কোনো real server-এ পৌঁছায় না।
+//    native platform-এ তাই সবসময় Render-এর পূর্ণ (absolute) URL ব্যবহার করা হচ্ছে।
+export const BACKEND = Capacitor.isNativePlatform()
+  ? (import.meta.env.VITE_API_URL || 'https://novatechbd-backend.onrender.com/api')
+  : import.meta.env.DEV
+    ? (import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
+    : '/api'
 
 // ── Refresh queue ────────────────────────────────────────────
 // একসাথে একাধিক request 401 পেলে শুধু একটিই refresh call হবে,

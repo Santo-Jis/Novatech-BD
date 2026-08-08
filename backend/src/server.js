@@ -59,6 +59,7 @@ const ORIGIN_PATTERNS = RAW_ORIGINS.map(pattern => {
 // CORS browser-only mechanism — এই origins block করলে APK ভেঙে যাবে।
 const CAPACITOR_ORIGINS = [
     'capacitor://localhost',  // Capacitor v3+ Android/iOS
+    'https://localhost',      // ✅ FIX: capacitor.config.json-এ androidScheme:"https" — আসল app origin এটাই
     'http://localhost',       // Capacitor dev / older versions
     'ionic://localhost',      // Ionic fallback
 ];
