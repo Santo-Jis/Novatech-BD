@@ -3,7 +3,7 @@
 //
 // কাজ:
 //   invoice তৈরি হওয়ার পর কাস্টমারের WhatsApp-এ
-//   invoice-এর ছবি পাঠাবে।
+//   invoice-এর PDF (ডকুমেন্ট হিসেবে) পাঠাবে।
 //
 // ব্যবহার (sales.controller.js-এ):
 //   const { sendInvoiceWhatsApp } = require('../services/invoiceWhatsapp.service');
@@ -13,6 +13,7 @@
 
 const axios = require('axios');
 const logger = require('../config/logger');
+const { generateInvoicePDF } = require('./invoice.service');
 
 const BAILEYS_URL = process.env.BAILEYS_URL  || 'http://localhost:3001';
 const API_SECRET  = process.env.API_SECRET   || 'change-this-secret';
@@ -52,69 +53,45 @@ const sendInvoiceWhatsApp = async (customer, sale, worker, items) => {
         return { success: false, reason: 'invalid_phone' };
     }
 
-    // ── Invoice Data তৈরি ──
-    const invoicePayload = {
-        invoice_number:      sale.invoice_number,
-        created_at:          sale.created_at || new Date().toISOString(),
+    // ── PDF তৈরি ──
+    // আগে raw JSON পাঠিয়ে ওপাশে Puppeteer দিয়ে ছবি বানানোর প্ল্যান ছিল, কিন্তু গেটওয়ে
+    // Render ফ্রি-টায়ারে (512MB RAM) চলে বলে Chromium চালানো ঝুঁকিপূর্ণ — তাই এখানেই
+    // existing generateInvoicePDF() দিয়ে হালকা PDF বানিয়ে ডকুমেন্ট হিসেবে পাঠানো হচ্ছে।
+    let pdfBuffer;
+    try {
+        pdfBuffer = await generateInvoicePDF(sale, customer, worker, items);
+    } catch (err) {
+        logger.error(`❌ [InvoiceWA] PDF তৈরি ব্যর্থ — ${sale.invoice_number}:`, err.message);
+        return { success: false, reason: 'pdf_generation_failed', detail: err.message };
+    }
 
-        // Customer তথ্য
-        shop_name:           customer.shop_name,
-        owner_name:          customer.owner_name,
-
-        // SR তথ্য
-        sr_name:             worker?.name_bn  || worker?.name || 'SR',
-        sr_code:             worker?.employee_code || '',
-
-        // Items
-        items: (items || []).map(i => ({
-            product_name: i.product_name,
-            qty:          parseFloat(i.qty  || 0),
-            price:        parseFloat(i.price || 0),
-        })),
-
-        // Replacement items (ফেরত পণ্য)
-        replacement_items: (sale.replacement_items || []).map(i => ({
-            product_name: i.product_name,
-            qty:          parseFloat(i.qty   || 0),
-            total:        parseFloat(i.total || 0),
-        })),
-
-        // Totals
-        total_amount:        parseFloat(sale.total_amount        || 0),
-        net_amount:          parseFloat(sale.net_amount          || 0),
-        discount_amount:     parseFloat(sale.discount_amount     || 0),
-        replacement_value:   parseFloat(sale.replacement_value   || 0),
-        credit_balance_added:parseFloat(sale.credit_balance_added|| 0),
-
-        // Status
-        payment_method: sale.payment_method || 'cash',
-        otp_verified:   sale.otp_verified   || false,
-    };
-
-    // ── Baileys-এ পাঠাও ──
+    // ── Baileys গেটওয়েতে পাঠাও ──
     try {
         const response = await axios.post(
-            `${BAILEYS_URL}/send-invoice`,
+            `${BAILEYS_URL}/send-document`,
             {
-                phone:   formattedPhone,
-                invoice: invoicePayload,
+                phone:      formattedPhone,
+                base64Data: pdfBuffer.toString('base64'),
+                fileName:   `Invoice-${sale.invoice_number}.pdf`,
+                caption:    `🧾 Invoice ${sale.invoice_number} — মোট ৳${parseFloat(sale.net_amount || 0).toLocaleString('bn-BD')}`,
+                type:       'invoice_pdf',
             },
             {
-                headers:  { 'x-api-secret': API_SECRET },
-                timeout:  30_000, // Puppeteer render-এ সময় লাগে, তাই 30s
+                headers:  { 'x-api-key': API_SECRET },
+                timeout:  15_000,
             }
         );
 
         if (response.data?.success) {
-            logger.info(`✅ [InvoiceWA] Invoice ছবি পাঠানো → ${formattedPhone} (${sale.invoice_number})`);
+            logger.info(`✅ [InvoiceWA] Invoice PDF পাঠানো → ${formattedPhone} (${sale.invoice_number})`);
             return { success: true };
         } else {
-            logger.warn(`⚠️ [InvoiceWA] Baileys সাড়া দিল কিন্তু success=false:`, response.data);
-            return { success: false, reason: 'baileys_error', detail: response.data };
+            logger.warn(`⚠️ [InvoiceWA] গেটওয়ে সাড়া দিল কিন্তু success=false:`, response.data);
+            return { success: false, reason: 'gateway_error', detail: response.data };
         }
 
     } catch (err) {
-        // Baileys down বা timeout হলেও main flow বন্ধ হবে না
+        // গেটওয়ে down বা timeout হলেও main flow বন্ধ হবে না
         const status = err.response?.status;
         const detail = err.response?.data || err.message;
 
