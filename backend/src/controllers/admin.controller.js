@@ -2,6 +2,7 @@ const { query } = require('../config/db');
 const { encrypt } = require('../config/encryption');
 const logger = require('../config/logger');
 const walletService = require('../services/wallet.service');
+const billingService = require('../services/billing.service');
 
 // ============================================================
 // SETTINGS GROUPS — key গুলো বিভাগ অনুযায়ী ভাগ করা
@@ -261,6 +262,61 @@ const getWalletStatus = async (req, res) => {
     } catch (error) {
         logger.error('❌ Get Wallet Status Error:', error.message);
         return res.status(500).json({ success: false, message: 'ওয়ালেট তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// BILLING SUMMARY
+// GET /api/admin/billing/summary
+// প্ল্যান, স্ট্যাটাস (trial/active), রিনিউয়াল তারিখ, আর রোল-ভিত্তিক
+// সিট + rate_locked — Billing পেজের টপ সামারির জন্য।
+// ============================================================
+const getBillingSummary = async (req, res) => {
+    try {
+        const summary = await billingService.getBillingSummary(req.tenantId);
+
+        if (!summary) {
+            return res.status(404).json({ success: false, message: 'টেন্যান্ট তথ্য পাওয়া যায়নি।' });
+        }
+
+        return res.status(200).json({ success: true, data: summary });
+
+    } catch (error) {
+        logger.error('❌ Get Billing Summary Error:', error.message);
+        return res.status(500).json({ success: false, message: 'বিলিং তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// INVOICE HISTORY
+// GET  /api/admin/billing/invoices?page=&limit=
+// GET  /api/admin/billing/invoices/:id/pdf
+// jobs/tenantInvoice.job.js প্রতি মাসের ১ তারিখে রেকর্ড বসায়।
+// ============================================================
+const getInvoices = async (req, res) => {
+    try {
+        const { page, limit } = req.query;
+        const result = await billingService.listInvoices(req.tenantId, { page, limit });
+        return res.status(200).json({ success: true, data: result });
+    } catch (error) {
+        logger.error('❌ Get Invoices Error:', error.message);
+        return res.status(500).json({ success: false, message: 'ইনভয়েস তালিকা আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+const downloadInvoicePdf = async (req, res) => {
+    try {
+        const invoice = await billingService.getInvoiceById(req.tenantId, req.params.id);
+        if (!invoice) {
+            return res.status(404).json({ success: false, message: 'ইনভয়েস পাওয়া যায়নি।' });
+        }
+        const pdfBuffer = await billingService.generateInvoicePdfBuffer(invoice);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename="${invoice.invoice_number}.pdf"`);
+        return res.status(200).send(pdfBuffer);
+    } catch (error) {
+        logger.error('❌ Download Invoice PDF Error:', error.message);
+        return res.status(500).json({ success: false, message: 'ইনভয়েস PDF তৈরি করতে সমস্যা হয়েছে।' });
     }
 };
 
@@ -647,4 +703,7 @@ module.exports = {
     getSmsLogs,
     getPublicSettings,
     getWalletStatus,
+    getBillingSummary,
+    getInvoices,
+    downloadInvoicePdf,
 };

@@ -139,11 +139,19 @@ const upsertSeats = async (client, tenantId, plan, seatCounts) => {
   for (const role of BOOKABLE_ROLES) {
     const count = Number(seatCounts?.[role] || 0);
     if (count <= 0) continue;
+    const rateLocked = (rates[role] || 0) / 100; // ৳-এ (paisa না)
     await client.query(
       `INSERT INTO tenant_seats (tenant_id, role, seat_count, rate_locked)
        VALUES ($1, $2, $3, $4)
        ON CONFLICT (tenant_id, role) DO UPDATE SET seat_count = EXCLUDED.seat_count, rate_locked = EXCLUDED.rate_locked`,
-      [tenantId, role, count, (rates[role] || 0) / 100] // rate_locked ৳-এ (paisa না) — onboarding.controller.js-এর SEAT_RATES-ও ৳ ইউনিটে
+      [tenantId, role, count, rateLocked]
+    );
+    // নতুন: seat history লগ — jobs/tenantInvoice.job.js-এর arrears/prorated
+    // বিলিং-এর জন্য (migration_tenant_seat_history.sql)। একই ট্রানজেকশনে।
+    await client.query(
+      `INSERT INTO tenant_seat_history (tenant_id, role, seat_count, rate_locked, changed_reason)
+       VALUES ($1, $2, $3, $4, 'plan_upgrade')`,
+      [tenantId, role, count, rateLocked]
     );
   }
 };

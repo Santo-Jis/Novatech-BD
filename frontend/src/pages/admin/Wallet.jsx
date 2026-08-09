@@ -9,6 +9,7 @@ const TXN_LABELS = {
   adjustment:   { label: 'সংশোধন',        color: 'text-pf-text-secondary' },
   sms_charge:   { label: 'SMS চার্জ',      color: 'text-pf-error' },
   email_charge: { label: 'Email চার্জ',    color: 'text-pf-error' },
+  ai_charge:    { label: 'AI চার্জ',       color: 'text-pf-error' },
 }
 
 const fmtTaka = (paisa) =>

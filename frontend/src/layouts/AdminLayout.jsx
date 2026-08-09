@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
 import ErrorBoundary from '../components/ErrorBoundary'
 import NotificationBell from '../components/NotificationBell'
-import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiSend, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag, FiLink, FiTruck, FiClipboard, FiArchive } from 'react-icons/fi'
+import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiSend, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag, FiLink, FiTruck, FiClipboard, FiArchive, FiFileText } from 'react-icons/fi'
 
 // সবসময় দেখা যাবে — গ্রুপের বাইরে (ঘন ঘন ব্যবহার হয়)
 const pinnedItems = [
@@ -59,6 +59,7 @@ const navGroups = [
     label: 'Finance & Payroll',
     icon: <FiDollarSign />,
     items: [
+      { path: '/admin/billing',         icon: <FiFileText />,   label: 'বিলিং' },
       { path: '/admin/commission-pay',  icon: <FiDollarSign />, label: 'কমিশন পরিশোধ' },
       { path: '/admin/salary-pay',      icon: <FiCreditCard />, label: 'বেতন পরিশোধ' },
       { path: '/admin/credit-settings', icon: <FiCreditCard />, label: 'ক্রেডিট সেটিংস' },

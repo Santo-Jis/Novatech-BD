@@ -21,6 +21,9 @@ const {
     getSystemStats,
     getSmsLogs,
     getWalletStatus,
+    getBillingSummary,
+    getInvoices,
+    downloadInvoicePdf,
 } = require('../controllers/admin.controller');
 
 // ✅ NEW — কাস্টমার সেলফ-রেজিস্ট্রেশন লিংকের জন্য কোম্পানির slug
@@ -49,6 +52,13 @@ router.put('/settings',        auth, isAdmin, updateSettings);
 
 // ── Wallet (Admin only, READ-ONLY — রিচার্জ শুধু Super Admin করতে পারবে) ──
 router.get('/wallet',          auth, isAdmin, getWalletStatus);
+
+// ── Billing Summary (Admin only, READ-ONLY) — প্ল্যান/সিট/রিনিউয়াল ──
+router.get('/billing/summary', auth, isAdmin, getBillingSummary);
+
+// ── Invoice History (Admin only, READ-ONLY) — jobs/tenantInvoice.job.js এর রেকর্ড ──
+router.get('/billing/invoices',        auth, isAdmin, getInvoices);
+router.get('/billing/invoices/:id/pdf', auth, isAdmin, downloadInvoicePdf);
 
 // ── Audit & Stats (Admin only) ───────────────────────────────
 router.get('/audit-logs',      auth, isAdmin, getAuditLogs);

@@ -232,6 +232,14 @@ const registerCompany = async (req, res) => {
            ON CONFLICT (tenant_id, role) DO UPDATE SET seat_count = EXCLUDED.seat_count`,
           [newTenant.id, role, count, SEAT_RATES[role]]
         );
+        // নতুন: seat history লগ — jobs/tenantInvoice.job.js-এর arrears/prorated
+        // বিলিং-এর জন্য (migration_tenant_seat_history.sql)। একই ট্রানজেকশনে
+        // (client.query), atomic থাকার জন্য।
+        await client.query(
+          `INSERT INTO tenant_seat_history (tenant_id, role, seat_count, rate_locked, changed_reason)
+           VALUES ($1, $2, $3, $4, 'onboarding')`,
+          [newTenant.id, role, count, SEAT_RATES[role]]
+        );
       }
 
       // ৪. Default system_settings copy (default tenant থেকে)
