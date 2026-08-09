@@ -41,9 +41,9 @@ const sendVerifyLinkWhatsApp = async (phone, verifyToken, shopName, invoiceNumbe
 
     try {
         const res = await axios.post(
-            `${BAILEYS_URL}/send`,
-            { phone: formattedPhone, message },
-            { headers: { 'x-api-secret': API_SECRET }, timeout: 10_000 }
+            `${BAILEYS_URL}/send-message`,
+            { phone: formattedPhone, message, type: 'otp_verify_link' },
+            { headers: { 'x-api-key': API_SECRET }, timeout: 10_000 }
         );
         if (res.data?.success) {
             logger.info(`📲 [VerifyLink-WA] সফল → ${formattedPhone}`);
