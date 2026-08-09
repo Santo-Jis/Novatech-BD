@@ -593,7 +593,7 @@ const createSale = async (req, res) => {
             .then(r => logger.info('📄 Invoice SMS Fallback:', JSON.stringify(r.results)))
             .catch(e => logger.error('⚠️ Invoice নোটিফিকেশন Error:', e.message));
 
-        // ✅ WhatsApp-এ Invoice ছবি পাঠাও (Puppeteer rendered PNG)
+        // ✅ WhatsApp-এ Invoice PDF পাঠাও (ডকুমেন্ট, Puppeteer লাগে না)
         sendInvoiceWhatsApp(cust, saleResult, req.user, processedItems)
             .then(r => {
                 if (r.success) {
