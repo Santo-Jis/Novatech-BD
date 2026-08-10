@@ -10,6 +10,7 @@ const { query }      = require('../config/db');
 const { sendEmail }  = require('../services/email.service');
 const { sendPushToMany } = require('../services/fcm.service');
 const { sendCustomerNotification } = require('./customerNotification.controller');
+const { getPublicAppUrl } = require('../config/publicAppUrl');
 
 const sendCreditReminder = async (req, res) => {
     try {
@@ -62,11 +63,10 @@ const sendCreditReminder = async (req, res) => {
             return res.status(400).json({ success: false, message: 'কাস্টমারের email নেই।' });
         }
 
-        const FRONTEND_URL = process.env.FRONTEND_URL;
-        if (!FRONTEND_URL) {
-            logger.error('❌ FRONTEND_URL env variable সেট নেই।');
-            return res.status(500).json({ success: false, message: 'Server configuration error: FRONTEND_URL missing.' });
-        }
+        // ⚠️ FRONTEND_URL নয় — ওটা CORS-এর জন্য comma/wildcard ধারণ করতে পারে।
+        // getPublicAppUrl() customer-facing লিংকের জন্য clean single URL দেয়।
+        const FRONTEND_URL = getPublicAppUrl();
+
         // ✅ Fix 1: URL-এ redirect_id যাবে, token নয়
         const portalLink   = customer.portal_redirect_id
             ? `${FRONTEND_URL}/customer/portal?r=${customer.portal_redirect_id}`

@@ -13,6 +13,7 @@ const {
     getInvoiceWhatsAppMessage
 } = require('../services/invoice.service');
 const { uploadToCloudinary } = require('../services/employee.service');
+const { getPublicAppUrl } = require('../config/publicAppUrl');
 const { sendCustomerNotification } = require('./customerNotification.controller');
 
 // Firebase নোটিফিকেশন
@@ -675,7 +676,7 @@ const createSale = async (req, res) => {
                 discount_amount:      discountAmount,
                 credit_balance_used:  creditBalanceUsed,
                 credit_balance_added: creditBalanceAdded,
-                verify_link:       `${process.env.FRONTEND_URL || 'https://zovorix.com'}/verify/${saleResult.verify_token}`,
+                verify_link:       `${getPublicAppUrl()}/verify/${saleResult.verify_token}`,
                 whatsapp_link:     `https://wa.me/${(() => { const r = cust.whatsapp?.replace(/\D/g, '') || ''; return r.startsWith('880') ? r : '880' + r.replace(/^0/, ''); })()}?text=${encodeURIComponent(waLink)}`
             }
         });

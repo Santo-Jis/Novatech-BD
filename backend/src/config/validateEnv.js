@@ -90,7 +90,8 @@ const OPTIONAL = [
     // GOOGLE_CLIENT_ID → REQUIRED array-এ নিয়ে যাওয়া হয়েছে (security boundary)
     { key: 'GOOGLE_MAPS_KEY',          feature: 'Google Maps' },
     { key: 'RENDER_EXTERNAL_URL',      feature: 'Keep-Alive Ping (Render)' },
-    { key: 'FRONTEND_URL',             feature: 'CORS (default: localhost:3000)' },
+    { key: 'FRONTEND_URL',             feature: 'CORS (default: localhost:3000) — comma/wildcard চলে, single link-এ ব্যবহার হয় না' },
+    { key: 'PUBLIC_APP_URL',           feature: 'Customer-facing লিংক (WhatsApp/Email/Invoice) — single clean URL, default: novatech-bd-kqrn.vercel.app' },
     { key: 'CLAUDE_API_KEY',           feature: 'AI Insights (Claude)' },
     { key: 'API_SECRET',               feature: 'JIS-AI WhatsApp Integration (x-api-secret)' },
 ];

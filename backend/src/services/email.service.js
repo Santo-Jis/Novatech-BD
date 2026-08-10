@@ -1,6 +1,7 @@
 const logger = require('../config/logger');
 const { query } = require('../config/db');
 const walletService = require('./wallet.service');
+const { getPublicAppUrl } = require('../config/publicAppUrl');
 // nodemailer বাদ — Render SMTP block করে, তাই Brevo HTTP API ব্যবহার করা হচ্ছে
 
 // ============================================================
@@ -172,7 +173,7 @@ const sendEmail = async (to, subject, html, text = '', meta = {}) => {
 // ============================================================
 
 const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToken = null, meta = {}) => {
-    const FRONTEND_URL = process.env.FRONTEND_URL || 'https://zovorix.com';
+    const FRONTEND_URL = getPublicAppUrl();
     const verifyLink   = verifyToken ? `${FRONTEND_URL}/verify/${verifyToken}` : null;
     const subject      = verifyLink
         ? `ZovoriX — অর্ডার নিশ্চিত করুন | ${shopName}`
@@ -389,7 +390,7 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {})
 // ============================================================
 
 const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, customer, worker, items, meta = {}) => {
-    const FRONTEND_URL = process.env.FRONTEND_URL || 'https://zovorix.com';
+    const FRONTEND_URL = getPublicAppUrl();
     const verifyLink   = sale?.verify_token ? `${FRONTEND_URL}/verify/${sale.verify_token}` : null;
     const subject      = verifyLink
         ? `ZovoriX — অর্ডার নিশ্চিত করুন | Invoice ${sale.invoice_number}`

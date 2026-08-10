@@ -4,10 +4,12 @@ const logger = require('../config/logger');
 const { generateOTP } = require('../config/encryption');
 const { sendOTP, sendInvoice: sendInvoiceSMS, getWhatsAppInvoiceLink } = require('./sms.service');
 const { sendOTPEmail, sendOTPWithInvoiceEmail, sendInvoiceEmail } = require('./email.service');
+const { getPublicAppUrl } = require('../config/publicAppUrl');
 
 // ─── WhatsApp Verify Link via Baileys ──────────────────────
 const BAILEYS_URL = process.env.BAILEYS_URL   || 'http://localhost:3001';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'https://zovorix.com';
+// ⚠️ FRONTEND_URL নয় — ওটা CORS-এর জন্য comma/wildcard ধারণ করতে পারে (server.js দেখুন)।
+const FRONTEND_URL = getPublicAppUrl();
 const API_SECRET  = process.env.API_SECRET    || 'change-this-secret';
 
 const formatPhoneForWA = (phone) => {

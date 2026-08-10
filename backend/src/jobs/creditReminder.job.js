@@ -12,6 +12,7 @@ const { query } = require('../config/db');
 const { sendEmail }          = require('../services/email.service');
 const { sendPushToMany }     = require('../services/fcm.service');
 const { sendCustomerNotification } = require('../controllers/customerNotification.controller');
+const { getPublicAppUrl } = require('../config/publicAppUrl');
 
 // ============================================================
 // EMAIL TEMPLATE — কাস্টমারের বাকি reminder
@@ -163,7 +164,8 @@ const runCreditReminderJob = async () => {
 
         logger.info(`📋 ${customers.length} জন কাস্টমারের বাকি আছে`);
 
-        const FRONTEND_URL = process.env.FRONTEND_URL || 'https://zovorix-kqrn.vercel.app';
+        // ⚠️ FRONTEND_URL নয় — ওটা CORS-এর জন্য comma/wildcard ধারণ করতে পারে।
+        const FRONTEND_URL = getPublicAppUrl();
         let emailSent = 0, pushSent = 0;
 
         for (const customer of customers) {

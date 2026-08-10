@@ -19,6 +19,7 @@ const logger          = require('../config/logger');
 const PDFDocument     = require('pdfkit');
 const { invalidatePortalAuthCache } = require('../services/portalCache.service');
 const { generateCustomerCode, uploadToCloudinary } = require('../services/employee.service');
+const { getPublicAppUrl } = require('../config/publicAppUrl');
 // (DEFAULT_TENANT_ID import সরানো হলো — এখন এই ফাইলে আর দরকার নেই,
 // selfRegisterCustomer এখন tenant-agnostic persons row তৈরি করে)
 
@@ -126,7 +127,10 @@ const sendPortalLink = async (req, res) => {
             [customerId, generatePortalToken(), generateRedirectId()]
         );
 
-        const frontendUrl = process.env.FRONTEND_URL || 'https://zovorix-kqrn.vercel.app';
+        // ⚠️ FRONTEND_URL সরাসরি ব্যবহার করা হয় না — ওটা CORS-এর জন্য
+        // comma/wildcard ধারণ করতে পারে (দেখুন server.js), যা এখানে সরাসরি
+        // বসালে লিংক ভেঙে যায়। getPublicAppUrl() একটা clean single URL দেয়।
+        const frontendUrl = getPublicAppUrl();
 
         // ✅ NEW: ?c=customer_code — permanent, কখনো expire হয় না
         const portalLink = `${frontendUrl}/customer-login?c=${cust.customer_code}`;
