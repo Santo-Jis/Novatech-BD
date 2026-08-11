@@ -128,7 +128,7 @@ const query = async (text, params) => {
         // Production:  1000ms threshold (performance debug-এর জন্য)
         const slowThreshold = process.env.NODE_ENV === 'production' ? 1000 : 500;
         if (duration > slowThreshold) {
-            logger.warn(`⚠️ Slow Query [${process.env.NODE_ENV}] (${duration}ms):`, text);
+            logger.warn(`⚠️ Slow Query [${process.env.NODE_ENV}] (${duration}ms)`, { query: text, params });
         }
 
         return result;

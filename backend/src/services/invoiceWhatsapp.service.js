@@ -100,7 +100,7 @@ const sendInvoiceWhatsApp = async (customer, sale, worker, items) => {
         } else if (err.code === 'ECONNABORTED') {
             logger.warn(`⚠️ [InvoiceWA] Timeout — ${sale.invoice_number}`);
         } else {
-            logger.error(`❌ [InvoiceWA] Error — ${sale.invoice_number}:`, detail);
+            logger.error(`❌ [InvoiceWA] Error — ${sale.invoice_number}:`, { detail });
         }
 
         return { success: false, reason: err.code || 'request_error', detail };
