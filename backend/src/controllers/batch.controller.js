@@ -16,7 +16,8 @@ const getBatches = async (req, res) => {
             status = 'all',
             expiring_within_days = 30,
             search,
-            batch_status // ✅ Phase ২: 'quarantine,damaged' এর মতো কমা-সেপারেটেড লাইফসাইকেল ফিল্টার
+            batch_status, // ✅ Phase ২: 'quarantine,damaged' এর মতো কমা-সেপারেটেড লাইফসাইকেল ফিল্টার
+            warehouse_id  // ✅ মাল্টি-ওয়্যারহাউজ ধাপ ৩
         } = req.query;
 
         const conditions = [`b.tenant_id = $1`, `b.quantity > 0`];
@@ -27,6 +28,12 @@ const getBatches = async (req, res) => {
             paramCount++;
             conditions.push(`b.product_id = $${paramCount}`);
             params.push(product_id);
+        }
+
+        if (warehouse_id) {
+            paramCount++;
+            conditions.push(`b.warehouse_id = $${paramCount}`);
+            params.push(warehouse_id);
         }
 
         if (search) {
@@ -51,16 +58,17 @@ const getBatches = async (req, res) => {
 
         const result = await query(
             `SELECT b.*, p.name AS product_name, p.sku, p.unit, p.cost_price,
-                    s.name AS supplier_name, po.po_number,
+                    s.name AS supplier_name, po.po_number, wh.name AS warehouse_name,
                     ROUND(b.quantity * COALESCE(b.unit_cost, p.cost_price, 0), 2) AS stock_value,
                     CASE
                         WHEN b.expiry_date IS NULL THEN NULL
                         ELSE (b.expiry_date - CURRENT_DATE)
                     END AS days_to_expiry
              FROM product_batches b
-             JOIN products p            ON p.id  = b.product_id
-             LEFT JOIN suppliers s       ON s.id  = b.supplier_id
+             JOIN products p             ON p.id  = b.product_id
+             LEFT JOIN suppliers s        ON s.id  = b.supplier_id
              LEFT JOIN purchase_orders po ON po.id = b.purchase_order_id
+             LEFT JOIN warehouses wh      ON wh.id = b.warehouse_id
              WHERE ${conditions.join(' AND ')}
              ORDER BY (b.expiry_date IS NULL), b.expiry_date ASC, b.created_at ASC`,
             params
@@ -84,6 +92,15 @@ const getBatches = async (req, res) => {
 // ============================================================
 const getBatchSummary = async (req, res) => {
     try {
+        const { warehouse_id } = req.query; // ✅ মাল্টি-ওয়্যারহাউজ ধাপ ৩ — ঐচ্ছিক
+
+        const conditions = [`b.tenant_id = $1`, `b.quantity > 0`];
+        const params      = [req.tenantId];
+        if (warehouse_id) {
+            conditions.push(`b.warehouse_id = $${params.length + 1}`);
+            params.push(warehouse_id);
+        }
+
         const result = await query(
             `SELECT
                 COUNT(*) FILTER (WHERE b.expiry_date IS NOT NULL AND b.expiry_date < CURRENT_DATE)                                AS expired_count,
@@ -99,8 +116,8 @@ const getBatchSummary = async (req, res) => {
                 COALESCE(ROUND(SUM(b.quantity * COALESCE(b.unit_cost, p.cost_price, 0)) FILTER (WHERE b.status IN ('quarantine', 'damaged')), 2), 0) AS issues_value
              FROM product_batches b
              JOIN products p ON p.id = b.product_id
-             WHERE b.tenant_id = $1 AND b.quantity > 0`,
-            [req.tenantId]
+             WHERE ${conditions.join(' AND ')}`,
+            params
         );
 
         return res.status(200).json({ success: true, data: result.rows[0] });
@@ -122,12 +139,13 @@ const getBatchMovements = async (req, res) => {
 
         const batchResult = await query(
             `SELECT b.*, p.name AS product_name, p.sku, p.unit, p.cost_price,
-                    s.name AS supplier_name, po.po_number,
+                    s.name AS supplier_name, po.po_number, wh.name AS warehouse_name,
                     ROUND(b.quantity * COALESCE(b.unit_cost, p.cost_price, 0), 2) AS stock_value
              FROM product_batches b
-             JOIN products p            ON p.id  = b.product_id
-             LEFT JOIN suppliers s       ON s.id  = b.supplier_id
+             JOIN products p             ON p.id  = b.product_id
+             LEFT JOIN suppliers s        ON s.id  = b.supplier_id
              LEFT JOIN purchase_orders po ON po.id = b.purchase_order_id
+             LEFT JOIN warehouses wh      ON wh.id = b.warehouse_id
              WHERE b.id = $1 AND b.tenant_id = $2`,
             [id, req.tenantId]
         );
@@ -250,6 +268,18 @@ const updateBatchStatus = async (req, res) => {
                     `UPDATE products SET stock = GREATEST(0, stock - $1), updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
                     [quantityAdjusted, batch.product_id, req.tenantId]
                 );
+
+                // ✅ per-warehouse স্টক: এই ব্যাচ যে গুদামে ছিল, সেই গুদামের
+                // warehouse_stock থেকেও সমান পরিমাণ বাদ যাবে (products.stock-এর সাথে সিঙ্ক)
+                if (batch.warehouse_id) {
+                    await client.query(
+                        `INSERT INTO warehouse_stock (tenant_id, warehouse_id, product_id, quantity, updated_at)
+                         VALUES ($1, $2, $3, 0, NOW())
+                         ON CONFLICT (warehouse_id, product_id)
+                         DO UPDATE SET quantity = GREATEST(0, warehouse_stock.quantity - $4), updated_at = NOW()`,
+                        [req.tenantId, batch.warehouse_id, batch.product_id, quantityAdjusted]
+                    );
+                }
 
                 // audit — stock_movements
                 await client.query(

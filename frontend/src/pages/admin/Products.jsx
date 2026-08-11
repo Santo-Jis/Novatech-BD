@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import api from '../../api/axios'
 import Table from '../../components/ui/Table'
 import Button from '../../components/ui/Button'
-import Input, { Textarea } from '../../components/ui/Input'
+import Input, { Textarea, Select } from '../../components/ui/Input'
 import Modal from '../../components/ui/Modal'
 import StockMovementsModal from '../../components/StockMovementsModal'
 import ProductImportModal from '../../components/ProductImportModal'
@@ -173,9 +173,15 @@ export default function AdminProducts() {
   const [movProduct, setMovProduct] = useState(null)
   const [importOpen, setImportOpen] = useState(false)
 
+  // ✅ Products/POS গুদাম-ফিল্টার
+  const [warehouses,      setWarehouses]      = useState([])
+  const [warehouseFilter, setWarehouseFilter] = useState('')
+
   const fetchProducts = async () => {
     try {
-      const res = await api.get('/products?is_active=true')
+      const params = new URLSearchParams({ is_active: 'true' })
+      if (warehouseFilter) params.set('warehouse_id', warehouseFilter)
+      const res = await api.get(`/products?${params.toString()}`)
       setProducts(res.data.data)
     } catch { toast.error('তথ্য আনতে সমস্যা হয়েছে।') }
     finally { setLoading(false) }
@@ -188,7 +194,16 @@ export default function AdminProducts() {
     } catch { /* ক্যাটাগরি লোড না হলেও প্রডাক্ট পেজ কাজ করবে */ }
   }
 
-  useEffect(() => { fetchProducts(); fetchCategories() }, [])
+  // ✅ Products/POS গুদাম-ফিল্টার
+  const fetchWarehouses = async () => {
+    try {
+      const res = await api.get('/warehouses?is_active=true')
+      setWarehouses(res.data.data)
+    } catch { /* ফিল্টার ড্রপডাউন খালি থাকবে, বাকি পেইজ কাজ করবে */ }
+  }
+
+  useEffect(() => { fetchCategories(); fetchWarehouses() }, [])
+  useEffect(() => { fetchProducts() }, [warehouseFilter])
 
   const quickAddCategory = async () => {
     const name = window.prompt('নতুন ক্যাটাগরির নাম লিখুন:')
@@ -373,17 +388,28 @@ export default function AdminProducts() {
       title: 'স্টক',
       render: (_, row) => (
         <div>
-          <span className={`font-bold ${row.is_low_stock ? 'text-red-600' : 'text-gray-800 dark:text-gray-100'}`}>
-            {row.available_stock}
-          </span>
-          <span className="text-xs text-gray-400"> / {row.stock} {row.unit}</span>
-          {parseInt(row.reserved_stock) > 0 && (
-            <p className="text-xs text-amber-600">রিজার্ভ: {row.reserved_stock}</p>
-          )}
-          {row.is_low_stock && (
-            <p className="text-[10px] font-semibold text-red-600 bg-red-50 dark:bg-red-900/20 inline-block px-1.5 py-0.5 rounded-full mt-0.5">
-              ⚠️ Low Stock
-            </p>
+          {warehouseFilter ? (
+            // ✅ গুদাম ফিল্টার সক্রিয় থাকলে সেই নির্দিষ্ট গুদামের পরিমাণ দেখাও
+            <>
+              <span className="font-bold text-gray-800 dark:text-gray-100">{row.warehouse_stock_qty}</span>
+              <span className="text-xs text-gray-400"> {row.unit}</span>
+              <p className="text-[11px] text-gray-400">সব গুদাম মিলিয়ে: {row.stock}</p>
+            </>
+          ) : (
+            <>
+              <span className={`font-bold ${row.is_low_stock ? 'text-red-600' : 'text-gray-800 dark:text-gray-100'}`}>
+                {row.available_stock}
+              </span>
+              <span className="text-xs text-gray-400"> / {row.stock} {row.unit}</span>
+              {parseInt(row.reserved_stock) > 0 && (
+                <p className="text-xs text-amber-600">রিজার্ভ: {row.reserved_stock}</p>
+              )}
+              {row.is_low_stock && (
+                <p className="text-[10px] font-semibold text-red-600 bg-red-50 dark:bg-red-900/20 inline-block px-1.5 py-0.5 rounded-full mt-0.5">
+                  ⚠️ Low Stock
+                </p>
+              )}
+            </>
           )}
         </div>
       )
@@ -442,9 +468,15 @@ export default function AdminProducts() {
   // ─── RENDER ─────────────────────────────────────────────────
   return (
     <div className="space-y-5 animate-fade-in">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100">পণ্য ব্যবস্থাপনা</h1>
         <div className="flex items-center gap-2">
+          <Select
+            options={warehouses.map(w => ({ value: w.id, label: w.name }))}
+            value={warehouseFilter}
+            onChange={e => setWarehouseFilter(e.target.value)}
+            className="w-44"
+          />
           <Button variant="outline" icon={<FiUpload />} onClick={() => setImportOpen(true)}>বাল্ক ইম্পোর্ট</Button>
           <Button icon={<FiPlus />} onClick={openAdd}>নতুন পণ্য</Button>
         </div>

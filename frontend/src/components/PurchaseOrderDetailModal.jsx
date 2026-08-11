@@ -110,7 +110,10 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
               </div>
               <div>
                 <p className="font-semibold text-gray-800 dark:text-gray-100">{po.supplier_name}</p>
-                <p className="text-xs text-gray-400">অর্ডার: {fmtDate(po.order_date)} {po.expected_date && `· প্রত্যাশিত: ${fmtDate(po.expected_date)}`}</p>
+                <p className="text-xs text-gray-400">
+                  অর্ডার: {fmtDate(po.order_date)} {po.expected_date && `· প্রত্যাশিত: ${fmtDate(po.expected_date)}`}
+                  {po.warehouse_name && ` · গুদাম: ${po.warehouse_name}`}
+                </p>
               </div>
             </div>
             <Badge variant={STATUS_CFG[po.status]?.variant} label={STATUS_CFG[po.status]?.label} />

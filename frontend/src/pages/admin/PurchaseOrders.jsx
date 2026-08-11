@@ -39,10 +39,11 @@ export default function AdminPurchaseOrders() {
 
   const [suppliers, setSuppliers] = useState([])
   const [products,  setProducts]  = useState([])
+  const [warehouses, setWarehouses] = useState([]) // ✅ মাল্টি-ওয়্যারহাউজ ধাপ ৪
   const [supplierProductMap, setSupplierProductMap] = useState({}) // { product_id: {unit_price, lead_time_days} } — বর্তমানে বাছাই করা সাপ্লায়ারের দাম-ম্যাপিং
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [form, setForm] = useState({ supplier_id: '', order_date: '', expected_date: '', notes: '' })
+  const [form, setForm] = useState({ supplier_id: '', warehouse_id: '', order_date: '', expected_date: '', notes: '' })
   const [items, setItems] = useState([{ ...EMPTY_ITEM }])
   const [saving, setSaving] = useState(false)
 
@@ -76,7 +77,15 @@ export default function AdminPurchaseOrders() {
     } catch { /* একইভাবে সামলানো */ }
   }
 
-  useEffect(() => { fetchSuppliers(); fetchProducts() }, [])
+  // ✅ মাল্টি-ওয়্যারহাউজ ধাপ ৪
+  const fetchWarehouses = async () => {
+    try {
+      const res = await api.get('/warehouses?is_active=true')
+      setWarehouses(res.data.data)
+    } catch { /* ফর্মে গুদাম ড্রপডাউন খালি থাকবে, বাকি সব কাজ করবে */ }
+  }
+
+  useEffect(() => { fetchSuppliers(); fetchProducts(); fetchWarehouses() }, [])
   useEffect(() => { fetchPOs(1) }, [statusFilter, supplierFilter, search])
 
   // সাপ্লায়ার বদলালে সেই সাপ্লায়ারের দাম-ম্যাপিং লোড — item row-এ পণ্য বাছাইয়ের সময় auto-suggest-এ ব্যবহৃত হবে
@@ -94,10 +103,14 @@ export default function AdminPurchaseOrders() {
 
   const supplierOptions = suppliers.map(s => ({ value: s.id, label: s.name }))
   const productOptions  = products.map(p => ({ value: p.id, label: `${p.name} (${p.sku})` }))
+  const warehouseOptions = warehouses.map(w => ({ value: w.id, label: w.name })) // ✅ মাল্টি-ওয়্যারহাউজ ধাপ ৪
 
   // ── Create Modal হ্যান্ডলার ──
   const openCreate = () => {
-    setForm({ supplier_id: '', order_date: '', expected_date: '', notes: '' })
+    // ডিফল্ট গুদাম প্রি-সিলেক্ট করা থাকবে (না দিলেও ব্যাকএন্ড এমনিতেই ডিফল্ট বসিয়ে দেয়,
+    // কিন্তু ফর্মে দেখানো থাকলে অ্যাডমিন সহজে বদলে নিতে পারবে)
+    const defaultWarehouseId = warehouses.find(w => w.is_default)?.id || ''
+    setForm({ supplier_id: '', warehouse_id: defaultWarehouseId, order_date: '', expected_date: '', notes: '' })
     setItems([{ ...EMPTY_ITEM }])
     setSupplierProductMap({})
     setCreateOpen(true)
@@ -237,12 +250,21 @@ export default function AdminPurchaseOrders() {
       {/* ══════ CREATE MODAL ══════ */}
       <Modal isOpen={createOpen} onClose={() => setCreateOpen(false)} title="➕ নতুন Purchase Order" size="lg">
         <div className="space-y-4">
-          <Select
-            label="সাপ্লায়ার *"
-            options={supplierOptions}
-            value={form.supplier_id}
-            onChange={e => setForm(prev => ({ ...prev, supplier_id: e.target.value }))}
-          />
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="সাপ্লায়ার *"
+              options={supplierOptions}
+              value={form.supplier_id}
+              onChange={e => setForm(prev => ({ ...prev, supplier_id: e.target.value }))}
+            />
+            <Select
+              label="গুদাম"
+              options={warehouseOptions}
+              value={form.warehouse_id}
+              onChange={e => setForm(prev => ({ ...prev, warehouse_id: e.target.value }))}
+              hint="না বাছলে ডিফল্ট গুদাম বসবে"
+            />
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Input label="অর্ডার তারিখ" type="date" value={form.order_date} onChange={e => setForm(prev => ({ ...prev, order_date: e.target.value }))} />

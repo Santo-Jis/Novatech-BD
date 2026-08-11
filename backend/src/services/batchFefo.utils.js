@@ -24,10 +24,14 @@
  * @param {string} opts.referenceType    - stock_movements.reference_type (যেমন 'order')
  * @param {string} opts.createdBy        - stock_movements.created_by (req.user.id)
  * @param {string} [opts.note]
+ * @param {string} [opts.warehouseId]    - ✅ মাল্টি-ওয়্যারহাউজ: দেওয়া থাকলে শুধু এই
+ *   গুদামের ব্যাচ থেকেই কনজিউম হবে (+ warehouse_id NULL এমন লিগ্যাসি ব্যাচ, যদি থাকে)।
+ *   না দিলে আগের আচরণ — tenant-এর সব গুদাম জুড়ে FEFO (single-warehouse ব্যবহারকারীদের
+ *   জন্য অপরিবর্তিত থাকে)।
  * @returns {Promise<{consumed: Array<{batch_id: string, quantity: number}>, untracked: number}>}
  */
 async function consumeBatchesFEFO(client, {
-    tenantId, productId, qty, referenceId, referenceType, createdBy, note
+    tenantId, productId, qty, referenceId, referenceType, createdBy, note, warehouseId
 }) {
     const consumed = [];
     let remaining = parseInt(qty, 10) || 0;
@@ -36,13 +40,24 @@ async function consumeBatchesFEFO(client, {
     // FEFO অর্ডার: expiry_date যার নেই সে সবার পরে, তারপর যার expiry সবচেয়ে কাছে সে আগে
     // ✅ Phase ২: শুধু status='active' ব্যাচ থেকে বের হবে — quarantine/damaged/
     // written_off/returned_to_supplier ব্যাচ থেকে ভুলবশত বিক্রি হবে না
+    // ✅ মাল্টি-ওয়্যারহাউজ: warehouseId দেওয়া থাকলে শুধু সেই গুদামের ব্যাচ থেকেই বের
+    // হবে — নাহলে Warehouse A-এর অর্ডার ভুলবশত Warehouse B-এর ব্যাচ কমিয়ে দিতে পারত
+    // (warehouse_stock আর product_batches-এর হিসাব আলাদা হয়ে যেত)
     // FOR UPDATE — একই সময়ে একাধিক approval একই ব্যাচ থেকে ওভার-কনজিউম না করে
+    const params = [tenantId, productId];
+    let warehouseCondition = '';
+    if (warehouseId) {
+        params.push(warehouseId);
+        warehouseCondition = `AND (warehouse_id = $3 OR warehouse_id IS NULL)`;
+    }
+
     const batchResult = await client.query(
         `SELECT id, quantity FROM product_batches
          WHERE tenant_id = $1 AND product_id = $2 AND quantity > 0 AND status = 'active'
+         ${warehouseCondition}
          ORDER BY (expiry_date IS NULL), expiry_date ASC, created_at ASC
          FOR UPDATE`,
-        [tenantId, productId]
+        params
     );
 
     for (const batch of batchResult.rows) {

@@ -1,5 +1,6 @@
 const logger = require('../config/logger');
 const { query } = require('../config/db');
+const { adjustDefaultWarehouseStock } = require('../services/warehouseStock.utils'); // ← per-warehouse স্টক ধাপ ৪
 
 // ============================================================
 // GET PRODUCTS
@@ -8,7 +9,7 @@ const { query } = require('../config/db');
 
 const getProducts = async (req, res) => {
     try {
-        const { search, is_active = true } = req.query;
+        const { search, is_active = true, warehouse_id } = req.query; // ✅ warehouse_id: per-warehouse স্টক
 
         let conditions = [`p.is_active = $1`, `p.tenant_id = $2`];
         let params     = [is_active, req.tenantId];
@@ -18,6 +19,16 @@ const getProducts = async (req, res) => {
             paramCount++;
             conditions.push(`(p.name ILIKE $${paramCount} OR p.sku ILIKE $${paramCount})`);
             params.push(`%${search}%`);
+        }
+
+        let warehouseJoin = '';
+        let warehouseSelect = '';
+        if (warehouse_id) {
+            paramCount++;
+            // LEFT JOIN — যে গুদামে কোনো ট্র্যাক করা এন্ট্রি নেই তার জন্যও পণ্য দেখাতে হবে (০ হিসেবে)
+            warehouseJoin = `LEFT JOIN warehouse_stock ws ON ws.product_id = p.id AND ws.warehouse_id = $${paramCount}`;
+            warehouseSelect = `, COALESCE(ws.quantity, 0) AS warehouse_stock_qty`;
+            params.push(warehouse_id);
         }
 
         const result = await query(
@@ -40,8 +51,10 @@ const getProducts = async (req, res) => {
                     p.cost_price, p.brand, p.category_id, p.reorder_point,
                     c.name AS category_name, c.name_bn AS category_name_bn,
                     (p.stock <= COALESCE(p.reorder_point, 0)) AS is_low_stock
+                    ${warehouseSelect}
              FROM products p
              LEFT JOIN product_categories c ON c.id = p.category_id
+             ${warehouseJoin}
              WHERE ${conditions.join(' AND ')}
              ORDER BY p.name ASC`,
             params
@@ -160,6 +173,11 @@ const createProduct = async (req, res) => {
                 `INSERT INTO stock_movements (product_id, movement_type, quantity, reference_type, note, created_by, tenant_id) VALUES ($1, 'in', $2, 'manual', 'প্রারম্ভিক স্টক', $3, $4)`,
                 [result.rows[0].id, stock, req.user.id, req.tenantId]
             );
+            // ✅ per-warehouse স্টক ধাপ ৪: প্রোডাক্ট তৈরির ফর্মে গুদাম বাছার UI
+            // এখনো নেই, তাই ডিফল্ট গুদামে প্রারম্ভিক স্টক ক্রেডিট হচ্ছে
+            await adjustDefaultWarehouseStock(query, {
+                tenantId: req.tenantId, productId: result.rows[0].id, delta: stock
+            });
         }
 
         return res.status(201).json({
@@ -282,6 +300,11 @@ const adjustStock = async (req, res) => {
             'UPDATE products SET stock = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3',
             [newStock, productId, req.tenantId]
         );
+        // ✅ per-warehouse স্টক ধাপ ৪: ম্যানুয়াল অ্যাডজাস্টমেন্টে গুদাম বাছার UI এখনো
+        // নেই, তাই ডিফল্ট গুদামে সিঙ্ক করা হচ্ছে (quantity ঋণাত্মক হলে ডেবিট হবে)
+        await adjustDefaultWarehouseStock(query, {
+            tenantId: req.tenantId, productId, delta: parseInt(quantity)
+        });
 
         await query(
             `INSERT INTO stock_movements (product_id, movement_type, quantity, reference_type, note, created_by, tenant_id) VALUES ($1, $2, $3, 'manual', $4, $5, $6)`,

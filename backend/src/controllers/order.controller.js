@@ -121,11 +121,21 @@ const createOrder = async (req, res) => {
         // Transaction এর মধ্যে সব করো - যেকোনো error হলে rollback
         let orderId;
         await withTransaction(async (client) => {
+            // ✅ per-warehouse স্টক গ্যাপ-ফিক্স: নতুন অর্ডারে warehouse_id সেট না
+            // থাকলে approveOrder()-এ warehouse_stock ডেবিট বাদ পড়ে যেত (products.stock
+            // ঠিকই কমত, কিন্তু warehouse_stock stale থেকে যেত)। SR এখনো গুদাম বাছে না,
+            // তাই ডিফল্ট গুদাম ধরা হচ্ছে।
+            const defaultWarehouse = await client.query(
+                `SELECT id FROM warehouses WHERE tenant_id = $1 AND is_default = true LIMIT 1`,
+                [req.tenantId]
+            );
+            const warehouseId = defaultWarehouse.rows[0]?.id || null;
+
             // অর্ডার সেভ
             const result = await client.query(
-                `INSERT INTO orders (worker_id, items, total_amount, note, tenant_id) VALUES ($1, $2, $3, $4, $5)
+                `INSERT INTO orders (worker_id, items, total_amount, note, tenant_id, warehouse_id) VALUES ($1, $2, $3, $4, $5, $6)
                  RETURNING id`,
-                [workerId, JSON.stringify(orderItems), totalAmount, note || null, req.tenantId]
+                [workerId, JSON.stringify(orderItems), totalAmount, note || null, req.tenantId, warehouseId]
             );
 
             orderId = result.rows[0].id;
@@ -457,6 +467,19 @@ const approveOrder = async (req, res) => {
                     [item.approved_qty, origQty, item.product_id, req.tenantId]
                 );
 
+                // ✅ per-warehouse স্টক ধাপ ৩: এটাই আসল ওয়্যারহাউজ-আউট ঘটনা (উপরের কমেন্ট
+                // দ্রষ্টব্য — sales.controller.js আর stock টাচ করে না)। products.stock-এর
+                // পাশাপাশি এই অর্ডারের গুদাম থেকেও সমান পরিমাণ বিয়োগ হচ্ছে।
+                if (order.rows[0].warehouse_id && item.approved_qty > 0) {
+                    await client.query(
+                        `INSERT INTO warehouse_stock (tenant_id, warehouse_id, product_id, quantity, updated_at)
+                         VALUES ($1, $2, $3, 0, NOW())
+                         ON CONFLICT (warehouse_id, product_id)
+                         DO UPDATE SET quantity = GREATEST(0, warehouse_stock.quantity - $4), updated_at = NOW()`,
+                        [req.tenantId, order.rows[0].warehouse_id, item.product_id, item.approved_qty]
+                    );
+                }
+
                 // ─── Step ৪: FEFO ব্যাচ কনজাম্পশন ──────────────
                 // এখানেই আসল ওয়্যারহাউজ স্টক SR-কে ইস্যু হচ্ছে (sales.controller.js
                 // এই স্টক আবার টাচ করে না — শুধু audit রাখে)। তাই batch deduction-ও
@@ -469,7 +492,8 @@ const approveOrder = async (req, res) => {
                         referenceId:   id,
                         referenceType: 'order',
                         createdBy:     req.user.id,
-                        note:          `অর্ডার অনুমোদন — SR-কে ইস্যু`
+                        note:          `অর্ডার অনুমোদন — SR-কে ইস্যু`,
+                        warehouseId:   order.rows[0].warehouse_id // ✅ মাল্টি-ওয়্যারহাউজ: সঠিক গুদামের ব্যাচ থেকেই কমবে
                     });
                 }
             }

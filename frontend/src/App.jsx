@@ -101,11 +101,11 @@ const AdminProducts          = IS_CUSTOMER_APP ? null : lazy(() => import('./pag
 const AdminSuppliers         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Suppliers'))
 const AdminPurchaseOrders    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PurchaseOrders'))
 const AdminBatches           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Batches'))
+const AdminWarehouses        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Warehouses'))
 const AdminPriceLists        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PriceLists'))
 const AdminNotices           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Notices'))
 const AuditLogs              = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AuditLogs'))
 const AdminWallet            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Wallet'))
-const AdminBilling           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Billing'))
 const PortalReturnRequests   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PortalReturnRequests'))
 const CustomerRequestsPage   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/CustomerRequestsPage'))
 const SRRecruitmentDashboard = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/SRRecruitmentDashboard'))
@@ -515,10 +515,10 @@ function AppWithPermissions() {
                 <Route path="suppliers"         element={<AdminSuppliers />} />
                 <Route path="purchase-orders"   element={<AdminPurchaseOrders />} />
                 <Route path="batches"           element={<AdminBatches />} />
+                <Route path="warehouses"        element={<AdminWarehouses />} />
                 <Route path="price-lists"       element={<AdminPriceLists />} />
                 <Route path="audit-logs"        element={<AuditLogs />} />
                 <Route path="wallet"            element={<AdminWallet />} />
-                <Route path="billing"           element={<AdminBilling />} />
                 <Route path="portal-returns"    element={<PortalReturnRequests />} />
                 <Route path="customer-requests" element={<CustomerRequestsPage />} />
                 <Route path="credit-settings"   element={<AdminCreditSettings />} />

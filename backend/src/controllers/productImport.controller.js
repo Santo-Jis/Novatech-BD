@@ -1,5 +1,6 @@
 const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
+const { adjustDefaultWarehouseStock } = require('../services/warehouseStock.utils'); // ← per-warehouse স্টক ধাপ ৪
 const { parseCSV, rowsToObjects, buildCSV } = require('../services/csv.utils');
 const {
     TEMPLATE_HEADERS,
@@ -278,6 +279,11 @@ const commitImport = async (req, res) => {
                         } catch (movErr) {
                             logger.warn('⚠️ Import stock_movement লগ ব্যর্থ:', movErr.message);
                         }
+                        // ✅ per-warehouse স্টক ধাপ ৪: বাল্ক ইম্পোর্টে গুদাম বাছার UI
+                        // এখনো নেই, তাই ডিফল্ট গুদামে প্রারম্ভিক স্টক ক্রেডিট হচ্ছে
+                        await adjustDefaultWarehouseStock(query, {
+                            tenantId, productId: inserted.rows[0].id, delta: d.stock
+                        });
                     }
                     created++;
                 }

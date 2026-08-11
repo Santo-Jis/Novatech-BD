@@ -1,4 +1,4 @@
-// Batches.jsx — ব্যাচ ও মেয়াদ ব্যবস্থাপনা (Step ৪ + Phase ১ + Phase ২ + Phase ৩)
+// Batches.jsx — ব্যাচ ও মেয়াদ ব্যবস্থাপনা (Step ৪ + Phase ১ + Phase ২ + Phase ৩ + মাল্টি-ওয়্যারহাউজ ধাপ ৫)
 // Purchase Order রিসিভ করার সময় ব্যাচ/মেয়াদ দেওয়া থাকলে এখানে দেখা যাবে।
 // FEFO অনুযায়ী (নিকটতম মেয়াদ আগে, শুধু active ব্যাচ) সাজানো।
 //
@@ -8,12 +8,13 @@
 //          অ্যাডজাস্টমেন্ট অডিট হিস্ট্রি
 // Phase ৩: রিকল রিপোর্ট (ব্যাচ → SR বিতরণ, order-level), লস ট্রেন্ড চার্ট,
 //          ব্যাচ-ট্র্যাকিং কভারেজ % (honest FEFO-compliance proxy)
+// মাল্টি-ওয়্যারহাউজ ধাপ ৫: গুদাম কলাম, গুদাম ফিল্টার ড্রপডাউন, ড্রয়ারে গুদামের নাম
 
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import Table from '../../components/ui/Table'
 import Badge, { KPICard } from '../../components/ui/Badge'
-import Input, { Textarea } from '../../components/ui/Input'
+import Input, { Textarea, Select } from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import toast from 'react-hot-toast'
@@ -21,7 +22,7 @@ import {
   FiArchive, FiAlertTriangle, FiClock, FiSearch, FiDownload, FiEye,
   FiArrowDown, FiArrowUp, FiRotateCcw, FiDollarSign, FiPauseCircle,
   FiAlertOctagon, FiTrash2, FiCornerUpLeft, FiRefreshCw, FiTruck,
-  FiUsers, FiTrendingUp, FiShield
+  FiUsers, FiTrendingUp, FiShield, FiBox
 } from 'react-icons/fi'
 import {
   ResponsiveContainer, ComposedChart, Bar, Line, XAxis, YAxis,
@@ -110,6 +111,10 @@ export default function AdminBatches() {
   const [search,   setSearch]   = useState('')
   const [exporting, setExporting] = useState(false)
 
+  // ✅ মাল্টি-ওয়্যারহাউজ ধাপ ৫
+  const [warehouses,     setWarehouses]     = useState([])
+  const [warehouseFilter, setWarehouseFilter] = useState('')
+
   // ব্যাচ ডিটেইল ড্রয়ার
   const [drawerBatch, setDrawerBatch] = useState(null) // list থেকে নির্বাচিত row (তাৎক্ষণিক প্রিভিউর জন্য)
   const [drawerData,  setDrawerData]  = useState(null) // API থেকে { batch, movements, adjustments }
@@ -135,6 +140,7 @@ export default function AdminBatches() {
     const params = new URLSearchParams({ status: tab === 'issues' ? 'all' : tab, ...extra })
     if (tab === 'issues') params.set('batch_status', 'quarantine,damaged')
     if (search.trim()) params.set('search', search.trim())
+    if (warehouseFilter) params.set('warehouse_id', warehouseFilter)
     return params
   }
 
@@ -149,16 +155,26 @@ export default function AdminBatches() {
 
   const fetchSummary = async () => {
     try {
-      const res = await api.get('/batches/summary')
+      const params = warehouseFilter ? `?warehouse_id=${warehouseFilter}` : ''
+      const res = await api.get(`/batches/summary${params}`)
       setSummary(res.data.data)
     } catch { /* সাইলেন্ট — সামারি ফেইল করলে মূল লিস্ট এখনো দেখা যাবে */ }
   }
 
-  useEffect(() => { fetchSummary() }, [])
+  // ✅ মাল্টি-ওয়্যারহাউজ ধাপ ৫
+  const fetchWarehouses = async () => {
+    try {
+      const res = await api.get('/warehouses')
+      setWarehouses(res.data.data)
+    } catch { /* ফিল্টার ড্রপডাউন খালি থাকবে, বাকি পেইজ কাজ করবে */ }
+  }
+
+  useEffect(() => { fetchWarehouses() }, [])
+  useEffect(() => { fetchSummary() }, [warehouseFilter])
   useEffect(() => {
     const t = setTimeout(fetchBatches, 250) // সার্চ ডিবাউন্স
     return () => clearTimeout(t)
-  }, [tab, search])
+  }, [tab, search, warehouseFilter])
 
   const openDrawer = async (row) => {
     setDrawerBatch(row)
@@ -286,6 +302,12 @@ export default function AdminBatches() {
         ? <span className="text-sm text-gray-600 dark:text-gray-300">{row.supplier_name}</span>
         : <span className="text-xs text-gray-300">—</span>
     },
+    {
+      title: 'গুদাম',
+      render: (_, row) => row.warehouse_name
+        ? <span className="text-sm text-gray-600 dark:text-gray-300">{row.warehouse_name}</span>
+        : <span className="text-xs text-gray-300">—</span>
+    },
     { title: 'পরিমাণ', render: (_, row) => <span className="font-semibold">{row.quantity} {row.unit}</span> },
     {
       title: 'স্টক মূল্য',
@@ -374,13 +396,21 @@ export default function AdminBatches() {
             </button>
           ))}
         </div>
-        <Input
-          icon={<FiSearch />}
-          placeholder="পণ্য, SKU বা ব্যাচ নং খুঁজুন"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="w-64"
-        />
+        <div className="flex items-center gap-2">
+          <Select
+            options={warehouses.map(w => ({ value: w.id, label: w.name }))}
+            value={warehouseFilter}
+            onChange={e => setWarehouseFilter(e.target.value)}
+            className="w-44"
+          />
+          <Input
+            icon={<FiSearch />}
+            placeholder="পণ্য, SKU বা ব্যাচ নং খুঁজুন"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="w-64"
+          />
+        </div>
       </div>
 
       <Table
@@ -444,6 +474,12 @@ export default function AdminBatches() {
               <div>
                 <p className="text-gray-400 text-xs">PO নং</p>
                 <p className="font-mono text-gray-700 dark:text-gray-200">{drawerData.batch.po_number || '—'}</p>
+              </div>
+              <div>
+                <p className="text-gray-400 text-xs">গুদাম</p>
+                <p className="text-gray-700 dark:text-gray-200 flex items-center gap-1">
+                  {drawerData.batch.warehouse_name ? <><FiBox className="text-gray-400" /> {drawerData.batch.warehouse_name}</> : '—'}
+                </p>
               </div>
               <div>
                 <p className="text-gray-400 text-xs">উৎপাদন তারিখ</p>

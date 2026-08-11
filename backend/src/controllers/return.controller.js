@@ -2,6 +2,7 @@ const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
 const { calcFromProduct } = require('../services/price.utils');
 const { addLedgerEntry } = require('./ledger.controller');
+const { adjustDefaultWarehouseStock } = require('../services/warehouseStock.utils'); // ← per-warehouse স্টক ধাপ ৪
 
 // ============================================================
 // POST /api/return/submit
@@ -377,6 +378,11 @@ const completeReturn = async (req, res) => {
              AND tenant_id = $3`,
                     [qty, item.product_id, req.tenantId]
                 );
+                // ✅ per-warehouse স্টক ধাপ ৪: কাস্টমার রিটার্ন সাধারণত ডিফল্ট
+                // (একমাত্র বাস্তব রিসিভিং পয়েন্ট) গুদামেই ফেরত যায় ধরে নেওয়া হচ্ছে
+                await adjustDefaultWarehouseStock(client, {
+                    tenantId: req.tenantId, productId: item.product_id, delta: qty
+                });
             }
 
             return updated;

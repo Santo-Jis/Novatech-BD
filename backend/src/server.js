@@ -59,7 +59,6 @@ const ORIGIN_PATTERNS = RAW_ORIGINS.map(pattern => {
 // CORS browser-only mechanism — এই origins block করলে APK ভেঙে যাবে।
 const CAPACITOR_ORIGINS = [
     'capacitor://localhost',  // Capacitor v3+ Android/iOS
-    'https://localhost',      // ✅ FIX: capacitor.config.json-এ androidScheme:"https" — আসল app origin এটাই
     'http://localhost',       // Capacitor dev / older versions
     'ionic://localhost',      // Ionic fallback
 ];
@@ -168,6 +167,7 @@ const categoryRoutes    = require('./routes/category.routes');
 const supplierRoutes    = require('./routes/supplier.routes');
 const purchaseOrderRoutes = require('./routes/purchaseOrder.routes');
 const batchRoutes         = require('./routes/batch.routes');       // ← নতুন (Step ৪: Batch/Expiry + FEFO)
+const warehouseRoutes      = require('./routes/warehouse.routes');   // ← নতুন (মাল্টি-ওয়্যারহাউজ ধাপ ২)
 const priceListRoutes     = require('./routes/priceList.routes');   // ← নতুন (Step ৫: মাল্টিপল প্রাইস লিস্ট)
 const orderRoutes       = require('./routes/order.routes');
 const salesRoutes       = require('./routes/sales.routes');
@@ -229,6 +229,7 @@ app.use('/api/categories',  categoryRoutes);
 app.use('/api/suppliers',        supplierRoutes);
 app.use('/api/purchase-orders',  purchaseOrderRoutes);
 app.use('/api/batches',          batchRoutes);
+app.use('/api/warehouses',       warehouseRoutes);
 app.use('/api/price-lists',      priceListRoutes);
 app.use('/api/orders',      orderRoutes);
 app.use('/api/sales',       salesRoutes);
@@ -356,7 +357,6 @@ const { scheduleCreditReminderJob } = require('./jobs/creditReminder.job');
 const { startReservedStockJob }     = require('./jobs/reservedStock.job');
 const { startSessionCleanupJob }    = require('./jobs/sessionCleanup.job');
 const { startNotificationScheduleJob } = require('./jobs/notificationSchedule.job');   // ← নতুন
-const { startTenantInvoiceJob }      = require('./jobs/tenantInvoice.job');   // ← নতুন (বিলিং)
 
 
 // ============================================================
@@ -409,7 +409,6 @@ seedPlatformStaffFromEnv();
         startReservedStockJob();
         startSessionCleanupJob();
         startNotificationScheduleJob();   // ← নতুন
-        startTenantInvoiceJob();   // ← নতুন (বিলিং)
 
         logger.info('✅ Background jobs চালু হয়েছে');
 

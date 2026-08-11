@@ -1,6 +1,7 @@
 const { query, withTransaction } = require('../config/db');
 const { calcFromProduct }        = require('../services/price.utils');
 const { getResolvedPrices }      = require('../services/priceList.utils'); // ← নতুন (Step ৫: মাল্টিপল প্রাইস লিস্ট)
+const { adjustDefaultWarehouseStock } = require('../services/warehouseStock.utils'); // ← per-warehouse স্টক ধাপ ৪
 const { generateOTP }            = require('../config/encryption');
 const crypto                     = require('crypto');
 const logger = require('../config/logger');
@@ -545,6 +546,11 @@ const createSale = async (req, res) => {
              AND tenant_id = $3`,
                     [item.qty, item.product_id, req.tenantId]
                 );
+                // ✅ per-warehouse স্টক ধাপ ৪: এখানে সুনির্দিষ্ট গুদাম জানা নেই
+                // (SR-এর হাতে থাকা রিপ্লেসমেন্ট), তাই ডিফল্ট গুদামে ক্রেডিট
+                await adjustDefaultWarehouseStock(client, {
+                    tenantId: req.tenantId, productId: item.product_id, delta: item.qty
+                });
                 await client.query(
                     `INSERT INTO stock_movements (product_id, movement_type, quantity, reference_id, reference_type, note, created_by, tenant_id) VALUES ($1, 'returned', $2, $3, 'sale', 'রিপ্লেসমেন্ট ফেরত', $4, $5)`,
                     [item.product_id, item.qty, result.rows[0].id, req.user.id, req.tenantId]

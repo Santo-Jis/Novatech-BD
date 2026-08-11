@@ -61,10 +61,11 @@ const getPurchaseOrders = async (req, res) => {
         const offsetNum = (Math.max(parseInt(page, 10) || 1, 1) - 1) * limitNum;
 
         const result = await query(
-            `SELECT po.*, s.name AS supplier_name,
+            `SELECT po.*, s.name AS supplier_name, w.name AS warehouse_name,
                     (SELECT COUNT(*) FROM purchase_order_items poi WHERE poi.purchase_order_id = po.id) AS item_count
              FROM purchase_orders po
              JOIN suppliers s ON s.id = po.supplier_id
+             LEFT JOIN warehouses w ON w.id = po.warehouse_id
              WHERE ${conditions.join(' AND ')}
              ORDER BY po.created_at DESC
              LIMIT ${limitNum} OFFSET ${offsetNum}`,
@@ -98,10 +99,12 @@ const getPurchaseOrders = async (req, res) => {
 const getPurchaseOrder = async (req, res) => {
     try {
         const poResult = await query(
-            `SELECT po.*, s.name AS supplier_name, s.phone AS supplier_phone, u.name_bn AS created_by_name
+            `SELECT po.*, s.name AS supplier_name, s.phone AS supplier_phone, u.name_bn AS created_by_name,
+                    w.name AS warehouse_name
              FROM purchase_orders po
              JOIN suppliers s ON s.id = po.supplier_id
              LEFT JOIN users u ON u.id = po.created_by
+             LEFT JOIN warehouses w ON w.id = po.warehouse_id
              WHERE po.id = $1 AND po.tenant_id = $2`,
             [req.params.id, req.tenantId]
         );
@@ -137,6 +140,7 @@ const getPurchaseOrder = async (req, res) => {
 const createPurchaseOrder = async (req, res) => {
     try {
         const { supplier_id, order_date, expected_date, notes, items } = req.body;
+        let { warehouse_id } = req.body;
 
         if (!supplier_id) {
             return res.status(400).json({ success: false, message: 'সাপ্লায়ার বাছাই করুন।' });
@@ -152,6 +156,25 @@ const createPurchaseOrder = async (req, res) => {
         );
         if (supplierCheck.rows.length === 0) {
             return res.status(400).json({ success: false, message: 'সাপ্লায়ার পাওয়া যায়নি।' });
+        }
+
+        // ✅ মাল্টি-ওয়্যারহাউজ ধাপ ৩: warehouse_id দেওয়া না থাকলে tenant-এর ডিফল্ট
+        // গুদাম বসানো হবে (Step ১ মাইগ্রেশনে প্রতিটা tenant-এর জন্য একটা ডিফল্ট
+        // "প্রধান গুদাম" গ্যারান্টিড আছে, তাই এই lookup কখনো ফাঁকা আসবে না)
+        if (warehouse_id) {
+            const warehouseCheck = await query(
+                `SELECT id FROM warehouses WHERE id = $1 AND tenant_id = $2 AND is_active = true`,
+                [warehouse_id, req.tenantId]
+            );
+            if (warehouseCheck.rows.length === 0) {
+                return res.status(400).json({ success: false, message: 'গুদাম পাওয়া যায়নি বা নিষ্ক্রিয়।' });
+            }
+        } else {
+            const defaultWarehouse = await query(
+                `SELECT id FROM warehouses WHERE tenant_id = $1 AND is_default = true`,
+                [req.tenantId]
+            );
+            warehouse_id = defaultWarehouse.rows[0]?.id || null;
         }
 
         // প্রতিটা আইটেম যাচাই
@@ -191,13 +214,13 @@ const createPurchaseOrder = async (req, res) => {
                 po = await withTransaction(async (client) => {
                     const poInsert = await client.query(
                         `INSERT INTO purchase_orders
-                            (tenant_id, po_number, supplier_id, status, order_date, expected_date, notes, total_amount, created_by)
-                         VALUES ($1, $2, $3, 'draft', COALESCE($4, CURRENT_DATE), $5, $6, $7, $8)
+                            (tenant_id, po_number, supplier_id, status, order_date, expected_date, notes, total_amount, created_by, warehouse_id)
+                         VALUES ($1, $2, $3, 'draft', COALESCE($4, CURRENT_DATE), $5, $6, $7, $8, $9)
                          RETURNING *`,
                         [
                             req.tenantId, poNumber, supplier_id,
                             order_date || null, expected_date || null, notes || null,
-                            totalAmount, req.user.id
+                            totalAmount, req.user.id, warehouse_id
                         ]
                     );
                     const poRow = poInsert.rows[0];
@@ -247,7 +270,17 @@ const updatePurchaseOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: 'শুধু ড্রাফট অবস্থার Purchase Order সম্পাদনা করা যায়।' });
         }
 
-        const { supplier_id, order_date, expected_date, notes, items } = req.body;
+        const { supplier_id, order_date, expected_date, notes, items, warehouse_id } = req.body;
+
+        if (warehouse_id) {
+            const warehouseCheck = await query(
+                `SELECT id FROM warehouses WHERE id = $1 AND tenant_id = $2 AND is_active = true`,
+                [warehouse_id, req.tenantId]
+            );
+            if (warehouseCheck.rows.length === 0) {
+                return res.status(400).json({ success: false, message: 'গুদাম পাওয়া যায়নি বা নিষ্ক্রিয়।' });
+            }
+        }
 
         let totalAmount = existing.rows[0].total_amount;
         let cleanItems  = null;
@@ -273,14 +306,15 @@ const updatePurchaseOrder = async (req, res) => {
                     expected_date = $3,
                     notes         = $4,
                     total_amount  = $5,
+                    warehouse_id  = COALESCE($6, warehouse_id),
                     updated_at    = NOW()
-                 WHERE id = $6 AND tenant_id = $7
+                 WHERE id = $7 AND tenant_id = $8
                  RETURNING *`,
                 [
                     supplier_id ?? null, order_date ?? null,
                     expected_date ?? existing.rows[0].expected_date,
                     notes ?? existing.rows[0].notes,
-                    totalAmount, req.params.id, req.tenantId
+                    totalAmount, warehouse_id ?? null, req.params.id, req.tenantId
                 ]
             );
 
@@ -422,6 +456,20 @@ const receivePurchaseOrder = async (req, res) => {
                     [newStock, newCost, item.product_id, req.tenantId]
                 );
 
+                // ✅ per-warehouse স্টক ধাপ ২: products.stock-এর পাশাপাশি (সমান্তরাল)
+                // warehouse_stock-এও এই PO-র গুদামে ক্রেডিট করা হচ্ছে। এই আপডেট ব্যর্থ
+                // হলেও products.stock ইতোমধ্যে আপডেট হয়ে গেছে, তাই মূল ফ্লো অক্ষত থাকবে —
+                // কিন্তু আমরা একই ট্রানজ্যাকশনে থাকায় দুটো একসাথেই কমিট/রোলব্যাক হবে।
+                if (po.warehouse_id) {
+                    await client.query(
+                        `INSERT INTO warehouse_stock (tenant_id, warehouse_id, product_id, quantity, updated_at)
+                         VALUES ($1, $2, $3, $4, NOW())
+                         ON CONFLICT (warehouse_id, product_id)
+                         DO UPDATE SET quantity = warehouse_stock.quantity + $4, updated_at = NOW()`,
+                        [req.tenantId, po.warehouse_id, item.product_id, qtyNow]
+                    );
+                }
+
                 // ৩. স্টক মুভমেন্ট লগ
                 // Step ৪ (Batch/Expiry): batch_id নিচে ব্যাচ তৈরি হলে সেট হবে, না হলে NULL থাকবে
                 // (batch tracking ঐচ্ছিক — সব পণ্যের জন্য batch/expiry না দিলেও রিসিভ করা যায়)
@@ -433,8 +481,8 @@ const receivePurchaseOrder = async (req, res) => {
                     const batchResult = await client.query(
                         `INSERT INTO product_batches
                             (tenant_id, product_id, batch_number, quantity, manufacture_date, expiry_date, received_at,
-                             status, unit_cost, supplier_id, purchase_order_id)
-                         VALUES ($1, $2, $3, $4, $5, $6, NOW(), 'active', $7, $8, $9)
+                             status, unit_cost, supplier_id, purchase_order_id, warehouse_id)
+                         VALUES ($1, $2, $3, $4, $5, $6, NOW(), 'active', $7, $8, $9, $10)
                          RETURNING id`,
                         [
                             req.tenantId,
@@ -445,7 +493,8 @@ const receivePurchaseOrder = async (req, res) => {
                             entry.expiry_date || null,
                             unitCost,
                             po.supplier_id || null,
-                            po.id
+                            po.id,
+                            po.warehouse_id || null
                         ]
                     );
                     batchId = batchResult.rows[0].id;
