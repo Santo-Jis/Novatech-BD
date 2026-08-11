@@ -61,6 +61,7 @@ const CAPACITOR_ORIGINS = [
     'capacitor://localhost',  // Capacitor v3+ Android/iOS
     'http://localhost',       // Capacitor dev / older versions
     'ionic://localhost',      // Ionic fallback
+    'https://localhost',      // ✅ FIX: capacitor.config.json-এ androidScheme:"https" — আসল app origin এটাই
 ];
 
 function isOriginAllowed(origin) {
@@ -357,6 +358,7 @@ const { scheduleCreditReminderJob } = require('./jobs/creditReminder.job');
 const { startReservedStockJob }     = require('./jobs/reservedStock.job');
 const { startSessionCleanupJob }    = require('./jobs/sessionCleanup.job');
 const { startNotificationScheduleJob } = require('./jobs/notificationSchedule.job');   // ← নতুন
+const { startTenantInvoiceJob }      = require('./jobs/tenantInvoice.job');   // ← নতুন (বিলিং)
 
 
 // ============================================================
@@ -409,6 +411,7 @@ seedPlatformStaffFromEnv();
         startReservedStockJob();
         startSessionCleanupJob();
         startNotificationScheduleJob();   // ← নতুন
+        startTenantInvoiceJob();   // ← নতুন (বিলিং)
 
         logger.info('✅ Background jobs চালু হয়েছে');
 
