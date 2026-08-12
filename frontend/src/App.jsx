@@ -37,6 +37,7 @@ const WorkerLayout  = IS_CUSTOMER_APP ? null : lazy(() => import('./layouts/Work
 const CustomerPortal = lazy(() => import('./pages/customer/CustomerPortal'))
 const CustomerAIChat = lazy(() => import('./pages/customer/CustomerAIChat'))
 const CustomerSelfRegister = lazy(() => import('./pages/customer/CustomerSelfRegister'))
+const CustomerForgotPassword = lazy(() => import('./pages/customer/CustomerForgotPassword'))
 const ComingSoonView = lazy(() => import('./pages/customer/ComingSoonView'))
 
 // Auth / Public
@@ -378,6 +379,7 @@ function AppWithPermissions() {
           <Route path="/"                       element={<HomeRedirect />} />
           <Route path="/customer-login"         element={<CustomerPortal />} />
           <Route path="/customer-register"      element={<CustomerSelfRegister />} />
+          <Route path="/customer-forgot-password" element={<CustomerForgotPassword />} />
           <Route path="/customer-portal"        element={<Navigate to="/customer/dashboard" replace />} />
           <Route path="/portal-oauth-callback"  element={<PortalOAuthCallback />} />
 

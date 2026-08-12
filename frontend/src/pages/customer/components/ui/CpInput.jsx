@@ -13,7 +13,7 @@ import { forwardRef } from 'react'
 import clsx from 'clsx'
 
 const CpInput = forwardRef(function CpInput(
-  { label, error, icon: Icon, className = '', containerClassName = '', ...rest },
+  { label, error, icon: Icon, rightElement, className = '', containerClassName = '', ...rest },
   ref
 ) {
   return (
@@ -36,12 +36,18 @@ const CpInput = forwardRef(function CpInput(
             'w-full h-12 rounded-xl border bg-white font-cp-body text-cp-text-primary',
             'placeholder:text-cp-text-muted transition-colors',
             'focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500',
-            Icon ? 'pl-11 pr-4' : 'px-4',
+            Icon ? 'pl-11' : 'pl-4',
+            rightElement ? 'pr-11' : 'pr-4',
             error ? 'border-cp-error' : 'border-cp-border',
             className
           )}
           {...rest}
         />
+        {rightElement && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+            {rightElement}
+          </div>
+        )}
       </div>
       {error && <span className="text-xs text-cp-error font-cp-body">{error}</span>}
     </div>

@@ -4,7 +4,8 @@
 // ফ্লো: ৬ ধাপের wizard (FB/Instagram-স্টাইল)
 //   ১. দোকানের পরিচিতি   (shop_name, business_type — দুটোই আবশ্যক)
 //   ২. মালিকের তথ্য      (owner_name, date_of_birth — দুটোই আবশ্যক, ন্যূনতম বয়স ১৫)
-//   ৩. যোগাযোগ তথ্য      (whatsapp আবশ্যক, sms_phone/email ঐচ্ছিক)
+//   ৩. যোগাযোগ তথ্য      (whatsapp আবশ্যক + OTP verification বাধ্যতামূলক;
+//                          password আবশ্যক, sms_phone/email ঐচ্ছিক)
 //   ৪. প্রোফাইল ছবি       (ঐচ্ছিক, স্কিপ করা যায়)
 //   ৫. দোকানের ছবি        (ঐচ্ছিক, স্কিপ করা যায়)
 //   ৬. রিভিউ ও সাবমিট     (সব তথ্য দেখিয়ে চূড়ান্ত সাবমিট)
@@ -218,13 +219,91 @@ export default function CustomerSelfRegister() {
     shop_name: '', business_type: '',
     owner_name: '', dob_day: '', dob_month: '', dob_year: '',
     whatsapp: '', sms_phone: '', email: '',
+    password: '', confirm_password: '',
   })
+  const [showPw, setShowPw] = useState(false)
+
+  // ── WhatsApp OTP verification (রেজিস্ট্রেশনে বাধ্যতামূলক) ────
+  const [waOtpSent,   setWaOtpSent]   = useState(false)
+  const [waOtpSending, setWaOtpSending] = useState(false)
+  const [waOtp,       setWaOtp]       = useState('')
+  const [waVerifying, setWaVerifying] = useState(false)
+  const [waVerified,  setWaVerified]  = useState(false)
+  const [waVerifyToken, setWaVerifyToken] = useState('')
+  const [waError,     setWaError]     = useState('')
   const [profileFile, setProfileFile] = useState(null)
   const [shopFile, setShopFile] = useState(null)
   const [profilePreview, setProfilePreview] = useState(null)
   const [shopPreview, setShopPreview] = useState(null)
 
   const set = (key) => (e) => setForm(p => ({ ...p, [key]: e.target.value }))
+
+  // WhatsApp নম্বর বদলালে আগের verification আর কার্যকর না — রিসেট করতে হবে
+  const setWhatsapp = (e) => {
+    const val = e.target.value
+    setForm(p => ({ ...p, whatsapp: val }))
+    if (waVerified || waOtpSent) {
+      setWaVerified(false)
+      setWaOtpSent(false)
+      setWaOtp('')
+      setWaVerifyToken('')
+      setWaError('')
+    }
+  }
+
+  const handleSendWaOtp = async () => {
+    setWaError('')
+    if (!/^01[0-9]{9}$/.test(form.whatsapp.trim())) {
+      setWaError('সঠিক WhatsApp নম্বর দিন (01XXXXXXXXX)।')
+      return
+    }
+    setWaOtpSending(true)
+    try {
+      const res = await fetch(`${BACKEND}/portal/send-register-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ whatsapp: form.whatsapp.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        setWaError(data.message || 'OTP পাঠানো যায়নি। আবার চেষ্টা করুন।')
+        return
+      }
+      setWaOtpSent(true)
+      setWaOtp('')
+    } catch {
+      setWaError('নেটওয়ার্ক সমস্যা হয়েছে। আবার চেষ্টা করুন।')
+    } finally {
+      setWaOtpSending(false)
+    }
+  }
+
+  const handleVerifyWaOtp = async () => {
+    setWaError('')
+    if (waOtp.trim().length < 4) {
+      setWaError('সঠিক OTP কোড দিন।')
+      return
+    }
+    setWaVerifying(true)
+    try {
+      const res = await fetch(`${BACKEND}/portal/verify-register-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ whatsapp: form.whatsapp.trim(), otp: waOtp.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        setWaError(data.message || 'OTP মিলছে না অথবা মেয়াদ শেষ হয়ে গেছে।')
+        return
+      }
+      setWaVerified(true)
+      setWaVerifyToken(data.verify_token)
+    } catch {
+      setWaError('নেটওয়ার্ক সমস্যা হয়েছে। আবার চেষ্টা করুন।')
+    } finally {
+      setWaVerifying(false)
+    }
+  }
 
   const currentYear = new Date().getFullYear()
   const years  = useMemo(() => Array.from({ length: 90 }, (_, i) => currentYear - MIN_AGE - i), [currentYear])
@@ -261,6 +340,9 @@ export default function CustomerSelfRegister() {
     }
     if (step === 2) {
       if (!/^01[0-9]{9}$/.test(form.whatsapp.trim())) return 'সঠিক WhatsApp নম্বর দিন (01XXXXXXXXX)।'
+      if (!waVerified) return 'WhatsApp নম্বর OTP দিয়ে যাচাই করুন।'
+      if (form.password.length < 6) return 'ন্যূনতম ৬ ডিজিট/অক্ষরের পাসওয়ার্ড দিন।'
+      if (form.password !== form.confirm_password) return 'পাসওয়ার্ড ও কনফার্ম পাসওয়ার্ড মিলছে না।'
     }
     return ''
   }
@@ -289,6 +371,9 @@ export default function CustomerSelfRegister() {
       fd.append('owner_name', form.owner_name.trim())
       fd.append('date_of_birth', dobString())
       fd.append('whatsapp', form.whatsapp.trim())
+      fd.append('whatsapp_verify_token', waVerifyToken)
+      fd.append('password', form.password)
+      fd.append('confirm_password', form.confirm_password)
       if (form.sms_phone.trim()) fd.append('sms_phone', form.sms_phone.trim())
       if (form.email.trim()) fd.append('email', form.email.trim())
       if (profileFile) fd.append('profile_photo', profileFile)
@@ -375,14 +460,124 @@ export default function CustomerSelfRegister() {
             {/* ── ধাপ ৩: যোগাযোগ তথ্য ── */}
             {step === 2 && (
               <>
-                <Field label="WhatsApp নম্বর" required>
-                  <input style={inputStyle} type="tel" value={form.whatsapp} onChange={set('whatsapp')} placeholder="01XXXXXXXXX" />
+                <Field
+                  label="WhatsApp নম্বর"
+                  required
+                  hint={waVerified ? null : 'এই নম্বরে OTP পাঠিয়ে যাচাই করা আবশ্যক'}
+                >
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <input
+                      style={{
+                        ...inputStyle, flex: 1,
+                        // এই ফাইলের C প্যালেটে কোনো success/green নেই — তাই সরাসরি hex
+                        ...(waVerified ? { borderColor: '#0E9B6C', background: '#F0FBF6' } : {}),
+                      }}
+                      type="tel"
+                      value={form.whatsapp}
+                      onChange={setWhatsapp}
+                      placeholder="01XXXXXXXXX"
+                      disabled={waOtpSending || waVerifying}
+                    />
+                    {!waVerified && (
+                      <button
+                        type="button"
+                        onClick={handleSendWaOtp}
+                        disabled={waOtpSending || !/^01[0-9]{9}$/.test(form.whatsapp.trim())}
+                        style={{
+                          flexShrink: 0, padding: '0 16px', borderRadius: 10, border: 'none',
+                          background: waOtpSending || !/^01[0-9]{9}$/.test(form.whatsapp.trim()) ? C.primary300 : C.primary900,
+                          color: '#fff', fontSize: 12.5, fontWeight: 700, fontFamily: FONT_BODY,
+                          cursor: waOtpSending ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {waOtpSending ? 'পাঠানো হচ্ছে...' : waOtpSent ? 'আবার পাঠান' : 'OTP পাঠান'}
+                      </button>
+                    )}
+                    {waVerified && (
+                      <span style={{
+                        flexShrink: 0, display: 'flex', alignItems: 'center', gap: 4,
+                        color: '#0E9B6C', fontSize: 12.5, fontWeight: 700, fontFamily: FONT_BODY, padding: '0 6px',
+                      }}>
+                        ✓ যাচাই হয়েছে
+                      </span>
+                    )}
+                  </div>
+
+                  {waOtpSent && !waVerified && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                      <input
+                        style={{ ...inputStyle, flex: 1 }}
+                        type="text"
+                        inputMode="numeric"
+                        maxLength={6}
+                        value={waOtp}
+                        onChange={(e) => setWaOtp(e.target.value.replace(/\D/g, ''))}
+                        placeholder="৬ ডিজিটের OTP (WhatsApp-এ পাঠানো হয়েছে)"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleVerifyWaOtp}
+                        disabled={waVerifying || waOtp.trim().length < 4}
+                        style={{
+                          flexShrink: 0, padding: '0 16px', borderRadius: 10, border: 'none',
+                          background: waVerifying || waOtp.trim().length < 4 ? C.accent300 : C.accent600,
+                          color: '#fff', fontSize: 12.5, fontWeight: 700, fontFamily: FONT_BODY,
+                          cursor: waVerifying ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {waVerifying ? '...' : 'যাচাই করুন'}
+                      </button>
+                    </div>
+                  )}
+
+                  {waError && (
+                    <p style={{ color: C.error, fontSize: 11.5, margin: '8px 0 0', fontFamily: FONT_BODY }}>{waError}</p>
+                  )}
                 </Field>
+
                 <Field label="SMS নম্বর (ঐচ্ছিক)">
                   <input style={inputStyle} type="tel" value={form.sms_phone} onChange={set('sms_phone')} placeholder="আলাদা হলে দিন" />
                 </Field>
                 <Field label="Email (ঐচ্ছিক)">
                   <input style={inputStyle} type="email" value={form.email} onChange={set('email')} placeholder="you@example.com" />
+                </Field>
+
+                <div style={{ height: 1, background: C.borderDefault, margin: '20px 0 18px' }} />
+                <p style={{ color: C.primary700, fontSize: 13.5, fontWeight: 700, margin: '0 0 4px', fontFamily: FONT_HEAD }}>
+                  🔒 লগইন পাসওয়ার্ড
+                </p>
+                <p style={{ color: C.textMuted, fontSize: 11.5, margin: '0 0 14px', fontFamily: FONT_BODY, lineHeight: 1.5 }}>
+                  এই পাসওয়ার্ড দিয়ে Google ছাড়াও (উপরের WhatsApp নম্বর অথবা Email দিয়ে) পোর্টালে ঢুকতে পারবেন।
+                </p>
+                <Field label="পাসওয়ার্ড" required hint="ন্যূনতম ৬ ডিজিট/অক্ষর">
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      style={{ ...inputStyle, paddingRight: 46 }}
+                      type={showPw ? 'text' : 'password'}
+                      value={form.password}
+                      onChange={set('password')}
+                      placeholder="নতুন পাসওয়ার্ড দিন"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPw(s => !s)}
+                      aria-label={showPw ? 'পাসওয়ার্ড লুকান' : 'পাসওয়ার্ড দেখান'}
+                      style={{ position: 'absolute', right: 4, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 17, padding: 8, color: C.textMuted }}
+                    >
+                      {showPw ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+                </Field>
+                <Field label="পাসওয়ার্ড আবার লিখুন" required>
+                  <input
+                    style={inputStyle}
+                    type={showPw ? 'text' : 'password'}
+                    value={form.confirm_password}
+                    onChange={set('confirm_password')}
+                    placeholder="পাসওয়ার্ড আবার লিখুন"
+                    autoComplete="new-password"
+                  />
                 </Field>
               </>
             )}
@@ -434,6 +629,7 @@ export default function CustomerSelfRegister() {
                 <ReviewRow label="WhatsApp" value={form.whatsapp} onEdit={() => setStep(2)} />
                 {form.sms_phone && <ReviewRow label="SMS নম্বর" value={form.sms_phone} onEdit={() => setStep(2)} />}
                 {form.email && <ReviewRow label="Email" value={form.email} onEdit={() => setStep(2)} />}
+                <ReviewRow label="পাসওয়ার্ড" value="●●●●●●●● (সেট করা হয়েছে)" onEdit={() => setStep(2)} />
 
                 {shopPreview && (
                   <div style={{ marginTop: 16 }}>

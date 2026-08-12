@@ -20,7 +20,7 @@
 // ✅ পুরনো token-link ভিত্তিক 'login'/'invalid' phase ও তাদের ভিউ
 // (LoginView.jsx, InvalidView.jsx) বাদ দেওয়া হয়েছে — সেগুলো কখনো
 // সেট হতো না, dead code ছিল। এখন ফ্লো শুধু:
-//   loading → welcome (Google login বাটন) → dashboard
+//   loading → welcome (password login ফর্ম + Google বাটন) → dashboard
 
 import { usePortalAuth } from './hooks/usePortalAuth'
 import LoadingView    from './components/views/LoadingView'
@@ -39,6 +39,12 @@ export default function CustomerPortal({ defaultTab = 'home_feed' }) {
       error={auth.error}
       loggingIn={auth.loggingIn}
       onLogin={() => auth.googleLogin()}
+      identifier={auth.identifier}           setIdentifier={auth.setIdentifier}
+      password={auth.password}               setPassword={auth.setPassword}
+      showPassword={auth.showPassword}       setShowPassword={auth.setShowPassword}
+      passwordLoggingIn={auth.passwordLoggingIn}
+      passwordError={auth.passwordError}
+      onPasswordLogin={auth.passwordLogin}
     />
   )
 

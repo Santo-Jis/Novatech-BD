@@ -14,12 +14,14 @@
 const { query }       = require('../config/db');
 const jwt             = require('jsonwebtoken');
 const crypto          = require('crypto');
+const bcrypt          = require('bcryptjs');
 const axios           = require('axios');
 const logger          = require('../config/logger');
 const PDFDocument     = require('pdfkit');
 const { invalidatePortalAuthCache } = require('../services/portalCache.service');
 const { generateCustomerCode, uploadToCloudinary } = require('../services/employee.service');
 const { getPublicAppUrl } = require('../config/publicAppUrl');
+const { generateOTP } = require('../config/encryption');
 // (DEFAULT_TENANT_ID import সরানো হলো — এখন এই ফাইলে আর দরকার নেই,
 // selfRegisterCustomer এখন tenant-agnostic persons row তৈরি করে)
 
@@ -87,6 +89,29 @@ const setRefreshCookie = (res, refreshJWT) => {
     });
 };
 
+// OTP DB-তে plain রাখা হয় না — HMAC hash রাখা হয় (auth.controller.js-এর
+// staff forgot-password প্যাটার্নের সাথে হুবহু সামঞ্জস্যপূর্ণ)
+const hashOTP = (otp) => {
+    const secret = process.env.ENCRYPTION_KEY;
+    if (!secret) throw new Error('ENCRYPTION_KEY environment variable সেট নেই');
+    return crypto.createHmac('sha256', secret).update(String(otp)).digest('hex');
+};
+
+// identifier একটা email নাকি মোবাইল নম্বর সেটা বোঝা, এবং ফোন নম্বর হলে
+// এর দুইটা সম্ভাব্য stored ফরম্যাট (লোকাল 01XXXXXXXXX ও আন্তর্জাতিক
+// 8801XXXXXXXXX) বের করা — যাতে যেভাবেই DB-তে সংরক্ষিত থাকুক, ম্যাচ করে
+const parseIdentifier = (raw) => {
+    const cleaned = String(raw || '').trim();
+    if (cleaned.includes('@')) {
+        return { isEmail: true, email: cleaned.toLowerCase(), phoneCandidates: null };
+    }
+    const digits = cleaned.replace(/\D/g, '');
+    if (digits.length < 10) return { isEmail: false, email: null, phoneCandidates: [] };
+    const local    = digits.startsWith('880') ? '0' + digits.slice(3) : (digits.startsWith('0') ? digits : '0' + digits);
+    const withCode = digits.startsWith('880') ? digits : '880' + digits.replace(/^0/, '');
+    return { isEmail: false, email: null, phoneCandidates: [local, withCode] };
+};
+
 // ============================================================
 // 1. SEND PORTAL LINK (WhatsApp)
 // POST /api/portal/send-link/:customerId
@@ -141,7 +166,7 @@ const sendPortalLink = async (req, res) => {
             `আস্সালামু আলাইকুম ${cust.owner_name} ভাই,\n\n` +
             `আপনার *${cust.shop_name}* এর সকল ক্রয় তথ্য, বাকি ও পেমেন্ট ইতিহাস দেখতে নিচের লিংকে ক্লিক করুন:\n\n` +
             `🔗 ${portalLink}\n\n` +
-            `👆 প্রথমবার Google দিয়ে লগইন করুন — পরে সরাসরি ঢুকতে পারবেন!\n\n` +
+            `👆 লিংকে গিয়ে Google দিয়ে অথবা পাসওয়ার্ড সেট করে লগইন করুন — পরে সরাসরি ঢুকতে পারবেন!\n\n` +
             `_ZovoriX_`
         );
 
@@ -188,7 +213,7 @@ const sendPortalLink = async (req, res) => {
 // ============================================================
 const selfRegisterCustomer = async (req, res) => {
     try {
-        const { shop_name, owner_name, business_type, date_of_birth, whatsapp, sms_phone, email } = req.body;
+        const { shop_name, owner_name, business_type, date_of_birth, whatsapp, sms_phone, email, password, confirm_password } = req.body;
 
         if (!shop_name || !shop_name.trim()) {
             return res.status(400).json({ success: false, message: 'দোকানের নাম দিন।' });
@@ -202,6 +227,38 @@ const selfRegisterCustomer = async (req, res) => {
         const cleanWhatsapp = (whatsapp || '').trim();
         if (!/^01[0-9]{9}$/.test(cleanWhatsapp)) {
             return res.status(400).json({ success: false, message: 'সঠিক WhatsApp নম্বর দিন (01XXXXXXXXX)।' });
+        }
+
+        // ✅ WhatsApp নম্বর OTP verification — এখন বাধ্যতামূলক। ফ্রন্টএন্ড
+        // আগে /portal/send-register-otp → /portal/verify-register-otp দিয়ে
+        // এই নম্বরটা যাচাই করিয়ে একটা verify_token পাবে, সেটাই এখানে
+        // পাঠাতে হবে। এটা ছাড়া রেজিস্ট্রেশন হবে না — fake/ভুল নম্বর দিয়ে
+        // অ্যাকাউন্ট খোলা ঠেকানোর জন্য।
+        const whatsappVerifyToken = String(req.body.whatsapp_verify_token || '').trim();
+        if (!whatsappVerifyToken) {
+            return res.status(400).json({ success: false, message: 'WhatsApp নম্বর যাচাই করুন।' });
+        }
+        const verifyCheck = await query(
+            `SELECT id FROM whatsapp_verification_otps
+             WHERE phone = $1 AND verify_token = $2 AND used = true AND token_expires_at > NOW()
+             ORDER BY created_at DESC LIMIT 1`,
+            [cleanWhatsapp, whatsappVerifyToken]
+        );
+        if (verifyCheck.rows.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'WhatsApp যাচাইয়ের মেয়াদ শেষ হয়ে গেছে অথবা নম্বর মিলছে না। আবার OTP পাঠিয়ে যাচাই করুন।'
+            });
+        }
+
+        // ✅ পাসওয়ার্ড — এখন থেকে আবশ্যক, যাতে Google ছাড়াও (identifier +
+        // password দিয়ে) কাস্টমার পোর্টালে ঢুকতে পারে। WhatsApp/email —
+        // যেকোনো একটা দিয়ে পরে লগইন করা যাবে, password উভয়ের জন্য একই।
+        if (!password || password.length < 6) {
+            return res.status(400).json({ success: false, message: 'ন্যূনতম ৬ ডিজিট/অক্ষরের পাসওয়ার্ড দিন।' });
+        }
+        if (password !== confirm_password) {
+            return res.status(400).json({ success: false, message: 'পাসওয়ার্ড ও কনফার্ম পাসওয়ার্ড মিলছে না।' });
         }
 
         // জন্মতারিখ যাচাই — আবশ্যক, ন্যূনতম বয়স ১৫ বছর
@@ -237,7 +294,7 @@ const selfRegisterCustomer = async (req, res) => {
             return res.status(409).json({
                 success: false,
                 already_registered: true,
-                message: 'এই WhatsApp নম্বরে আগে থেকেই একটি প্রোফাইল আছে। লগইন পেজ থেকে Google দিয়ে প্রবেশ করুন।'
+                message: 'এই WhatsApp নম্বরে আগে থেকেই একটি প্রোফাইল আছে। লগইন পেজ থেকে পাসওয়ার্ড অথবা Google দিয়ে প্রবেশ করুন — পাসওয়ার্ড মনে না থাকলে "পাসওয়ার্ড ভুলে গেছেন?" ব্যবহার করুন।'
             });
         }
 
@@ -258,32 +315,555 @@ const selfRegisterCustomer = async (req, res) => {
             );
         }
 
+        const passwordHash = await bcrypt.hash(password, 10);
+
         // ✅ কোনো tenant_id ছাড়াই global persons row — এখনো কোনো
         // কোম্পানির সাথে connect হয়নি (discoverable ডিফল্ট true থাকে,
         // অর্থাৎ কোম্পানিগুলো discovery.controller.js দিয়ে তাকে খুঁজে পাবে)।
         const result = await query(
             `INSERT INTO persons (full_name, shop_name, business_type, date_of_birth,
-              profile_photo, shop_photo, whatsapp, phone, email)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+              profile_photo, shop_photo, whatsapp, phone, email, password_hash)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
              RETURNING id`,
             [
                 owner_name.trim(), shop_name.trim(), business_type.trim(), date_of_birth,
                 profilePhotoUrl, shopPhotoUrl, cleanWhatsapp,
-                (sms_phone || '').trim() || null, (email || '').trim() || null
+                (sms_phone || '').trim() || null, (email || '').trim() || null, passwordHash
             ]
         );
 
         logger.info(`✅ Self-registered person: ${result.rows[0].id} (${shop_name})`);
 
+        // ব্যবহৃত হয়ে গেছে — verify_token পুনরায় ব্যবহার করা যাবে না
+        await query(`DELETE FROM whatsapp_verification_otps WHERE phone = $1`, [cleanWhatsapp]);
+
         return res.status(201).json({
             success: true,
             person_id: result.rows[0].id,
-            message: 'রেজিস্ট্রেশন সফল হয়েছে! এখন Google দিয়ে প্রবেশ করুন।'
+            message: 'রেজিস্ট্রেশন সফল হয়েছে!'
         });
 
     } catch (error) {
         logger.error('❌ Self Register Error:', error.message);
         return res.status(500).json({ success: false, message: 'রেজিস্ট্রেশন করতে সমস্যা হয়েছে। আবার চেষ্টা করুন।' });
+    }
+};
+
+// ============================================================
+// 1b. PASSWORD LOGIN — identifier (email/মোবাইল) + password
+// POST /api/portal/login — Public
+//
+// Google-এর বিকল্প হিসেবে যোগ করা হলো। customers টেবিলে আগে খোঁজে
+// (কোনো একটা কোম্পানির সাথে সংযুক্ত কাস্টমার), না পেলে persons টেবিলে
+// (এখনো কোনো কোম্পানির সাথে সংযুক্ত হয়নি) — ঠিক directGoogleAuth-এর
+// path 1 → path 2 এর মতোই। JWT payload shape হুবহু এক, তাই dashboard,
+// refresh, logout — সবকিছু কোনো পরিবর্তন ছাড়াই কাজ করবে।
+// ============================================================
+const passwordLogin = async (req, res) => {
+    try {
+        const { identifier, password } = req.body;
+
+        // ⚠️ নোট: ভুল identifier/password-এ ইচ্ছাকৃতভাবে 401 না দিয়ে 400
+        // ব্যবহার করা হচ্ছে। frontend-এর portalFetch() যেকোনো 401 দেখলেই
+        // ধরে নেয় "token expired" এবং /portal/refresh কল করে retry করে —
+        // সেটা ব্যর্থ হয়ে "Session শেষ হয়েছে" এর মতো ভুল/confusing মেসেজ
+        // দেখাবে, আসল "identifier/password ভুল" মেসেজ চাপা পড়ে যাবে।
+        if (!identifier || !String(identifier).trim() || !password) {
+            return res.status(400).json({ success: false, message: 'ইমেইল/মোবাইল নম্বর এবং পাসওয়ার্ড দিন।' });
+        }
+
+        const { isEmail, email, phoneCandidates } = parseIdentifier(identifier);
+        if (!isEmail && phoneCandidates.length === 0) {
+            return res.status(400).json({ success: false, message: 'ইমেইল/মোবাইল নম্বর অথবা পাসওয়ার্ড ভুল।' });
+        }
+
+        // ── ১. customers টেবিলে খোঁজো ─────────────────────────
+        const customerResult = isEmail
+            ? await query(
+                `SELECT id, shop_name, owner_name, customer_code, email, whatsapp,
+                        current_credit, credit_limit, credit_balance, person_id, password_hash
+                 FROM customers
+                 WHERE is_active = true AND LOWER(email) = $1
+                 LIMIT 1`,
+                [email]
+              )
+            : await query(
+                `SELECT id, shop_name, owner_name, customer_code, email, whatsapp,
+                        current_credit, credit_limit, credit_balance, person_id, password_hash
+                 FROM customers
+                 WHERE is_active = true AND (whatsapp = ANY($1) OR sms_phone = ANY($1))
+                 LIMIT 1`,
+                [phoneCandidates]
+              );
+
+        let ownerType = null;
+        let owner     = null;
+
+        if (customerResult.rows.length > 0) {
+            ownerType = 'customer';
+            owner     = customerResult.rows[0];
+        } else {
+            // ── ২. না পেলে persons টেবিলে (company-বিহীন profile) ──
+            const personResult = isEmail
+                ? await query(
+                    `SELECT id, full_name, shop_name, email, whatsapp, password_hash
+                     FROM persons WHERE LOWER(email) = $1 LIMIT 1`,
+                    [email]
+                  )
+                : await query(
+                    `SELECT id, full_name, shop_name, email, whatsapp, password_hash
+                     FROM persons WHERE whatsapp = ANY($1) OR phone = ANY($1) LIMIT 1`,
+                    [phoneCandidates]
+                  );
+
+            if (personResult.rows.length > 0) {
+                ownerType = 'person';
+                owner     = personResult.rows[0];
+            }
+        }
+
+        // ✅ SECURITY: owner না পেলে বা password সেট না থাকলেও generic
+        // error — এতে কোন identifier-এ অ্যাকাউন্ট আছে সেটা বোঝা যাবে না
+        if (!owner || !owner.password_hash) {
+            return res.status(400).json({ success: false, message: 'ইমেইল/মোবাইল নম্বর অথবা পাসওয়ার্ড ভুল।' });
+        }
+
+        const isValid = await bcrypt.compare(password, owner.password_hash);
+        if (!isValid) {
+            return res.status(400).json({ success: false, message: 'ইমেইল/মোবাইল নম্বর অথবা পাসওয়ার্ড ভুল।' });
+        }
+
+        if (!process.env.JWT_PORTAL_SECRET) {
+            logger.error('❌ JWT_PORTAL_SECRET environment variable সেট নেই!');
+            return res.status(500).json({ success: false, message: 'Server configuration error.' });
+        }
+
+        // ============================================================
+        // পথ ১: customer (কোনো একটা কোম্পানির সাথে সংযুক্ত)
+        // ============================================================
+        if (ownerType === 'customer') {
+            // বিদ্যমান token_version পড়ো (আগে কখনো Google/link দিয়ে ঢুকে
+            // থাকলে row থাকতে পারে) — directGoogleAuth-এর সাথে সামঞ্জস্যপূর্ণ
+            const tokenResult = await query(
+                'SELECT token_version FROM customer_portal_tokens WHERE customer_id = $1',
+                [owner.id]
+            );
+            const tokenVersion = tokenResult.rows[0]?.token_version || 1;
+
+            const jwtPayload = {
+                customer_id:   owner.id,
+                customer_code: owner.customer_code,
+                person_id:     owner.person_id || null,
+                email:         owner.email || null,
+                type:          'customer_portal',
+                token_version: tokenVersion,
+            };
+
+            const accessJWT  = jwt.sign(jwtPayload, process.env.JWT_PORTAL_SECRET, { expiresIn: '15m', algorithm: 'HS256' });
+            const refreshJWT = jwt.sign(
+                { ...jwtPayload, type: 'customer_portal_refresh' },
+                process.env.JWT_PORTAL_SECRET,
+                { expiresIn: '30d', algorithm: 'HS256' }
+            );
+            setRefreshCookie(res, refreshJWT);
+
+            logger.info(`✅ Password Login (customer): ${owner.customer_code || owner.id}`);
+
+            return res.status(200).json({
+                success: true,
+                message: 'লগইন সফল!',
+                data: {
+                    portal_jwt: accessJWT,
+                    expires_in: 900,
+                    has_company: true,
+                    customer: {
+                        id:             owner.id,
+                        shop_name:      owner.shop_name,
+                        owner_name:     owner.owner_name,
+                        customer_code:  owner.customer_code,
+                        email:          owner.email,
+                        current_credit: owner.current_credit,
+                        credit_limit:   owner.credit_limit,
+                        credit_balance: owner.credit_balance,
+                    }
+                }
+            });
+        }
+
+        // ============================================================
+        // পথ ২: person (এখনো কোনো কোম্পানির সাথে সংযুক্ত না)
+        // ============================================================
+        const jwtPayload = {
+            customer_id:   null,
+            person_id:     owner.id,
+            email:         owner.email || null,
+            type:          'customer_portal',
+            token_version: 1,
+        };
+
+        const accessJWT  = jwt.sign(jwtPayload, process.env.JWT_PORTAL_SECRET, { expiresIn: '15m', algorithm: 'HS256' });
+        const refreshJWT = jwt.sign(
+            { ...jwtPayload, type: 'customer_portal_refresh' },
+            process.env.JWT_PORTAL_SECRET,
+            { expiresIn: '30d', algorithm: 'HS256' }
+        );
+        setRefreshCookie(res, refreshJWT);
+
+        logger.info(`✅ Password Login (person): ${owner.id}`);
+
+        return res.status(200).json({
+            success: true,
+            message: 'লগইন সফল!',
+            data: {
+                portal_jwt: accessJWT,
+                expires_in: 900,
+                has_company: false,
+                person: {
+                    id:        owner.id,
+                    shop_name: owner.shop_name,
+                    full_name: owner.full_name,
+                    email:     owner.email,
+                }
+            }
+        });
+
+    } catch (error) {
+        logger.error('❌ Password Login Error:', error.message);
+        return res.status(500).json({ success: false, message: 'লগইনে সমস্যা হয়েছে। আবার চেষ্টা করুন।' });
+    }
+};
+
+// ============================================================
+// identifier (email/মোবাইল) দিয়ে customer বা person owner খোঁজা —
+// passwordLogin, forgot-password ফ্লো — সব জায়গায় একই লজিক ব্যবহারের
+// জন্য শেয়ার্ড হেল্পার। ফোন নম্বর হলে সাথে matched phone value-ও
+// ফেরত দেয় (WhatsApp OTP পাঠানোর জন্য দরকার)।
+// ============================================================
+const resolvePortalOwner = async (identifier) => {
+    const { isEmail, email, phoneCandidates } = parseIdentifier(identifier);
+
+    if (isEmail) {
+        const c = await query(
+            `SELECT id, owner_name FROM customers WHERE is_active = true AND LOWER(email) = $1 LIMIT 1`,
+            [email]
+        );
+        if (c.rows.length > 0) {
+            return { ownerType: 'customer', ownerId: c.rows[0].id, ownerName: c.rows[0].owner_name, phone: null };
+        }
+        const p = await query(`SELECT id, full_name FROM persons WHERE LOWER(email) = $1 LIMIT 1`, [email]);
+        if (p.rows.length > 0) {
+            return { ownerType: 'person', ownerId: p.rows[0].id, ownerName: p.rows[0].full_name, phone: null };
+        }
+        return { ownerType: null, ownerId: null, ownerName: null, phone: null };
+    }
+
+    if (!phoneCandidates || phoneCandidates.length === 0) {
+        return { ownerType: null, ownerId: null, ownerName: null, phone: null };
+    }
+
+    const c = await query(
+        `SELECT id, owner_name, whatsapp, sms_phone FROM customers
+         WHERE is_active = true AND (whatsapp = ANY($1) OR sms_phone = ANY($1)) LIMIT 1`,
+        [phoneCandidates]
+    );
+    if (c.rows.length > 0) {
+        return { ownerType: 'customer', ownerId: c.rows[0].id, ownerName: c.rows[0].owner_name, phone: c.rows[0].whatsapp || c.rows[0].sms_phone };
+    }
+    const p = await query(
+        `SELECT id, full_name, whatsapp, phone FROM persons WHERE whatsapp = ANY($1) OR phone = ANY($1) LIMIT 1`,
+        [phoneCandidates]
+    );
+    if (p.rows.length > 0) {
+        return { ownerType: 'person', ownerId: p.rows[0].id, ownerName: p.rows[0].full_name, phone: p.rows[0].whatsapp || p.rows[0].phone };
+    }
+    return { ownerType: null, ownerId: null, ownerName: null, phone: null };
+};
+
+// ============================================================
+// 1c. FORGOT / SET PASSWORD — ধাপ ১: OTP পাঠাও
+// POST /api/portal/forgot-password — Public
+// body: { identifier }  — ইমেইল দিলে Email-এ, মোবাইল নম্বর দিলে
+// WhatsApp-এ OTP যায়। WhatsApp পাঠানো হয় Baileys গেটওয়ে (self-hosted
+// WhatsApp session) দিয়ে — sms.service.js (tenant wallet billing) না —
+// তাই কোনো SaaS কোম্পানির ক্রেডিট থেকে কিছু কাটা হয় না; খরচ প্ল্যাটফর্মের।
+//
+// যাদের আগে password ছিলই না (শুধু Google দিয়ে ঢুকতেন), তাদের জন্য
+// এটাই প্রথমবার password সেট করার উপায়ও — তাই ভাষাটা "reset" না বলে
+// "সেট/রিসেট" দুটোই বলা হচ্ছে।
+// ============================================================
+const portalForgotPassword = async (req, res) => {
+    try {
+        const { identifier } = req.body;
+        const cleanIdentifier = String(identifier || '').trim();
+        const { isEmail, phoneCandidates } = parseIdentifier(cleanIdentifier);
+
+        if (!cleanIdentifier || (!isEmail && phoneCandidates.length === 0)) {
+            return res.status(400).json({ success: false, message: 'একটি বৈধ ইমেইল অথবা মোবাইল নম্বর দিন।' });
+        }
+
+        const genericMsg = isEmail
+            ? 'এই ইমেইলে অ্যাকাউন্ট থাকলে একটি OTP পাঠানো হয়েছে।'
+            : 'এই নম্বরে অ্যাকাউন্ট থাকলে WhatsApp-এ একটি OTP পাঠানো হয়েছে।';
+
+        const { ownerType, ownerId, ownerName, phone } = await resolvePortalOwner(cleanIdentifier);
+
+        // ✅ SECURITY: enumeration ঠেকাতে — অ্যাকাউন্ট না পেলেও একই
+        // success message (attacker বুঝতে পারবে না কোন identifier registered)
+        if (!ownerType) {
+            return res.status(200).json({ success: true, message: genericMsg });
+        }
+
+        const otp       = generateOTP(6);
+        const otpHash   = hashOTP(otp);
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // ১০ মিনিট
+
+        const ownerCol = ownerType === 'customer' ? 'customer_id' : 'person_id';
+        await query(`DELETE FROM customer_password_reset_otps WHERE ${ownerCol} = $1`, [ownerId]);
+        await query(
+            `INSERT INTO customer_password_reset_otps (${ownerCol}, otp, expires_at) VALUES ($1, $2, $3)`,
+            [ownerId, otpHash, expiresAt]
+        );
+
+        if (isEmail) {
+            const { sendEmail } = require('../services/email.service');
+            const html = `
+            <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;border:1px solid #E1EEFC;border-radius:12px;overflow:hidden">
+              <div style="background:#124A8C;padding:20px;text-align:center">
+                <h2 style="color:#ffffff;margin:0;font-size:18px">ZovoriX কাস্টমার পোর্টাল</h2>
+              </div>
+              <div style="padding:24px;color:#1F2937">
+                <p>আসসালামু আলাইকুম${ownerName ? ' ' + ownerName : ''},</p>
+                <p>আপনার পোর্টাল পাসওয়ার্ড সেট/রিসেট করার জন্য নিচের OTP কোডটি ব্যবহার করুন:</p>
+                <div style="background:#E1EEFC;border-radius:12px;padding:20px;margin:20px 0;text-align:center">
+                  <p style="font-size:32px;font-weight:bold;letter-spacing:8px;color:#124A8C;margin:0">${otp}</p>
+                </div>
+                <p style="color:#D64545;font-size:13px">⚠️ এই কোডটি <strong>১০ মিনিট</strong> পর্যন্ত কার্যকর থাকবে। কারো সাথে শেয়ার করবেন না।</p>
+                <p style="font-size:13px;color:#6B7280">এই অনুরোধ আপনি না করে থাকলে এই ইমেইলটি উপেক্ষা করুন — আপনার অ্যাকাউন্ট নিরাপদ আছে।</p>
+                <p style="margin-top:20px">ধন্যবাদান্তে,<br><strong>ZovoriX টিম</strong></p>
+              </div>
+            </div>`;
+            await sendEmail(cleanIdentifier.toLowerCase(), 'ZovoriX পোর্টাল — পাসওয়ার্ড OTP 🔑', html, '', { type: 'otp' });
+        } else {
+            const { sendPortalOTPWhatsApp } = require('../services/portalWhatsapp.service');
+            await sendPortalOTPWhatsApp(phone || cleanIdentifier, otp, 'পাসওয়ার্ড সেট/রিসেট');
+        }
+
+        return res.status(200).json({ success: true, message: genericMsg });
+
+    } catch (error) {
+        logger.error('❌ Portal Forgot Password Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
+    }
+};
+
+// ============================================================
+// 1d. FORGOT / SET PASSWORD — ধাপ ২: OTP যাচাই → reset_token ফেরত
+// POST /api/portal/verify-reset-otp — Public
+// body: { identifier, otp }  — identifier ধাপ ১-এ যা দেওয়া হয়েছিল তার সাথে মিলতে হবে
+// ============================================================
+const portalVerifyResetOtp = async (req, res) => {
+    try {
+        const { identifier, otp } = req.body;
+        const cleanIdentifier = String(identifier || '').trim();
+
+        if (!cleanIdentifier || !otp) {
+            return res.status(400).json({ success: false, message: 'ইমেইল/মোবাইল নম্বর ও OTP দিন।' });
+        }
+
+        const { ownerType, ownerId } = await resolvePortalOwner(cleanIdentifier);
+        if (!ownerType) {
+            return res.status(400).json({ success: false, message: 'OTP মিলছে না অথবা মেয়াদ শেষ হয়ে গেছে।' });
+        }
+
+        const ownerCol = ownerType === 'customer' ? 'customer_id' : 'person_id';
+        const otpHash  = hashOTP(otp);
+
+        const otpResult = await query(
+            `SELECT id FROM customer_password_reset_otps
+             WHERE ${ownerCol} = $1 AND otp = $2 AND used = false AND expires_at > NOW()
+             ORDER BY created_at DESC LIMIT 1`,
+            [ownerId, otpHash]
+        );
+
+        if (otpResult.rows.length === 0) {
+            return res.status(400).json({ success: false, message: 'OTP মিলছে না অথবা মেয়াদ শেষ হয়ে গেছে।' });
+        }
+
+        const resetToken     = crypto.randomBytes(32).toString('hex');
+        const tokenExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // ১৫ মিনিট
+
+        await query(
+            `UPDATE customer_password_reset_otps
+             SET used = true, reset_token = $1, token_expires_at = $2
+             WHERE id = $3`,
+            [resetToken, tokenExpiresAt, otpResult.rows[0].id]
+        );
+
+        return res.status(200).json({ success: true, reset_token: resetToken, message: 'OTP যাচাই সফল হয়েছে।' });
+
+    } catch (error) {
+        logger.error('❌ Portal Verify Reset OTP Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
+    }
+};
+
+// ============================================================
+// 1e. FORGOT / SET PASSWORD — ধাপ ৩: নতুন পাসওয়ার্ড সেট করো
+// POST /api/portal/reset-password — Public
+// body: { identifier, reset_token, new_password }
+// ============================================================
+const portalResetPassword = async (req, res) => {
+    try {
+        const { identifier, reset_token, new_password } = req.body;
+        const cleanIdentifier = String(identifier || '').trim();
+
+        if (!cleanIdentifier || !reset_token || !new_password) {
+            return res.status(400).json({ success: false, message: 'সব তথ্য দিন।' });
+        }
+        if (new_password.length < 6) {
+            return res.status(400).json({ success: false, message: 'ন্যূনতম ৬ ডিজিট/অক্ষরের পাসওয়ার্ড দিন।' });
+        }
+
+        const { ownerType, ownerId } = await resolvePortalOwner(cleanIdentifier);
+        if (!ownerType) {
+            return res.status(400).json({ success: false, message: 'অনুরোধ যাচাই করা যায়নি। প্রথম থেকে আবার চেষ্টা করুন।' });
+        }
+
+        const ownerCol = ownerType === 'customer' ? 'customer_id' : 'person_id';
+
+        const otpResult = await query(
+            `SELECT id FROM customer_password_reset_otps
+             WHERE ${ownerCol} = $1 AND reset_token = $2 AND used = true AND token_expires_at > NOW()
+             ORDER BY created_at DESC LIMIT 1`,
+            [ownerId, reset_token]
+        );
+
+        if (otpResult.rows.length === 0) {
+            return res.status(400).json({ success: false, message: 'অনুরোধের মেয়াদ শেষ হয়ে গেছে। প্রথম থেকে আবার চেষ্টা করুন।' });
+        }
+
+        const passwordHash = await bcrypt.hash(new_password, 10);
+        const table = ownerType === 'customer' ? 'customers' : 'persons';
+        await query(`UPDATE ${table} SET password_hash = $1 WHERE id = $2`, [passwordHash, ownerId]);
+
+        // ব্যবহৃত OTP মুছে ফেলো — reset_token পুনরায় ব্যবহার করা যাবে না
+        await query(`DELETE FROM customer_password_reset_otps WHERE ${ownerCol} = $1`, [ownerId]);
+
+        logger.info(`✅ Password reset (${ownerType}): ${ownerId}`);
+
+        return res.status(200).json({ success: true, message: 'পাসওয়ার্ড সফলভাবে সেট হয়েছে! এখন লগইন করুন।' });
+
+    } catch (error) {
+        logger.error('❌ Portal Reset Password Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
+    }
+};
+
+// ============================================================
+// 1f. রেজিস্ট্রেশনে WhatsApp নম্বর OTP verification (বাধ্যতামূলক)
+// ধাপ ১: OTP পাঠাও — POST /api/portal/send-register-otp — Public
+// body: { whatsapp }
+//
+// ⚠️ এখানে এখনো কোনো customer/person রেকর্ড নেই — তাই আলাদা
+// phone-keyed টেবিল (whatsapp_verification_otps) ব্যবহার করা হচ্ছে।
+// এটাও Baileys (প্ল্যাটফর্ম-লেভেল, tenant billing নেই) দিয়ে পাঠানো হয়।
+// ============================================================
+const sendRegisterOtp = async (req, res) => {
+    try {
+        const { whatsapp } = req.body;
+        const cleanWhatsapp = String(whatsapp || '').trim();
+
+        if (!/^01[0-9]{9}$/.test(cleanWhatsapp)) {
+            return res.status(400).json({ success: false, message: 'সঠিক WhatsApp নম্বর দিন (01XXXXXXXXX)।' });
+        }
+
+        // ✅ আগেই duplicate চেক করে নেওয়া হচ্ছে — যাতে পুরো ৬-ধাপ wizard
+        // শেষ করে (ছবি আপলোড সহ) শেষ মুহূর্তে গিয়ে "already registered"
+        // এরর না পায়। selfRegisterCustomer-এর একই চেক, শুধু আগে করা হচ্ছে।
+        const existing = await query(`SELECT id FROM persons WHERE whatsapp = $1 LIMIT 1`, [cleanWhatsapp]);
+        if (existing.rows.length > 0) {
+            return res.status(409).json({
+                success: false,
+                already_registered: true,
+                message: 'এই WhatsApp নম্বরে আগে থেকেই একটি প্রোফাইল আছে। লগইন পেজ থেকে পাসওয়ার্ড অথবা Google দিয়ে প্রবেশ করুন।'
+            });
+        }
+
+        const otp       = generateOTP(6);
+        const otpHash   = hashOTP(otp);
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // ১০ মিনিট
+
+        await query(`DELETE FROM whatsapp_verification_otps WHERE phone = $1`, [cleanWhatsapp]);
+        await query(
+            `INSERT INTO whatsapp_verification_otps (phone, otp, expires_at) VALUES ($1, $2, $3)`,
+            [cleanWhatsapp, otpHash, expiresAt]
+        );
+
+        const { sendPortalOTPWhatsApp } = require('../services/portalWhatsapp.service');
+        const sendResult = await sendPortalOTPWhatsApp(cleanWhatsapp, otp, 'রেজিস্ট্রেশন যাচাই');
+
+        if (!sendResult.success) {
+            logger.warn(`⚠️ Register OTP পাঠানো যায়নি: ${cleanWhatsapp} — ${sendResult.reason}`);
+            return res.status(503).json({
+                success: false,
+                message: 'এই মুহূর্তে WhatsApp-এ OTP পাঠানো যাচ্ছে না। একটু পর আবার চেষ্টা করুন।'
+            });
+        }
+
+        return res.status(200).json({ success: true, message: 'WhatsApp-এ OTP পাঠানো হয়েছে।' });
+
+    } catch (error) {
+        logger.error('❌ Send Register OTP Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
+    }
+};
+
+// ============================================================
+// 1g. রেজিস্ট্রেশনে WhatsApp OTP verification — ধাপ ২: যাচাই
+// POST /api/portal/verify-register-otp — Public
+// body: { whatsapp, otp }
+// সফল হলে whatsapp_verify_token ফেরত দেয় — সেটা self-register
+// সাবমিট করার সময় দিতে হবে (নিশ্চিত করার জন্য যে ঠিক ওই নম্বরটাই
+// যাচাই হয়েছে যেটা দিয়ে রেজিস্ট্রেশন হচ্ছে)।
+// ============================================================
+const verifyRegisterOtp = async (req, res) => {
+    try {
+        const { whatsapp, otp } = req.body;
+        const cleanWhatsapp = String(whatsapp || '').trim();
+
+        if (!cleanWhatsapp || !otp) {
+            return res.status(400).json({ success: false, message: 'WhatsApp নম্বর ও OTP দিন।' });
+        }
+
+        const otpHash = hashOTP(otp);
+        const otpResult = await query(
+            `SELECT id FROM whatsapp_verification_otps
+             WHERE phone = $1 AND otp = $2 AND used = false AND expires_at > NOW()
+             ORDER BY created_at DESC LIMIT 1`,
+            [cleanWhatsapp, otpHash]
+        );
+
+        if (otpResult.rows.length === 0) {
+            return res.status(400).json({ success: false, message: 'OTP মিলছে না অথবা মেয়াদ শেষ হয়ে গেছে।' });
+        }
+
+        // রেজিস্ট্রেশন wizard শেষ করতে সময় লাগতে পারে (ছবি আপলোড ইত্যাদি) —
+        // তাই reset_token-এর (১৫ মিনিট) চেয়ে বেশি মেয়াদ: ৪৫ মিনিট
+        const verifyToken    = crypto.randomBytes(32).toString('hex');
+        const tokenExpiresAt = new Date(Date.now() + 45 * 60 * 1000);
+
+        await query(
+            `UPDATE whatsapp_verification_otps
+             SET used = true, verify_token = $1, token_expires_at = $2
+             WHERE id = $3`,
+            [verifyToken, tokenExpiresAt, otpResult.rows[0].id]
+        );
+
+        return res.status(200).json({ success: true, verify_token: verifyToken, message: 'WhatsApp নম্বর যাচাই সফল হয়েছে।' });
+
+    } catch (error) {
+        logger.error('❌ Verify Register OTP Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
     }
 };
 
@@ -2227,6 +2807,12 @@ const logoutPortal = (req, res) => {
 module.exports = {
     sendPortalLink,
     selfRegisterCustomer,  // ✅ NEW: কাস্টমার নিজে সাইন-আপ
+    sendRegisterOtp,        // ✅ NEW: রেজিস্ট্রেশনে WhatsApp OTP ধাপ ১
+    verifyRegisterOtp,      // ✅ NEW: রেজিস্ট্রেশনে WhatsApp OTP ধাপ ২
+    passwordLogin,         // ✅ NEW: identifier + password লগইন (Google-এর বিকল্প)
+    portalForgotPassword,  // ✅ NEW: পাসওয়ার্ড OTP ধাপ ১ (পাঠানো — email/WhatsApp)
+    portalVerifyResetOtp,  // ✅ NEW: পাসওয়ার্ড OTP ধাপ ২ (যাচাই)
+    portalResetPassword,   // ✅ NEW: পাসওয়ার্ড OTP ধাপ ৩ (সেট করা)
     resolveLink,           // backward compat — পুরনো link কাজ করবে
     verifyPortalToken,     // backward compat
     deviceLogin,           // backward compat

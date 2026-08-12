@@ -50,6 +50,13 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [error,       setError]       = useState('')
   const [loggingIn,   setLoggingIn]   = useState(false)
 
+  // ── Password login (Google-এর বিকল্প) ──────────────────────────
+  const [identifier,      setIdentifier]      = useState('')
+  const [password,        setPassword]        = useState('')
+  const [showPassword,    setShowPassword]    = useState(false)
+  const [passwordLoggingIn, setPasswordLoggingIn] = useState(false)
+  const [passwordError,   setPasswordError]   = useState('')
+
   // ── Toast ───────────────────────────────────────────────────
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' })
 
@@ -568,6 +575,39 @@ export function usePortalAuth(defaultTab = 'summary') {
     } finally { setLoggingIn(false) }
   }
 
+  // ── Password Login (identifier + password — Google-এর বিকল্প) ──
+  const passwordLogin = async (e) => {
+    if (e?.preventDefault) e.preventDefault()
+    if (!identifier.trim() || !password) {
+      setPasswordError('ইমেইল/মোবাইল নম্বর এবং পাসওয়ার্ড দিন।')
+      return
+    }
+    setPasswordLoggingIn(true)
+    setPasswordError('')
+    try {
+      const data = await portalFetch('/portal/login', {
+        method: 'POST',
+        body:   JSON.stringify({ identifier: identifier.trim(), password }),
+      })
+
+      const { portal_jwt, expires_in = 900, has_company, person } = data.data
+      portalTokenStore.set(portal_jwt, expires_in)
+      portalJWTRef.current = portal_jwt
+      setPortalJWT(portal_jwt)
+      setPassword('') // মেমোরিতেও প্লেইন পাসওয়ার্ড রাখার দরকার নেই
+
+      if (has_company === false) {
+        setPersonProfile(person || null)
+        setPhase('no-company')
+      } else {
+        await loadDashboard()
+      }
+
+    } catch (err) {
+      setPasswordError(err.message || 'ইমেইল/মোবাইল নম্বর অথবা পাসওয়ার্ড ভুল।')
+    } finally { setPasswordLoggingIn(false) }
+  }
+
   // ── Init effect ──────────────────────────────────────────────
   //
   // ❌ আগের flow:
@@ -621,6 +661,9 @@ export function usePortalAuth(defaultTab = 'summary') {
     phase, tokenInfo, justRegistered, portalJWT, dashboard, personProfile,
     activeTab, error, loggingIn,
     googleLogin, handleLogout, handleTabChange, switchCompany,
+    identifier, setIdentifier, password, setPassword,
+    showPassword, setShowPassword, passwordLoggingIn, passwordError,
+    passwordLogin,
     toast,
     notifications, unreadCount, showBell, setShowBell,
     unreadBanner, setUnreadBanner, markAllAsRead, markOneRead,

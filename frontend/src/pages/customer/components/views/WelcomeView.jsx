@@ -1,23 +1,31 @@
 // components/views/WelcomeView.jsx
-// প্রথমবার আসলে Google login করার আগে welcome screen
+// প্রথমবার আসলে লগইন করার আগে welcome screen
 //
 // ✅ রিডিজাইন করা হলো: customer-design-system.html অনুযায়ী (trust blue থিম)।
 // আগে এটা ভুলবশত design.html (business/admin) এর navy+bronze থিম ব্যবহার করছিল —
 // এখন সঠিক কাস্টমার-ফেসিং ডিজাইন সিস্টেম প্রয়োগ করা হয়েছে।
 //
-// props অপরিবর্তিত: tokenInfo, justRegistered, error, loggingIn, onLogin
-// (auth logic — usePortalAuth.js — একদমই স্পর্শ করা হয়নি)
+// ✅ NEW: Google-এর পাশাপাশি identifier (ইমেইল/মোবাইল) + password দিয়েও
+// লগইন করা যায় এখন — নিচে password ফর্ম আগে, তারপর "অথবা" ডিভাইডার, তারপর
+// Google বাটন। props auth logic — usePortalAuth.js থেকেই আসে।
 //
 // ব্র্যান্ড নাম: "ZovoriX" (সঠিক — Novatech BD থেকে ZovoriX-এ rebrand চলছে, উল্টোটা না)
 
 import { useNavigate } from 'react-router-dom'
-import { FiShoppingBag, FiCheckCircle, FiAlertTriangle } from 'react-icons/fi'
+import { FiShoppingBag, FiCheckCircle, FiAlertTriangle, FiMail, FiLock, FiEye, FiEyeOff } from 'react-icons/fi'
 import CpButton from '../ui/CpButton'
 import CpCard from '../ui/CpCard'
 import CpBadge from '../ui/CpBadge'
+import CpInput from '../ui/CpInput'
 
-export default function WelcomeView({ tokenInfo, justRegistered, error, loggingIn, onLogin }) {
+export default function WelcomeView({
+  tokenInfo, justRegistered, error, loggingIn, onLogin,
+  identifier, setIdentifier, password, setPassword,
+  showPassword, setShowPassword, passwordLoggingIn, passwordError,
+  onPasswordLogin,
+}) {
   const navigate = useNavigate()
+  const displayError = passwordError || error
 
   return (
     <div className="min-h-screen bg-cp-bg-base flex flex-col font-cp-body">
@@ -41,16 +49,16 @@ export default function WelcomeView({ tokenInfo, justRegistered, error, loggingI
             <div className="w-full bg-cp-confidence-100 border border-cp-confidence-600/20 rounded-xl px-4 py-3 mb-4 flex items-start gap-2.5">
               <FiCheckCircle className="text-cp-confidence-600 flex-shrink-0 mt-0.5" size={16} />
               <p className="text-[13px] text-cp-confidence-600 leading-relaxed">
-                রেজিস্ট্রেশন সফল হয়েছে! এখন এই দোকানের জন্য নিচে Google দিয়ে প্রবেশ করুন।
+                রেজিস্ট্রেশন সফল হয়েছে! এখন নিচে আপনার পাসওয়ার্ড অথবা Google দিয়ে প্রবেশ করুন।
               </p>
             </div>
           )}
 
-          {/* Error banner */}
-          {error && (
+          {/* Error banner — password অথবা Google, যেটাই সাম্প্রতিক */}
+          {displayError && (
             <div className="w-full bg-cp-error-bg border border-cp-error/20 rounded-xl px-4 py-3 mb-4 flex items-start gap-2.5">
               <FiAlertTriangle className="text-cp-error flex-shrink-0 mt-0.5" size={16} />
-              <p className="text-[13px] text-cp-error leading-relaxed">{error}</p>
+              <p className="text-[13px] text-cp-error leading-relaxed">{displayError}</p>
             </div>
           )}
 
@@ -72,9 +80,55 @@ export default function WelcomeView({ tokenInfo, justRegistered, error, loggingI
             </CpCard>
           )}
 
-          <p className="text-cp-text-secondary text-[13px] text-center max-w-[320px] mb-6 leading-relaxed">
-            আবার প্রবেশ করতে আপনার Google অ্যাকাউন্ট ব্যবহার করুন।
-          </p>
+          {/* ── Password Login ফর্ম (identifier + password) ──────── */}
+          <form onSubmit={onPasswordLogin} className="w-full flex flex-col gap-3">
+            <CpInput
+              icon={FiMail}
+              type="text"
+              inputMode="email"
+              placeholder="ইমেইল অথবা মোবাইল নম্বর"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
+              autoComplete="username"
+            />
+            <CpInput
+              icon={FiLock}
+              type={showPassword ? 'text' : 'password'}
+              placeholder="পাসওয়ার্ড"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              rightElement={
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => setShowPassword((s) => !s)}
+                  className="text-cp-text-muted hover:text-cp-text-secondary"
+                  aria-label={showPassword ? 'পাসওয়ার্ড লুকান' : 'পাসওয়ার্ড দেখান'}
+                >
+                  {showPassword ? <FiEyeOff size={18} /> : <FiEye size={18} />}
+                </button>
+              }
+            />
+            <CpButton type="submit" variant="primary" size="lg" fullWidth loading={passwordLoggingIn}>
+              লগ ইন
+            </CpButton>
+          </form>
+
+          <button
+            type="button"
+            onClick={() => navigate('/customer-forgot-password')}
+            className="text-cp-trust-500 text-[13px] font-medium mt-3.5 hover:underline"
+          >
+            পাসওয়ার্ড ভুলে গেছেন?
+          </button>
+
+          {/* Divider */}
+          <div className="w-full flex items-center gap-3 my-5">
+            <div className="flex-1 h-px bg-cp-border" />
+            <span className="text-cp-text-muted text-[11px]">অথবা</span>
+            <div className="flex-1 h-px bg-cp-border" />
+          </div>
 
           {/* Google Login button — Google-এর নিজস্ব ব্র্যান্ড গাইডলাইন অনুযায়ী সাদা bg + বহুরঙা লোগো বজায় রাখা হয়েছে */}
           <button
@@ -113,9 +167,10 @@ export default function WelcomeView({ tokenInfo, justRegistered, error, loggingI
             <div className="flex-1 h-px bg-cp-border" />
           </div>
 
-          {/* নতুন কাস্টমার সেলফ-রেজিস্ট্রেশন */}
+          {/* নতুন কাস্টমার সেলফ-রেজিস্ট্রেশন — secondary variant, যাতে
+              উপরের password "লগ ইন" বাটনের সাথে visual weight না মেশে */}
           <CpButton
-            variant="primary"
+            variant="secondary"
             size="lg"
             fullWidth
             onClick={() => navigate('/customer-register')}

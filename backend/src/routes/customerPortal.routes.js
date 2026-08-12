@@ -27,6 +27,12 @@ const selfRegisterUpload = multer({
 const {
     sendPortalLink,
     selfRegisterCustomer,
+    sendRegisterOtp,         // ✅ NEW: রেজিস্ট্রেশন WhatsApp OTP ধাপ ১
+    verifyRegisterOtp,       // ✅ NEW: রেজিস্ট্রেশন WhatsApp OTP ধাপ ২
+    passwordLogin,          // ✅ NEW: identifier + password লগইন
+    portalForgotPassword,   // ✅ NEW: পাসওয়ার্ড OTP ধাপ ১ (email/WhatsApp)
+    portalVerifyResetOtp,   // ✅ NEW: পাসওয়ার্ড OTP ধাপ ২
+    portalResetPassword,    // ✅ NEW: পাসওয়ার্ড OTP ধাপ ৩
     resolveLink,
     verifyPortalToken,
     deviceLogin,
@@ -145,6 +151,44 @@ const portalLoginLimiter = rateLimit({
     message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
 });
 
+// ⚠️ password login সরাসরি brute-force করা সম্ভব (Google token verify-এর
+// মতো কোনো বাইরের বাধা নেই) — তাই portalLoginLimiter-এর চেয়ে কড়া:
+// ১৫ মিনিটে IP প্রতি সর্বোচ্চ ৮ বার।
+const passwordLoginLimiter = rateLimit({
+    windowMs:     15 * 60 * 1000,
+    max:          8,
+    keyGenerator: (req) => `password_login:${req.ip}`,
+    store:        makeRedisStore(),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
+});
+
+// Password reset/OTP ধাপগুলো — ১৫ মিনিটে IP প্রতি সর্বোচ্চ ৫ বার
+// (OTP guessing ও ইমেইল/WhatsApp স্প্যাম দুটোই ঠেকাতে)
+const passwordResetLimiter = rateLimit({
+    windowMs:     15 * 60 * 1000,
+    max:          5,
+    keyGenerator: (req) => `password_reset:${req.ip}`,
+    store:        makeRedisStore(),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
+});
+
+// রেজিস্ট্রেশন WhatsApp OTP — প্ল্যাটফর্মের একটামাত্র Baileys সেশন থেকে
+// পাঠানো হয় বলে স্প্যাম/abuse-এ পুরো নম্বরটাই ব্যান হওয়ার ঝুঁকি আছে —
+// তাই কড়া লিমিট: ১৫ মিনিটে IP প্রতি সর্বোচ্চ ৫ বার।
+const registerOtpLimiter = rateLimit({
+    windowMs:     15 * 60 * 1000,
+    max:          5,
+    keyGenerator: (req) => `register_otp:${req.ip}`,
+    store:        makeRedisStore(),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
+});
+
 // ============================================================
 // AUTH ROUTES
 // ============================================================
@@ -155,9 +199,20 @@ router.post('/self-register', selfRegisterLimiter,
     selfRegisterCustomer);
 router.post('/resolve-link',  resolveLink);
 router.get('/verify-token',   verifyPortalToken);
+
+// ✅ NEW: রেজিস্ট্রেশনের আগে WhatsApp নম্বর OTP verification (বাধ্যতামূলক)
+router.post('/send-register-otp',   registerOtpLimiter, sendRegisterOtp);
+router.post('/verify-register-otp', registerOtpLimiter, verifyRegisterOtp);
+
 router.post('/google-auth',   portalLoginLimiter, googleAuth);
 router.post('/direct-auth',   portalLoginLimiter, directGoogleAuth);
 router.post('/device-login',  portalLoginLimiter, deviceLogin);
+
+// ✅ NEW: identifier (ইমেইল/মোবাইল) + password — Google-এর বিকল্প
+router.post('/login',              passwordLoginLimiter, passwordLogin);
+router.post('/forgot-password',    passwordResetLimiter, portalForgotPassword);
+router.post('/verify-reset-otp',   passwordResetLimiter, portalVerifyResetOtp);
+router.post('/reset-password',     passwordResetLimiter, portalResetPassword);
 
 // ✅ NEW: HttpOnly cookie → নতুন 15-মিনিট access token
 // Authorization header লাগে না — browser cookie automatically পাঠায়
