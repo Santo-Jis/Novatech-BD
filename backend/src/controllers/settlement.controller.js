@@ -4,6 +4,7 @@ const axios = require('axios');
 const logger = require('../config/logger');
 const { sendPushNotification } = require('../services/fcm.service');
 const { addLedgerEntry } = require('./ledger.controller');
+const { addDuesLedgerEntry } = require('../services/dues.service'); // ← নতুন: dues mutation-এর একমাত্র জায়গা
 
 // ─── নগদ পার্থক্যের সীমা ─────────────────────────────────────────────────────
 // ⚠️  SYNC: এই মান frontend/src/pages/worker/Settlement.jsx-এর
@@ -293,6 +294,28 @@ const createSettlement = async (req, res) => {
                         created_by:     workerId,
                         tenantId:       req.tenantId,
                     });
+
+                    // ✅ Phase 2: SR-এর ledger থেকে বাদ গেলেও এখনই
+                    // products.stock বাড়বে না — শুধু SR "ফেরত দিচ্ছি" বলেছে,
+                    // warehouse এখনো physically গুনে receive করেনি।
+                    // এই row টা receiving queue-তে যোগ হলো; manager/warehouse
+                    // /api/settlement-returns/:id/receive দিয়ে confirm করলে
+                    // তখনই stock বাড়বে (দেখুন settlementReturns.controller.js)।
+                    await client.query(
+                        `INSERT INTO settlement_return_receipts
+                            (settlement_id, worker_id, product_id, product_name,
+                             qty_claimed, price, status, tenant_id)
+                         VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)`,
+                        [
+                            settlementId,
+                            workerId,
+                            item.product_id,
+                            item.name,
+                            item.returned_qty,
+                            item.price || 0,
+                            req.tenantId,
+                        ]
+                    );
                 }
                 // ঘাটতি পণ্যও OUT হিসেবে রেকর্ড (হারিয়ে গেছে বা দায় নেওয়া হয়েছে)
                 if (item.shortage_qty > 0) {
@@ -493,42 +516,33 @@ const approveSettlement = async (req, res) => {
                 [s.worker_id, s.settlement_date, req.tenantId]
             );
 
-            // ✅ FIX: নগদ ঘাটতি + পণ্য ঘাটতি — দুটোই outstanding_dues-এ যোগ করো
-            // আগে approve path-এ শুধু cashShortfall যোগ হতো।
-            // SR 0 sales করলে কিন্তু পণ্য ফেরত না দিলে সেই ঘাটতি silently মাফ হয়ে যেত।
-            const totalShortfall = cashShortfall + productShortage;
-            if (totalShortfall > 0) {
-                await client.query(
-                    `UPDATE users
-                     SET outstanding_dues = outstanding_dues + $1,
-                         cash_dues        = COALESCE(cash_dues, 0) + $2,
-                         updated_at       = NOW()
-                     WHERE id = $3
-             AND tenant_id = $4`,
-                    [totalShortfall, cashShortfall, s.worker_id, req.tenantId]
-                );
-
-                // নগদ ঘাটতি audit trail
-                if (cashShortfall > 0) {
-                    await client.query(
-                        `INSERT INTO dues_ledger (worker_id, settlement_id, due_type, amount, note, created_by, tenant_id) VALUES ($1, $2, 'cash_mismatch', $3, $4, $5, $6)`,
-                        [
-                            s.worker_id, id, cashShortfall,
-                            `নগদ ঘাটতি: সিস্টেম ৳${systemCash.toFixed(0)} — SR জমা ৳${srCash.toFixed(0)}`,
-                            req.user.id, req.tenantId]
-                    );
-                }
-
-                // পণ্য ঘাটতি audit trail
-                if (productShortage > 0) {
-                    await client.query(
-                        `INSERT INTO dues_ledger (worker_id, settlement_id, due_type, amount, note, created_by, tenant_id) VALUES ($1, $2, 'product_shortage', $3, $4, $5, $6)`,
-                        [
-                            s.worker_id, id, productShortage,
-                            `পণ্য ঘাটতি ৳${productShortage.toFixed(0)} — অনুমোদন সময় রেকর্ড`,
-                            req.user.id, req.tenantId]
-                    );
-                }
+            // ✅ FIX (rev2): dues_ledger insert + outstanding_dues update — এখন
+            // একটাই shared function দিয়ে: addDuesLedgerEntry() (দেখুন
+            // services/dues.service.js)। আগে এই SQL block settlement
+            // controller-এর ৪ জায়গায় হাতে কপি করা ছিল — সেটাই আগের
+            // trigger-double-count bug-এর মূল কারণ ছিল।
+            if (cashShortfall > 0) {
+                await addDuesLedgerEntry(client, {
+                    workerId:     s.worker_id,
+                    settlementId: id,
+                    dueType:      'cash_mismatch',
+                    amount:       cashShortfall,
+                    cashAmount:   cashShortfall,
+                    note:         `নগদ ঘাটতি: সিস্টেম ৳${systemCash.toFixed(0)} — SR জমা ৳${srCash.toFixed(0)}`,
+                    createdBy:    req.user.id,
+                    tenantId:     req.tenantId,
+                });
+            }
+            if (productShortage > 0) {
+                await addDuesLedgerEntry(client, {
+                    workerId:     s.worker_id,
+                    settlementId: id,
+                    dueType:      'product_shortage',
+                    amount:       productShortage,
+                    note:         `পণ্য ঘাটতি ৳${productShortage.toFixed(0)} — অনুমোদন সময় রেকর্ড`,
+                    createdBy:    req.user.id,
+                    tenantId:     req.tenantId,
+                });
             }
         });
 
@@ -608,33 +622,30 @@ const disputeSettlement = async (req, res) => {
                 [req.user.id, note || null, finalShortage, id, req.tenantId]
             );
 
-            // মোট বকেয়া outstanding_dues এ যোগ
-            if (totalDues > 0) {
-                await client.query(
-                    `UPDATE users
-                     SET outstanding_dues = outstanding_dues + $1,
-                         cash_dues        = COALESCE(cash_dues, 0) + $2,
-                         updated_at       = NOW()
-                     WHERE id = $3
-             AND tenant_id = $4`,
-                    [totalDues, cashShortfall, s.worker_id, req.tenantId]
-                );
-            }
-
-            // পণ্য ঘাটতি ledger
+            // ✅ FIX (rev2): shared addDuesLedgerEntry() — approveSettlement-এর
+            // মতো একই কারণে।
             if (finalShortage > 0) {
-                await client.query(
-                    `INSERT INTO dues_ledger (worker_id, settlement_id, due_type, amount, note, created_by, tenant_id) VALUES ($1, $2, 'product_shortage', $3, $4, $5, $6)`,
-                    [s.worker_id, id, finalShortage, `পণ্য ঘাটতি — Manager নিশ্চিত`, req.user.id, req.tenantId]
-                );
+                await addDuesLedgerEntry(client, {
+                    workerId:     s.worker_id,
+                    settlementId: id,
+                    dueType:      'product_shortage',
+                    amount:       finalShortage,
+                    note:         'পণ্য ঘাটতি — Manager নিশ্চিত',
+                    createdBy:    req.user.id,
+                    tenantId:     req.tenantId,
+                });
             }
-
-            // নগদ ঘাটতি ledger
             if (cashShortfall > 0) {
-                await client.query(
-                    `INSERT INTO dues_ledger (worker_id, settlement_id, due_type, amount, note, created_by, tenant_id) VALUES ($1, $2, 'cash_mismatch', $3, $4, $5, $6)`,
-                    [s.worker_id, id, cashShortfall, `নগদ ঘাটতি ৳${cashShortfall} — dispute`, req.user.id, req.tenantId]
-                );
+                await addDuesLedgerEntry(client, {
+                    workerId:     s.worker_id,
+                    settlementId: id,
+                    dueType:      'cash_mismatch',
+                    amount:       cashShortfall,
+                    cashAmount:   cashShortfall,
+                    note:         `নগদ ঘাটতি ৳${cashShortfall} — dispute`,
+                    createdBy:    req.user.id,
+                    tenantId:     req.tenantId,
+                });
             }
         });
 

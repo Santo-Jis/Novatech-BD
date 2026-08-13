@@ -169,6 +169,7 @@ const supplierRoutes    = require('./routes/supplier.routes');
 const purchaseOrderRoutes = require('./routes/purchaseOrder.routes');
 const batchRoutes         = require('./routes/batch.routes');       // ← নতুন (Step ৪: Batch/Expiry + FEFO)
 const warehouseRoutes      = require('./routes/warehouse.routes');   // ← নতুন (মাল্টি-ওয়্যারহাউজ ধাপ ২)
+const settlementReturnsRoutes = require('./routes/settlementReturns.routes'); // ← নতুন (Phase 2: return receiving queue)
 const priceListRoutes     = require('./routes/priceList.routes');   // ← নতুন (Step ৫: মাল্টিপল প্রাইস লিস্ট)
 const orderRoutes       = require('./routes/order.routes');
 const salesRoutes       = require('./routes/sales.routes');
@@ -231,6 +232,7 @@ app.use('/api/suppliers',        supplierRoutes);
 app.use('/api/purchase-orders',  purchaseOrderRoutes);
 app.use('/api/batches',          batchRoutes);
 app.use('/api/warehouses',       warehouseRoutes);
+app.use('/api/settlement-returns', settlementReturnsRoutes); // ← নতুন (Phase 2)
 app.use('/api/price-lists',      priceListRoutes);
 app.use('/api/orders',      orderRoutes);
 app.use('/api/sales',       salesRoutes);

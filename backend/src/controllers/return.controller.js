@@ -2,7 +2,6 @@ const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
 const { calcFromProduct } = require('../services/price.utils');
 const { addLedgerEntry } = require('./ledger.controller');
-const { adjustDefaultWarehouseStock } = require('../services/warehouseStock.utils'); // ← per-warehouse স্টক ধাপ ৪
 
 // ============================================================
 // POST /api/return/submit
@@ -334,10 +333,16 @@ const completeReturn = async (req, res) => {
             ? rr.items
             : (typeof rr.items === 'string' ? JSON.parse(rr.items) : []);
 
-        // ✅ FIX: withTransaction — status update + ledger + stock একসাথে
-        // আগে শুধু status = 'completed' হতো।
-        // কাস্টমার পণ্য ফেরত দিলে SR-এর হাতে সেই পণ্য যোগ হওয়া উচিত
-        // এবং warehouse stock-ও ফিরে আসা উচিত।
+        // ✅ FIX (rev2): status update + ledger — global আর per-warehouse
+        // stock দুটোই বাদ দেওয়া হলো। আগের ভার্সনে একই qty তিন জায়গায় যোগ
+        // হচ্ছিলো: SR-এর personal ledger-এ (+qty, in-hand), central
+        // products.stock-এ (+qty), আর warehouse_stock-এও (+qty)। বাস্তবে
+        // পণ্যটা তখনও SR-এর হাতে (কাস্টমার থেকে সদ্য নেওয়া) — কোনো
+        // warehouse-এ (global বা নির্দিষ্ট কোনোটাতেই) পৌঁছায়নি। তাই এখন
+        // শুধু SR-এর ledger আপডেট হয়; warehouse stock (global +
+        // per-warehouse দুটোই) তখনই বাড়বে যখন SR এই পণ্যটা settlement-এর
+        // মাধ্যমে সত্যিকারের ফেরত/জমা দেবে এবং গুদাম physically receive
+        // confirm করবে (দেখুন settlementReturns.controller.js -> receiveReturn)।
         const result = await withTransaction(async (client) => {
             // ১. status update
             const updated = await client.query(
@@ -354,7 +359,9 @@ const completeReturn = async (req, res) => {
                 const qty = parseInt(item.qty) || 0;
                 if (qty <= 0) continue;
 
-                // ২. SR-এর stock ledger-এ পণ্য ফেরত IN করো
+                // ২. SR-এর stock ledger-এ পণ্য ফেরত IN করো (কাস্টমার থেকে
+                // SR-এর হাতে — কোনো warehouse-এ না, তাই products.stock বা
+                // warehouse_stock কোনোটাই touch হয় না)
                 await addLedgerEntry(client, {
                     worker_id:      srId,
                     product_id:     item.product_id,
@@ -367,21 +374,6 @@ const completeReturn = async (req, res) => {
                     note:           `কাস্টমার রিটার্ন — ${rr.customer_id}`,
                     created_by:     srId,
                     tenantId:       req.tenantId,
-                });
-
-                // ৩. warehouse stock-এ পণ্য ফেরত যোগ করো
-                await client.query(
-                    `UPDATE products
-                     SET stock      = stock + $1,
-                         updated_at = NOW()
-                     WHERE id = $2
-             AND tenant_id = $3`,
-                    [qty, item.product_id, req.tenantId]
-                );
-                // ✅ per-warehouse স্টক ধাপ ৪: কাস্টমার রিটার্ন সাধারণত ডিফল্ট
-                // (একমাত্র বাস্তব রিসিভিং পয়েন্ট) গুদামেই ফেরত যায় ধরে নেওয়া হচ্ছে
-                await adjustDefaultWarehouseStock(client, {
-                    tenantId: req.tenantId, productId: item.product_id, delta: qty
                 });
             }
 

@@ -126,6 +126,7 @@ const ManagerTeam         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/
 const VisitLog            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/VisitLog'))
 const ManagerOrders       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Orders'))
 const ManagerSettlements  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Settlements'))
+const ReturnReceiving     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/ReturnReceiving')) // ← নতুন (Phase 2)
 const SRLedger            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/SRLedger'))
 const SalesOrderLedger    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/SalesOrderLedger'))
 const ManagerAttendance   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Attendance'))
@@ -546,6 +547,7 @@ function AppWithPermissions() {
                 <Route path="team/:workerId/visits"      element={<VisitLog />} />
                 <Route path="orders"                     element={<ManagerOrders />} />
                 <Route path="settlements"                element={<ManagerSettlements />} />
+                <Route path="return-receiving"            element={<ReturnReceiving />} />
                 <Route path="attendance"                 element={<ManagerAttendance />} />
                 <Route path="customers"                  element={<ManagerCustomers />} />
                 <Route path="routes"                     element={<ManagerRoutes />} />

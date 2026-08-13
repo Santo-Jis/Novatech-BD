@@ -1,0 +1,45 @@
+-- migration_fix_settlement_dues_trigger.sql
+-- Applied live to Supabase project javqvlntzcymqyivovhc on 2026-08-11.
+--
+-- BUG: outstanding_dues was being incremented TWICE when a settlement was
+-- disputed:
+--   1) This trigger (update_dues_on_settlement) fired on UPDATE ... SET
+--      status = 'disputed' and added NEW.shortage_qty_value to
+--      users.outstanding_dues.
+--   2) settlement.controller.js -> disputeSettlement() ALSO added
+--      totalDues (shortage_qty_value + cash shortfall) to
+--      users.outstanding_dues, in the same transaction.
+--
+-- Net effect: the product-shortage portion of the dues was double-counted
+-- every time a manager disputed a settlement.
+--
+-- FIX: keep the logic in application code only (settlement.controller.js
+-- already computes and applies BOTH product shortage and cash shortfall
+-- correctly), and drop the trigger + its function.
+--
+-- Verified against live data before applying: 0 rows in daily_settlements
+-- had status = 'disputed' at the time of this migration, so no historical
+-- outstanding_dues values needed correction.
+
+DROP TRIGGER IF EXISTS trg_settlement_disputed ON daily_settlements;
+DROP FUNCTION IF EXISTS update_dues_on_settlement();
+
+-- Rollback (if ever needed):
+--
+-- CREATE OR REPLACE FUNCTION public.update_dues_on_settlement()
+--  RETURNS trigger
+--  LANGUAGE plpgsql
+-- AS $function$
+-- BEGIN
+--     IF NEW.status = 'disputed' AND OLD.status != 'disputed' THEN
+--         UPDATE users SET outstanding_dues = outstanding_dues + NEW.shortage_qty_value, updated_at = NOW()
+--         WHERE id = NEW.worker_id;
+--     END IF;
+--     RETURN NEW;
+-- END;
+-- $function$;
+--
+-- CREATE TRIGGER trg_settlement_disputed
+--     AFTER UPDATE ON daily_settlements
+--     FOR EACH ROW
+--     EXECUTE FUNCTION update_dues_on_settlement();

@@ -9,7 +9,7 @@ import {
   FiCalendar, FiMapPin, FiUser, FiBell, FiSend, FiMenu, FiX,
   FiLogOut, FiMessageSquare, FiList, FiFileText,
   FiRefreshCw, FiShield, FiDollarSign, FiCreditCard,
-  FiBarChart2, FiBookOpen, FiChevronDown, FiTarget, FiLink, FiTag
+  FiBarChart2, FiBookOpen, FiChevronDown, FiTarget, FiLink, FiTag, FiPackage
 } from 'react-icons/fi'
 
 // সবসময় দেখা যাবে — গ্রুপের বাইরে (ঘন ঘন ব্যবহার হয়)
@@ -68,6 +68,7 @@ const navGroups = [
     items: [
       { path: '/manager/returns',        icon: <FiRefreshCw />, label: 'রিটার্ন অনুমোদন' },
       { path: '/manager/portal-returns', icon: <FiRefreshCw />, label: 'পোর্টাল রিটার্ন' },
+      { path: '/manager/return-receiving', icon: <FiPackage />, label: 'সেটেলমেন্ট ফেরত গ্রহণ' },
     ],
   },
   {
