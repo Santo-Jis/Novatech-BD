@@ -189,6 +189,8 @@ export default function Promotions() {
         }
     };
 
+    const pendingCount = promos.filter(p => p.approval_status === 'pending').length;
+
     const filtered = promos.filter(p =>
         tab === 'active'   ? p.is_active :
         tab === 'pending'  ? p.approval_status === 'pending' :
