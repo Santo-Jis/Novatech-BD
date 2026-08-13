@@ -143,6 +143,7 @@ const ManagerReports         = IS_CUSTOMER_APP ? null : lazy(() => import('./pag
 const ManagerSalarySheet     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/SalarySheet'))
 const ManagerPortalReturns   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/PortalReturnRequests'))
 const ManagerCoverage        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Coverage'))
+const ManagerPromotions      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Promotions')) // ← Promotions Phase ৩
 
 // ── Worker pages — Customer APK-এ bundle হবে না ──────────────
 const WorkerDashboard  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/Dashboard'))
@@ -567,6 +568,7 @@ function AppWithPermissions() {
                 <Route path="salary-sheet"               element={<ManagerSalarySheet />} />
                 <Route path="portal-returns"             element={<ManagerPortalReturns />} />
                 <Route path="coverage"                   element={<ManagerCoverage />} />
+                <Route path="promotions"                 element={<ManagerPromotions />} /> {/* ← Promotions Phase ৩ */}
               </Route>
 
               {/* ── WORKER ROUTES ── */}

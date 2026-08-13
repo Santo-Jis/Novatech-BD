@@ -11,7 +11,7 @@ import {
   FiUsers, FiShoppingBag, FiDollarSign,
   FiCheckSquare, FiTrendingUp, FiPackage,
   FiRefreshCw, FiRotateCcw,
-  FiChevronRight, FiUserPlus, FiBarChart2, FiSettings, FiMail, FiTruck
+  FiChevronRight, FiUserPlus, FiBarChart2, FiSettings, FiMail, FiTruck, FiTag
 } from 'react-icons/fi'
 
 // ============================================================
@@ -114,6 +114,7 @@ export default function AdminDashboard() {
   const [topShops, setTopShops]           = useState([])
   const [seats, setSeats]                 = useState([])
   const [notices, setNotices]             = useState([])
+  const [promoSummary, setPromoSummary]   = useState(null) // ← Phase ৪
   const [loading, setLoading]             = useState(true)
   const [refreshing, setRefreshing]       = useState(false)
 
@@ -154,6 +155,11 @@ export default function AdminDashboard() {
           setNotices(active.slice(0, 3))
         })
         .catch(() => setNotices([]))
+
+      // ← Phase ৪: non-critical, ব্যর্থ হলে ড্যাশবোর্ড আটকাবে না
+      api.get('/promotions/dashboard-summary')
+        .then(r => setPromoSummary(r.data?.data || null))
+        .catch(() => setPromoSummary(null))
 
     } catch (err) {
       console.error(err)
@@ -230,6 +236,11 @@ export default function AdminDashboard() {
       title: fullSeat ? `${seatAlert.label} সিট শেষ` : `${seatAlert.label} সিট প্রায় শেষ`,
       sub: `${seatAlert.used}/${seatAlert.limit} ব্যবহৃত (${Math.round((seatAlert.used / seatAlert.limit) * 100)}%)`,
       cta: 'বিস্তারিত', path: '/admin/employees',
+    },
+    promoSummary?.pending_approval_count > 0 && { // ← Phase ৪
+      severity: 'warning', icon: FiTag, title: `${promoSummary.pending_approval_count}টি প্রমোশন অনুমোদনের অপেক্ষায়`,
+      sub: 'বড় ছাড়/বাজেট-ক্যাপহীন অফার — লাইভ হওয়ার আগে দেখুন',
+      cta: 'দেখুন', path: '/admin/promotions',
     },
   ].filter(Boolean)
 
@@ -369,6 +380,15 @@ export default function AdminDashboard() {
           trend={activeSRTrend}
           trendLabel={meta.trendLabel}
         />
+        {promoSummary && ( // ← Phase ৪: non-critical বলে fetch ব্যর্থ হলে কার্ডটাই দেখাবে না, বাকি ড্যাশবোর্ড অক্ষত থাকবে
+          <KPICard
+            title="এই মাসে প্রমোশন ছাড়"
+            value={`৳${Number(promoSummary.discount_this_month || 0).toLocaleString()}`}
+            subtitle={`${promoSummary.active_count || 0}টি সক্রিয় অফার · ${promoSummary.redemptions_this_month || 0}বার ব্যবহৃত`}
+            icon={<FiTag />}
+            color="secondary"
+          />
+        )}
       </div>
 
       {/* Charts Row */}

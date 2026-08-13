@@ -3,20 +3,24 @@ import { FiTag, FiCalendar, FiClock } from 'react-icons/fi';
 import api from '../../api/axios';
 
 const typeLabel = {
-    buy_x_get_y : '🎁 কিনলে পাবেন',
-    percent_off : '% ছাড়',
-    flat_off    : '৳ ছাড়',
-    bundle      : '📦 বান্ডেল',
-    min_order   : '🛒 ন্যূনতম অর্ডার',
+    buy_x_get_y     : '🎁 কিনলে পাবেন',
+    percent_off     : '% ছাড়',
+    flat_off        : '৳ ছাড়',
+    min_order       : '🛒 ন্যূনতম অর্ডার',
+    tiered_discount : '📊 স্ল্যাব ছাড়', // ← Phase ২-তে যোগ হয়েছিল, এখানে যোগ করতে ভুলে গিয়েছিলাম
 };
 
 const typeColor = {
-    buy_x_get_y : 'bg-green-100 text-green-700',
-    percent_off : 'bg-blue-100 text-blue-700',
-    flat_off    : 'bg-purple-100 text-purple-700',
-    bundle      : 'bg-orange-100 text-orange-700',
-    min_order   : 'bg-yellow-100 text-yellow-700',
+    buy_x_get_y     : 'bg-green-100 text-green-700',
+    percent_off     : 'bg-blue-100 text-blue-700',
+    flat_off        : 'bg-purple-100 text-purple-700',
+    min_order       : 'bg-yellow-100 text-yellow-700',
+    tiered_discount : 'bg-indigo-100 text-indigo-700',
 };
+// নোট: 'bundle' টাইপ আগে এখানে ছিল, কিন্তু Admin-এর Create ফর্মে এই
+// অপশনই ছিল না (তৈরি করা যেত না) এবং calculatePromotions-ও এটা হ্যান্ডেল
+// করত না — dead/misleading কোড ছিল। প্রকৃত bundle promotion (একাধিক আলাদা
+// প্রোডাক্ট একসাথে fixed দামে) Phase ২-এর নতুন capability হিসেবে যোগ হবে।
 
 export default function ActiveOffers() {
     const [offers, setOffers]   = useState([]);
@@ -54,7 +58,11 @@ export default function ActiveOffers() {
             ) : (
                 <div className="space-y-3">
                     {offers.map(offer => (
-                        <div key={offer.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+                        <div key={offer.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                            {offer.banner_image_url && (
+                                <img src={offer.banner_image_url} alt={offer.name} className="w-full h-32 object-cover" />
+                            )}
+                            <div className="p-4">
                             <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1">
                                     <h3 className="font-semibold text-gray-800">{offer.name}</h3>
@@ -71,7 +79,8 @@ export default function ActiveOffers() {
                             <div className="mt-3 bg-gray-50 rounded-xl p-3 text-sm">
                                 {offer.type === 'buy_x_get_y' && (
                                     <p className="text-green-700 font-medium">
-                                        🎁 {offer.buy_quantity}টা কিনলে {offer.free_quantity}টা ফ্রি পাবেন
+                                        🎁 {offer.buy_quantity}টা কিনলে {offer.free_quantity}টা{' '}
+                                        {offer.free_product_name || 'পণ্য'} ফ্রি পাবেন
                                     </p>
                                 )}
                                 {offer.type === 'percent_off' && (
@@ -91,6 +100,14 @@ export default function ActiveOffers() {
                                         🛒 ৳{offer.min_order_amount}-এর উপরে অর্ডারে বিশেষ সুবিধা
                                     </p>
                                 )}
+                                {offer.type === 'tiered_discount' && Array.isArray(offer.tiers) && (
+                                    <div className="text-indigo-700 font-medium space-y-0.5">
+                                        <p>📊 যত বেশি কিনবেন, তত বেশি ছাড়:</p>
+                                        {[...offer.tiers].sort((a, b) => (a.min_qty || 0) - (b.min_qty || 0)).map((t, i) => (
+                                            <p key={i} className="text-xs pl-4">• {t.min_qty}+ পিসে {t.discount_value}{t.discount_type === 'flat' ? '৳' : '%'} ছাড়</p>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="flex items-center justify-between mt-3 text-xs text-gray-400">
@@ -103,6 +120,7 @@ export default function ActiveOffers() {
                                     <FiClock size={12} />
                                     আর {daysLeft(offer.end_date)} দিন
                                 </span>
+                            </div>
                             </div>
                         </div>
                     ))}

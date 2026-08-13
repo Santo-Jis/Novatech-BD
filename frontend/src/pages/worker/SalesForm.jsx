@@ -167,6 +167,8 @@ export default function SalesForm() {
   const [replacements, setReplacements] = useState({})
   const [paymentMethod, setPaymentMethod] = useState('cash')
   const [useCreditBalance, setUseCreditBalance] = useState(false)
+  const [promoPreview, setPromoPreview] = useState(null) // ← নতুন: /promotions/calculate-এর ফলাফল
+  const [promoCode, setPromoCode] = useState('')          // ← নতুন (Phase ২): কোড-ভিত্তিক অফার
 
   const [receiptPhoto, setReceiptPhoto] = useState(null)
   const [receiptPreview, setReceiptPreview] = useState(null)
@@ -255,6 +257,24 @@ export default function SalesForm() {
     loadData()
   }, [customerId])
 
+  // ── প্রমোশন প্রিভিউ — কার্ট/কাস্টমার বদলালে recalculate ──────────
+  // এটাই আগে কখনো call হতো না (Promotions Phase ১ ফিক্স)। ৪০০ms debounce
+  // দেওয়া হয়েছে যাতে qty-তে দ্রুত +/- ক্লিকে বারবার API call না হয়।
+  // অফলাইনে/error হলে চুপচাপ null — backend createSale নিজে থেকেই সঠিক
+  // discount ধরবে (offline sale sync হওয়ার সময়ও), শুধু প্রিভিউটা মিস হবে।
+  useEffect(() => {
+    const items = Object.entries(selected).map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
+    if (!items.length || !customerId || !navigator.onLine) { setPromoPreview(null); return }
+
+    const timer = setTimeout(() => {
+      api.post('/promotions/calculate', { items, customer_id: customerId, promo_code: promoCode || undefined })
+        .then(r => setPromoPreview(r.data.data))
+        .catch(() => setPromoPreview(null))
+    }, 400)
+
+    return () => clearTimeout(timer)
+  }, [selected, customerId, promoCode])
+
   const updateQty = (pid, delta, isReplacement = false) => {
     const setter = isReplacement ? setReplacements : setSelected
     setter(prev => {
@@ -275,7 +295,12 @@ export default function SalesForm() {
     .reduce((sum, p) => sum + calcFinalPrice(p) * replacements[p.id], 0)
 
   const creditBalance      = parseFloat(customer?.credit_balance || 0)
-  const discountAmount     = useCreditBalance ? Math.min(creditBalance, totalAmount) : 0
+  // promoPreview.total_discount ইতোমধ্যে "বিল কমায় এমন" অংশ (backend-এ
+  // payableDiscount হিসেবে হিসাব হয় — buy_x_get_y-এর ফ্রি আইটেমের মূল্য
+  // এখানে নেই, সেটা শুধু ফ্রি আইটেম হিসেবেই দেখানো হয়, বিলে ছাড় না)
+  const promotionDiscount = promoPreview?.total_discount || 0
+  const creditDiscount     = useCreditBalance ? Math.min(creditBalance, Math.max(0, totalAmount - promotionDiscount)) : 0
+  const discountAmount     = promotionDiscount + creditDiscount
   const netAfterDiscount   = totalAmount - discountAmount
   const vatAmount          = products
     .filter(p => selected[p.id])
@@ -425,6 +450,7 @@ export default function SalesForm() {
         replacement_items:  replacementItems,
         use_credit_balance: useCreditBalance,
         receipt_photo:      receiptPhotoUrl || undefined,
+        promo_code:         promoCode || undefined, // ← Phase ২: কোড-ভিত্তিক অফার
         // Idempotency key — network retry-তে duplicate invoice প্রতিরোধ
         // crypto.randomUUID() — browser built-in, cryptographically secure UUID v4
         idempotency_key: crypto.randomUUID(),
@@ -676,8 +702,27 @@ export default function SalesForm() {
         <div className="space-y-4">
           {/* Summary */}
           <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm space-y-2 text-sm">
+            {/* প্রমো কোড — শুধু কোড-ভিত্তিক (redeemable) অফারের জন্য; automatic
+                অফার এমনিতেই কার্ট/কাস্টমার দেখে ধরা পড়ে, কোড লাগে না */}
+            <div className="flex gap-2 pb-2 border-b border-gray-50">
+              <input
+                value={promoCode}
+                onChange={e => setPromoCode(e.target.value.toUpperCase())}
+                placeholder="প্রমো কোড থাকলে লিখুন (optional)"
+                className="flex-1 border rounded-lg px-3 py-2 text-sm uppercase"
+              />
+            </div>
             <div className="flex justify-between"><span className="text-gray-500">পণ্যের মোট</span><span className="font-semibold">৳{totalAmount.toLocaleString('en', { maximumFractionDigits: 2 })}</span></div>
-            {discountAmount > 0 && <div className="flex justify-between text-emerald-600"><span>ব্যালেন্স ছাড়</span><span>-৳{discountAmount.toFixed(2)}</span></div>}
+            {promotionDiscount > 0 && <div className="flex justify-between text-pink-600"><span>🎁 প্রমোশন ছাড়</span><span>-৳{promotionDiscount.toFixed(2)}</span></div>}
+            {promoPreview?.free_items?.length > 0 && (
+              <div className="text-xs text-pink-600 bg-pink-50 rounded-lg px-3 py-2">
+                ফ্রি পাবেন: {promoPreview.free_items.map(fi => `${fi.qty} x ${fi.name}`).join(', ')}
+              </div>
+            )}
+            {promoCode && promoPreview && !promotionDiscount && !promoPreview.free_items?.length && (
+              <p className="text-xs text-red-500">কোডটা মিলছে না বা মেয়াদ শেষ — বানান চেক করুন।</p>
+            )}
+            {creditDiscount > 0 && <div className="flex justify-between text-emerald-600"><span>ব্যালেন্স ছাড়</span><span>-৳{creditDiscount.toFixed(2)}</span></div>}
             {replacementValue > 0 && <div className="flex justify-between text-orange-600"><span>রিপ্লেসমেন্ট</span><span>-৳{replacementValue.toFixed(2)}</span></div>}
             {vatAmount > 0 && <div className="flex justify-between text-amber-600"><span>ভ্যাট</span><span>+৳{vatAmount.toFixed(2)}</span></div>}
             <div className="flex justify-between font-bold text-base pt-2 border-t border-gray-100">

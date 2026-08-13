@@ -58,6 +58,22 @@ export default function HomeFeed({ portalJWT }) {
   const [loading,  setLoading]  = useState(true)
   const [errorMsg, setErrorMsg] = useState('')
 
+  // ✅ NEW (Phase ৫): "মার্কেটিং অফার" আগে placeholder ছিল, এখন আসল ডেটা
+  const [offers,        setOffers]        = useState([])
+  const [offersLoading, setOffersLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setOffersLoading(true)
+    portalFetch('/portal/promotions/active', {
+      headers: { Authorization: `Bearer ${portalJWT}` }
+    })
+      .then(res => { if (!cancelled) setOffers(res.data || []) })
+      .catch(() => { if (!cancelled) setOffers([]) }) // চুপচাপ খালি — feed-এর বাকি অংশ যেন আটকে না যায়
+      .finally(() => { if (!cancelled) setOffersLoading(false) })
+    return () => { cancelled = true }
+  }, [portalJWT])
+
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -79,10 +95,51 @@ export default function HomeFeed({ portalJWT }) {
         <ComingSoonCard icon={FiVolume2} title="কোম্পানির পোস্ট এখানে দেখা যাবে" desc="আপনার কানেক্টেড কোম্পানিগুলো নতুন পণ্য, আপডেট বা ঘোষণা পোস্ট করলে এখানে দেখতে পাবেন।" />
       </div>
 
-      {/* ── মার্কেটিং অফার (placeholder) ── */}
+      {/* ── মার্কেটিং অফার (Phase ৫ — আসল ডেটা) ── */}
       <div>
         <SectionLabel label="মার্কেটিং অফার" tone="warmth" />
-        <ComingSoonCard icon={FiTag} title="চলমান অফার এখানে দেখা যাবে" desc="বিশেষ ছাড় ও প্রমোশনাল অফার এলে এই জায়গায় কার্ড আকারে দেখানো হবে।" />
+
+        {offersLoading && (
+          <div className="rounded-2xl bg-cp-bg-alt animate-pulse" style={{ height: 76 }} />
+        )}
+
+        {!offersLoading && offers.length === 0 && (
+          <ComingSoonCard icon={FiTag} title="এই মুহূর্তে কোনো অফার নেই" desc="বিশেষ ছাড় ও প্রমোশনাল অফার এলে এই জায়গায় কার্ড আকারে দেখানো হবে।" />
+        )}
+
+        {!offersLoading && offers.length > 0 && (
+          <div className="flex flex-col gap-3">
+            {offers.map(offer => (
+              <div key={offer.id} className="rounded-2xl bg-cp-bg-surface border border-cp-border overflow-hidden">
+                <PostHeader icon={FiTag} tone="confidence" title={offer.name} subtitle="চলমান অফার" />
+                {offer.banner_image_url && (
+                  <img src={offer.banner_image_url} alt={offer.name} className="w-full h-32 object-cover" />
+                )}
+                <div className="px-4 pb-3.5 pt-1">
+                  {offer.description && (
+                    <p className="text-[11.5px] text-cp-text-muted leading-relaxed mb-1.5">{offer.description}</p>
+                  )}
+                  <p className="text-[12.5px] font-bold text-cp-warmth-700">
+                    {offer.type === 'buy_x_get_y'
+                      ? `🎁 ${offer.buy_quantity}টা কিনলে ${offer.free_quantity}টা ${offer.free_product_name || 'পণ্য'} ফ্রি`
+                      : offer.type === 'percent_off'
+                      ? `💰 ${offer.discount_value}% ছাড়${offer.min_order_amount > 0 ? ` (ন্যূনতম ৳${offer.min_order_amount})` : ''}`
+                      : offer.type === 'flat_off'
+                      ? `💵 ৳${offer.discount_value} ছাড়${offer.min_order_amount > 0 ? ` (ন্যূনতম ৳${offer.min_order_amount})` : ''}`
+                      : offer.type === 'min_order'
+                      ? `🛒 ৳${offer.min_order_amount}+ অর্ডারে বিশেষ সুবিধা`
+                      : offer.type === 'tiered_discount'
+                      ? '📊 যত বেশি কিনবেন, তত বেশি ছাড়'
+                      : 'বিশেষ অফার'}
+                  </p>
+                  <p className="text-[10px] text-cp-text-muted mt-1">
+                    {fmtDate(offer.start_date)} — {fmtDate(offer.end_date)} পর্যন্ত
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── সাম্প্রতিক ইনভয়েস (real feed) ── */}

@@ -1,7 +1,9 @@
 const { query, withTransaction } = require('../config/db');
 const { calcFromProduct }        = require('../services/price.utils');
 const { getResolvedPrices }      = require('../services/priceList.utils'); // ← নতুন (Step ৫: মাল্টিপল প্রাইস লিস্ট)
-const { adjustDefaultWarehouseStock } = require('../services/warehouseStock.utils'); // ← per-warehouse স্টক ধাপ ৪
+const {
+    getEligiblePromotions, recordPromotionUsage, deductFreeGiftStock
+} = require('../services/promotion.utils'); // ← নতুন (Promotions Phase ১: checkout-এ আসল apply)
 const { generateOTP }            = require('../config/encryption');
 const crypto                     = require('crypto');
 const logger = require('../config/logger');
@@ -14,7 +16,6 @@ const {
     getInvoiceWhatsAppMessage
 } = require('../services/invoice.service');
 const { uploadToCloudinary } = require('../services/employee.service');
-const { getPublicAppUrl } = require('../config/publicAppUrl');
 const { sendCustomerNotification } = require('./customerNotification.controller');
 
 // Firebase নোটিফিকেশন
@@ -157,7 +158,8 @@ const createSale = async (req, res) => {
             payment_method,
             replacement_items,
             use_credit_balance,  // কাস্টমারের জমা ব্যালেন্স ব্যবহার
-            idempotency_key      // Offline duplicate প্রতিরোধ
+            idempotency_key,     // Offline duplicate প্রতিরোধ
+            promo_code,          // ← নতুন (Phase ২): SR/কাস্টমার-এর দেওয়া কোড, থাকলে
         } = req.body;
 
         if (!customer_id || !items || !payment_method) {
@@ -276,6 +278,55 @@ const createSale = async (req, res) => {
             });
         }
 
+        // ── প্রমোশন যাচাই (Promotions Phase ১) ───────────────────────────
+        // আগে এই মডিউলটা শুধু preview endpoint-এ কাজ করত, আসল বিক্রয়ে
+        // কখনো প্রভাব ফেলত না। এখন SERVER নিজে items + customer_id দিয়ে
+        // eligible promotion বের করে — client কোনো promotion_id পাঠায় না/
+        // পাঠালেও বিশ্বাস করা হয় না, তাই manipulate করার সুযোগ নেই।
+        //
+        // ⚠️ ইচ্ছাকৃতভাবে try/catch দিয়ে আলাদা করা হয়েছে: এটা নতুন কোড,
+        // এখানে কোনো bug/সমস্যা হলেও যেন পুরো বিক্রয়টাই ব্যর্থ না হয়ে
+        // যায় — শুধু promotion apply না হয়ে sale চলুক (fail-safe, fail-open
+        // নয়: কাস্টমার/ব্যবসা কারো ক্ষতি হয় না, শুধু promo miss হতে পারে)।
+        let applicablePromotions = [];
+        let promotionDiscount    = 0;
+        try {
+            const promoResult = await getEligiblePromotions({
+                queryFn:    query,
+                tenantId:   req.tenantId,
+                items,
+                customerId: customer_id,
+                routeId:    cust.route_id,          // ← আগে থেকেই লোড আছে, এক্সট্রা query লাগছে না
+                promoCode:  promo_code || null,      // ← Phase ২: কোড-ভিত্তিক promotion
+            });
+            applicablePromotions = promoResult.applicable;
+            promotionDiscount    = promoResult.payableDiscount; // বিল কমায় এমন অংশ (buy_x_get_y বাদে)
+        } catch (promoErr) {
+            logger.error('[Sale] promotion lookup failed, continuing sale without promotion:', promoErr.message);
+        }
+
+        // Buy X Get Y-এর ফ্রি আইটেম থাকলে ৳০ মূল্যের invoice line হিসেবে
+        // যোগ করো — এতে processedItems-এর existing stock_movements/ledger
+        // loop (নিচে) এগুলোও স্বয়ংক্রিয়ভাবে ধরে নেবে, আলাদা কোড লাগবে না।
+        for (const applied of applicablePromotions) {
+            for (const fi of applied.freeItems) {
+                processedItems.push({
+                    product_id:   fi.product_id,
+                    product_name: fi.name,
+                    qty:          fi.qty,
+                    price:        0,
+                    vat_rate:     0,
+                    tax_rate:     0,
+                    vat_amount:   0,
+                    tax_amount:   0,
+                    final_price:  0,
+                    subtotal:     0,
+                    is_free_gift: true,
+                    promotion_id: applied.promotion.id,
+                });
+            }
+        }
+
         // রিপ্লেসমেন্ট হিসাব
         const processedReplacement = [];
         if (replacement_items?.length > 0) {
@@ -305,12 +356,16 @@ const createSale = async (req, res) => {
         }
 
         // Credit Balance সমন্বয়
+        // discountAmount এখন দুই উৎসের যোগফল: promotionDiscount (উপরে
+        // হিসাব হয়েছে) + creditBalanceUsed। credit balance প্রয়োগ হয়
+        // promo-discount বাদ দেওয়ার পরের অঙ্কের উপর, যাতে দুইবার count না হয়।
         let creditBalanceUsed  = 0;
-        let discountAmount     = 0;
+        let discountAmount     = promotionDiscount;
 
         if (use_credit_balance && cust.credit_balance > 0) {
-            creditBalanceUsed = Math.min(cust.credit_balance, totalAmount);
-            discountAmount    = creditBalanceUsed;
+            const remainingAfterPromo = Math.max(0, totalAmount - promotionDiscount);
+            creditBalanceUsed = Math.min(cust.credit_balance, remainingAfterPromo);
+            discountAmount    += creditBalanceUsed;
         }
 
         // রিপ্লেসমেন্ট সমন্বয়
@@ -482,6 +537,33 @@ const createSale = async (req, res) => {
                 ]
             );
 
+            // ── প্রমোশন usage রেকর্ড + ফ্রি গিফট stock deduct ────────────────
+            // একই transaction-এর অংশ: sale rollback হলে এগুলোও rollback হয়,
+            // আর FOR UPDATE লক দিয়ে race-condition-এ (দুইজন SR একসাথে শেষ
+            // slot/stock নেওয়ার চেষ্টা করলে) দ্বিতীয়জনের পুরো sale ব্যর্থ
+            // হবে স্পষ্ট বার্তাসহ — order-lock/credit-limit-এর মতোই pattern।
+            for (const applied of applicablePromotions) {
+                for (const fi of applied.freeItems) {
+                    await deductFreeGiftStock({
+                        client,
+                        tenantId:    req.tenantId,
+                        productId:   fi.product_id,
+                        qty:         fi.qty,
+                        productName: fi.name,
+                    });
+                }
+                await recordPromotionUsage({
+                    client,
+                    tenantId:      req.tenantId,
+                    promotionId:   applied.promotion.id,
+                    saleId:        result.rows[0].id,
+                    workerId:      req.user.id,
+                    customerId:    customer_id,
+                    discountGiven: applied.discountAmount,
+                    freeQtyGiven:  applied.freeItems.reduce((s, f) => s + f.qty, 0),
+                });
+            }
+
             // ✅ Auto-verify: এই কাস্টমারের প্রথম sale হলে verified badge পাবে
             // (is_verified = false চেক করাতে idempotent — verified_at/verified_by
             //  দ্বিতীয় sale-এ overwrite হবে না, একই transaction-এর অংশ বলে sale
@@ -546,11 +628,6 @@ const createSale = async (req, res) => {
              AND tenant_id = $3`,
                     [item.qty, item.product_id, req.tenantId]
                 );
-                // ✅ per-warehouse স্টক ধাপ ৪: এখানে সুনির্দিষ্ট গুদাম জানা নেই
-                // (SR-এর হাতে থাকা রিপ্লেসমেন্ট), তাই ডিফল্ট গুদামে ক্রেডিট
-                await adjustDefaultWarehouseStock(client, {
-                    tenantId: req.tenantId, productId: item.product_id, delta: item.qty
-                });
                 await client.query(
                     `INSERT INTO stock_movements (product_id, movement_type, quantity, reference_id, reference_type, note, created_by, tenant_id) VALUES ($1, 'returned', $2, $3, 'sale', 'রিপ্লেসমেন্ট ফেরত', $4, $5)`,
                     [item.product_id, item.qty, result.rows[0].id, req.user.id, req.tenantId]
@@ -600,7 +677,7 @@ const createSale = async (req, res) => {
             .then(r => logger.info('📄 Invoice SMS Fallback:', JSON.stringify(r.results)))
             .catch(e => logger.error('⚠️ Invoice নোটিফিকেশন Error:', e.message));
 
-        // ✅ WhatsApp-এ Invoice PDF পাঠাও (ডকুমেন্ট, Puppeteer লাগে না)
+        // ✅ WhatsApp-এ Invoice ছবি পাঠাও (Puppeteer rendered PNG)
         sendInvoiceWhatsApp(cust, saleResult, req.user, processedItems)
             .then(r => {
                 if (r.success) {
@@ -680,9 +757,16 @@ const createSale = async (req, res) => {
                 replacement_items:    processedReplacement,
                 payment_method:       payment_method,
                 discount_amount:      discountAmount,
+                promotion_discount:   promotionDiscount,
+                applied_promotions:   applicablePromotions.map(a => ({
+                    id:         a.promotion.id,
+                    name:       a.promotion.name,
+                    discount:   a.discountAmount,
+                    free_items: a.freeItems,
+                })),
                 credit_balance_used:  creditBalanceUsed,
                 credit_balance_added: creditBalanceAdded,
-                verify_link:       `${getPublicAppUrl()}/verify/${saleResult.verify_token}`,
+                verify_link:       `${process.env.FRONTEND_URL || 'https://zovorix.com'}/verify/${saleResult.verify_token}`,
                 whatsapp_link:     `https://wa.me/${(() => { const r = cust.whatsapp?.replace(/\D/g, '') || ''; return r.startsWith('880') ? r : '880' + r.replace(/^0/, ''); })()}?text=${encodeURIComponent(waLink)}`
             }
         });
@@ -691,7 +775,7 @@ const createSale = async (req, res) => {
         logger.error('❌ Create Sale Error:', error.message);
 
         // Known business errors — transaction-এর ভেতর থেকে throw হওয়া
-        const knownErrors = ['ORDER_UNAVAILABLE', 'CREDIT_LIMIT_EXCEEDED', 'CUSTOMER_NOT_FOUND'];
+        const knownErrors = ['ORDER_UNAVAILABLE', 'CREDIT_LIMIT_EXCEEDED', 'CUSTOMER_NOT_FOUND', 'PROMOTION_UNAVAILABLE'];
         if (knownErrors.includes(error.message)) {
             return res.status(error.statusCode || 400).json({
                 success: false,
@@ -886,8 +970,8 @@ const verifyOTP = async (req, res) => {
         const { sale_id, otp } = req.body;
 
         const sale = await query(
-            'SELECT id, otp_code, otp_expires_at, otp_verified FROM sales_transactions WHERE id = $1 AND tenant_id = $2',
-            [sale_id, req.tenantId]
+            'SELECT id, otp_code, otp_expires_at, otp_verified FROM sales_transactions WHERE id = $1',
+            [sale_id]
         );
 
         if (sale.rows.length === 0) {

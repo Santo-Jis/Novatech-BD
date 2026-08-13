@@ -56,6 +56,7 @@ const {
 } = require('../controllers/customerPortal.controller');
 
 const { sendCreditReminder } = require('../controllers/creditReminder.controller');
+const { getPortalActivePromotions } = require('../controllers/promotion.controller'); // ← Promotions Phase ৫
 const {
     getNotifications,
     markAllRead,
@@ -253,6 +254,7 @@ router.patch('/notifications/:id/read',    portalAuth, markOneRead);
 router.get('/products',                    portalAuth, getPortalProducts);
 router.get('/products/:id',                portalAuth, getPortalProductDetail);
 router.get('/product-sellers',             portalAuth, getProductSellers); // ✅ NEW (পার্ট ৩)
+router.get('/promotions/active',           portalAuth, getPortalActivePromotions); // ← Promotions Phase ৫
 router.post('/order-request',              portalAuth, createOrderRequest);
 router.get('/order-requests',              portalAuth, getMyOrderRequests);
 router.patch('/order-requests/:id/cancel', portalAuth, cancelMyOrderRequest);

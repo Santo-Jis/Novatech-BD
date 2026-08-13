@@ -20,6 +20,7 @@ const REPORT_TABS = [
   { key: 'ledger',     label: '📒 লেজার' },
   { key: 'archive',    label: '🗄️ Archive' },
   { key: 'top',        label: '🏆 শীর্ষ তালিকা' },
+  { key: 'promotions', label: '🎁 প্রমোশন' }, // ← Phase ৪
 ]
 
 export default function AdminReports() {
@@ -53,6 +54,7 @@ export default function AdminReports() {
         api.get(`/reports/top-products?from=${from}&to=${to}`),
         api.get(`/reports/top-shops?from=${from}&to=${to}`)
       ])
+      else if (tab === 'promotions') res = await api.get('/promotions') // ← Phase ৪: বিদ্যমান endpoint reuse
 
       if (tab === 'top') setData({ products: res[0].data.data, shops: res[1].data.data })
       else setData(res.data.data)
@@ -407,6 +409,47 @@ export default function AdminReports() {
     }
   }
 
+  // ✅ NEW (Phase ৪): সহজ সারাংশ টেবিল — বিদ্যমান GET /promotions রিইউজ
+  // করে, তাই নতুন backend endpoint লাগেনি। Excel export ইচ্ছাকৃতভাবে বাদ
+  // (অন্য ট্যাবগুলোর মতো ডেডিকেটেড export endpoint বানানো এই ধাপের বাইরে)।
+  const renderPromotions = () => {
+    if (!data || !Array.isArray(data)) return null
+    const totalDiscount = data.reduce((s, p) => s + Number(p.total_discount_given || 0), 0)
+    const totalUses     = data.reduce((s, p) => s + Number(p.use_count || 0), 0)
+    const activeCount   = data.filter(p => p.is_active).length
+    const pendingCount  = data.filter(p => p.approval_status === 'pending').length
+
+    return (
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Card className="p-4"><p className="text-xs text-gray-500">সক্রিয় অফার</p><p className="text-xl font-bold text-blue-700">{activeCount}</p></Card>
+          <Card className="p-4"><p className="text-xs text-gray-500">অনুমোদনের অপেক্ষায়</p><p className="text-xl font-bold text-amber-600">{pendingCount}</p></Card>
+          <Card className="p-4"><p className="text-xs text-gray-500">মোট ব্যবহার</p><p className="text-xl font-bold text-purple-700">{totalUses}</p></Card>
+          <Card className="p-4"><p className="text-xs text-gray-500">মোট ছাড় (সর্বমোট)</p><p className="text-xl font-bold text-pink-700">৳{totalDiscount.toLocaleString('bn-BD')}</p></Card>
+        </div>
+        <Card className="p-4">
+          <Table
+            columns={[
+              { title: 'নাম',    dataIndex: 'name' },
+              { title: 'ধরন',    dataIndex: 'type' },
+              { title: 'অবস্থা', dataIndex: 'is_active', render: (v, r) =>
+                  r.approval_status === 'pending'
+                    ? <span className="text-amber-600 font-medium">অনুমোদনের অপেক্ষায়</span>
+                    : v ? <span className="text-green-600 font-medium">সক্রিয়</span> : <span className="text-gray-400">বন্ধ</span>
+              },
+              { title: 'ব্যবহার', dataIndex: 'use_count', render: v => v || 0 },
+              { title: 'মোট ছাড়', dataIndex: 'total_discount_given', render: v => `৳${Number(v || 0).toLocaleString('bn-BD')}` },
+              { title: 'মেয়াদ',  dataIndex: 'end_date', render: v => new Date(v).toLocaleDateString('bn-BD') },
+            ]}
+            data={data}
+            compact
+          />
+        </Card>
+        <p className="text-xs text-gray-400">বিস্তারিত রিপোর্ট (SR/রুট leaderboard, before/after lift, ROI) দেখতে Promotions পেজে যান।</p>
+      </div>
+    )
+  }
+
   const renderReturn = () => {
     if (!data) return null
     const summary = data.summary || {}
@@ -496,6 +539,7 @@ export default function AdminReports() {
       {tab === 'ledger'  && renderLedger()}
       {tab === 'archive' && renderArchive()}
       {tab === 'top'     && renderTop()}
+      {tab === 'promotions' && renderPromotions()}
       {['sales','attendance','commission','credit','expense'].includes(tab) && renderExisting()}
     </div>
   )
