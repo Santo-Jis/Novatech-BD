@@ -8,118 +8,26 @@ import {
   FiBriefcase, FiUser, FiPhone, FiMail, FiLock, FiShield, FiEye, FiEyeOff,
   FiGrid, FiUsers, FiMapPin, FiGlobe, FiLink, FiMessageCircle, FiLayers, FiCreditCard,
 } from 'react-icons/fi'
-import logo from '../assets/zovorix-logo.png'
 import SEO from '../components/SEO'
 import { SEAT_RATES, TRIAL_SEAT_LIMITS, MAX_TRIAL_CUSTOMERS, calculateMonthlyTotal, formatTaka } from '../constants/pricing'
+import './AuthPages.css'
 
 // ============================================================
 // Start Trial — ZovoriX
 // ৩ মাসের ফ্রি ট্রায়াল সাইনআপ ফর্ম — নতুন কোম্পানি/tenant self-register
 // করে backend-এর বিদ্যমান POST /api/register এন্ডপয়েন্টে (onboarding
 // controller) — কোনো ম্যানুয়াল approval লাগে না, সাথে সাথে trial শুরু হয়।
-// ল্যান্ডিং পেইজের সাথে সামঞ্জস্যপূর্ণ ডিজাইন সিস্টেম ব্যবহার করা হয়েছে
 //
-// ✅ v2 — মাল্টি-স্টেপ ফর্মে রিডিজাইন (৩ ধাপ):
+// ✅ v3 — প্রিমিয়াম রিডিজাইন: split-screen shell (dark brand panel +
+//    রিফাইনড ফর্ম প্যানেল), scroll reveal, নতুন step indicator।
+//    ফিল্ড/ভ্যালিডেশন/API payload অপরিবর্তিত — v2-এর সাথে ১০০% সামঞ্জস্যপূর্ণ,
+//    শুধু ভিজ্যুয়াল লেয়ার বদলেছে।
 //    ধাপ ১ — অ্যাকাউন্ট (কোম্পানি নাম, ID, নাম, ফোন, ইমেইল, পাসওয়ার্ড)
 //    ধাপ ২ — কোম্পানি প্রোফাইল (ইন্ডাস্ট্রি, আকার, দেশ/বিভাগ/জেলা/টাইমজোন, ওয়েবসাইট)
 //    ধাপ ৩ — টিম, রেফারেল সোর্স ও প্রাইসিং সামারি + সাবমিট
 // ============================================================
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/api$/, '')
-
-const T = {
-  bgBase:    '#FAF8F3',
-  bgSurface: '#FFFFFF',
-  bgAlt:     '#F3F1EA',
-  bgSunken:  '#EFEDE4',
-  primary900:'#0F1B2E',
-  primary700:'#16253D',
-  primary500:'#2C4870',
-  primary300:'#6B85A8',
-  primary100:'#DCE3EC',
-  accent600: '#9C6B2E',
-  accent300: '#C99B5A',
-  accent100: '#F3E6D0',
-  textPrimary:  '#1F2937',
-  textSecondary:'#5B6472',
-  textMuted:    '#8B8F98',
-  borderDefault:'#E4E1D8',
-  borderStrong: '#D0CCC0',
-  danger:    '#B4423E',
-  success:   '#2F7D5A',
-  fontHead: "'Source Serif 4','Noto Sans Bengali',Georgia,serif",
-  fontBody: "'IBM Plex Sans','Noto Sans Bengali',Arial,sans-serif",
-  fontMono: "'IBM Plex Mono',monospace",
-}
-
-const inputStyle = {
-  width: '100%',
-  padding: '11px 14px 11px 40px',
-  border: `1px solid ${T.borderDefault}`,
-  borderRadius: '9px',
-  fontSize: '14px',
-  fontFamily: T.fontBody,
-  color: T.textPrimary,
-  background: T.bgSurface,
-  outline: 'none',
-  boxSizing: 'border-box',
-  appearance: 'none',
-}
-
-const selectStyle = { ...inputStyle, paddingRight: '36px' }
-
-const labelStyle = {
-  display: 'block',
-  fontSize: '12.5px',
-  fontWeight: 600,
-  color: T.textSecondary,
-  marginBottom: '6px',
-}
-
-const fieldWrapStyle = { position: 'relative', marginBottom: '16px' }
-
-const iconWrapStyle = {
-  position: 'absolute',
-  left: '13px',
-  top: '38px',
-  color: T.textMuted,
-  fontSize: '15px',
-  pointerEvents: 'none',
-}
-
-const selectArrowStyle = {
-  position: 'absolute',
-  right: '13px',
-  top: '38px',
-  color: T.textMuted,
-  fontSize: '11px',
-  pointerEvents: 'none',
-}
-
-const stepBtnStyle = (disabled) => ({
-  width: '28px', height: '28px', borderRadius: '8px', flexShrink: 0,
-  border: `1px solid ${T.borderDefault}`, background: disabled ? T.bgSunken : T.bgAlt,
-  color: disabled ? T.textMuted : T.primary700, fontSize: '16px', fontWeight: 700,
-  cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center',
-  justifyContent: 'center', lineHeight: 1, padding: 0,
-})
-
-const totalBoxStyle = {
-  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-  padding: '13px 16px', borderRadius: '10px', background: T.primary900, marginTop: '2px',
-}
-
-const navBtnStyle = (primary, disabled) => ({
-  padding: '13px 22px',
-  background: disabled ? T.primary300 : (primary ? T.primary700 : 'transparent'),
-  border: primary ? 'none' : `1px solid ${T.borderDefault}`,
-  borderRadius: '10px',
-  color: primary ? '#fff' : T.textSecondary,
-  fontSize: '14.5px', fontWeight: 700,
-  cursor: disabled ? 'not-allowed' : 'pointer',
-  fontFamily: T.fontBody,
-  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-})
 
 // ─── দেশ অনুযায়ী ডিফল্ট টাইমজোন সাজেশন ───
 const COUNTRY_TIMEZONES = {
@@ -145,7 +53,6 @@ const INDUSTRY_OPTIONS = [
 
 const COMPANY_SIZE_OPTIONS = ['১-৫ জন', '৬-২০ জন', '২১-৫০ জন', '৫১-১০০ জন', '১০০+ জন']
 
-// বাংলাদেশের ৮টা বিভাগ ও প্রতিটার অধীনে জেলাসমূহ — বিভাগ বেছে নিলে জেলার লিস্ট আপডেট হবে
 const BD_DIVISIONS_DISTRICTS = {
   ঢাকা: ['ঢাকা', 'গাজীপুর', 'নারায়ণগঞ্জ', 'নরসিংদী', 'মানিকগঞ্জ', 'মুন্সিগঞ্জ', 'ফরিদপুর', 'গোপালগঞ্জ', 'মাদারীপুর', 'রাজবাড়ী', 'শরীয়তপুর', 'টাঙ্গাইল', 'কিশোরগঞ্জ'],
   চট্টগ্রাম: ['চট্টগ্রাম', 'কক্সবাজার', 'রাঙামাটি', 'বান্দরবান', 'খাগড়াছড়ি', 'ফেনী', 'নোয়াখালী', 'লক্ষ্মীপুর', 'চাঁদপুর', 'কুমিল্লা', 'ব্রাহ্মণবাড়িয়া'],
@@ -172,39 +79,70 @@ const STEPS = [
   { n: 3, labelBn: 'টিম ও প্ল্যান' },
 ]
 
+function slugify(str) {
+  return (str || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 30)
+}
+
+// Scroll-reveal wrapper, same pattern used on LandingPage
+function Reveal({ children, className = '', delay = 0 }) {
+  const ref = useRef(null)
+  const [inView, setInView] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return undefined
+    if (typeof IntersectionObserver === 'undefined') { setInView(true); return undefined }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) { setInView(true); io.unobserve(e.target) } })
+    }, { threshold: 0.1 })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [])
+  return (
+    <div ref={ref} className={`zx-areveal${inView ? ' zx-in' : ''} ${className}`} style={{ transitionDelay: `${delay}s` }}>
+      {children}
+    </div>
+  )
+}
+
+function BrandMark({ size = 30 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
+      <rect x="18" y="18" width="64" height="9" fill="var(--ink-1)" />
+      <rect x="18" y="73" width="64" height="9" fill="var(--ink-1)" />
+      <line x1="77" y1="23" x2="23" y2="77" stroke="var(--ink-1)" strokeWidth="9" />
+      <line x1="23" y1="23" x2="77" y2="77" stroke="var(--gold-500)" strokeWidth="9" />
+    </svg>
+  )
+}
+
 // প্রতিটা role-এর জন্য এক লাইনের সিট-স্টেপার (− সংখ্যা +)
 // admin/fixed role-এ স্টেপার না দেখিয়ে শুধু "১ (তুমি)" দেখানো হয়
 function SeatStepper({ config, value, onChange, max }) {
   const disabled = config.comingSoon || config.fixed
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      padding: '11px 14px', borderRadius: '10px', border: `1px solid ${T.borderDefault}`,
-      background: config.comingSoon ? T.bgAlt : T.bgSurface, marginBottom: '8px',
-      opacity: config.comingSoon ? 0.7 : 1,
-    }}>
+    <div className={`zx-seat-row${config.comingSoon ? ' zx-disabled' : ''}`}>
       <div>
-        <div style={{ fontSize: '13.5px', fontWeight: 600, color: T.textPrimary, display: 'flex', alignItems: 'center', gap: '7px' }}>
+        <div className="zx-seat-name">
           {config.labelBn}
-          {config.comingSoon && (
-            <span style={{
-              fontSize: '10px', fontWeight: 700, padding: '2px 7px', borderRadius: '10px',
-              background: T.accent100, color: T.accent600, fontFamily: T.fontMono, whiteSpace: 'nowrap',
-            }}>শীঘ্রই আসছে</span>
-          )}
+          {config.comingSoon && <span className="zx-seat-badge">শীঘ্রই আসছে</span>}
         </div>
-        <div style={{ fontSize: '11.5px', color: T.textMuted, marginTop: '2px', fontFamily: T.fontMono }}>
-          {formatTaka(config.price)}/সিট/মাস
-        </div>
+        <div className="zx-seat-price">{formatTaka(config.price)}/সিট/মাস</div>
       </div>
       {config.fixed ? (
-        <div style={{ fontSize: '13px', fontWeight: 700, color: T.textSecondary, padding: '0 6px', whiteSpace: 'nowrap' }}>১ (তুমি)</div>
+        <div className="zx-seat-fixed">১ (তুমি)</div>
       ) : (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <button type="button" disabled={disabled || value <= 0} style={stepBtnStyle(disabled || value <= 0)}
+        <div className="zx-seat-stepper">
+          <button type="button" className="zx-seat-btn" disabled={disabled || value <= 0}
             onClick={() => onChange(Math.max(0, value - 1))}>−</button>
-          <span style={{ minWidth: '18px', textAlign: 'center', fontSize: '14px', fontWeight: 700, color: T.primary700 }}>{value}</span>
-          <button type="button" disabled={disabled || value >= max} style={stepBtnStyle(disabled || value >= max)}
+          <span className="zx-seat-count">{value}</span>
+          <button type="button" className="zx-seat-btn" disabled={disabled || value >= max}
             onClick={() => onChange(Math.min(max, value + 1))}>+</button>
         </div>
       )}
@@ -215,49 +153,24 @@ function SeatStepper({ config, value, onChange, max }) {
 // ধাপ নির্দেশক — উপরে ১-২-৩ প্রোগ্রেস দেখায়
 function StepIndicator({ current }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', marginBottom: '28px' }}>
+    <div className="zx-steps">
       {STEPS.map((s, i) => (
-        <div key={s.n} style={{ display: 'flex', alignItems: 'center', flex: i < STEPS.length - 1 ? 1 : 'unset' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-            <div style={{
-              width: '30px', height: '30px', borderRadius: '50%',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '13px', fontWeight: 700, fontFamily: T.fontMono,
-              background: s.n < current ? T.primary700 : (s.n === current ? T.primary700 : T.bgAlt),
-              color: s.n <= current ? '#fff' : T.textMuted,
-              border: s.n === current ? `2px solid ${T.accent300}` : 'none',
-              boxSizing: 'border-box',
-              transition: 'all 0.2s',
-            }}>
-              {s.n < current ? <FiCheck size={14} /> : s.n}
+        <div key={s.n} className="zx-step-item">
+          <div className="zx-step-dot-wrap">
+            <div className={`zx-step-dot${s.n < current ? ' zx-done' : ''}${s.n === current ? ' zx-active' : ''}`}>
+              {s.n < current ? <FiCheck /> : s.n}
             </div>
-            <span style={{
-              fontSize: '10.5px', fontWeight: 600, whiteSpace: 'nowrap',
-              color: s.n === current ? T.primary700 : T.textMuted,
-            }}>{s.labelBn}</span>
+            <span className={`zx-step-label${s.n === current ? ' zx-active' : ''}`}>{s.labelBn}</span>
           </div>
           {i < STEPS.length - 1 && (
-            <div style={{
-              flex: 1, height: '2px', margin: '0 6px 18px',
-              background: s.n < current ? T.primary700 : T.borderDefault,
-              transition: 'all 0.2s',
-            }} />
+            <div className="zx-step-line">
+              <div className={`zx-step-line-fill${s.n < current ? ' zx-filled' : ''}`} />
+            </div>
           )}
         </div>
       ))}
     </div>
   )
-}
-
-function slugify(str) {
-  return (str || '')
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[^a-z0-9\s-]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .slice(0, 30)
 }
 
 export default function StartTrial() {
@@ -424,475 +337,433 @@ export default function StartTrial() {
     : null
 
   return (
-    <div style={{ minHeight: '100vh', background: T.bgBase, fontFamily: T.fontBody, color: T.textPrimary }}>
+    <div className="zx-auth">
       <SEO
         title="৩ মাসের ফ্রি ট্রায়াল শুরু করুন"
         description="কোনো ক্রেডিট কার্ড ছাড়াই ZovoriX-এ ৩ মাসের ফ্রি ট্রায়াল শুরু করুন। বিক্রয়, টিম ও কাস্টমার ব্যবস্থাপনা এখনই ব্যবহার করা শুরু করুন।"
         path="/start-trial"
       />
 
-      {/* Minimal header */}
-      <nav style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '16px 24px', borderBottom: `1px solid ${T.borderDefault}`,
-        background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(12px)',
-        position: 'sticky', top: 0, zIndex: 100,
-      }}>
-        <div
-          onClick={() => navigate('/')}
-          style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
-        >
-          <div style={{ width: '30px', height: '30px', borderRadius: '7px', overflow: 'hidden', border: `1px solid ${T.borderDefault}` }}>
-            <img src={logo} alt="ZovoriX" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-          </div>
-          <span style={{ fontFamily: T.fontHead, fontWeight: 600, fontSize: '18px', color: T.primary700 }}>ZovoriX</span>
-        </div>
-        <button
-          onClick={() => navigate('/login')}
-          style={{
-            padding: '8px 16px', background: 'transparent', border: `1px solid ${T.primary700}`,
-            borderRadius: '8px', color: T.primary700, fontSize: '13px', fontWeight: 600,
-            cursor: 'pointer', fontFamily: T.fontBody,
-          }}
-        >
-          লগইন করুন
-        </button>
-      </nav>
+      <div className="zx-auth-shell">
+        {/* ============================================================
+            LEFT — brand / value panel
+            ============================================================ */}
+        <aside className="zx-auth-brand">
+          <div className="zx-auth-glow zx-auth-glow-drift" aria-hidden="true" style={{ width: 380, height: 380, top: -120, left: -100, background: 'radial-gradient(circle, rgba(202,154,68,0.28), transparent 70%)' }} />
+          <div className="zx-auth-glow zx-auth-glow-drift" aria-hidden="true" style={{ width: 320, height: 320, bottom: -100, right: -80, animationDelay: '-8s', background: 'radial-gradient(circle, rgba(80,110,180,0.18), transparent 70%)' }} />
 
-      <div style={{ maxWidth: '520px', margin: '0 auto', padding: '48px 20px 80px' }}>
-
-        {!result ? (
-          <>
-            {/* Header */}
-            <div style={{ textAlign: 'center', marginBottom: '28px' }}>
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '6px 14px',
-                background: T.accent100, borderRadius: '20px', fontSize: '12px', fontWeight: 700,
-                color: T.accent600, marginBottom: '18px', fontFamily: T.fontMono,
-              }}>
-                <FiShield /> ৯০ দিন ফ্রি ট্রায়াল
-              </div>
-              <h1 style={{
-                fontFamily: T.fontHead, fontSize: 'clamp(26px, 5vw, 34px)', fontWeight: 600,
-                color: T.primary700, margin: '0 0 12px', lineHeight: 1.3,
-              }}>
-                ৩ মাসের ফ্রি ট্রায়াল শুরু করুন
-              </h1>
-              <p style={{ color: T.textSecondary, fontSize: '14.5px', lineHeight: 1.7, margin: 0 }}>
-                এখনই সাইনআপ করুন, সাথে সাথে অ্যাক্সেস পাবেন — কোনো অপেক্ষা নেই।
-              </p>
+          <div className="zx-auth-brand-top">
+            <div className="zx-auth-brand-mark" onClick={() => navigate('/')} role="button" tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter') navigate('/') }}>
+              <BrandMark />
+              <span>ZovoriX</span>
             </div>
 
-            <StepIndicator current={step} />
+            <h1 className="zx-auth-brand-headline">
+              আপনার <span className="zx-accent">৩ মাসের ফ্রি ট্রায়াল</span> শুরু করুন
+            </h1>
+            <p className="zx-auth-brand-sub">
+              কোনো ক্রেডিট কার্ড লাগবে না। সাইনআপ করুন, সাথে সাথে পুরো ফিচার নিয়ে কাজ শুরু করে দিন।
+            </p>
 
-            {/* Form Card */}
-            <form
-              onSubmit={handleSubmit(onSubmit)}
-              style={{
-                background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '16px',
-                padding: '28px 24px', boxShadow: '0 8px 32px rgba(15,27,46,0.06)',
-              }}
-            >
-              {/* ─────────────── ধাপ ১ — অ্যাকাউন্ট ─────────────── */}
-              {step === 1 && (
+            <ul className="zx-auth-value-list">
+              <li><FiCheck /> কোনো ক্রেডিট কার্ড লাগবে না</li>
+              <li><FiCheck /> ৩ মাস পুরো ফিচার — কোনো লক নেই</li>
+              <li><FiCheck /> ৫ মিনিটে সেটআপ, সাথে সাথে অ্যাক্সেস</li>
+              <li><FiCheck /> যেকোনো সময় বাতিল করা যাবে</li>
+            </ul>
+          </div>
+
+          <div className="zx-auth-brand-bottom">
+            <div className="zx-auth-stat-row">
+              <div>
+                <div className="zx-auth-stat-value">২৪+</div>
+                <div className="zx-auth-stat-label">ডিস্ট্রিবিউটর নেটওয়ার্ক</div>
+              </div>
+              <div>
+                <div className="zx-auth-stat-value">১৪,৬৮৩+</div>
+                <div className="zx-auth-stat-label">ট্র্যাকড দোকান</div>
+              </div>
+            </div>
+            <div className="zx-auth-quote">
+              <p>&#8220;ZovoriX-এ আসার পর স্টক ফল্ট ২%-এর নিচে নেমে এসেছে, আর পুরো ব্যবসা এখন এক স্ক্রিন থেকে দেখি।&#8221;</p>
+              <div className="zx-auth-quote-person"><strong>সান্টো হাওলাদার</strong> — Owner &amp; CEO, NovaTech BD</div>
+            </div>
+          </div>
+        </aside>
+
+        {/* ============================================================
+            RIGHT — form panel
+            ============================================================ */}
+        <div className="zx-auth-form-side">
+          <div className="zx-auth-topbar">
+            <div className="zx-auth-topbar-brand" onClick={() => navigate('/')} role="button" tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter') navigate('/') }}>
+              <BrandMark size={24} />
+              <span>ZovoriX</span>
+            </div>
+            <span />
+            <button type="button" className="zx-auth-topbar-link" onClick={() => navigate('/login')}>লগইন করুন</button>
+          </div>
+
+          <div className="zx-auth-main">
+            <div className="zx-auth-container">
+              {!result ? (
                 <>
-                  {/* Company name */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>কোম্পানির নাম *</label>
-                    <FiBriefcase style={iconWrapStyle} />
-                    <input
-                      {...register('company_name', { required: true, minLength: 2 })}
-                      style={inputStyle}
-                      placeholder="যেমন: আকাশ ট্রেডার্স"
-                    />
-                    {errors.company_name && (
-                      <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>কোম্পানির নাম আবশ্যক</p>
-                    )}
-                  </div>
+                  <Reveal className="zx-auth-head">
+                    <span className="zx-auth-pill"><FiShield /> ৯০ দিন ফ্রি ট্রায়াল</span>
+                    <h1>৩ মাসের ফ্রি ট্রায়াল শুরু করুন</h1>
+                    <p>এখনই সাইনআপ করুন, সাথে সাথে অ্যাক্সেস পাবেন — কোনো অপেক্ষা নেই।</p>
+                  </Reveal>
 
-                  {/* Slug */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>Company ID (URL/লগইনে ব্যবহৃত হবে) *</label>
-                    <span style={{ ...iconWrapStyle, fontFamily: T.fontMono, fontSize: '13px', left: '13px' }}>#</span>
-                    <input
-                      {...register('slug', { required: true })}
-                      onChange={(e) => { setSlugManuallyEdited(true); setValue('slug', slugify(e.target.value)) }}
-                      style={{ ...inputStyle, paddingRight: '38px', fontFamily: T.fontMono }}
-                      placeholder="akash-traders"
-                    />
-                    <span style={{ position: 'absolute', right: '13px', top: '38px', fontSize: '15px' }}>
-                      {slugStatus === 'checking' && <FiLoader style={{ color: T.textMuted, animation: 'spin 0.8s linear infinite' }} />}
-                      {slugStatus === 'available' && <FiCheckCircle style={{ color: T.success }} />}
-                      {(slugStatus === 'taken' || slugStatus === 'invalid') && <FiXCircle style={{ color: T.danger }} />}
-                    </span>
-                    <style>{`@keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }`}</style>
-                    {slugStatus === 'taken' && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>এই Company ID আগেই ব্যবহার হয়েছে</p>}
-                    {slugStatus === 'invalid' && slug?.length > 0 && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>শুধু ছোট হাতের অক্ষর, সংখ্যা ও হাইফেন (৩-৩০ ক্যারেক্টার)</p>}
-                    {slugStatus === 'available' && <p style={{ color: T.success, fontSize: '12px', marginTop: '5px' }}>এই Company ID পাওয়া যাচ্ছে</p>}
-                  </div>
+                  <StepIndicator current={step} />
 
-                  {/* Admin name */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>আপনার নাম *</label>
-                    <FiUser style={iconWrapStyle} />
-                    <input
-                      {...register('admin_name', { required: true })}
-                      style={inputStyle}
-                      placeholder="যেমন: রহিম উদ্দিন"
-                    />
-                    {errors.admin_name && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>নাম আবশ্যক</p>}
-                  </div>
+                  <Reveal delay={0.08}>
+                    <form onSubmit={handleSubmit(onSubmit)} className="zx-form-card">
+                      {/* ─────────────── ধাপ ১ — অ্যাকাউন্ট ─────────────── */}
+                      {step === 1 && (
+                        <div className="zx-step-fade">
+                          <div className="zx-field">
+                            <label className="zx-label">কোম্পানির নাম <span className="zx-req">*</span></label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiBriefcase /></span>
+                              <input {...register('company_name', { required: true, minLength: 2 })} className="zx-input" placeholder="যেমন: আকাশ ট্রেডার্স" />
+                            </div>
+                            {errors.company_name && <p className="zx-error-text">কোম্পানির নাম আবশ্যক</p>}
+                          </div>
 
-                  {/* Phone */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>ফোন নম্বর * (লগইনের জন্য ব্যবহৃত হবে)</label>
-                    <FiPhone style={iconWrapStyle} />
-                    <input
-                      {...register('admin_phone', { required: true, pattern: /^[0-9+\-\s]{6,15}$/ })}
-                      type="tel"
-                      style={inputStyle}
-                      placeholder="01XXXXXXXXX"
-                    />
-                    {errors.admin_phone && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>সঠিক ফোন নম্বর দিন</p>}
-                  </div>
+                          <div className="zx-field">
+                            <label className="zx-label">Company ID (URL/লগইনে ব্যবহৃত হবে) <span className="zx-req">*</span></label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon" style={{ fontFamily: 'var(--f-mono)', fontSize: 13 }}>#</span>
+                              <input
+                                {...register('slug', { required: true })}
+                                onChange={(e) => { setSlugManuallyEdited(true); setValue('slug', slugify(e.target.value)) }}
+                                className="zx-input zx-mono zx-has-suffix"
+                                placeholder="akash-traders"
+                              />
+                              <span className="zx-input-suffix-icon">
+                                {slugStatus === 'checking' && <FiLoader className="zx-spin" style={{ color: 'var(--coal-3)' }} />}
+                                {slugStatus === 'available' && <FiCheckCircle style={{ color: 'var(--success)' }} />}
+                                {(slugStatus === 'taken' || slugStatus === 'invalid') && <FiXCircle style={{ color: 'var(--danger)' }} />}
+                              </span>
+                            </div>
+                            {slugStatus === 'taken' && <p className="zx-error-text">এই Company ID আগেই ব্যবহার হয়েছে</p>}
+                            {slugStatus === 'invalid' && slug?.length > 0 && <p className="zx-error-text">শুধু ছোট হাতের অক্ষর, সংখ্যা ও হাইফেন (৩-৩০ ক্যারেক্টার)</p>}
+                            {slugStatus === 'available' && <p className="zx-success-text">এই Company ID পাওয়া যাচ্ছে</p>}
+                          </div>
 
-                  {/* Email (optional) */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>ইমেইল (ঐচ্ছিক)</label>
-                    <FiMail style={iconWrapStyle} />
-                    <input
-                      {...register('admin_email')}
-                      type="email"
-                      style={inputStyle}
-                      placeholder="you@example.com"
-                    />
-                  </div>
+                          <div className="zx-field">
+                            <label className="zx-label">আপনার নাম <span className="zx-req">*</span></label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiUser /></span>
+                              <input {...register('admin_name', { required: true })} className="zx-input" placeholder="যেমন: রহিম উদ্দিন" />
+                            </div>
+                            {errors.admin_name && <p className="zx-error-text">নাম আবশ্যক</p>}
+                          </div>
 
-                  {/* Password */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>Password * (কমপক্ষে ৬ ক্যারেক্টার)</label>
-                    <FiLock style={iconWrapStyle} />
-                    <input
-                      {...register('password', { required: true, minLength: 6 })}
-                      type={showPassword ? 'text' : 'password'}
-                      style={{ ...inputStyle, paddingRight: '38px' }}
-                      placeholder="••••••••"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword((v) => !v)}
-                      style={{ position: 'absolute', right: '13px', top: '36px', background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', padding: '2px' }}
-                      aria-label="Password দেখান/লুকান"
-                    >
-                      {showPassword ? <FiEyeOff /> : <FiEye />}
-                    </button>
-                    {errors.password && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>কমপক্ষে ৬ ক্যারেক্টার দিন</p>}
-                  </div>
+                          <div className="zx-field">
+                            <label className="zx-label">ফোন নম্বর <span className="zx-req">*</span> (লগইনের জন্য ব্যবহৃত হবে)</label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiPhone /></span>
+                              <input {...register('admin_phone', { required: true, pattern: /^[0-9+\-\s]{6,15}$/ })} type="tel" className="zx-input" placeholder="01XXXXXXXXX" />
+                            </div>
+                            {errors.admin_phone && <p className="zx-error-text">সঠিক ফোন নম্বর দিন</p>}
+                          </div>
 
-                  {/* Confirm Password */}
-                  <div style={{ ...fieldWrapStyle, marginBottom: '6px' }}>
-                    <label style={labelStyle}>Password আবার লিখুন *</label>
-                    <FiLock style={iconWrapStyle} />
-                    <input
-                      {...register('confirm_password', { required: true })}
-                      type={showConfirmPassword ? 'text' : 'password'}
-                      style={{ ...inputStyle, paddingRight: '38px' }}
-                      placeholder="••••••••"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmPassword((v) => !v)}
-                      style={{ position: 'absolute', right: '13px', top: '36px', background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer', padding: '2px' }}
-                      aria-label="Password দেখান/লুকান"
-                    >
-                      {showConfirmPassword ? <FiEyeOff /> : <FiEye />}
-                    </button>
-                    {password && watch('confirm_password') && password !== watch('confirm_password') && (
-                      <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>Password মিলছে না</p>
-                    )}
-                  </div>
+                          <div className="zx-field">
+                            <label className="zx-label">ইমেইল (ঐচ্ছিক)</label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiMail /></span>
+                              <input {...register('admin_email')} type="email" className="zx-input" placeholder="you@example.com" />
+                            </div>
+                          </div>
 
+                          <div className="zx-field">
+                            <label className="zx-label">Password <span className="zx-req">*</span> (কমপক্ষে ৬ ক্যারেক্টার)</label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiLock /></span>
+                              <input {...register('password', { required: true, minLength: 6 })} type={showPassword ? 'text' : 'password'} className="zx-input zx-has-suffix" placeholder="••••••••" />
+                              <button type="button" className="zx-input-toggle" onClick={() => setShowPassword((v) => !v)} aria-label="Password দেখান/লুকান">
+                                {showPassword ? <FiEyeOff /> : <FiEye />}
+                              </button>
+                            </div>
+                            {errors.password && <p className="zx-error-text">কমপক্ষে ৬ ক্যারেক্টার দিন</p>}
+                          </div>
+
+                          <div className="zx-field" style={{ marginBottom: 6 }}>
+                            <label className="zx-label">Password আবার লিখুন <span className="zx-req">*</span></label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiLock /></span>
+                              <input {...register('confirm_password', { required: true })} type={showConfirmPassword ? 'text' : 'password'} className="zx-input zx-has-suffix" placeholder="••••••••" />
+                              <button type="button" className="zx-input-toggle" onClick={() => setShowConfirmPassword((v) => !v)} aria-label="Password দেখান/লুকান">
+                                {showConfirmPassword ? <FiEyeOff /> : <FiEye />}
+                              </button>
+                            </div>
+                            {password && watch('confirm_password') && password !== watch('confirm_password') && (
+                              <p className="zx-error-text">Password মিলছে না</p>
+                            )}
+                          </div>
+
+                          <button type="button" onClick={goToStep2} className="zx-auth-btn zx-auth-btn-primary zx-auth-btn-block" style={{ marginTop: 18 }}>
+                            পরবর্তী ধাপ <FiArrowRight />
+                          </button>
+                        </div>
+                      )}
+
+                      {/* ─────────────── ধাপ ২ — কোম্পানি প্রোফাইল ─────────────── */}
+                      {step === 2 && (
+                        <div className="zx-step-fade">
+                          <div className="zx-field">
+                            <label className="zx-label">ব্যবসার ধরন <span className="zx-req">*</span></label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiGrid /></span>
+                              <select {...register('industry', { required: true })} className="zx-select" defaultValue="">
+                                <option value="" disabled>বেছে নিন</option>
+                                {INDUSTRY_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                              </select>
+                              <span className="zx-select-arrow">▾</span>
+                            </div>
+                            {errors.industry && <p className="zx-error-text">ব্যবসার ধরন বেছে নিন</p>}
+                          </div>
+
+                          <div className="zx-field">
+                            <label className="zx-label">কোম্পানির আকার (মোট এমপ্লয়ি) <span className="zx-req">*</span></label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiUsers /></span>
+                              <select {...register('company_size', { required: true })} className="zx-select" defaultValue="">
+                                <option value="" disabled>বেছে নিন</option>
+                                {COMPANY_SIZE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                              </select>
+                              <span className="zx-select-arrow">▾</span>
+                            </div>
+                            {errors.company_size && <p className="zx-error-text">কোম্পানির আকার বেছে নিন</p>}
+                          </div>
+
+                          <div className="zx-field">
+                            <label className="zx-label">দেশ <span className="zx-req">*</span></label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiGlobe /></span>
+                              <select {...register('country', { required: true })} className="zx-select" defaultValue="বাংলাদেশ">
+                                {Object.keys(COUNTRY_TIMEZONES).map((c) => <option key={c} value={c}>{c}</option>)}
+                              </select>
+                              <span className="zx-select-arrow">▾</span>
+                            </div>
+                            {errors.country && <p className="zx-error-text">দেশ বেছে নিন</p>}
+                          </div>
+
+                          <div className="zx-field">
+                            <label className="zx-label">বিভাগ <span className="zx-req">*</span></label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiLayers /></span>
+                              <select {...register('division', { required: true })} className="zx-select" defaultValue="">
+                                <option value="" disabled>বেছে নিন</option>
+                                {Object.keys(BD_DIVISIONS_DISTRICTS).map((d) => <option key={d} value={d}>{d}</option>)}
+                              </select>
+                              <span className="zx-select-arrow">▾</span>
+                            </div>
+                            {errors.division && <p className="zx-error-text">বিভাগ বেছে নিন</p>}
+                          </div>
+
+                          {/* District — বিভাগের উপর নির্ভরশীল, বিভাগ না বাছা পর্যন্ত ডিসেবল থাকবে */}
+                          <div className="zx-field">
+                            <label className="zx-label">জেলা <span className="zx-req">*</span></label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiMapPin /></span>
+                              <select {...register('city', { required: true })} className="zx-select" defaultValue="" disabled={!division}>
+                                <option value="" disabled>{division ? 'বেছে নিন' : 'আগে বিভাগ বেছে নিন'}</option>
+                                {(BD_DIVISIONS_DISTRICTS[division] || []).map((dist) => <option key={dist} value={dist}>{dist}</option>)}
+                              </select>
+                              <span className="zx-select-arrow">▾</span>
+                            </div>
+                            {errors.city && <p className="zx-error-text">জেলা বেছে নিন</p>}
+                          </div>
+
+                          {/* Timezone (auto-suggested, editable) */}
+                          <div className="zx-field">
+                            <label className="zx-label">টাইমজোন</label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiGlobe /></span>
+                              <input {...register('timezone')} className="zx-input" placeholder="যেমন: Asia/Dhaka (GMT+6)" />
+                            </div>
+                            <p className="zx-hint">দেশ অনুযায়ী অটো-বসানো হয়েছে, দরকার হলে বদলে দিন</p>
+                          </div>
+
+                          {/* Website (optional) */}
+                          <div className="zx-field" style={{ marginBottom: 6 }}>
+                            <label className="zx-label">ওয়েবসাইট (ঐচ্ছিক)</label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiLink /></span>
+                              <input {...register('website')} type="url" className="zx-input" placeholder="https://example.com" />
+                            </div>
+                          </div>
+
+                          {/* বিলিং তথ্য (ঐচ্ছিক) — ট্রায়ালে বিল হয় না, কিন্তু এখনই দিয়ে
+                              রাখলে পরে পেইড প্ল্যানে upgrade (/book-plan) করার সময়
+                              আবার নতুন করে লিখতে হয় না */}
+                          <div style={{ marginTop: 22, paddingTop: 18, borderTop: '1px dashed var(--form-border)' }}>
+                            <p className="zx-label" style={{ marginBottom: 2 }}>
+                              <FiCreditCard style={{ verticalAlign: '-2px', marginRight: 5 }} />
+                              বিলিং তথ্য (ঐচ্ছিক)
+                            </p>
+                            <p className="zx-hint" style={{ margin: '0 0 14px' }}>
+                              ট্রায়ালে বিল হয় না — এখনই দিয়ে রাখলে পরে পেইড প্ল্যানে upgrade করার সময় আবার লিখতে হবে না
+                            </p>
+
+                            <div className="zx-field">
+                              <label className="zx-label">কোম্পানির ঠিকানা</label>
+                              <div className="zx-input-wrap">
+                                <span className="zx-input-icon"><FiMapPin /></span>
+                                <input {...register('company_address')} className="zx-input" />
+                              </div>
+                            </div>
+
+                            <div className="zx-field-row">
+                              <div className="zx-field">
+                                <label className="zx-label">কোম্পানির ফোন</label>
+                                <div className="zx-input-wrap">
+                                  <span className="zx-input-icon"><FiPhone /></span>
+                                  <input {...register('company_phone')} className="zx-input" />
+                                </div>
+                              </div>
+                              <div className="zx-field">
+                                <label className="zx-label">কোম্পানির ইমেইল</label>
+                                <div className="zx-input-wrap">
+                                  <span className="zx-input-icon"><FiMail /></span>
+                                  <input {...register('company_email')} className="zx-input" />
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="zx-field-row">
+                              <div className="zx-field">
+                                <label className="zx-label">Billing Name</label>
+                                <div className="zx-input-wrap">
+                                  <span className="zx-input-icon"><FiUser /></span>
+                                  <input {...register('billing_name')} className="zx-input" />
+                                </div>
+                              </div>
+                              <div className="zx-field">
+                                <label className="zx-label">Billing Email</label>
+                                <div className="zx-input-wrap">
+                                  <span className="zx-input-icon"><FiMail /></span>
+                                  <input {...register('billing_email')} className="zx-input" />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="zx-auth-btn-row" style={{ marginTop: 18 }}>
+                            <button type="button" onClick={goBack} className="zx-auth-btn zx-auth-btn-ghost">
+                              <FiArrowLeft /> পেছনে
+                            </button>
+                            <button type="button" onClick={goToStep3} className="zx-auth-btn zx-auth-btn-primary">
+                              পরবর্তী ধাপ <FiArrowRight />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ─────────────── ধাপ ৩ — টিম, রেফারেল ও প্ল্যান ─────────────── */}
+                      {step === 3 && (
+                        <div className="zx-step-fade">
+                          {/* সিট নির্বাচন */}
+                          <div style={{ marginBottom: 20 }}>
+                            <label className="zx-label">তোমার টিমে কে কে থাকবে?</label>
+                            <p className="zx-hint" style={{ margin: '-2px 0 10px' }}>
+                              ফ্রি ট্রায়াল প্যাকেজে এই সর্বোচ্চ সংখ্যা পর্যন্ত সিট থাকছে, সাথে সর্বোচ্চ {MAX_TRIAL_CUSTOMERS.toLocaleString('bn-BD')} জন কাস্টমার যোগ করা যাবে — পুরোটাই ৩ মাস ফ্রি, ফুল ফিচার সহ
+                            </p>
+
+                            {Object.values(SEAT_RATES).map((config) => (
+                              <SeatStepper
+                                key={config.role}
+                                config={config}
+                                value={config.fixed ? 1 : seats[config.role]}
+                                max={TRIAL_SEAT_LIMITS[config.role]}
+                                onChange={(v) => setSeats((s) => ({ ...s, [config.role]: v }))}
+                              />
+                            ))}
+
+                            <div className="zx-price-box">
+                              <span className="zx-price-box-label">ট্রায়াল শেষে সম্ভাব্য<br />মাসিক খরচ*</span>
+                              <span className="zx-price-box-value">{formatTaka(monthlyTotal)}/মাস</span>
+                            </div>
+                            <p className="zx-hint">*শুধু হিসাব দেখানোর জন্য — এখন কোনো টাকা কাটা হবে না, ৩ মাস পুরো ফ্রি</p>
+                          </div>
+
+                          {/* Referral source */}
+                          <div className="zx-field">
+                            <label className="zx-label">আমাদের সম্পর্কে কীভাবে জানলেন?</label>
+                            <div className="zx-input-wrap">
+                              <span className="zx-input-icon"><FiMessageCircle /></span>
+                              <select {...register('referral_source')} className="zx-select" defaultValue="">
+                                <option value="" disabled>বেছে নিন (ঐচ্ছিক)</option>
+                                {REFERRAL_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                              </select>
+                              <span className="zx-select-arrow">▾</span>
+                            </div>
+                          </div>
+
+                          {/* Terms checkbox */}
+                          <label className="zx-terms-row">
+                            <input type="checkbox" required />
+                            <span>
+                              আমি{' '}
+                              <a href="/terms-conditions" target="_blank" rel="noopener noreferrer">Terms &amp; Conditions</a>
+                              {' '}এবং{' '}
+                              <a href="/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>
+                              {' '}-এর সাথে সম্মত
+                            </span>
+                          </label>
+
+                          <div className="zx-auth-btn-row">
+                            <button type="button" onClick={goBack} className="zx-auth-btn zx-auth-btn-ghost">
+                              <FiArrowLeft /> পেছনে
+                            </button>
+                            <button type="submit" disabled={submitting} className="zx-auth-btn zx-auth-btn-primary">
+                              {submitting ? 'সাইনআপ হচ্ছে...' : <>ফ্রি ট্রায়াল শুরু করুন <FiArrowRight /></>}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </form>
+                  </Reveal>
+
+                  <p className="zx-auth-footnote">
+                    সমস্যা হচ্ছে? <a href="/contact">আমাদের সাথে যোগাযোগ করুন</a>
+                  </p>
+                </>
+              ) : (
+                /* Success state */
+                <div className="zx-success-card">
+                  <div className="zx-success-icon"><FiCheck /></div>
+                  <h2>ট্রায়াল শুরু হয়েছে! 🎉</h2>
+                  <p>তোমার ৩ মাসের ফ্রি ট্রায়াল চলবে</p>
+                  {trialEndDate && <p className="zx-success-date">{trialEndDate} পর্যন্ত</p>}
+                  {result?.seats && (
+                    <div className="zx-success-seats">
+                      <p className="zx-success-seats-title">তোমার সিট (ট্রায়ালে ফ্রি):</p>
+                      {Object.entries(result.seats)
+                        .filter(([, count]) => count > 0)
+                        .map(([role, count]) => (
+                          <p key={role}>
+                            <span>{SEAT_RATES[role]?.labelBn || role}</span>
+                            <span style={{ fontWeight: 700 }}>× {count}</span>
+                          </p>
+                        ))}
+                    </div>
+                  )}
                   <button
-                    type="button"
-                    onClick={goToStep2}
-                    style={{ ...navBtnStyle(true, false), width: '100%', marginTop: '18px' }}
+                    onClick={() => navigate('/login', { state: { companyId: result?.slug || '' } })}
+                    className="zx-auth-btn zx-auth-btn-primary"
                   >
-                    পরবর্তী ধাপ <FiArrowRight />
+                    এখন লগইন করুন
                   </button>
-                </>
+                </div>
               )}
-
-              {/* ─────────────── ধাপ ২ — কোম্পানি প্রোফাইল ─────────────── */}
-              {step === 2 && (
-                <>
-                  {/* Industry */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>ব্যবসার ধরন *</label>
-                    <FiGrid style={iconWrapStyle} />
-                    <select {...register('industry', { required: true })} style={selectStyle} defaultValue="">
-                      <option value="" disabled>বেছে নিন</option>
-                      {INDUSTRY_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                    <span style={selectArrowStyle}>▾</span>
-                    {errors.industry && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>ব্যবসার ধরন বেছে নিন</p>}
-                  </div>
-
-                  {/* Company size */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>কোম্পানির আকার (মোট এমপ্লয়ি) *</label>
-                    <FiUsers style={iconWrapStyle} />
-                    <select {...register('company_size', { required: true })} style={selectStyle} defaultValue="">
-                      <option value="" disabled>বেছে নিন</option>
-                      {COMPANY_SIZE_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                    <span style={selectArrowStyle}>▾</span>
-                    {errors.company_size && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>কোম্পানির আকার বেছে নিন</p>}
-                  </div>
-
-                  {/* Country */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>দেশ *</label>
-                    <FiGlobe style={iconWrapStyle} />
-                    <select {...register('country', { required: true })} style={selectStyle} defaultValue="বাংলাদেশ">
-                      {Object.keys(COUNTRY_TIMEZONES).map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <span style={selectArrowStyle}>▾</span>
-                    {errors.country && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>দেশ বেছে নিন</p>}
-                  </div>
-
-                  {/* Division */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>বিভাগ *</label>
-                    <FiLayers style={iconWrapStyle} />
-                    <select {...register('division', { required: true })} style={selectStyle} defaultValue="">
-                      <option value="" disabled>বেছে নিন</option>
-                      {Object.keys(BD_DIVISIONS_DISTRICTS).map((d) => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                    <span style={selectArrowStyle}>▾</span>
-                    {errors.division && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>বিভাগ বেছে নিন</p>}
-                  </div>
-
-                  {/* District — বিভাগের উপর নির্ভরশীল, বিভাগ না বাছা পর্যন্ত ডিসেবল থাকবে */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>জেলা *</label>
-                    <FiMapPin style={iconWrapStyle} />
-                    <select
-                      {...register('city', { required: true })}
-                      style={{ ...selectStyle, opacity: division ? 1 : 0.6, cursor: division ? 'pointer' : 'not-allowed' }}
-                      defaultValue=""
-                      disabled={!division}
-                    >
-                      <option value="" disabled>{division ? 'বেছে নিন' : 'আগে বিভাগ বেছে নিন'}</option>
-                      {(BD_DIVISIONS_DISTRICTS[division] || []).map((dist) => <option key={dist} value={dist}>{dist}</option>)}
-                    </select>
-                    <span style={selectArrowStyle}>▾</span>
-                    {errors.city && <p style={{ color: T.danger, fontSize: '12px', marginTop: '5px' }}>জেলা বেছে নিন</p>}
-                  </div>
-
-                  {/* Timezone (auto-suggested, editable) */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>টাইমজোন</label>
-                    <FiGlobe style={iconWrapStyle} />
-                    <input
-                      {...register('timezone')}
-                      style={inputStyle}
-                      placeholder="যেমন: Asia/Dhaka (GMT+6)"
-                    />
-                    <p style={{ fontSize: '11px', color: T.textMuted, marginTop: '5px' }}>দেশ অনুযায়ী অটো-বসানো হয়েছে, দরকার হলে বদলে দিন</p>
-                  </div>
-
-                  {/* Website (optional) */}
-                  <div style={{ ...fieldWrapStyle, marginBottom: '6px' }}>
-                    <label style={labelStyle}>ওয়েবসাইট (ঐচ্ছিক)</label>
-                    <FiLink style={iconWrapStyle} />
-                    <input
-                      {...register('website')}
-                      type="url"
-                      style={inputStyle}
-                      placeholder="https://example.com"
-                    />
-                  </div>
-
-                  {/* বিলিং তথ্য (ঐচ্ছিক) — ট্রায়ালে বিল হয় না, কিন্তু এখনই দিয়ে
-                      রাখলে পরে পেইড প্ল্যানে upgrade (/book-plan) করার সময়
-                      আবার নতুন করে লিখতে হয় না */}
-                  <div style={{ marginTop: '22px', paddingTop: '18px', borderTop: `1px dashed ${T.borderDefault}` }}>
-                    <p style={{ ...labelStyle, marginBottom: '2px' }}>
-                      <FiCreditCard style={{ verticalAlign: '-2px', marginRight: '5px' }} />
-                      বিলিং তথ্য (ঐচ্ছিক)
-                    </p>
-                    <p style={{ fontSize: '11.5px', color: T.textMuted, margin: '0 0 14px', lineHeight: 1.6 }}>
-                      ট্রায়ালে বিল হয় না — এখনই দিয়ে রাখলে পরে পেইড প্ল্যানে upgrade করার সময় আবার লিখতে হবে না
-                    </p>
-
-                    <div style={fieldWrapStyle}>
-                      <label style={labelStyle}>কোম্পানির ঠিকানা</label>
-                      <FiMapPin style={iconWrapStyle} />
-                      <input {...register('company_address')} style={inputStyle} />
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <div style={fieldWrapStyle}>
-                        <label style={labelStyle}>কোম্পানির ফোন</label>
-                        <FiPhone style={iconWrapStyle} />
-                        <input {...register('company_phone')} style={inputStyle} />
-                      </div>
-                      <div style={fieldWrapStyle}>
-                        <label style={labelStyle}>কোম্পানির ইমেইল</label>
-                        <FiMail style={iconWrapStyle} />
-                        <input {...register('company_email')} style={inputStyle} />
-                      </div>
-                    </div>
-
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                      <div style={fieldWrapStyle}>
-                        <label style={labelStyle}>Billing Name</label>
-                        <FiUser style={iconWrapStyle} />
-                        <input {...register('billing_name')} style={inputStyle} />
-                      </div>
-                      <div style={fieldWrapStyle}>
-                        <label style={labelStyle}>Billing Email</label>
-                        <FiMail style={iconWrapStyle} />
-                        <input {...register('billing_email')} style={inputStyle} />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: '10px', marginTop: '18px' }}>
-                    <button type="button" onClick={goBack} style={navBtnStyle(false, false)}>
-                      <FiArrowLeft /> পেছনে
-                    </button>
-                    <button type="button" onClick={goToStep3} style={{ ...navBtnStyle(true, false), flex: 1 }}>
-                      পরবর্তী ধাপ <FiArrowRight />
-                    </button>
-                  </div>
-                </>
-              )}
-
-              {/* ─────────────── ধাপ ৩ — টিম, রেফারেল ও প্ল্যান ─────────────── */}
-              {step === 3 && (
-                <>
-                  {/* সিট নির্বাচন */}
-                  <div style={{ marginBottom: '20px' }}>
-                    <label style={labelStyle}>তোমার টিমে কে কে থাকবে?</label>
-                    <p style={{ fontSize: '12px', color: T.textMuted, margin: '-2px 0 10px', lineHeight: 1.6 }}>
-                      ফ্রি ট্রায়াল প্যাকেজে এই সর্বোচ্চ সংখ্যা পর্যন্ত সিট থাকছে, সাথে সর্বোচ্চ {MAX_TRIAL_CUSTOMERS.toLocaleString('bn-BD')} জন কাস্টমার যোগ করা যাবে — পুরোটাই ৩ মাস ফ্রি, ফুল ফিচার সহ
-                    </p>
-
-                    {Object.values(SEAT_RATES).map((config) => (
-                      <SeatStepper
-                        key={config.role}
-                        config={config}
-                        value={config.fixed ? 1 : seats[config.role]}
-                        max={TRIAL_SEAT_LIMITS[config.role]}
-                        onChange={(v) => setSeats((s) => ({ ...s, [config.role]: v }))}
-                      />
-                    ))}
-
-                    <div style={totalBoxStyle}>
-                      <span style={{ fontSize: '12.5px', color: T.primary100, lineHeight: 1.5 }}>
-                        ট্রায়াল শেষে সম্ভাব্য<br />মাসিক খরচ*
-                      </span>
-                      <span style={{ fontSize: '17px', fontWeight: 700, color: T.accent300, fontFamily: T.fontMono }}>
-                        {formatTaka(monthlyTotal)}/মাস
-                      </span>
-                    </div>
-                    <p style={{ fontSize: '11px', color: T.textMuted, margin: '6px 0 0' }}>
-                      *শুধু হিসাব দেখানোর জন্য — এখন কোনো টাকা কাটা হবে না, ৩ মাস পুরো ফ্রি
-                    </p>
-                  </div>
-
-                  {/* Referral source */}
-                  <div style={fieldWrapStyle}>
-                    <label style={labelStyle}>আমাদের সম্পর্কে কীভাবে জানলেন?</label>
-                    <FiMessageCircle style={iconWrapStyle} />
-                    <select {...register('referral_source')} style={selectStyle} defaultValue="">
-                      <option value="" disabled>বেছে নিন (ঐচ্ছিক)</option>
-                      {REFERRAL_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                    <span style={selectArrowStyle}>▾</span>
-                  </div>
-
-                  {/* Terms checkbox */}
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: '9px', margin: '18px 0 22px', fontSize: '12.5px', color: T.textSecondary, cursor: 'pointer' }}>
-                    <input type="checkbox" required style={{ marginTop: '2px' }} />
-                    <span>
-                      আমি{' '}
-                      <a href="/terms-conditions" target="_blank" rel="noopener noreferrer" style={{ color: T.primary700, fontWeight: 600 }}>Terms & Conditions</a>
-                      {' '}এবং{' '}
-                      <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" style={{ color: T.primary700, fontWeight: 600 }}>Privacy Policy</a>
-                      {' '}-এর সাথে সম্মত
-                    </span>
-                  </label>
-
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <button type="button" onClick={goBack} style={navBtnStyle(false, false)}>
-                      <FiArrowLeft /> পেছনে
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      style={{ ...navBtnStyle(true, submitting), flex: 1 }}
-                    >
-                      {submitting ? 'সাইনআপ হচ্ছে...' : <>ফ্রি ট্রায়াল শুরু করুন <FiArrowRight /></>}
-                    </button>
-                  </div>
-                </>
-              )}
-            </form>
-
-            <p style={{ textAlign: 'center', fontSize: '12.5px', color: T.textMuted, marginTop: '18px' }}>
-              সমস্যা হচ্ছে? <a href="/contact" style={{ color: T.primary700, fontWeight: 600 }}>আমাদের সাথে যোগাযোগ করুন</a>
-            </p>
-          </>
-        ) : (
-          /* Success state */
-          <div style={{
-            background: T.bgSurface, border: `1px solid ${T.borderDefault}`, borderRadius: '16px',
-            padding: '40px 28px', textAlign: 'center', boxShadow: '0 8px 32px rgba(15,27,46,0.06)',
-          }}>
-            <div style={{
-              width: '64px', height: '64px', borderRadius: '50%', background: T.accent100,
-              display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px',
-              fontSize: '30px', color: T.accent600,
-            }}>
-              <FiCheck />
             </div>
-            <h2 style={{ fontFamily: T.fontHead, fontSize: '22px', color: T.primary700, margin: '0 0 10px' }}>
-              ট্রায়াল শুরু হয়েছে! 🎉
-            </h2>
-            <p style={{ color: T.textSecondary, fontSize: '14px', lineHeight: 1.7, marginBottom: '4px' }}>
-              তোমার ৩ মাসের ফ্রি ট্রায়াল চলবে
-            </p>
-            {trialEndDate && (
-              <p style={{ color: T.primary700, fontSize: '15px', fontWeight: 700, marginBottom: '20px' }}>
-                {trialEndDate} পর্যন্ত
-              </p>
-            )}
-            {result?.seats && (
-              <div style={{ background: T.bgAlt, borderRadius: '10px', padding: '14px 16px', margin: '0 0 24px', textAlign: 'left' }}>
-                <p style={{ fontSize: '12px', fontWeight: 700, color: T.textSecondary, margin: '0 0 8px' }}>তোমার সিট (ট্রায়ালে ফ্রি):</p>
-                {Object.entries(result.seats)
-                  .filter(([, count]) => count > 0)
-                  .map(([role, count]) => (
-                    <p key={role} style={{ fontSize: '13px', color: T.textPrimary, margin: '3px 0', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>{SEAT_RATES[role]?.labelBn || role}</span>
-                      <span style={{ fontWeight: 700 }}>× {count}</span>
-                    </p>
-                  ))}
-              </div>
-            )}
-            <button
-              onClick={() => navigate('/login', { state: { companyId: result?.slug || '' } })}
-              style={{
-                padding: '13px 28px', background: T.primary700, border: 'none', borderRadius: '9px',
-                color: '#fff', fontSize: '14.5px', fontWeight: 700, cursor: 'pointer', fontFamily: T.fontBody,
-              }}
-            >
-              এখন লগইন করুন
-            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   )
