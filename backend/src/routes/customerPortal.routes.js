@@ -33,6 +33,7 @@ const {
     portalForgotPassword,   // ✅ NEW: পাসওয়ার্ড OTP ধাপ ১ (email/WhatsApp)
     portalVerifyResetOtp,   // ✅ NEW: পাসওয়ার্ড OTP ধাপ ২
     portalResetPassword,    // ✅ NEW: পাসওয়ার্ড OTP ধাপ ৩
+    verifyEmailToken,        // ✅ NEW: রেজিস্ট্রেশন ইমেইল magic-link ভেরিফাই
     resolveLink,
     verifyPortalToken,
     deviceLogin,
@@ -214,6 +215,9 @@ router.post('/login',              passwordLoginLimiter, passwordLogin);
 router.post('/forgot-password',    passwordResetLimiter, portalForgotPassword);
 router.post('/verify-reset-otp',   passwordResetLimiter, portalVerifyResetOtp);
 router.post('/reset-password',     passwordResetLimiter, portalResetPassword);
+
+// ✅ NEW: রেজিস্ট্রেশনে দেওয়া ইমেইল ভেরিফাই (magic-link ক্লিকে ফ্রন্টএন্ড থেকে কল হয়)
+router.post('/verify-email',       passwordResetLimiter, verifyEmailToken);
 
 // ✅ NEW: HttpOnly cookie → নতুন 15-মিনিট access token
 // Authorization header লাগে না — browser cookie automatically পাঠায়

@@ -585,9 +585,10 @@ export function usePortalAuth(defaultTab = 'summary') {
     setPasswordLoggingIn(true)
     setPasswordError('')
     try {
+      const deviceId = await getDeviceFingerprint() // নতুন-ডিভাইস সিকিউরিটি অ্যালার্টের জন্য (googleLogin-এর একই fingerprint প্যাটার্ন)
       const data = await portalFetch('/portal/login', {
         method: 'POST',
-        body:   JSON.stringify({ identifier: identifier.trim(), password }),
+        body:   JSON.stringify({ identifier: identifier.trim(), password, device_id: deviceId }),
       })
 
       const { portal_jwt, expires_in = 900, has_company, person } = data.data

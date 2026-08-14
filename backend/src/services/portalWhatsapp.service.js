@@ -1,8 +1,9 @@
 // ============================================================
 // backend/src/services/portalWhatsapp.service.js
 //
-// কাস্টমার পোর্টালের জন্য OTP পাঠানো (WhatsApp দিয়ে) — Password
-// reset ও Registration verification দুটোতেই ব্যবহৃত হয়।
+// কাস্টমার পোর্টালের জন্য WhatsApp মেসেজ পাঠানো — OTP (password
+// reset ও registration verification) এবং নিরাপত্তা সতর্কতা
+// (password change alert) — সবগুলোতেই ব্যবহৃত হয়।
 //
 // ⚠️ গুরুত্বপূর্ণ: এটা বিদ্যমান invoiceWhatsapp.service.js/invoice.service.js
 // এর মতোই সরাসরি Baileys গেটওয়ে (self-hosted WhatsApp Web session) ব্যবহার
@@ -32,7 +33,46 @@ const formatPhoneForWhatsApp = (phone) => {
 };
 
 /**
- * OTP কোড WhatsApp-এ প্লেইন টেক্সট মেসেজ হিসেবে পাঠায় (Baileys গেটওয়ে দিয়ে)।
+ * যেকোনো প্লেইন টেক্সট মেসেজ WhatsApp-এ পাঠায় (Baileys গেটওয়ে দিয়ে)।
+ * OTP, নিরাপত্তা সতর্কতা — সব ধরনের পোর্টাল মেসেজিং এর মূল প্রিমিটিভ।
+ *
+ * @param {string} phone   — যেকোনো ফরম্যাটে BD মোবাইল নম্বর
+ * @param {string} message — সম্পূর্ণ মেসেজ টেক্সট (আগে থেকে তৈরি)
+ * @param {string} type    — Baileys গেটওয়ে-সাইড লগিং/ক্যাটাগরির জন্য লেবেল
+ * @returns {Promise<{success: boolean, reason?: string, detail?: any}>}
+ */
+const sendPortalWhatsAppMessage = async (phone, message, type = 'portal_notification') => {
+    const formattedPhone = formatPhoneForWhatsApp(phone);
+    if (!formattedPhone) {
+        logger.warn(`⚠️ [PortalWA:${type}] Phone format করা যায়নি: ${phone}`);
+        return { success: false, reason: 'invalid_phone' };
+    }
+
+    try {
+        const res = await axios.post(
+            `${BAILEYS_URL}/send-message`,
+            { phone: formattedPhone, message, type },
+            { headers: { 'x-api-key': API_SECRET }, timeout: 10_000 }
+        );
+        if (res.data?.success) {
+            logger.info(`📲 [PortalWA:${type}] সফল → ${formattedPhone}`);
+            return { success: true };
+        }
+        logger.warn(`⚠️ [PortalWA:${type}] গেটওয়ে সাড়া দিল কিন্তু success=false:`, res.data);
+        return { success: false, reason: 'baileys_error', detail: res.data };
+    } catch (err) {
+        const status = err.response?.status;
+        if (status === 503) {
+            logger.warn(`⚠️ [PortalWA:${type}] WhatsApp সেশন কানেক্টেড নেই → ${formattedPhone}`);
+        } else {
+            logger.warn(`⚠️ [PortalWA:${type}] ব্যর্থ → ${formattedPhone}:`, err.message);
+        }
+        return { success: false, reason: err.code || 'request_error', detail: err.response?.data || err.message };
+    }
+};
+
+/**
+ * OTP কোড WhatsApp-এ পাঠায় — sendPortalWhatsAppMessage-এর উপর তৈরি।
  *
  * @param {string} phone          — যেকোনো ফরম্যাটে BD মোবাইল নম্বর
  * @param {string} otp            — ৬ ডিজিটের OTP কোড (plain, শুধু মেসেজে যাবে)
@@ -41,12 +81,6 @@ const formatPhoneForWhatsApp = (phone) => {
  * @returns {Promise<{success: boolean, reason?: string}>}
  */
 const sendPortalOTPWhatsApp = async (phone, otp, purpose = 'যাচাই', expiryMinutes = 10) => {
-    const formattedPhone = formatPhoneForWhatsApp(phone);
-    if (!formattedPhone) {
-        logger.warn(`⚠️ [PortalOTP-WA] Phone format করা যায়নি: ${phone}`);
-        return { success: false, reason: 'invalid_phone' };
-    }
-
     const message =
         `🔐 *ZovoriX কাস্টমার পোর্টাল*\n` +
         `━━━━━━━━━━━━━━━━\n` +
@@ -57,27 +91,32 @@ const sendPortalOTPWhatsApp = async (phone, otp, purpose = 'যাচাই', ex
         `━━━━━━━━━━━━━━━━\n` +
         `_আপনি এই অনুরোধ না করে থাকলে, মেসেজটি উপেক্ষা করুন।_`;
 
-    try {
-        const res = await axios.post(
-            `${BAILEYS_URL}/send-message`,
-            { phone: formattedPhone, message, type: 'portal_otp' },
-            { headers: { 'x-api-key': API_SECRET }, timeout: 10_000 }
-        );
-        if (res.data?.success) {
-            logger.info(`📲 [PortalOTP-WA] সফল → ${formattedPhone}`);
-            return { success: true };
-        }
-        logger.warn(`⚠️ [PortalOTP-WA] গেটওয়ে সাড়া দিল কিন্তু success=false:`, res.data);
-        return { success: false, reason: 'baileys_error', detail: res.data };
-    } catch (err) {
-        const status = err.response?.status;
-        if (status === 503) {
-            logger.warn(`⚠️ [PortalOTP-WA] WhatsApp সেশন কানেক্টেড নেই → ${formattedPhone}`);
-        } else {
-            logger.warn(`⚠️ [PortalOTP-WA] ব্যর্থ → ${formattedPhone}:`, err.message);
-        }
-        return { success: false, reason: err.code || 'request_error', detail: err.response?.data || err.message };
-    }
+    return sendPortalWhatsAppMessage(phone, message, 'portal_otp');
 };
 
-module.exports = { sendPortalOTPWhatsApp, formatPhoneForWhatsApp };
+/**
+ * পাসওয়ার্ড পরিবর্তন/সেট হওয়ার নিরাপত্তা সতর্কতা WhatsApp-এ পাঠায়।
+ * অ্যাকাউন্ট কম্প্রোমাইজ হলে আসল মালিক যাতে সাথে সাথে জানতে পারে।
+ *
+ * @param {string} phone — যেকোনো ফরম্যাটে BD মোবাইল নম্বর
+ * @param {string} whenText — কখন ঘটেছে (আগে থেকে বাংলায় ফরম্যাট করা, Asia/Dhaka)
+ * @returns {Promise<{success: boolean, reason?: string}>}
+ */
+const sendPasswordChangedAlertWhatsApp = async (phone, whenText) => {
+    const message =
+        `🔒 *ZovoriX নিরাপত্তা সতর্কতা*\n` +
+        `━━━━━━━━━━━━━━━━\n` +
+        `আপনার কাস্টমার পোর্টাল অ্যাকাউন্টের পাসওয়ার্ড এইমাত্র পরিবর্তন/সেট করা হয়েছে।\n\n` +
+        `🕐 সময়: ${whenText}\n\n` +
+        `⚠️ *এটা যদি আপনি না করে থাকেন*, দয়া করে সাথে সাথে আপনার সংশ্লিষ্ট দোকান/কোম্পানির সাথে যোগাযোগ করুন।\n` +
+        `━━━━━━━━━━━━━━━━`;
+
+    return sendPortalWhatsAppMessage(phone, message, 'security_alert');
+};
+
+module.exports = {
+    sendPortalOTPWhatsApp,
+    sendPasswordChangedAlertWhatsApp,
+    sendPortalWhatsAppMessage,
+    formatPhoneForWhatsApp,
+};

@@ -70,6 +70,69 @@ Google login-এর পাশাপাশি এখন কাস্টমার�
 - WhatsApp OTP ডেলিভারি সম্পূর্ণভাবে Baileys সেশন লাইভ থাকার উপর নির্ভরশীল — ডাউন থাকলে স্পষ্ট এরর দেখাবে (crash করবে না)।
 - অসম্পূর্ণ রেজিস্ট্রেশনের (OTP ভেরিফাই করেছে কিন্তু ফর্ম শেষ করেনি) পুরনো `whatsapp_verification_otps` সারি এখন কোনো cron দিয়ে পরিষ্কার হয় না — শুধু storage-এ জমা হতে থাকবে, কার্যকারিতায় প্রভাব ফেলবে না।
 
+## 🆕 আপডেট (চতুর্থ ধাপ) — পাসওয়ার্ড বদলের নিরাপত্তা সতর্কতা
+
+পাসওয়ার্ড রিসেট/সেট (`/portal/reset-password`) সফল হলে এখন কাস্টমার **email এবং WhatsApp — দুই চ্যানেলেই** একটা সতর্কতা মেসেজ পান (যেগুলো তার আছে) — OTP আসলে কোন চ্যানেল দিয়ে ভেরিফাই হয়েছিল তা নির্বিশেষে। উদ্দেশ্য: কারো অ্যাকাউন্ট কম্প্রোমাইজ হয়ে পাসওয়ার্ড বদলে গেলে আসল মালিক সাথে সাথে জানতে পারবে — একটা চ্যানেল (ধরুন email) কম্প্রোমাইজড থাকলেও অন্যটা (WhatsApp) দিয়ে অ্যালার্ট পৌঁছাবে।
+
+- **`backend/src/services/portalWhatsapp.service.js`** — রিফ্যাক্টর করা হয়েছে: এখন একটা জেনেরিক `sendPortalWhatsAppMessage(phone, message, type)` প্রিমিটিভের উপর `sendPortalOTPWhatsApp` তৈরি, প্লাস নতুন `sendPasswordChangedAlertWhatsApp(phone, whenText)`। বিদ্যমান `sendPortalOTPWhatsApp`-এর ব্যবহার/সিগনেচার অপরিবর্তিত (backward compatible)।
+- **`backend/src/controllers/customerPortal.controller.js`** — নতুন `notifyPasswordChanged({email, phone, name})` হেল্পার, `portalResetPassword`-এ ওয়্যার করা — **fire-and-forget** (পাসওয়ার্ড রিসেটের রেসপন্স notification-এর জন্য অপেক্ষা করে না; notification পাঠাতে ব্যর্থ হলেও পাসওয়ার্ড ঠিকই বদলে যায়, শুধু `logger.warn` হয়)।
+- কোনো নতুন DB টেবিল/মাইগ্রেশন লাগেনি — বিদ্যমান `customers`/`persons` টেবিলের email/whatsapp/sms_phone কলাম থেকেই কন্টাক্ট তথ্য নেওয়া হয়।
+
+**এখনো বাকি (এই ধাপে ইচ্ছাকৃতভাবে বাদ):** "নতুন ডিভাইস থেকে লগইন" অ্যালার্ট যোগ করা হয়নি — এর জন্য password-login-এর device tracking দরকার হবে, যেটা বিদ্যমান `customer_portal_devices` টেবিলে করা যাচ্ছে না কারণ ওখানে `customer_id`/`google_email` কলাম `NOT NULL` (company-বিহীন person-দের জন্য কাজ করবে না) — এটা একটা আলাদা, বড় কাজ, ছোট আর্কিটেকচার সিদ্ধান্ত লাগবে আগে।
+
+## 🆕 আপডেট (পঞ্চম ধাপ) — Device + Location ট্র্যাকিং, নতুন-ডিভাইস অ্যালার্ট
+
+এখন **password ও Google — দুই লগইন মেথডেই** প্রতিটা সফল লগইনের একটা ইভেন্ট রেকর্ড হয় (device fingerprint + IP + আনুমানিক city/country সহ)। কোনো owner-এর জন্য আগে কখনো না-দেখা fingerprint থেকে লগইন হলে (এবং এটা তার প্রথম-লগইন না হলে), email + WhatsApp দুই চ্যানেলেই "নতুন ডিভাইস থেকে লগইন হয়েছে" সতর্কতা যায় — লোকেশনসহ।
+
+**নতুন DB টেবিল: `customer_portal_login_events`**
+- `customer_portal_devices` থেকে ইচ্ছাকৃতভাবে আলাদা রাখা হয়েছে — ওই টেবিলে `customer_id`/`google_email` কলাম `NOT NULL`, company-বিহীন person-দের জন্য কাজ করত না। নতুন টেবিল `customer_id`/`person_id`-এর যেকোনো একটা সাপোর্ট করে (আগের OTP টেবিলগুলোর মতোই একই প্যাটার্ন)।
+- ফাইল: `migration_customer_portal_login_events.sql` (ইতিমধ্যে Supabase-এ apply করা হয়েছে)।
+
+**নতুন ফাইল `backend/src/services/geoip.service.js`**
+- `getLocationFromIP(ip)` — [ip-api.com](http://ip-api.com) (ফ্রি, কোনো API key লাগে না) দিয়ে IP → city/country। প্রাইভেট/লোকাল IP স্কিপ করে। **ব্যর্থ হলে কখনো throw করে না** — শুধু `{city: null, country: null}` ফেরত দেয়, লগইন ফ্লো কখনো এর জন্য আটকায় না।
+
+**`backend/src/services/portalWhatsapp.service.js` — আরও এক দফা রিফ্যাক্টর**
+- নতুন `sendPasswordChangedAlertWhatsApp` যোগ হয়েছে (নতুন-ডিভাইস অ্যালার্টও `sendPortalWhatsAppMessage` প্রিমিটিভ দিয়েই পাঠানো হয়, আলাদা ফাংশনের দরকার হয়নি)।
+
+**`backend/src/controllers/customerPortal.controller.js`**
+- নতুন `recordLoginEvent({...})` — fingerprint compare করে "নতুন ডিভাইস কিনা" ঠিক করে, ইভেন্ট রেকর্ড করে, দরকার হলে অ্যালার্ট পাঠায়। **সম্পূর্ণ best-effort/fire-and-forget** — কোনো ধাপ ব্যর্থ হলেও (geoip lookup, DB insert, ইমেইল/WhatsApp পাঠানো) মূল লগইন রেসপন্সকে প্রভাবিত করে না, শুধু log করে।
+- নতুন `notifyNewDeviceLogin({...})` — location + সময় সহ অ্যালার্ট (email HTML + WhatsApp টেক্সট)।
+- `passwordLogin` ও `directGoogleAuth` — দুটোতেই `recordLoginEvent(...)` কল যোগ হয়েছে (response-এর ঠিক আগে, await ছাড়া — response block করে না)। `passwordLogin` এখন `device_id` গ্রহণ করে (আগে করত না)।
+
+**Frontend: `usePortalAuth.js`**
+- `passwordLogin()` এখন `getDeviceFingerprint()` কল করে `device_id` পাঠায় — ঠিক `googleLogin()`-এর মতোই একই fingerprint মেকানিজম পুনরায় ব্যবহার করা হয়েছে, নতুন কিছু বানানো হয়নি।
+
+**একটা কথা জেনে রাখা ভালো:** geolocation প্রোভাইডার (`ip-api.com`) একটা ফ্রি থার্ড-পার্টি সার্ভিস — rate limit (৪৫ req/min) বা সাময়িক ডাউনটাইম হতে পারে। এটা ইচ্ছাকৃতভাবে **শুধু enrichment** হিসেবে ডিজাইন করা হয়েছে — ব্যর্থ হলে city/country ফাঁকা থাকবে, কিন্তু "নতুন ডিভাইস" ডিটেকশন ও অ্যালার্ট (fingerprint-ভিত্তিক) তাতেও কাজ করবে।
+
+## 🆕 আপডেট (ষষ্ঠ ধাপ) — ইমেইল ভেরিফিকেশন (magic-link)
+
+সেলফ-রেজিস্ট্রেশনে দেওয়া (ঐচ্ছিক) ইমেইল এখন ভেরিফাই করা যায় — কিন্তু WhatsApp-এর মতো ভারী "OTP পাঠান → কোড টাইপ করুন → যাচাই করুন" UI রেজিস্ট্রেশন ফর্মে যোগ করা হয়নি (দুটো OTP-ব্লক পাশাপাশি থাকলে বিরক্তিকর লাগত)। বরং: রেজিস্ট্রেশন সফল হওয়ার পরে (fire-and-forget) একটা **click-to-verify লিংক ইমেইলে পাঠানো হয়** — কাস্টমার যখন সুবিধামতো ইনবক্স চেক করবেন, এক ক্লিকে ভেরিফাই হয়ে যাবে। রেজিস্ট্রেশন ফর্মের গতি/UX-এ কোনো পরিবর্তন হয়নি।
+
+- **কেন শুধু `persons` টেবিলে:** সেলফ-রেজিস্ট্রেশনে দেওয়া ইমেইল সবসময় `persons.email`-এ যায়। `customers.email` আলাদা একটা জিনিস — সেটা আসে Google OAuth থেকে (directGoogleAuth-এর "email lock" মেকানিজম দিয়ে), তাই ইতিমধ্যেই Google-verified — নতুন করে ভেরিফাই করার দরকার নেই।
+- **`backend/src/controllers/customerPortal.controller.js`** — নতুন `sendEmailVerificationLink(personId, email, name)` (৭ দিন কার্যকর টোকেন, best-effort) এবং নতুন এন্ডপয়েন্ট `verifyEmailToken` — `POST /api/portal/verify-email` (body: `{token}`)। `selfRegisterCustomer`-এ email দেওয়া থাকলে fire-and-forget কল হয়।
+- **`backend/src/routes/customerPortal.routes.js`** — `/verify-email` রুট যোগ হয়েছে (rate-limited)।
+- **নতুন ফ্রন্টএন্ড পেজ `CustomerEmailVerify.jsx`** — route: `/customer-email-verify?token=...`। ইমেইল লিংকে ক্লিক করলে এখানে আসে, পেজ লোড হওয়ার সাথে সাথেই টোকেন verify করে ফলাফল দেখায় (verifying → success/already-verified/error) — কোনো ম্যানুয়াল ইনপুট লাগে না।
+- **`App.jsx`** — নতুন route যোগ হয়েছে।
+- মাইগ্রেশন: `migration_customer_email_verification.sql` (`persons.email_verified`, `email_verify_token`, `email_verify_token_expires_at` — ইতিমধ্যে Supabase-এ apply করা)।
+
+**সীমাবদ্ধতা:** টোকেনের মেয়াদ ৭ দিন পার হয়ে গেলে, বা কেউ ইমেইলটা হারিয়ে ফেললে — এখন **resend করার কোনো UI নেই** (ProfileTab-এ ভবিষ্যতে যোগ করা যেতে পারে)। এটা কোনো নিরাপত্তা ঝুঁকি না (WhatsApp দিয়ে সবকিছুই কাজ করে), শুধু সেই কাস্টমারের email-ভিত্তিক ফিচারগুলো (যেমন email দিয়ে forgot-password) অব্যবহৃত থেকে যাবে যতক্ষণ ভেরিফাই না হয়।
+
+## 🆕 আপডেট (সপ্তম ধাপ) — Email verification abuse-vector বন্ধ করা
+
+প্রশ্ন উঠেছিল: কেউ ইচ্ছাকৃতভাবে অন্য কারো (real) ইমেইল দিয়ে রেজিস্টার করলে, সেই ইমেইলের আসল মালিক লিংকে ক্লিক করলে কী হয়?
+
+**ট্রেস করে যা পাওয়া গেছে:** ক্লিক করলে টোকেন-মালিকের (যে রেজিস্টার করেছে তার) `persons` রো-তেই `email_verified = true` বসে — ভিক্টিমের কোনো ডেটা/অ্যাক্সেস কোথাও যায় না, এবং `email_verified` flag এই মুহূর্তে কোথাও গেট (login/forgot-password কোনোটাই) হিসেবে ব্যবহৃত হয় না — তাই সরাসরি account-takeover সম্ভব না। কিন্তু দুইটা বাস্তব গ্যাপ ছিল:
+1. **Email কখনো duplicate-check হয় না** (শুধু WhatsApp হয়, `selfRegisterCustomer`-এ) — তাই ভিন্ন ভিন্ন WhatsApp নম্বর দিয়ে বারবার রেজিস্টার করে একই victim-এর ইমেইলে বারবার verification মেইল পাঠিয়ে স্প্যাম করা সম্ভব ছিল।
+2. মেইলে শুধু "ধন্যবাদ রেজিস্ট্রেশনের জন্য" লেখা থাকত — কোন দোকানের নামে হয়েছে বলত না, তাই ভিক্টিম ক্লিক করার আগে বুঝতেও পারত না এটা তার না।
+
+**ঠিক করা হয়েছে:**
+- **`sendEmailVerificationLink`-এ spam-guard যোগ**: পাঠানোর আগে চেক করে একই ইমেইলে ইতিমধ্যে কয়টা *আনভেরিফাইড* রেজিস্ট্রেশন pending আছে (`persons` টেবিলে) — ৩টার বেশি হলে নতুন মেইল পাঠানো (silently) বন্ধ হয়ে যায়। রেজিস্ট্রেশন নিজে তখনও সফলই হয়, শুধু ওই ইমেইলে আর মেইল যায় না।
+- **ইমেইলে এখন শপ-নেম স্পষ্ট দেখানো হয়** — "'[দোকানের নাম]' নামে এই ইমেইল দিয়ে রেজিস্ট্রেশন হয়েছে" — অচেনা নাম দেখলে প্রাপক ক্লিক না করেই বুঝে যাবেন এটা তার না।
+- **`CustomerEmailVerify.jsx` কনফার্মেশন পেজেও শপ-নেম দেখানো হয়** — ভুলবশত ক্লিক করে ফেললেও সাথে সাথে বোঝা যাবে এটা কোন দোকানের জন্য।
+- **একটা পাশাপাশি বাগও ঠিক হয়েছে**: আগে সফল ভেরিফিকেশনের পর `email_verify_token` কে `NULL` করে দেওয়া হতো — এতে একই লিংকে দ্বিতীয়বার ক্লিক করলে (স্বাভাবিক আচরণ) "already verified" এর বদলে "লিংক অবৈধ" এর মতো confusing এরর দেখাত। এখন token রেখে দেওয়া হয়, শুধু `email_verified` flag-টাই আসল সত্য বলে ধরা হয়।
+
+**এখনো ইচ্ছাকৃতভাবে বাদ:** email-কে সত্যিকারের unique/duplicate-checked করা হয়নি (WhatsApp-এর মতো) — সেটা করলে বিদ্যমান একাধিক person রেকর্ড একই email শেয়ার করা নিয়ে ডেটা-মাইগ্রেশনের প্রশ্ন আসবে, যেটা এই ছোট fix-এর স্কোপের বাইরে। spam-guard cap-টাই বর্তমান বাস্তবিক প্রতিরক্ষা।
+
 ## ⚠️ জানা সীমাবদ্ধতা
 
 1. পুরনো কাস্টমার যারা Google দিয়ে রেজিস্টার করেছেন (password_hash নেই): "পাসওয়ার্ড ভুলে গেছেন?" ফ্লো দিয়েই প্রথমবার পাসওয়ার্ড সেট করতে পারবেন — নতুন কোনো আলাদা UI বানানো হয়নি।

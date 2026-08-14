@@ -22,6 +22,7 @@ const { invalidatePortalAuthCache } = require('../services/portalCache.service')
 const { generateCustomerCode, uploadToCloudinary } = require('../services/employee.service');
 const { getPublicAppUrl } = require('../config/publicAppUrl');
 const { generateOTP } = require('../config/encryption');
+const { getLocationFromIP } = require('../services/geoip.service');
 // (DEFAULT_TENANT_ID import সরানো হলো — এখন এই ফাইলে আর দরকার নেই,
 // selfRegisterCustomer এখন tenant-agnostic persons row তৈরি করে)
 
@@ -211,6 +212,126 @@ const sendPortalLink = async (req, res) => {
 // frontend সাথে সাথেই এই person_id দিয়ে directGoogleAuth কল করবে
 // (person_id প্যারামিটার — customer_code-এর সমতুল্য, প্রথমবার Gmail bind করার জন্য)।
 // ============================================================
+
+// ============================================================
+// সেলফ-রেজিস্ট্রেশনে দেওয়া ইমেইলের জন্য magic-link ভেরিফিকেশন পাঠানো।
+// WhatsApp-এর ভারী OTP-টাইপিং ট্রিটমেন্ট এখানে ইচ্ছাকৃতভাবে দেওয়া
+// হয়নি — email ঐচ্ছিক, তাই ভেরিফিকেশনও হালকা/non-blocking: এক ক্লিকে
+// verify, কোনো কোড টাইপ করা লাগে না, রেজিস্ট্রেশন ফর্মেও অপেক্ষা
+// করতে হয় না।
+//
+// টোকেন ৭ দিন কার্যকর (password reset OTP-এর চেয়ে অনেক বেশি) — এটা
+// কোনো লগইন ক্রেডেনশিয়াল না, শুধু ইমেইল মালিকানা যাচাই, তাড়াহুড়ার
+// কিছু নেই। Best-effort, fire-and-forget — ব্যর্থ হলেও রেজিস্ট্রেশন
+// ব্লক হয় না।
+// ============================================================
+const sendEmailVerificationLink = async (personId, email, shopName, name) => {
+    try {
+        // ✅ Abuse-প্রতিরোধ: email ইউনিক না (শুধু whatsapp দিয়ে duplicate
+        // চেক হয়) — তাই কেউ ইচ্ছাকৃতভাবে অন্য কারো email দিয়ে বারবার
+        // (প্রতিবার আলাদা WhatsApp নম্বর দিয়ে) রেজিস্টার করে সেই real
+        // ইমেইল ঠিকানায় বারবার "verify your email" মেসেজ পাঠিয়ে স্প্যাম
+        // করতে পারত। একই email-এ ইতিমধ্যে কয়টা আনভেরিফাইড রেজিস্ট্রেশন
+        // pending আছে চেক করে, একটা সীমার পর নতুন মেইল পাঠানো বন্ধ করে
+        // দেওয়া হয় (রেজিস্ট্রেশন নিজে তখনও সফলই হয় — শুধু ওই email-এ
+        // আর মেইল যায় না, যাতে victim-এর ইনবক্স স্প্যাম না হয়)।
+        const pendingCount = await query(
+            `SELECT COUNT(*) AS cnt FROM persons WHERE LOWER(email) = LOWER($1) AND email_verified = false`,
+            [email]
+        );
+        if (parseInt(pendingCount.rows[0].cnt, 10) > 3) {
+            logger.warn(`⚠️ Email verification স্কিপ করা হলো (spam-guard, ইতিমধ্যে অনেক pending): ${email}`);
+            return;
+        }
+
+        const token     = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // ৭ দিন
+
+        await query(
+            `UPDATE persons SET email_verify_token = $1, email_verify_token_expires_at = $2 WHERE id = $3`,
+            [token, expiresAt, personId]
+        );
+
+        const verifyLink = `${getPublicAppUrl()}/customer-email-verify?token=${token}`;
+        // ✅ শপ-নেম স্পষ্টভাবে দেখানো হচ্ছে — কেউ যদি নিজের ইমেইল দিয়ে
+        // রেজিস্টার না করে থাকে, এই নামটা অচেনা লাগলে সে বুঝতে পারবে
+        // এটা তার না, এবং ক্লিক না করেই উপেক্ষা করবে।
+        const html = `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;border:1px solid #E1EEFC;border-radius:12px;overflow:hidden">
+          <div style="background:#124A8C;padding:20px;text-align:center">
+            <h2 style="color:#ffffff;margin:0;font-size:18px">ZovoriX কাস্টমার পোর্টাল</h2>
+          </div>
+          <div style="padding:24px;color:#1F2937">
+            <p>আসসালামু আলাইকুম${name ? ' ' + name : ''},</p>
+            <p>"<strong>${shopName || 'একটি দোকান'}</strong>" নামে ZovoriX কাস্টমার পোর্টালে এই ইমেইল ঠিকানা দিয়ে একটা রেজিস্ট্রেশন হয়েছে। এটা যদি আপনি নিজে করে থাকেন, ইমেইল ঠিকানাটা নিশ্চিত করতে নিচের বাটনে ক্লিক করুন:</p>
+            <div style="text-align:center;margin:28px 0">
+              <a href="${verifyLink}" style="background:#124A8C;color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:600;display:inline-block">ইমেইল ভেরিফাই করুন</a>
+            </div>
+            <p style="font-size:12.5px;color:#6B7280">বাটন কাজ না করলে এই লিংকটা ব্রাউজারে কপি-পেস্ট করুন:<br>${verifyLink}</p>
+            <p style="font-size:13px;color:#B3452C;font-weight:600">⚠️ "${shopName || 'এই দোকান'}" আপনার পরিচিত না হলে, বা আপনি এই রেজিস্ট্রেশন না করে থাকলে — দয়া করে ক্লিক করবেন না, এই ইমেইলটা উপেক্ষা করুন।</p>
+            <p style="font-size:13px;color:#6B7280">এই লিংকটা ৭ দিন কার্যকর থাকবে।</p>
+            <p style="margin-top:20px">ধন্যবাদান্তে,<br><strong>ZovoriX টিম</strong></p>
+          </div>
+        </div>`;
+
+        const { sendEmail } = require('../services/email.service');
+        await sendEmail(email, 'আপনার ZovoriX ইমেইল ভেরিফাই করুন ✅', html, '', { type: 'email_verification' });
+        logger.info(`📧 Email verification link পাঠানো হয়েছে → ${email}`);
+    } catch (err) {
+        logger.warn('⚠️ Email verification link পাঠানো যায়নি:', err.message);
+    }
+};
+
+// ============================================================
+// ইমেইল ভেরিফিকেশন লিংকে ক্লিক করলে ফ্রন্টএন্ড পেজ (CustomerEmailVerify.jsx)
+// থেকে এই এন্ডপয়েন্ট কল হয়।
+// POST /api/portal/verify-email — Public
+// body: { token }
+// ============================================================
+const verifyEmailToken = async (req, res) => {
+    try {
+        const { token } = req.body;
+        if (!token || !String(token).trim()) {
+            return res.status(400).json({ success: false, message: 'টোকেন পাওয়া যায়নি।' });
+        }
+
+        const result = await query(
+            `SELECT id, email_verified, shop_name FROM persons
+             WHERE email_verify_token = $1 AND email_verify_token_expires_at > NOW()
+             LIMIT 1`,
+            [token]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(400).json({ success: false, message: 'লিংকের মেয়াদ শেষ হয়ে গেছে অথবা এটা অবৈধ।' });
+        }
+
+        const person = result.rows[0];
+        if (person.email_verified) {
+            return res.status(200).json({ success: true, already_verified: true, shop_name: person.shop_name, message: 'এই ইমেইল আগেই ভেরিফাই করা হয়েছে।' });
+        }
+
+        // ⚠️ token ইচ্ছাকৃতভাবে null করা হচ্ছে না — শুধু email_verified=true
+        // সেট হচ্ছে। token null করে দিলে দ্বিতীয়বার একই লিংকে ক্লিক করলে
+        // (স্বাভাবিক আচরণ — ডাবল-ক্লিক, বা পরে আবার) উপরের "already
+        // verified" শাখাটা আর কখনো পৌঁছানো যেত না (token আর ম্যাচ করত
+        // না), বদলে "লিংক অবৈধ" এর মতো confusing এরর দেখাত। expires_at
+        // পার হয়ে গেলে এমনিতেই আর ম্যাচ করবে না।
+        await query(
+            `UPDATE persons SET email_verified = true WHERE id = $1`,
+            [person.id]
+        );
+
+        logger.info(`✅ Email verified (person): ${person.id}`);
+
+        return res.status(200).json({ success: true, already_verified: false, shop_name: person.shop_name, message: 'ইমেইল সফলভাবে ভেরিফাই হয়েছে!' });
+
+    } catch (error) {
+        logger.error('❌ Verify Email Token Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
+    }
+};
+
 const selfRegisterCustomer = async (req, res) => {
     try {
         const { shop_name, owner_name, business_type, date_of_birth, whatsapp, sms_phone, email, password, confirm_password } = req.body;
@@ -337,6 +458,14 @@ const selfRegisterCustomer = async (req, res) => {
         // ব্যবহৃত হয়ে গেছে — verify_token পুনরায় ব্যবহার করা যাবে না
         await query(`DELETE FROM whatsapp_verification_otps WHERE phone = $1`, [cleanWhatsapp]);
 
+        // ✅ ইমেইল দেওয়া থাকলে magic-link পাঠাও — fire-and-forget,
+        // রেজিস্ট্রেশন রেসপন্সকে ব্লক করে না (email ঐচ্ছিক বলে
+        // ভেরিফিকেশনও ঐচ্ছিক/non-blocking)
+        const cleanEmailForVerify = (email || '').trim();
+        if (cleanEmailForVerify) {
+            sendEmailVerificationLink(result.rows[0].id, cleanEmailForVerify, shop_name.trim(), owner_name.trim());
+        }
+
         return res.status(201).json({
             success: true,
             person_id: result.rows[0].id,
@@ -361,7 +490,7 @@ const selfRegisterCustomer = async (req, res) => {
 // ============================================================
 const passwordLogin = async (req, res) => {
     try {
-        const { identifier, password } = req.body;
+        const { identifier, password, device_id } = req.body;
 
         // ⚠️ নোট: ভুল identifier/password-এ ইচ্ছাকৃতভাবে 401 না দিয়ে 400
         // ব্যবহার করা হচ্ছে। frontend-এর portalFetch() যেকোনো 401 দেখলেই
@@ -469,6 +598,14 @@ const passwordLogin = async (req, res) => {
 
             logger.info(`✅ Password Login (customer): ${owner.customer_code || owner.id}`);
 
+            // ✅ device + location ট্র্যাকিং — fire-and-forget, response ব্লক করে না
+            recordLoginEvent({
+                ownerType: 'customer', ownerId: owner.id, loginMethod: 'password',
+                deviceFingerprint: device_id || null,
+                ipAddress: req.ip, userAgent: req.get('user-agent'),
+                email: owner.email, phone: owner.whatsapp, name: owner.owner_name,
+            });
+
             return res.status(200).json({
                 success: true,
                 message: 'লগইন সফল!',
@@ -510,6 +647,14 @@ const passwordLogin = async (req, res) => {
         setRefreshCookie(res, refreshJWT);
 
         logger.info(`✅ Password Login (person): ${owner.id}`);
+
+        // ✅ device + location ট্র্যাকিং — fire-and-forget, response ব্লক করে না
+        recordLoginEvent({
+            ownerType: 'person', ownerId: owner.id, loginMethod: 'password',
+            deviceFingerprint: device_id || null,
+            ipAddress: req.ip, userAgent: req.get('user-agent'),
+            email: owner.email, phone: owner.whatsapp, name: owner.full_name,
+        });
 
         return res.status(200).json({
             success: true,
@@ -712,6 +857,163 @@ const portalVerifyResetOtp = async (req, res) => {
 // POST /api/portal/reset-password — Public
 // body: { identifier, reset_token, new_password }
 // ============================================================
+// ============================================================
+// পাসওয়ার্ড পরিবর্তন/সেট হওয়ার নিরাপত্তা সতর্কতা — email + WhatsApp
+// দুটো চ্যানেলেই পাঠানো হয় (কাস্টমারের যেগুলো আছে), OTP আসলে কোন
+// চ্যানেল দিয়ে ভেরিফাই হয়েছিল তা নির্বিশেষে। কারণ: একটা চ্যানেল
+// (ধরুন email) কম্প্রোমাইজড হয়ে থাকলেও অন্যটা (WhatsApp) দিয়ে
+// আসল মালিকের কাছে অ্যালার্ট পৌঁছাবে।
+//
+// Best-effort, fire-and-forget: email/WhatsApp পাঠাতে ব্যর্থ হলেও
+// পাসওয়ার্ড রিসেট রেসপন্স সফলই থাকে — caller await করে না, এখানেই
+// নিজে থেকে সব error ধরে নেওয়া হয়েছে যাতে কখনো unhandled rejection
+// না হয়।
+// ============================================================
+const notifyPasswordChanged = async ({ email, phone, name }) => {
+    const whenText = new Date().toLocaleString('bn-BD', {
+        timeZone: 'Asia/Dhaka', dateStyle: 'medium', timeStyle: 'short'
+    });
+
+    const tasks = [];
+
+    if (email) {
+        const html = `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;border:1px solid #F3D9D9;border-radius:12px;overflow:hidden">
+          <div style="background:#B3452C;padding:20px;text-align:center">
+            <h2 style="color:#ffffff;margin:0;font-size:18px">🔒 ZovoriX নিরাপত্তা সতর্কতা</h2>
+          </div>
+          <div style="padding:24px;color:#1F2937">
+            <p>আসসালামু আলাইকুম${name ? ' ' + name : ''},</p>
+            <p>আপনার কাস্টমার পোর্টাল অ্যাকাউন্টের <strong>পাসওয়ার্ড এইমাত্র পরিবর্তন/সেট করা হয়েছে</strong>।</p>
+            <div style="background:#FBE4E4;border-radius:12px;padding:16px 20px;margin:20px 0">
+              <p style="margin:0;font-size:13px;color:#6B7280">🕐 সময়</p>
+              <p style="margin:4px 0 0;font-size:15px;font-weight:600;color:#1F2937">${whenText}</p>
+            </div>
+            <p style="color:#B3452C;font-size:13.5px;font-weight:600">⚠️ এটা যদি আপনি না করে থাকেন, দয়া করে সাথে সাথে আপনার সংশ্লিষ্ট দোকান/কোম্পানির সাথে যোগাযোগ করুন।</p>
+            <p style="margin-top:20px">ধন্যবাদান্তে,<br><strong>ZovoriX টিম</strong></p>
+          </div>
+        </div>`;
+        const { sendEmail } = require('../services/email.service');
+        tasks.push(
+            sendEmail(email, '🔒 আপনার ZovoriX পাসওয়ার্ড পরিবর্তন হয়েছে', html, '', { type: 'security_alert' })
+                .catch(e => logger.warn('⚠️ Password-changed email alert পাঠানো যায়নি:', e.message))
+        );
+    }
+
+    if (phone) {
+        const { sendPasswordChangedAlertWhatsApp } = require('../services/portalWhatsapp.service');
+        tasks.push(
+            sendPasswordChangedAlertWhatsApp(phone, whenText)
+                .catch(e => logger.warn('⚠️ Password-changed WhatsApp alert পাঠানো যায়নি:', e.message))
+        );
+    }
+
+    await Promise.allSettled(tasks);
+};
+
+// ============================================================
+// নতুন ডিভাইস থেকে লগইন হলে নিরাপত্তা সতর্কতা — email + WhatsApp,
+// city/country সহ (পাওয়া গেলে)। notifyPasswordChanged-এর মতোই
+// best-effort, fire-and-forget প্যাটার্ন।
+// ============================================================
+const notifyNewDeviceLogin = async ({ email, phone, name, city, country, whenText }) => {
+    const locationText = city && country ? `${city}, ${country}` : (country || 'অজানা অবস্থান');
+    const tasks = [];
+
+    if (email) {
+        const html = `
+        <div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;border:1px solid #F3D9D9;border-radius:12px;overflow:hidden">
+          <div style="background:#B3452C;padding:20px;text-align:center">
+            <h2 style="color:#ffffff;margin:0;font-size:18px">🔒 ZovoriX নিরাপত্তা সতর্কতা</h2>
+          </div>
+          <div style="padding:24px;color:#1F2937">
+            <p>আসসালামু আলাইকুম${name ? ' ' + name : ''},</p>
+            <p>আপনার কাস্টমার পোর্টাল অ্যাকাউন্টে একটা <strong>নতুন ডিভাইস থেকে লগইন</strong> হয়েছে।</p>
+            <table style="width:100%;background:#FBE4E4;border-radius:12px;margin:20px 0;border-collapse:collapse">
+              <tr><td style="padding:14px 20px 2px;font-size:13px;color:#6B7280">📍 অবস্থান (আনুমানিক)</td></tr>
+              <tr><td style="padding:0 20px 12px;font-size:15px;font-weight:600;color:#1F2937">${locationText}</td></tr>
+              <tr><td style="padding:0 20px 2px;font-size:13px;color:#6B7280">🕐 সময়</td></tr>
+              <tr><td style="padding:0 20px 14px;font-size:15px;font-weight:600;color:#1F2937">${whenText}</td></tr>
+            </table>
+            <p style="color:#B3452C;font-size:13.5px;font-weight:600">⚠️ এটা যদি আপনি না করে থাকেন, দয়া করে সাথে সাথে পাসওয়ার্ড বদলান এবং আপনার সংশ্লিষ্ট দোকান/কোম্পানির সাথে যোগাযোগ করুন।</p>
+            <p style="margin-top:20px">ধন্যবাদান্তে,<br><strong>ZovoriX টিম</strong></p>
+          </div>
+        </div>`;
+        const { sendEmail } = require('../services/email.service');
+        tasks.push(
+            sendEmail(email, '🔒 নতুন ডিভাইস থেকে আপনার ZovoriX অ্যাকাউন্টে লগইন', html, '', { type: 'security_alert' })
+                .catch(e => logger.warn('⚠️ New-device email alert পাঠানো যায়নি:', e.message))
+        );
+    }
+
+    if (phone) {
+        const { sendPortalWhatsAppMessage } = require('../services/portalWhatsapp.service');
+        const message =
+            `🔒 *ZovoriX নিরাপত্তা সতর্কতা*\n` +
+            `━━━━━━━━━━━━━━━━\n` +
+            `আপনার অ্যাকাউন্টে একটা *নতুন ডিভাইস* থেকে লগইন হয়েছে।\n\n` +
+            `📍 অবস্থান: ${locationText}\n` +
+            `🕐 সময়: ${whenText}\n\n` +
+            `⚠️ *এটা যদি আপনি না করে থাকেন*, দয়া করে সাথে সাথে পাসওয়ার্ড বদলান এবং আপনার সংশ্লিষ্ট দোকান/কোম্পানির সাথে যোগাযোগ করুন।\n` +
+            `━━━━━━━━━━━━━━━━`;
+        tasks.push(
+            sendPortalWhatsAppMessage(phone, message, 'new_device_alert')
+                .catch(e => logger.warn('⚠️ New-device WhatsApp alert পাঠানো যায়নি:', e.message))
+        );
+    }
+
+    await Promise.allSettled(tasks);
+};
+
+// ============================================================
+// প্রতিটা সফল লগইনে (password অথবা Google) একটা ইভেন্ট রেকর্ড করে —
+// device fingerprint + IP + geolocation (city/country) সহ। আগে কখনো
+// এই fingerprint দেখা না গেলে (এবং এটাই owner-এর প্রথম লগইন না হলে)
+// নতুন-ডিভাইস সতর্কতা পাঠায়।
+//
+// পুরোপুরি best-effort — কোনো ধাপ ব্যর্থ হলেও throw করে না, শুধু log
+// করে; মূল লগইন ফ্লো কখনো এর জন্য আটকাবে না বা ব্যর্থ হবে না। Caller
+// থেকে await ছাড়াই ডাকা হয় (fire-and-forget)।
+// ============================================================
+const recordLoginEvent = async ({ ownerType, ownerId, loginMethod, deviceFingerprint, ipAddress, userAgent, email, phone, name }) => {
+    try {
+        const ownerCol = ownerType === 'customer' ? 'customer_id' : 'person_id';
+
+        // এই owner-এর আগের সব লগইন-ইভেন্টের fingerprint আনো
+        const priorEvents = await query(
+            `SELECT device_fingerprint FROM customer_portal_login_events WHERE ${ownerCol} = $1`,
+            [ownerId]
+        );
+        const isFirstEverLogin = priorEvents.rows.length === 0;
+        const knownFingerprints = new Set(priorEvents.rows.map(r => r.device_fingerprint).filter(Boolean));
+        const isNewDevice = !!deviceFingerprint && !knownFingerprints.has(deviceFingerprint);
+
+        // geolocation — ব্যর্থ হলেও gracefully null (কখনো throw করে না, getLocationFromIP নিজেই সেফ)
+        const { city, country } = await getLocationFromIP(ipAddress);
+
+        await query(
+            `INSERT INTO customer_portal_login_events
+                (${ownerCol}, login_method, device_fingerprint, ip_address, city, country, user_agent, is_new_device)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+            [ownerId, loginMethod, deviceFingerprint || null, ipAddress || null, city, country, userAgent || null, isNewDevice]
+        );
+
+        // নতুন ডিভাইস থেকে লগইন — কিন্তু এই owner-এর একদম প্রথম লগইন
+        // হলে অ্যালার্ট পাঠানো হয় না (প্রথমবার সবকিছুই "নতুন", এতে
+        // সন্দেহজনক কিছু নেই)
+        if (isNewDevice && !isFirstEverLogin) {
+            const whenText = new Date().toLocaleString('bn-BD', {
+                timeZone: 'Asia/Dhaka', dateStyle: 'medium', timeStyle: 'short'
+            });
+            notifyNewDeviceLogin({ email, phone, name, city, country, whenText }).catch((e) =>
+                logger.warn('⚠️ notifyNewDeviceLogin ব্যর্থ:', e.message)
+            );
+        }
+    } catch (err) {
+        logger.warn('⚠️ recordLoginEvent ব্যর্থ (login flow প্রভাবিত হয়নি):', err.message);
+    }
+};
+
 const portalResetPassword = async (req, res) => {
     try {
         const { identifier, reset_token, new_password } = req.body;
@@ -750,6 +1052,27 @@ const portalResetPassword = async (req, res) => {
         await query(`DELETE FROM customer_password_reset_otps WHERE ${ownerCol} = $1`, [ownerId]);
 
         logger.info(`✅ Password reset (${ownerType}): ${ownerId}`);
+
+        // ✅ নিরাপত্তা সতর্কতা — fire-and-forget (response block করে না)।
+        // এই তাজা query-টা করেই কেন আবার কন্টাক্ট আনা হচ্ছে: ownerType/ownerId
+        // resolve হয়েছিল identifier দিয়ে (email অথবা phone — যেকোনো একটা),
+        // কিন্তু অ্যালার্ট পাঠাতে হবে উভয় চ্যানেলেই যদি দুটোই থাকে।
+        query(
+            ownerType === 'customer'
+                ? `SELECT email, whatsapp, sms_phone, owner_name AS name FROM customers WHERE id = $1`
+                : `SELECT email, whatsapp, full_name AS name FROM persons WHERE id = $1`,
+            [ownerId]
+        ).then((contactResult) => {
+            const contact = contactResult.rows[0];
+            if (!contact) return;
+            notifyPasswordChanged({
+                email: contact.email,
+                phone: contact.whatsapp || contact.sms_phone,
+                name:  contact.name,
+            });
+        }).catch((notifyErr) => {
+            logger.warn('⚠️ Password-changed notification contact fetch ব্যর্থ:', notifyErr.message);
+        });
 
         return res.status(200).json({ success: true, message: 'পাসওয়ার্ড সফলভাবে সেট হয়েছে! এখন লগইন করুন।' });
 
@@ -2579,6 +2902,14 @@ const directGoogleAuth = async (req, res) => {
             );
             setRefreshCookie(res, refreshJWT_direct);
 
+            // ✅ device + location ট্র্যাকিং — fire-and-forget, response ব্লক করে না
+            recordLoginEvent({
+                ownerType: 'customer', ownerId: customer.id, loginMethod: 'google',
+                deviceFingerprint: device_id || null,
+                ipAddress: req.ip, userAgent: req.get('user-agent'),
+                email: customer.email || email, phone: customer.whatsapp, name: customer.owner_name,
+            });
+
             return res.status(200).json({
                 success: true,
                 message: isFirstLogin
@@ -2634,6 +2965,14 @@ const directGoogleAuth = async (req, res) => {
             { expiresIn: '30d', algorithm: 'HS256' }
         );
         setRefreshCookie(res, refreshJWT_person);
+
+        // ✅ device + location ট্র্যাকিং — fire-and-forget, response ব্লক করে না
+        recordLoginEvent({
+            ownerType: 'person', ownerId: personOnly.id, loginMethod: 'google',
+            deviceFingerprint: device_id || null,
+            ipAddress: req.ip, userAgent: req.get('user-agent'),
+            email: personOnly.email || email, phone: personOnly.whatsapp, name: personOnly.full_name,
+        });
 
         return res.status(200).json({
             success: true,
@@ -2807,6 +3146,7 @@ const logoutPortal = (req, res) => {
 module.exports = {
     sendPortalLink,
     selfRegisterCustomer,  // ✅ NEW: কাস্টমার নিজে সাইন-আপ
+    verifyEmailToken,       // ✅ NEW: রেজিস্ট্রেশন ইমেইল magic-link ভেরিফাই
     sendRegisterOtp,        // ✅ NEW: রেজিস্ট্রেশনে WhatsApp OTP ধাপ ১
     verifyRegisterOtp,      // ✅ NEW: রেজিস্ট্রেশনে WhatsApp OTP ধাপ ২
     passwordLogin,         // ✅ NEW: identifier + password লগইন (Google-এর বিকল্প)
