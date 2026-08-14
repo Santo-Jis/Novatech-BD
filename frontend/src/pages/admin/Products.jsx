@@ -9,7 +9,7 @@ import ProductImportModal from '../../components/ProductImportModal'
 import toast from 'react-hot-toast'
 import {
   FiPlus, FiEdit, FiPackage, FiTrendingUp,
-  FiImage, FiPercent, FiTag, FiInfo, FiDollarSign, FiX, FiPlusCircle, FiList, FiUpload
+  FiImage, FiPercent, FiTag, FiInfo, FiDollarSign, FiX, FiPlusCircle, FiList, FiUpload, FiTruck
 } from 'react-icons/fi'
 
 // ─── ছবি আপলোড প্রিভিউ কম্পোনেন্ট ──────────────────────────
@@ -172,6 +172,8 @@ export default function AdminProducts() {
   const [movOpen,    setMovOpen]    = useState(false)
   const [movProduct, setMovProduct] = useState(null)
   const [importOpen, setImportOpen] = useState(false)
+  const [productSuppliers,        setProductSuppliers]        = useState([])
+  const [loadingProductSuppliers, setLoadingProductSuppliers] = useState(false)
 
   // ✅ Products/POS গুদাম-ফিল্টার
   const [warehouses,      setWarehouses]      = useState([])
@@ -257,6 +259,13 @@ export default function AdminProducts() {
   const openView = (product) => {
     setSelected(product)
     setModal('view')
+    // ভিউ মোডাল খোলার সাথেই সাপ্লায়ার তুলনা লোড
+    setProductSuppliers([])
+    setLoadingProductSuppliers(true)
+    api.get(`/products/${product.id}/suppliers`)
+      .then(res => setProductSuppliers(res.data.data))
+      .catch(() => { /* silent — বাকি ভিউ ঠিক থাকবে */ })
+      .finally(() => setLoadingProductSuppliers(false))
   }
 
   const saveProduct = async () => {
@@ -898,6 +907,52 @@ export default function AdminProducts() {
 
             {/* মার্জিন সারাংশ */}
             <MarginSummary price={selected.price} costPrice={selected.cost_price} />
+
+            {/* সাপ্লায়ার তুলনা */}
+            <div className="pt-1">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                <FiTruck size={12} /> সরবরাহকারী সাপ্লায়ার
+              </p>
+              {loadingProductSuppliers ? (
+                <div className="space-y-2">
+                  {[1, 2].map(i => <div key={i} className="h-12 bg-gray-100 dark:bg-slate-700 rounded-xl animate-pulse" />)}
+                </div>
+              ) : productSuppliers.length === 0 ? (
+                <div className="py-3 text-center text-xs text-gray-400 border border-dashed border-gray-200 dark:border-slate-700 rounded-xl">
+                  কোনো সাপ্লায়ার ম্যাপ করা নেই — সাপ্লায়ার ডিটেইল ভিউ থেকে যোগ করুন
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {productSuppliers.map((sp, idx) => {
+                    const isCheapest = idx === 0 && productSuppliers.length > 1
+                    const fmtDate = d => d ? new Date(d).toLocaleDateString('bn-BD', { day:'2-digit', month:'short', year:'numeric' }) : null
+                    const PAYMENT_LABELS = { cod:'COD', net_15:'নেট ১৫', net_30:'নেট ৩০', net_45:'নেট ৪৫', net_60:'নেট ৬০' }
+                    return (
+                      <div key={sp.id} className={`flex items-center justify-between gap-3 p-3 rounded-xl border transition-colors ${isCheapest ? 'border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30' : 'border-gray-100 dark:border-slate-700'}`}>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 truncate">{sp.supplier_name}</p>
+                            {isCheapest && <span className="text-[10px] bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300 font-semibold px-1.5 py-0.5 rounded-full">সেরা দাম</span>}
+                            {!sp.supplier_active && <span className="text-[10px] text-red-500">নিষ্ক্রিয়</span>}
+                          </div>
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            {[
+                              sp.contact_person,
+                              sp.payment_terms && PAYMENT_LABELS[sp.payment_terms],
+                              sp.lead_time_days != null && `লিড টাইম ${sp.lead_time_days} দিন`,
+                              sp.last_po_date && `সর্বশেষ PO: ${fmtDate(sp.last_po_date)}`
+                            ].filter(Boolean).join(' · ')}
+                          </p>
+                        </div>
+                        <p className={`text-base font-bold flex-shrink-0 ${isCheapest ? 'text-green-700 dark:text-green-400' : 'text-gray-700 dark:text-gray-200'}`}>
+                          ৳{parseFloat(sp.unit_price).toLocaleString()}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
 
             {/* বিবরণ */}
             {selected.description && (

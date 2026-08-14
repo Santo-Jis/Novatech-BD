@@ -137,9 +137,12 @@ const getPurchaseOrder = async (req, res) => {
 // POST /api/purchase-orders
 // body: { supplier_id, order_date, expected_date, notes, items: [{ product_id, quantity_ordered, unit_cost }] }
 // ============================================================
+const ALLOWED_CURRENCIES = ['BDT', 'USD', 'EUR', 'CNY', 'INR', 'GBP', 'OTHER'];
+const ALLOWED_ALLOCATION_METHODS = ['value', 'quantity', 'equal'];
+
 const createPurchaseOrder = async (req, res) => {
     try {
-        const { supplier_id, order_date, expected_date, notes, items } = req.body;
+        const { supplier_id, order_date, expected_date, notes, items, currency, exchange_rate, cost_allocation_method } = req.body;
         let { warehouse_id } = req.body;
 
         if (!supplier_id) {
@@ -148,6 +151,15 @@ const createPurchaseOrder = async (req, res) => {
         if (!Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ success: false, message: 'অন্তত একটি পণ্য যোগ করুন।' });
         }
+
+        // মুদ্রা — বিদেশি হলে exchange_rate বাধ্যতামূলক (PO-র unit_cost সবসময় BDT-তে থাকে,
+        // এটা শুধু "কত বিদেশি মুদ্রায় কেনা হয়েছিল" রেফারেন্সের জন্য)
+        const poCurrency = ALLOWED_CURRENCIES.includes(currency) ? currency : 'BDT';
+        const poRate = poCurrency === 'BDT' ? 1 : parseFloat(exchange_rate);
+        if (poCurrency !== 'BDT' && (!poRate || poRate <= 0)) {
+            return res.status(400).json({ success: false, message: 'বিদেশি মুদ্রার জন্য সঠিক এক্সচেঞ্জ রেট দিন।' });
+        }
+        const allocMethod = ALLOWED_ALLOCATION_METHODS.includes(cost_allocation_method) ? cost_allocation_method : 'value';
 
         // সাপ্লায়ার এই tenant-এর কিনা যাচাই
         const supplierCheck = await query(
@@ -201,7 +213,10 @@ const createPurchaseOrder = async (req, res) => {
                 return res.status(400).json({ success: false, message: `আইটেম #${idx + 1}: পণ্য পাওয়া যায়নি।` });
             }
 
-            cleanItems.push({ product_id: item.product_id, quantity_ordered: qty, unit_cost: cost });
+            const foreignCost = (item.foreign_unit_cost !== undefined && item.foreign_unit_cost !== null && item.foreign_unit_cost !== '')
+                ? parseFloat(item.foreign_unit_cost) : null;
+
+            cleanItems.push({ product_id: item.product_id, quantity_ordered: qty, unit_cost: cost, foreign_unit_cost: foreignCost });
         }
 
         const totalAmount = cleanItems.reduce((sum, i) => sum + (i.quantity_ordered * i.unit_cost), 0);
@@ -214,22 +229,24 @@ const createPurchaseOrder = async (req, res) => {
                 po = await withTransaction(async (client) => {
                     const poInsert = await client.query(
                         `INSERT INTO purchase_orders
-                            (tenant_id, po_number, supplier_id, status, order_date, expected_date, notes, total_amount, created_by, warehouse_id)
-                         VALUES ($1, $2, $3, 'draft', COALESCE($4, CURRENT_DATE), $5, $6, $7, $8, $9)
+                            (tenant_id, po_number, supplier_id, status, order_date, expected_date, notes, total_amount, created_by, warehouse_id,
+                             currency, exchange_rate, cost_allocation_method)
+                         VALUES ($1, $2, $3, 'draft', COALESCE($4, CURRENT_DATE), $5, $6, $7, $8, $9, $10, $11, $12)
                          RETURNING *`,
                         [
                             req.tenantId, poNumber, supplier_id,
                             order_date || null, expected_date || null, notes || null,
-                            totalAmount, req.user.id, warehouse_id
+                            totalAmount, req.user.id, warehouse_id,
+                            poCurrency, poRate, allocMethod
                         ]
                     );
                     const poRow = poInsert.rows[0];
 
                     for (const item of cleanItems) {
                         await client.query(
-                            `INSERT INTO purchase_order_items (purchase_order_id, product_id, quantity_ordered, unit_cost)
-                             VALUES ($1, $2, $3, $4)`,
-                            [poRow.id, item.product_id, item.quantity_ordered, item.unit_cost]
+                            `INSERT INTO purchase_order_items (purchase_order_id, product_id, quantity_ordered, unit_cost, foreign_unit_cost)
+                             VALUES ($1, $2, $3, $4, $5)`,
+                            [poRow.id, item.product_id, item.quantity_ordered, item.unit_cost, item.foreign_unit_cost]
                         );
                     }
 
@@ -270,7 +287,18 @@ const updatePurchaseOrder = async (req, res) => {
             return res.status(400).json({ success: false, message: 'শুধু ড্রাফট অবস্থার Purchase Order সম্পাদনা করা যায়।' });
         }
 
-        const { supplier_id, order_date, expected_date, notes, items, warehouse_id } = req.body;
+        const { supplier_id, order_date, expected_date, notes, items, warehouse_id, currency, exchange_rate } = req.body;
+
+        // নিরাপত্তা: সাপ্লায়ার বদলাতে চাইলে সেটা এই tenant-এর কিনা যাচাই
+        if (supplier_id) {
+            const supplierCheck = await query(
+                `SELECT id FROM suppliers WHERE id = $1 AND tenant_id = $2`,
+                [supplier_id, req.tenantId]
+            );
+            if (supplierCheck.rows.length === 0) {
+                return res.status(400).json({ success: false, message: 'সাপ্লায়ার পাওয়া যায়নি।' });
+            }
+        }
 
         if (warehouse_id) {
             const warehouseCheck = await query(
@@ -279,6 +307,16 @@ const updatePurchaseOrder = async (req, res) => {
             );
             if (warehouseCheck.rows.length === 0) {
                 return res.status(400).json({ success: false, message: 'গুদাম পাওয়া যায়নি বা নিষ্ক্রিয়।' });
+            }
+        }
+
+        // মুদ্রা বদলাতে চাইলে যাচাই (না দিলে বিদ্যমান মান অপরিবর্তিত থাকবে)
+        let poCurrency = null, poRate = null;
+        if (currency !== undefined) {
+            poCurrency = ALLOWED_CURRENCIES.includes(currency) ? currency : 'BDT';
+            poRate = poCurrency === 'BDT' ? 1 : parseFloat(exchange_rate);
+            if (poCurrency !== 'BDT' && (!poRate || poRate <= 0)) {
+                return res.status(400).json({ success: false, message: 'বিদেশি মুদ্রার জন্য সঠিক এক্সচেঞ্জ রেট দিন।' });
             }
         }
 
@@ -293,7 +331,17 @@ const updatePurchaseOrder = async (req, res) => {
                 if (!item.product_id || isNaN(qty) || qty <= 0 || isNaN(cost) || cost < 0) {
                     return res.status(400).json({ success: false, message: `আইটেম #${idx + 1}-এ ভুল তথ্য আছে।` });
                 }
-                cleanItems.push({ product_id: item.product_id, quantity_ordered: qty, unit_cost: cost });
+                // নিরাপত্তা: প্রতিটা পণ্য এই tenant-এর কিনা যাচাই (createPurchaseOrder-এর মতোই)
+                const productCheck = await query(
+                    `SELECT id FROM products WHERE id = $1 AND tenant_id = $2`,
+                    [item.product_id, req.tenantId]
+                );
+                if (productCheck.rows.length === 0) {
+                    return res.status(400).json({ success: false, message: `আইটেম #${idx + 1}: পণ্য পাওয়া যায়নি।` });
+                }
+                const foreignCost = (item.foreign_unit_cost !== undefined && item.foreign_unit_cost !== null && item.foreign_unit_cost !== '')
+                    ? parseFloat(item.foreign_unit_cost) : null;
+                cleanItems.push({ product_id: item.product_id, quantity_ordered: qty, unit_cost: cost, foreign_unit_cost: foreignCost });
             }
             totalAmount = cleanItems.reduce((sum, i) => sum + (i.quantity_ordered * i.unit_cost), 0);
         }
@@ -307,14 +355,16 @@ const updatePurchaseOrder = async (req, res) => {
                     notes         = $4,
                     total_amount  = $5,
                     warehouse_id  = COALESCE($6, warehouse_id),
+                    currency       = COALESCE($7, currency),
+                    exchange_rate  = COALESCE($8, exchange_rate),
                     updated_at    = NOW()
-                 WHERE id = $7 AND tenant_id = $8
+                 WHERE id = $9 AND tenant_id = $10
                  RETURNING *`,
                 [
                     supplier_id ?? null, order_date ?? null,
                     expected_date ?? existing.rows[0].expected_date,
                     notes ?? existing.rows[0].notes,
-                    totalAmount, warehouse_id ?? null, req.params.id, req.tenantId
+                    totalAmount, warehouse_id ?? null, poCurrency, poRate, req.params.id, req.tenantId
                 ]
             );
 
@@ -322,9 +372,9 @@ const updatePurchaseOrder = async (req, res) => {
                 await client.query(`DELETE FROM purchase_order_items WHERE purchase_order_id = $1`, [req.params.id]);
                 for (const item of cleanItems) {
                     await client.query(
-                        `INSERT INTO purchase_order_items (purchase_order_id, product_id, quantity_ordered, unit_cost)
-                         VALUES ($1, $2, $3, $4)`,
-                        [req.params.id, item.product_id, item.quantity_ordered, item.unit_cost]
+                        `INSERT INTO purchase_order_items (purchase_order_id, product_id, quantity_ordered, unit_cost, foreign_unit_cost)
+                         VALUES ($1, $2, $3, $4, $5)`,
+                        [req.params.id, item.product_id, item.quantity_ordered, item.unit_cost, item.foreign_unit_cost]
                     );
                 }
             }

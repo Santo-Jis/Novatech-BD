@@ -19,6 +19,8 @@ const {
     commitImport
 } = require('../controllers/productImport.controller');
 
+const { getProductSuppliers } = require('../controllers/supplierProduct.controller');
+
 // ============================================================
 // BULK CSV IMPORT — ফাইল আপলোড (মেমোরিতে, ডিস্কে সেভ হয় না)
 // ============================================================
@@ -75,6 +77,13 @@ router.get('/:id/movements',
     auth,
     allowRoles('admin', 'manager'),
     getStockMovements
+);
+
+// এই পণ্য কোন কোন সাপ্লায়ার দেয় — দাম তুলনাসহ (সস্তা আগে)
+router.get('/:id/suppliers',
+    auth,
+    allowRoles('admin', 'manager', 'accountant'),
+    getProductSuppliers
 );
 
 module.exports = router;

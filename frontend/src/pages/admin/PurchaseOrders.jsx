@@ -27,7 +27,23 @@ const STATUS_OPTIONS = [
 
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('bn-BD', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
-const EMPTY_ITEM = { product_id: '', quantity_ordered: '', unit_cost: '' }
+const CURRENCY_OPTIONS = [
+  { value: 'BDT', label: 'BDT (৳)' },
+  { value: 'USD', label: 'USD ($)' },
+  { value: 'EUR', label: 'EUR (€)' },
+  { value: 'CNY', label: 'CNY (¥)' },
+  { value: 'INR', label: 'INR (₹)' },
+  { value: 'GBP', label: 'GBP (£)' },
+  { value: 'OTHER', label: 'অন্যান্য' },
+]
+
+const ALLOCATION_OPTIONS = [
+  { value: 'value',    label: 'মূল্য অনুযায়ী (দামি আইটেম বেশি ভাগ পাবে)' },
+  { value: 'quantity', label: 'পরিমাণ অনুযায়ী' },
+  { value: 'equal',    label: 'সমান ভাগে' },
+]
+
+const EMPTY_ITEM = { product_id: '', quantity_ordered: '', unit_cost: '', foreign_unit_cost: '' }
 
 export default function AdminPurchaseOrders() {
   const [pos,        setPos]        = useState([])
@@ -43,7 +59,7 @@ export default function AdminPurchaseOrders() {
   const [supplierProductMap, setSupplierProductMap] = useState({}) // { product_id: {unit_price, lead_time_days} } — বর্তমানে বাছাই করা সাপ্লায়ারের দাম-ম্যাপিং
 
   const [createOpen, setCreateOpen] = useState(false)
-  const [form, setForm] = useState({ supplier_id: '', warehouse_id: '', order_date: '', expected_date: '', notes: '' })
+  const [form, setForm] = useState({ supplier_id: '', warehouse_id: '', order_date: '', expected_date: '', notes: '', currency: 'BDT', exchange_rate: '1', cost_allocation_method: 'value' })
   const [items, setItems] = useState([{ ...EMPTY_ITEM }])
   const [saving, setSaving] = useState(false)
 
@@ -110,7 +126,7 @@ export default function AdminPurchaseOrders() {
     // ডিফল্ট গুদাম প্রি-সিলেক্ট করা থাকবে (না দিলেও ব্যাকএন্ড এমনিতেই ডিফল্ট বসিয়ে দেয়,
     // কিন্তু ফর্মে দেখানো থাকলে অ্যাডমিন সহজে বদলে নিতে পারবে)
     const defaultWarehouseId = warehouses.find(w => w.is_default)?.id || ''
-    setForm({ supplier_id: '', warehouse_id: defaultWarehouseId, order_date: '', expected_date: '', notes: '' })
+    setForm({ supplier_id: '', warehouse_id: defaultWarehouseId, order_date: '', expected_date: '', notes: '', currency: 'BDT', exchange_rate: '1', cost_allocation_method: 'value' })
     setItems([{ ...EMPTY_ITEM }])
     setSupplierProductMap({})
     setCreateOpen(true)
@@ -149,15 +165,21 @@ export default function AdminPurchaseOrders() {
     if (!form.supplier_id) { toast.error('সাপ্লায়ার বাছাই করুন।'); return }
     const validItems = items.filter(it => it.product_id && it.quantity_ordered)
     if (validItems.length === 0) { toast.error('অন্তত একটি পণ্য যোগ করুন।'); return }
+    if (form.currency !== 'BDT' && (!form.exchange_rate || parseFloat(form.exchange_rate) <= 0)) {
+      toast.error('বিদেশি মুদ্রার জন্য সঠিক এক্সচেঞ্জ রেট দিন।')
+      return
+    }
 
     setSaving(true)
     try {
       const res = await api.post('/purchase-orders', {
         ...form,
+        exchange_rate: parseFloat(form.exchange_rate) || 1,
         items: validItems.map(it => ({
           product_id: it.product_id,
           quantity_ordered: parseInt(it.quantity_ordered, 10),
-          unit_cost: parseFloat(it.unit_cost) || 0
+          unit_cost: parseFloat(it.unit_cost) || 0,
+          foreign_unit_cost: it.foreign_unit_cost ? parseFloat(it.foreign_unit_cost) : null,
         }))
       })
       toast.success(res.data.message)
@@ -267,6 +289,36 @@ export default function AdminPurchaseOrders() {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="মুদ্রা"
+              options={CURRENCY_OPTIONS}
+              value={form.currency}
+              onChange={e => setForm(prev => ({ ...prev, currency: e.target.value, exchange_rate: e.target.value === 'BDT' ? '1' : prev.exchange_rate }))}
+            />
+            {form.currency !== 'BDT' && (
+              <Input
+                label={`১ ${form.currency} = কত ৳`}
+                type="number" step="0.0001" min="0"
+                value={form.exchange_rate}
+                onChange={e => setForm(prev => ({ ...prev, exchange_rate: e.target.value }))}
+                placeholder="যেমন: ১২২.৫"
+              />
+            )}
+          </div>
+          {form.currency !== 'BDT' && (
+            <p className="text-[11px] text-gray-400 -mt-2">
+              নিচে পণ্যের দাম (৳) BDT-তেই দিন — বিদেশি মুদ্রার দামটা শুধু রেফারেন্সের জন্য প্রতি আইটেমে আলাদাভাবে লিখতে পারবেন
+            </p>
+          )}
+
+          <Select
+            label="অতিরিক্ত খরচ বণ্টন পদ্ধতি (শিপমেন্ট/কাস্টমস ইত্যাদি পরে যোগ করলে)"
+            options={ALLOCATION_OPTIONS}
+            value={form.cost_allocation_method}
+            onChange={e => setForm(prev => ({ ...prev, cost_allocation_method: e.target.value }))}
+          />
+
+          <div className="grid grid-cols-2 gap-3">
             <Input label="অর্ডার তারিখ" type="date" value={form.order_date} onChange={e => setForm(prev => ({ ...prev, order_date: e.target.value }))} />
             <Input label="প্রত্যাশিত ডেলিভারি" type="date" value={form.expected_date} onChange={e => setForm(prev => ({ ...prev, expected_date: e.target.value }))} />
           </div>
@@ -302,8 +354,17 @@ export default function AdminPurchaseOrders() {
                     onChange={e => setItemField(idx, 'quantity_ordered', e.target.value)}
                     className="w-24 border border-gray-200 dark:border-slate-600 rounded-xl px-2 py-2.5 text-sm bg-white dark:bg-slate-800"
                   />
+                  {form.currency !== 'BDT' && (
+                    <input
+                      type="number" min="0" step="0.0001" placeholder={`দর (${form.currency})`}
+                      value={item.foreign_unit_cost}
+                      onChange={e => setItemField(idx, 'foreign_unit_cost', e.target.value)}
+                      className="w-24 border border-gray-200 dark:border-slate-600 rounded-xl px-2 py-2.5 text-sm bg-white dark:bg-slate-800"
+                      title={`মূল মুদ্রায় (${form.currency}) দাম — শুধু রেফারেন্স, হিসাবে ব্যবহার হয় না`}
+                    />
+                  )}
                   <input
-                    type="number" min="0" step="0.01" placeholder="ইউনিট দর"
+                    type="number" min="0" step="0.01" placeholder="ইউনিট দর (৳)"
                     value={item.unit_cost}
                     onChange={e => setItemField(idx, 'unit_cost', e.target.value)}
                     className="w-28 border border-gray-200 dark:border-slate-600 rounded-xl px-2 py-2.5 text-sm bg-white dark:bg-slate-800"

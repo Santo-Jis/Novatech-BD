@@ -48,6 +48,19 @@ const upsertSupplierProduct = async (req, res) => {
             ? null
             : parseInt(lead_time_days, 10);
 
+        // নিরাপত্তা: supplier_id (URL) আর product_id (body) দুটোই এই tenant-এর কিনা যাচাই —
+        // নাহলে অন্য tenant-এর সাপ্লায়ার/পণ্য আইডি দিয়ে ম্যাপিং তৈরি করা যেত (data-integrity গ্যাপ)
+        const [supplierCheck, productCheck] = await Promise.all([
+            query(`SELECT id FROM suppliers WHERE id = $1 AND tenant_id = $2`, [supplierId, req.tenantId]),
+            query(`SELECT id FROM products WHERE id = $1 AND tenant_id = $2`, [product_id, req.tenantId]),
+        ]);
+        if (supplierCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'সাপ্লায়ার পাওয়া যায়নি।' });
+        }
+        if (productCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'পণ্য পাওয়া যায়নি।' });
+        }
+
         // upsert — একই সাপ্লায়ার+পণ্যে আগে থেকে থাকলে দাম/লিড টাইম আপডেট হবে, ডুপ্লিকেট রো হবে না
         const result = await query(
             `INSERT INTO supplier_products (tenant_id, supplier_id, product_id, unit_price, lead_time_days, notes)
@@ -94,4 +107,38 @@ const deleteSupplierProduct = async (req, res) => {
     }
 };
 
-module.exports = { getSupplierProducts, upsertSupplierProduct, deleteSupplierProduct };
+// ============================================================
+// GET PRODUCT SUPPLIERS (এই পণ্য যে সাপ্লায়াররা সরবরাহ করে)
+// GET /api/products/:id/suppliers
+// সস্তা সাপ্লায়ার আগে — দাম তুলনার জন্য
+// ============================================================
+const getProductSuppliers = async (req, res) => {
+    try {
+        const result = await query(
+            `SELECT
+                sp.id, sp.unit_price, sp.lead_time_days, sp.notes, sp.updated_at,
+                s.id   AS supplier_id,
+                s.name AS supplier_name,
+                s.phone AS supplier_phone,
+                s.contact_person,
+                s.payment_terms,
+                s.is_active AS supplier_active,
+                -- এই পণ্যে এই সাপ্লায়ারের সর্বশেষ PO-র তারিখ (সম্পর্কের বয়স বোঝাতে)
+                (SELECT MAX(po.order_date) FROM purchase_orders po
+                    JOIN purchase_order_items poi ON poi.purchase_order_id = po.id
+                    WHERE po.supplier_id = s.id AND poi.product_id = sp.product_id
+                      AND po.tenant_id = $2) AS last_po_date
+             FROM supplier_products sp
+             JOIN suppliers s ON s.id = sp.supplier_id
+             WHERE sp.product_id = $1 AND sp.tenant_id = $2
+             ORDER BY sp.unit_price ASC`,
+            [req.params.id, req.tenantId]
+        );
+        return res.status(200).json({ success: true, data: result.rows });
+    } catch (error) {
+        logger.error('❌ Get Product Suppliers Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সাপ্লায়ার তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+module.exports = { getSupplierProducts, getProductSuppliers, upsertSupplierProduct, deleteSupplierProduct };
