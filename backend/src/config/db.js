@@ -60,7 +60,15 @@ const pool = new Pool({
     // Supabase free: max 60 connection। Render free: single instance।
     // 10 রাখলে একসাথে ৫০+ request এলেও queue হবে, crash করবে না।
     max:                    15,    // ১৫টি connection — ৫০+ concurrent request সামলাতে পারবে
-    min:                    2,     // সবসময় ২টি connection ready রাখো (cold start দ্রুত হবে)
+    min:                    5,     // ৫টি connection সবসময় warm রাখো।
+                                    // কারণ: boot হওয়ার সাথে সাথেই ৪টা startup job একসাথে
+                                    // DB hit করে — session cleanup (job_runs), tenant invoice
+                                    // check (job_runs), platform staff seed (platform_staff),
+                                    // reserved-stock sync (products/orders)। আগে min:2 থাকায়
+                                    // বাকি ২টাকে fresh connection বানাতে হতো, আর সেই SSL
+                                    // handshake-ই "Slow Query [production] (1200-1500ms)"
+                                    // হিসেবে log হচ্ছিল — query নিজে ভারী ছিল না, সব কটা
+                                    // টেবিলেই ইনডেক্স আগে থেকেই ঠিক আছে।
     idleTimeoutMillis:      60000, // ৬০ সেকেন্ড idle থাকলে বন্ধ
     connectionTimeoutMillis: 10000, // ১০ সেকেন্ডের মধ্যে connect না হলে error
 });
