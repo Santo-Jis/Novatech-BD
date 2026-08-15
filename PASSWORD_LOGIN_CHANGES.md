@@ -133,6 +133,17 @@ Google login-এর পাশাপাশি এখন কাস্টমার�
 
 **এখনো ইচ্ছাকৃতভাবে বাদ:** email-কে সত্যিকারের unique/duplicate-checked করা হয়নি (WhatsApp-এর মতো) — সেটা করলে বিদ্যমান একাধিক person রেকর্ড একই email শেয়ার করা নিয়ে ডেটা-মাইগ্রেশনের প্রশ্ন আসবে, যেটা এই ছোট fix-এর স্কোপের বাইরে। spam-guard cap-টাই বর্তমান বাস্তবিক প্রতিরক্ষা।
 
+## 🆕 আপডেট (অষ্টম ধাপ) — WhatsApp গেটওয়ে ডাউন থাকলে honest রেসপন্স
+
+Render লগে ধরা পড়েছিল: WhatsApp সেশন ডিসকানেক্টেড থাকা অবস্থায় `/portal/forgot-password` তখনও HTTP 200 "OTP পাঠানো হয়েছে" রিটার্ন করছিল — অথচ প্রকৃতপক্ষে কিছুই পাঠানো হয়নি (silent failure)।
+
+- **`backend/src/services/portalWhatsapp.service.js`** — হালকা ইন-মেমরি circuit-breaker যোগ (`isWhatsAppLikelyDown()`) — শেষ ব্যর্থতার ২ মিনিটের মধ্যে হলে "ডাউন" ধরে নেয়, যেকোনো সফল পাঠানোতে সাথে সাথে রিসেট হয়।
+- **`portalForgotPassword`** — এখন owner lookup-এর *আগেই* গেটওয়ে-স্বাস্থ্য চেক করে (ইচ্ছাকৃতভাবে আগে — নাহলে "unavailable" মেসেজটা নিজেই leak করে দিত কোন নম্বরে অ্যাকাউন্ট আছে)। ডাউন থাকলে `whatsapp_unavailable: true` ফ্ল্যাগসহ honest মেসেজ, identifier-এর সাথে কোনো correlation ছাড়াই।
+- **`sendRegisterOtp`** — একই চেক আগেই করা হয় (এখানে enumeration ঝুঁকি নেই, তাই simpler) — অপ্রয়োজনীয় DB write এড়ানো যায়।
+- **`CustomerForgotPassword.jsx`** — এখন `whatsapp_unavailable` ফ্ল্যাগ দেখে; আগে ব্লাইন্ডলি OTP-ইনপুট স্ক্রিনে নিয়ে যেত যেখানে কখনো কোনো কোড আসত না।
+
+**⚠️ এটা কোড বাগ ছিল না, ইনফ্রাস্ট্রাকচার সমস্যা:** Baileys WhatsApp Web সেশন ডিসকানেক্ট হয়ে গিয়েছিল (সম্ভবত re-authenticate/QR স্ক্যান লাগবে যেই সার্ভিসে Baileys হোস্ট করা আছে সেখানে)। কোডের ফিক্স শুধু silent failure-কে honest error-এ পরিণত করে — root cause (গেটওয়ে reconnect করা) আলাদাভাবে ঠিক করতে হবে।
+
 ## ⚠️ জানা সীমাবদ্ধতা
 
 1. পুরনো কাস্টমার যারা Google দিয়ে রেজিস্টার করেছেন (password_hash নেই): "পাসওয়ার্ড ভুলে গেছেন?" ফ্লো দিয়েই প্রথমবার পাসওয়ার্ড সেট করতে পারবেন — নতুন কোনো আলাদা UI বানানো হয়নি।

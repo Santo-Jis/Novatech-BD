@@ -750,6 +750,25 @@ const portalForgotPassword = async (req, res) => {
             ? 'এই ইমেইলে অ্যাকাউন্ট থাকলে একটি OTP পাঠানো হয়েছে।'
             : 'এই নম্বরে অ্যাকাউন্ট থাকলে WhatsApp-এ একটি OTP পাঠানো হয়েছে।';
 
+        // ✅ WhatsApp গেটওয়ে সাম্প্রতিক সময়ে ডাউন থাকলে honest মেসেজ —
+        // ⚠️ এটা owner lookup-এর *আগে* চেক করা হচ্ছে, ইচ্ছাকৃতভাবে। যদি
+        // এই চেক owner পাওয়া/না-পাওয়ার পরে করা হতো, তাহলে "unavailable"
+        // মেসেজ শুধু তখনই দেখাত যখন identifier সত্যিই কোনো অ্যাকাউন্টের
+        // সাথে মিলত — এটা নিজেই একটা enumeration leak হয়ে যেত (attacker
+        // বুঝে যেত কোন নম্বরে অ্যাকাউন্ট আছে, গেটওয়ে ডাউন থাকা অবস্থায়)।
+        // এখন যেভাবে আছে: গেটওয়ে ডাউন হলে সব ফোন-identifier-এর জন্য
+        // *একই* রেসপন্স, owner মিলুক বা না মিলুক — কোনো তথ্য leak হয় না।
+        if (!isEmail) {
+            const { isWhatsAppLikelyDown } = require('../services/portalWhatsapp.service');
+            if (isWhatsAppLikelyDown()) {
+                return res.status(200).json({
+                    success: true,
+                    whatsapp_unavailable: true,
+                    message: 'WhatsApp এই মুহূর্তে সাময়িকভাবে অনুপলব্ধ। একটু পর আবার চেষ্টা করুন, অথবা ইমেইল ব্যবহার করুন।'
+                });
+            }
+        }
+
         const { ownerType, ownerId, ownerName, phone } = await resolvePortalOwner(cleanIdentifier);
 
         // ✅ SECURITY: enumeration ঠেকাতে — অ্যাকাউন্ট না পেলেও একই
@@ -1098,6 +1117,19 @@ const sendRegisterOtp = async (req, res) => {
 
         if (!/^01[0-9]{9}$/.test(cleanWhatsapp)) {
             return res.status(400).json({ success: false, message: 'সঠিক WhatsApp নম্বর দিন (01XXXXXXXXX)।' });
+        }
+
+        // ✅ গেটওয়ে সাম্প্রতিক সময়ে ডাউন জানা থাকলে আগেই honest এরর —
+        // duplicate-check query, OTP generate/insert — এসব অপ্রয়োজনীয়
+        // কাজ এড়ানো যায় (এখানে enumeration ঝুঁকি নেই, এই এন্ডপয়েন্ট
+        // এমনিতেই "already registered" প্রকাশ করে, তাই আলাদা করে
+        // owner-lookup-এর আগে চেক করার দরকার নেই)।
+        const { isWhatsAppLikelyDown } = require('../services/portalWhatsapp.service');
+        if (isWhatsAppLikelyDown()) {
+            return res.status(503).json({
+                success: false,
+                message: 'এই মুহূর্তে WhatsApp-এ OTP পাঠানো যাচ্ছে না। একটু পর আবার চেষ্টা করুন।'
+            });
         }
 
         // ✅ আগেই duplicate চেক করে নেওয়া হচ্ছে — যাতে পুরো ৬-ধাপ wizard

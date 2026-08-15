@@ -19,6 +19,20 @@ const logger = require('../config/logger');
 const BAILEYS_URL = process.env.BAILEYS_URL || 'http://localhost:3001';
 const API_SECRET  = process.env.API_SECRET  || 'change-this-secret';
 
+// ─── হালকা circuit-breaker: WhatsApp গেটওয়ে সম্প্রতি ডাউন ছিল কিনা ───
+// ইন-মেমরি (এই process-এর জীবদ্দশায় থাকে, restart-এ রিসেট হয়) — এটা কোনো
+// কঠোর নিরাপত্তা নিয়ন্ত্রণ না, শুধু "সাম্প্রতিক ব্যর্থতা মনে রাখো" যাতে
+// caller (portalForgotPassword ইত্যাদি) না-পাঠিয়েও আগে থেকে বুঝতে পারে
+// গেটওয়ে ডাউন কিনা এবং ইউজারকে honest মেসেজ দিতে পারে — কোনো owner
+// lookup ছাড়াই, তাই কোনো identifier-নির্দিষ্ট তথ্য leak হয় না।
+let lastFailureAt = null;
+const DOWN_WINDOW_MS = 2 * 60 * 1000; // ২ মিনিট — এর মধ্যে আবার ব্যর্থ দেখলে "ডাউন" ধরে নেওয়া হয়, সফল হলেই সাথে সাথে রিসেট
+
+const isWhatsAppLikelyDown = () => {
+    if (!lastFailureAt) return false;
+    return (Date.now() - lastFailureAt) < DOWN_WINDOW_MS;
+};
+
 // ─── Phone Formatter (BD নম্বর → WhatsApp আন্তর্জাতিক ফরম্যাট) ───
 // ইনপুট: 01XXXXXXXXX / 8801XXXXXXXXX / 1XXXXXXXXX (যেকোনো ফরম্যাট)
 // আউটপুট: 8801XXXXXXXXX (leading 0 বাদ দিয়ে, ঠিক ১৩ ডিজিট)
@@ -56,9 +70,11 @@ const sendPortalWhatsAppMessage = async (phone, message, type = 'portal_notifica
         );
         if (res.data?.success) {
             logger.info(`📲 [PortalWA:${type}] সফল → ${formattedPhone}`);
+            lastFailureAt = null; // ✅ recovery — পরের রিকোয়েস্ট আর "ডাউন" ধরবে না
             return { success: true };
         }
         logger.warn(`⚠️ [PortalWA:${type}] গেটওয়ে সাড়া দিল কিন্তু success=false:`, res.data);
+        lastFailureAt = Date.now();
         return { success: false, reason: 'baileys_error', detail: res.data };
     } catch (err) {
         const status = err.response?.status;
@@ -67,6 +83,7 @@ const sendPortalWhatsAppMessage = async (phone, message, type = 'portal_notifica
         } else {
             logger.warn(`⚠️ [PortalWA:${type}] ব্যর্থ → ${formattedPhone}:`, err.message);
         }
+        lastFailureAt = Date.now();
         return { success: false, reason: err.code || 'request_error', detail: err.response?.data || err.message };
     }
 };
@@ -119,4 +136,5 @@ module.exports = {
     sendPasswordChangedAlertWhatsApp,
     sendPortalWhatsAppMessage,
     formatPhoneForWhatsApp,
+    isWhatsAppLikelyDown,
 };

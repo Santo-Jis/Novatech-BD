@@ -62,10 +62,18 @@ export default function CustomerForgotPassword() {
     setLoading(true)
     setError('')
     try {
-      await portalFetch('/portal/forgot-password', {
+      const data = await portalFetch('/portal/forgot-password', {
         method: 'POST',
         body:   JSON.stringify({ identifier: clean }),
       })
+      // ⚠️ WhatsApp গেটওয়ে সাময়িকভাবে ডাউন থাকলে backend success:true-ই
+      // রাখে (enumeration-নিরাপদ রাখতে — দেখুন controller-এর কমেন্ট),
+      // কিন্তু আলাদা flag পাঠায়। এটা না দেখলে ইউজার এমন একটা OTP-ইনপুট
+      // স্ক্রিনে আটকে থাকতেন যেখানে কখনো কোনো কোড আসবে না।
+      if (data.whatsapp_unavailable) {
+        setError(data.message || 'WhatsApp এই মুহূর্তে অনুপলব্ধ। একটু পর আবার চেষ্টা করুন, অথবা ইমেইল ব্যবহার করুন।')
+        return
+      }
       setStep('verify')
     } catch (err) {
       setError(err.message || 'সমস্যা হয়েছে, আবার চেষ্টা করুন।')
