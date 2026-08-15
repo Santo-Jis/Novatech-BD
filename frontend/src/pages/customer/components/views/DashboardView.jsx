@@ -26,6 +26,7 @@ import ReturnsTab from '../ReturnsTab'
 import OrderRequestTab from '../OrderRequestTab'
 import ConnectionsTab from '../ConnectionsTab'
 import ProfileTab from '../ProfileTab'
+import MessagesTab from '../MessagesTab'
 import CustomerAIChat from '../../CustomerAIChat'
 
 import TopBar from '../dashboard/TopBar'
@@ -161,6 +162,7 @@ export default function DashboardView({
       {/* ═══ TOP BAR (ধাপ ৩ — Facebook-স্টাইল) ══════════════════════ */}
       <TopBar
         onMenuClick={() => setMenuOpen(v => !v)}
+        onTabChange={onTabChange}
         unreadCount={unreadCount}
         pageTitle={activeSectionId === 'home' ? null : getActiveSection(activeTab).label}
       />
@@ -235,7 +237,7 @@ export default function DashboardView({
           )}
 
           {/* ── Content ─────────────────────────────────────────── */}
-          <div style={{ padding: activeTab === 'ai_chat' ? 0 : 16 }}>
+          <div style={{ padding: (activeTab === 'ai_chat' || activeTab === 'messages') ? 0 : 16 }}>
 
             {/* ══ হোম ফিড (ধাপ ২ — নতুন) ══ */}
             {activeTab === 'home_feed' && (
@@ -790,6 +792,13 @@ export default function DashboardView({
             {activeTab === 'ai_chat' && (
               <div style={{ height:'calc(100vh - 220px)', minHeight:480, background:'linear-gradient(160deg,#0f172a 0%,#1e1b4b 100%)', borderRadius:'0 0 20px 20px', overflow:'hidden' }}>
                 <CustomerAIChat />
+              </div>
+            )}
+
+            {/* ══ মেসেজ (SR + Support) ══ */}
+            {activeTab === 'messages' && (
+              <div style={{ height:'calc(100vh - 220px)', minHeight:480, borderRadius:'0 0 20px 20px', overflow:'hidden' }}>
+                <MessagesTab portalJWT={portalJWT} />
               </div>
             )}
 

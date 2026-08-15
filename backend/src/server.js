@@ -215,6 +215,8 @@ const portalConnectionRoutes    = require('./routes/customerPortalConnection.rou
 const referenceRoutes           = require('./routes/reference.routes');        // ← নতুন (Phase 2: বিভাগ/জেলা/বিজনেস ফিল্ড)
 const discoveryRoutes           = require('./routes/discovery.routes');        // ← নতুন (Phase 2: staff-side area/field settings + shop discovery)
 const portalProfileRoutes       = require('./routes/customerPortalProfile.routes'); // ← নতুন (Phase 2: customer নিজের area/field প্রোফাইল)
+const chatRoutes                = require('./routes/chat.routes');             // ← নতুন (Customer↔Company Chat: staff side)
+const portalChatRoutes          = require('./routes/customerPortalChat.routes'); // ← নতুন (Customer↔Company Chat: customer side)
 app.use('/api/auth',        loginLimiter, authRoutes);
 app.use('/api/portal',     loginLimiter, portalRoutes); // ✅ customer portal login-এও limiter
 app.use('/api/portal/connections', portalConnectionRoutes); // ✅ নতুন — multi-company (customer side)
@@ -243,6 +245,8 @@ app.use('/api/ai',          aiRoutes);
 app.use('/api/admin',       adminRoutes);
 app.use('/api/notices',     noticeRoutes);
 app.use('/api/notifications', notificationRoutes);   // ← নতুন (Notification/Announcement Management)
+app.use('/api/chat', chatRoutes);                     // ← নতুন (Customer↔Company Chat: staff side)
+app.use('/api/portal/chat', portalChatRoutes);        // ← নতুন (Customer↔Company Chat: customer side)
 app.use('/api/recruitment', recruitmentRoutes);
 app.use('/api/teams',      teamRoutes);
 app.use('/api/salary',     salaryRoutes);

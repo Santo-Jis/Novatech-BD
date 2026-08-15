@@ -5,6 +5,9 @@
 // হোম পেইজ:      ☰  ZovoriX (হ্যামবার্গারের কাছাকাছি)  ······  + 🔍 💬
 // অন্যান্য পেইজ:  ☰  🔵 পেইজের নাম (যেমন কানেকশন/রিপোর্ট)  ······  [সার্চ বার]
 //                 (+ আইকন ও মেসেঞ্জার আইকন অন্যান্য পেইজে দেখানো হয় না)
+//
+// ✅ আপডেট — Part 4-এর আগে: মেসেঞ্জার আইকন আর "শীঘ্রই আসছে" না, সরাসরি
+// MessagesTab-এ নিয়ে যায় (onTabChange('messages'))। + আর সার্চ এখনো বাকি।
 // ═══════════════════════════════════════════════════════════════
 
 import { useState } from 'react'
@@ -18,9 +21,9 @@ function LogoDot({ small }) {
   )
 }
 
-export default function TopBar({ onMenuClick, unreadCount = 0, pageTitle = null }) {
+export default function TopBar({ onMenuClick, onTabChange, unreadCount = 0, pageTitle = null }) {
   const isHome = !pageTitle
-  const [comingSoon, setComingSoon] = useState(null) // 'add' | 'search' | 'messenger' | null
+  const [comingSoon, setComingSoon] = useState(null) // 'add' | 'search' | null
 
   const flashComingSoon = (key) => {
     setComingSoon(key)
@@ -55,7 +58,7 @@ export default function TopBar({ onMenuClick, unreadCount = 0, pageTitle = null 
       <div className="flex-1 min-w-2" />
 
       {isHome ? (
-        /* ── হোম: +, সার্চ আইকন, মেসেঞ্জার (ব্যাকএন্ড নেই — শীঘ্রই আসছে) ── */
+        /* ── হোম: +, সার্চ (এখনো শীঘ্রই আসছে), মেসেঞ্জার (✅ এখন রিয়েল) ── */
         <div className="flex items-center gap-1 flex-shrink-0">
           <div className="relative">
             <button
@@ -85,20 +88,14 @@ export default function TopBar({ onMenuClick, unreadCount = 0, pageTitle = null 
               </div>
             )}
           </div>
-          <div className="relative">
-            <button
-              onClick={() => flashComingSoon('messenger')}
-              aria-label="মেসেঞ্জার"
-              className="w-10 h-10 rounded-full flex items-center justify-center text-cp-text-primary hover:bg-cp-bg-alt"
-            >
-              <FiMessageCircle size={18} />
-            </button>
-            {comingSoon === 'messenger' && (
-              <div className="absolute top-11 right-0 z-50 bg-cp-trust-900 text-white text-[10px] font-medium px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-lg">
-                মেসেজিং শীঘ্রই আসছে
-              </div>
-            )}
-          </div>
+          {/* ✅ মেসেঞ্জার — MessagesTab-এ নিয়ে যায় */}
+          <button
+            onClick={() => onTabChange?.('messages')}
+            aria-label="মেসেজ"
+            className="relative w-10 h-10 rounded-full flex items-center justify-center text-cp-text-primary hover:bg-cp-bg-alt"
+          >
+            <FiMessageCircle size={18} />
+          </button>
         </div>
       ) : (
         /* ── অন্যান্য পেইজ: শুধু সার্চ বার ── */

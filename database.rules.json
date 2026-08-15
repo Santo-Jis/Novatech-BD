@@ -1,0 +1,27 @@
+{
+  "rules": {
+    "chats": {
+      "$threadId": {
+        ".read": "root.child('chats').child($threadId).child('meta/participants').child(auth.uid).exists()",
+        ".write": "root.child('chats').child($threadId).child('meta/participants').child(auth.uid).exists()",
+
+        "meta": {
+          "$other": { ".write": false }
+        },
+
+        "messages": {
+          "$messageId": {
+            ".validate": "newData.hasChildren(['senderId','senderType','text','createdAt']) && newData.child('senderId').val() === auth.uid && (newData.child('senderType').val() === 'staff' || newData.child('senderType').val() === 'customer')",
+            "senderId":   { ".validate": "newData.val() === auth.uid" },
+            "senderType": { ".validate": "newData.isString()" },
+            "senderName": { ".validate": "newData.isString()" },
+            "text":       { ".validate": "newData.isString() && newData.val().length <= 4000" },
+            "createdAt":  { ".validate": "newData.val() === now" },
+            "attachmentUrl": { ".validate": "newData.isString()" },
+            "$other":     { ".validate": false }
+          }
+        }
+      }
+    }
+  }
+}

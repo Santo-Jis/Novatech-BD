@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
 import ErrorBoundary from '../components/ErrorBoundary'
 import NotificationBell from '../components/NotificationBell'
+import ChatBell from '../components/ChatBell'
 import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiSend, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag, FiLink, FiTruck, FiClipboard, FiArchive, FiFileText, FiBox } from 'react-icons/fi'
 
 // সবসময় দেখা যাবে — গ্রুপের বাইরে (ঘন ঘন ব্যবহার হয়)
@@ -193,6 +194,7 @@ export default function AdminLayout() {
             {darkMode ? '☀️' : '🌙'}
           </button>
           <NotificationBell />
+          <ChatBell basePath="/admin" />
           <div className="relative">
             <FiBell className="text-white text-xl" />
             {allUnreadCount > 0 && (

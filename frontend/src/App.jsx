@@ -88,6 +88,7 @@ const SuperAdminPlatformSettings = IS_CUSTOMER_APP ? null : lazy(() => import('.
 const AIChat      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/AIChat'))
 const NoticesView = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/NoticesView'))
 const NotificationsManage = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/NotificationsManage'))
+const ChatInbox    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/ChatInbox'))
 
 // ── Admin pages — Customer APK-এ bundle হবে না ──────────────
 const AdminDashboard         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Dashboard'))
@@ -119,6 +120,7 @@ const AdminRoutes            = IS_CUSTOMER_APP ? null : lazy(() => import('./pag
 const AdminCustomerOrderRequests = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/CustomerOrderRequests'))
 const AdminLeaveManagement   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AdminLeaveManagement'))
 const AdminPromotions        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Promotions'))
+const ChatSupportAgents      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/ChatSupportAgents'))
 const AdminNetworkDiscovery  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/NetworkDiscovery'))
 
 // ── Manager pages — Customer APK-এ bundle হবে না ─────────────
@@ -535,6 +537,8 @@ function AppWithPermissions() {
                 <Route path="customer-order-requests" element={<AdminCustomerOrderRequests />} />
                 <Route path="leave-management"  element={<AdminLeaveManagement />} />
                 <Route path="promotions"        element={<AdminPromotions />} />
+                <Route path="chat"              element={<ChatInbox />} />
+                <Route path="support-agents"    element={<ChatSupportAgents />} />
               </Route>
 
               {/* ── MANAGER ROUTES ── */}
@@ -573,6 +577,7 @@ function AppWithPermissions() {
                 <Route path="portal-returns"             element={<ManagerPortalReturns />} />
                 <Route path="coverage"                   element={<ManagerCoverage />} />
                 <Route path="promotions"                 element={<ManagerPromotions />} /> {/* ← Promotions Phase ৩ */}
+                <Route path="chat"                       element={<ChatInbox />} />
               </Route>
 
               {/* ── WORKER ROUTES ── */}
@@ -609,6 +614,7 @@ function AppWithPermissions() {
                 <Route path="offers"             element={<ActiveOffers />} />
                 <Route path="deliveries"         element={<DeliveryTasks />} />
                 <Route path="leaderboard"        element={<Leaderboard />} />
+                <Route path="chat"               element={<ChatInbox />} />
               </Route>
             </>
           )}

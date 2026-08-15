@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
 import ErrorBoundary from '../components/ErrorBoundary'
 import NotificationBell from '../components/NotificationBell'
+import ChatBell from '../components/ChatBell'
 import {
   FiHome, FiUsers, FiShoppingCart, FiCheckSquare, FiInbox,
   FiCalendar, FiMapPin, FiUser, FiBell, FiSend, FiMenu, FiX,
@@ -271,6 +272,7 @@ export default function ManagerLayout() {
             {darkMode ? '☀️' : '🌙'}
           </button>
           <NotificationBell />
+          <ChatBell basePath="/manager" />
           <button onClick={() => setNotifPanelOpen(true)} className="relative text-white">
             <FiBell className="text-xl" />
             {allUnreadCount > 0 && (

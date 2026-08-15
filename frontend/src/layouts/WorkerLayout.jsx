@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import ErrorBoundary from '../components/ErrorBoundary'
 import NotificationBell from '../components/NotificationBell'
+import ChatBell from '../components/ChatBell'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore }  from '../store/app.store'
@@ -296,6 +297,9 @@ export default function WorkerLayout() {
 
           {/* Notification bell (নতুন — broadcast notification, read-tracking সহ) */}
           <NotificationBell />
+
+          {/* ✅ চ্যাট — কাস্টমার + সাপোর্ট থ্রেড */}
+          <ChatBell basePath="/worker" />
 
           {/* Notification bell (পুরনো — notice board) */}
           <button
