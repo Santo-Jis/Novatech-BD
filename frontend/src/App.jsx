@@ -19,135 +19,151 @@ import AppUpdateDialog from './components/AppUpdateDialog'
 // ➜ Customer APK: VITE_APP_MODE=customer → IS_CUSTOMER_APP = true
 const IS_CUSTOMER_APP = import.meta.env.VITE_APP_MODE === 'customer'
 
+// ➜ SR (Worker) APK: VITE_APP_MODE=worker → IS_WORKER_APP = true
+// build-sr-apk.yml workflow-এ .env-এ VITE_APP_MODE=worker সেট করা হয়।
+// ফলে Admin/Manager/Customer/Platform/SuperAdmin — সব branch dead code
+// হিসেবে tree-shake হয়ে বাদ যায়, শুধু Worker(SR)-এর কোড bundle-এ থাকে।
+const IS_WORKER_APP = import.meta.env.VITE_APP_MODE === 'worker'
+
+// শুধু Main (পূর্ণাঙ্গ Staff) APK-তে থাকবে এমন পেজ/লেয়াউটের জন্য shorthand।
+// Customer APK অথবা SR APK — দুটোর কোনোটাতেই Admin/Manager/Platform/
+// SuperAdmin/marketing পেজ দরকার নেই।
+const IS_LIMITED_APP = IS_CUSTOMER_APP || IS_WORKER_APP
+
 // ============================================================
 // Layouts
 // ============================================================
-const CustomerLayout = lazy(() => import('./layouts/CustomerLayout'))
+// Customer layout — SR APK-এ import হবে না
+const CustomerLayout = IS_WORKER_APP ? null : lazy(() => import('./layouts/CustomerLayout'))
 
-// Staff layouts — Customer APK-এ import হবে না (Vite tree-shakes করবে)
-const AdminLayout   = IS_CUSTOMER_APP ? null : lazy(() => import('./layouts/AdminLayout'))
-const ManagerLayout = IS_CUSTOMER_APP ? null : lazy(() => import('./layouts/ManagerLayout'))
+// Admin/Manager layouts — Customer APK ও SR APK কোনোটাতেই import হবে না
+const AdminLayout   = IS_LIMITED_APP ? null : lazy(() => import('./layouts/AdminLayout'))
+const ManagerLayout = IS_LIMITED_APP ? null : lazy(() => import('./layouts/ManagerLayout'))
+
+// Worker(SR) layout — Customer APK-এ import হবে না (Main + SR APK দুটোতেই থাকবে)
 const WorkerLayout  = IS_CUSTOMER_APP ? null : lazy(() => import('./layouts/WorkerLayout'))
 
 // ============================================================
 // Lazy Page Imports
 // ============================================================
 
-// Customer (সবসময় থাকবে — দুই APK-এই)
-const CustomerPortal = lazy(() => import('./pages/customer/CustomerPortal'))
-const CustomerAIChat = lazy(() => import('./pages/customer/CustomerAIChat'))
-const CustomerSelfRegister = lazy(() => import('./pages/customer/CustomerSelfRegister'))
-const CustomerForgotPassword = lazy(() => import('./pages/customer/CustomerForgotPassword'))
-const CustomerEmailVerify = lazy(() => import('./pages/customer/CustomerEmailVerify'))
-const ComingSoonView = lazy(() => import('./pages/customer/ComingSoonView'))
+// Customer (Main + Customer APK-এ থাকবে — SR APK-এ না)
+const CustomerPortal = IS_WORKER_APP ? null : lazy(() => import('./pages/customer/CustomerPortal'))
+const CustomerAIChat = IS_WORKER_APP ? null : lazy(() => import('./pages/customer/CustomerAIChat'))
+const CustomerSelfRegister = IS_WORKER_APP ? null : lazy(() => import('./pages/customer/CustomerSelfRegister'))
+const CustomerForgotPassword = IS_WORKER_APP ? null : lazy(() => import('./pages/customer/CustomerForgotPassword'))
+const CustomerEmailVerify = IS_WORKER_APP ? null : lazy(() => import('./pages/customer/CustomerEmailVerify'))
+const ComingSoonView = IS_WORKER_APP ? null : lazy(() => import('./pages/customer/ComingSoonView'))
 
 // Auth / Public
 const Login     = lazy(() => import('./pages/Login'))
 const LandingPage = lazy(() => import('./pages/LandingPage'))
-const AboutUs   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/AboutUs'))
-const ContactUs = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/ContactUs'))
-const PrivacyPolicy = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/PrivacyPolicy'))
-const TermsConditions = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/TermsConditions'))
-const Pricing = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/Pricing'))
-const Blog     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/Blog'))
-const BlogPost = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/BlogPost'))
+const AboutUs   = IS_LIMITED_APP ? null : lazy(() => import('./pages/AboutUs'))
+const ContactUs = IS_LIMITED_APP ? null : lazy(() => import('./pages/ContactUs'))
+const PrivacyPolicy = IS_LIMITED_APP ? null : lazy(() => import('./pages/PrivacyPolicy'))
+const TermsConditions = IS_LIMITED_APP ? null : lazy(() => import('./pages/TermsConditions'))
+const Pricing = IS_LIMITED_APP ? null : lazy(() => import('./pages/Pricing'))
+const Blog     = IS_LIMITED_APP ? null : lazy(() => import('./pages/Blog'))
+const BlogPost = IS_LIMITED_APP ? null : lazy(() => import('./pages/BlogPost'))
 
 // SR Application — Customer APK-এ নেই
-const SRApplicationForm = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/SRApplicationForm'))
+const SRApplicationForm = IS_LIMITED_APP ? null : lazy(() => import('./pages/SRApplicationForm'))
 
 // Start Trial — নতুন company self-signup (৩ মাসের ফ্রি ট্রায়াল) — Customer APK-এ নেই
-const StartTrial = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/StartTrial'))
-const BookPlan = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/BookPlan'))
+const StartTrial = IS_LIMITED_APP ? null : lazy(() => import('./pages/StartTrial'))
+const BookPlan = IS_LIMITED_APP ? null : lazy(() => import('./pages/BookPlan'))
 
 // ── Platform Support & Admin Panel — Customer APK-এ নেই ──────
 // (platform_staff login, tenant-user auth থেকে সম্পূর্ণ আলাদা সিস্টেম)
-const PlatformLayout   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/layouts/PlatformLayout'))
-const PlatformLogin    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/Login'))
-const PlatformDashboard = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/Dashboard'))
-const PlatformTenantList   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/TenantList'))
-const PlatformTenantDetail = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/TenantDetail'))
-const PlatformUserLookup   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/UserLookup'))
-const PlatformTickets      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/Tickets'))
-const PlatformAuditLog     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/AuditLog'))
-const PlatformStaffManagement = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/StaffManagement'))
-const PlatformSecuritySettings = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/platform/SecuritySettings'))
+const PlatformLayout   = IS_LIMITED_APP ? null : lazy(() => import('./pages/platform/layouts/PlatformLayout'))
+const PlatformLogin    = IS_LIMITED_APP ? null : lazy(() => import('./pages/platform/Login'))
+const PlatformDashboard = IS_LIMITED_APP ? null : lazy(() => import('./pages/platform/Dashboard'))
+const PlatformTenantList   = IS_LIMITED_APP ? null : lazy(() => import('./pages/platform/TenantList'))
+const PlatformTenantDetail = IS_LIMITED_APP ? null : lazy(() => import('./pages/platform/TenantDetail'))
+const PlatformUserLookup   = IS_LIMITED_APP ? null : lazy(() => import('./pages/platform/UserLookup'))
+const PlatformTickets      = IS_LIMITED_APP ? null : lazy(() => import('./pages/platform/Tickets'))
+const PlatformAuditLog     = IS_LIMITED_APP ? null : lazy(() => import('./pages/platform/AuditLog'))
+const PlatformStaffManagement = IS_LIMITED_APP ? null : lazy(() => import('./pages/platform/StaffManagement'))
+const PlatformSecuritySettings = IS_LIMITED_APP ? null : lazy(() => import('./pages/platform/SecuritySettings'))
 
 // ── Super Admin Panel — platform owner-এর জন্য, secret-key auth (JWT না) ──
-const SuperAdminLayout      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/layouts/SuperAdminLayout'))
-const SuperAdminLogin       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/Login'))
-const SuperAdminDashboard   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/Dashboard'))
-const SuperAdminTenantList  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/TenantList'))
-const SuperAdminCreateTenant = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/CreateTenant'))
-const SuperAdminTenantDetail = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/TenantDetail'))
-const SuperAdminStaffList   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/StaffList'))
-const SuperAdminPlanBookings = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/PlanBookings'))
-const SuperAdminAuditLog    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/AuditLog'))
-const SuperAdminPlatformSettings = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/superadmin/PlatformSettings'))
+const SuperAdminLayout      = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/layouts/SuperAdminLayout'))
+const SuperAdminLogin       = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/Login'))
+const SuperAdminDashboard   = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/Dashboard'))
+const SuperAdminTenantList  = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/TenantList'))
+const SuperAdminCreateTenant = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/CreateTenant'))
+const SuperAdminTenantDetail = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/TenantDetail'))
+const SuperAdminStaffList   = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/StaffList'))
+const SuperAdminPlanBookings = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/PlanBookings'))
+const SuperAdminAuditLog    = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/AuditLog'))
+const SuperAdminPlatformSettings = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/PlatformSettings'))
 
 // Shared — Customer APK-এ নেই
-const AIChat      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/AIChat'))
+const AIChat      = IS_LIMITED_APP ? null : lazy(() => import('./pages/shared/AIChat'))
 const NoticesView = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/NoticesView'))
-const NotificationsManage = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/NotificationsManage'))
+const NotificationsManage = IS_LIMITED_APP ? null : lazy(() => import('./pages/shared/NotificationsManage'))
+// ChatInbox — Admin/Manager/Worker সবাই ব্যবহার করে (worker/chat route-ও আছে),
+// তাই এটা IS_LIMITED_APP না, শুধু IS_CUSTOMER_APP দিয়ে গেট করা — NoticesView-এর মতোই
 const ChatInbox    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/ChatInbox'))
 
-// ── Admin pages — Customer APK-এ bundle হবে না ──────────────
-const AdminDashboard         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Dashboard'))
-const AdminEmployees         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Employees'))
-const EmployeeForm           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/EmployeeForm'))
-const PendingApprovals       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PendingApprovals'))
-const AdminReports           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Reports'))
-const CommissionPayment      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/CommissionPayment'))
-const SalaryPayment          = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/SalaryPayment'))
-const AIInsights             = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AIInsights'))
-const AdminSettings          = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Settings'))
-const AdminProducts          = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Products'))
-const AdminSuppliers         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Suppliers'))
-const AdminPurchaseOrders    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PurchaseOrders'))
-const AdminBatches           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Batches'))
-const AdminWarehouses        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Warehouses'))
-const AdminPriceLists        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PriceLists'))
-const AdminNotices           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Notices'))
-const AuditLogs              = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AuditLogs'))
-const AdminWallet            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Wallet'))
-const AdminBilling           = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Billing'))
-const PortalReturnRequests   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PortalReturnRequests'))
-const CustomerRequestsPage   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/CustomerRequestsPage'))
-const SRRecruitmentDashboard = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/SRRecruitmentDashboard'))
-const AdminTeams             = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Teams'))
-const AdminCreditSettings    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AdminCreditSettings'))
-const PortalDeviceManager    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/PortalDeviceManager'))
-const AdminRoutes            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AdminRoutes'))
-const AdminCustomerOrderRequests = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/CustomerOrderRequests'))
-const AdminLeaveManagement   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/AdminLeaveManagement'))
-const AdminPromotions        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/Promotions'))
-const ChatSupportAgents      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/ChatSupportAgents'))
-const AdminNetworkDiscovery  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/admin/NetworkDiscovery'))
+// ── Admin pages — Customer APK ও SR APK কোনোটাতেই bundle হবে না ──────────────
+const AdminDashboard         = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Dashboard'))
+const AdminEmployees         = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Employees'))
+const EmployeeForm           = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/EmployeeForm'))
+const PendingApprovals       = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/PendingApprovals'))
+const AdminReports           = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Reports'))
+const CommissionPayment      = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/CommissionPayment'))
+const SalaryPayment          = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/SalaryPayment'))
+const AIInsights             = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/AIInsights'))
+const AdminSettings          = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Settings'))
+const AdminProducts          = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Products'))
+const AdminSuppliers         = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Suppliers'))
+const AdminPurchaseOrders    = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/PurchaseOrders'))
+const AdminBatches           = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Batches'))
+const AdminWarehouses        = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Warehouses'))
+const AdminPriceLists        = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/PriceLists'))
+const AdminNotices           = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Notices'))
+const AuditLogs              = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/AuditLogs'))
+const AdminWallet            = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Wallet'))
+const AdminBilling           = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Billing'))
+const PortalReturnRequests   = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/PortalReturnRequests'))
+const CustomerRequestsPage   = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/CustomerRequestsPage'))
+const SRRecruitmentDashboard = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/SRRecruitmentDashboard'))
+const AdminTeams             = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Teams'))
+const AdminCreditSettings    = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/AdminCreditSettings'))
+const PortalDeviceManager    = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/PortalDeviceManager'))
+const AdminRoutes            = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/AdminRoutes'))
+const AdminCustomerOrderRequests = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/CustomerOrderRequests'))
+const AdminLeaveManagement   = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/AdminLeaveManagement'))
+const AdminPromotions        = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Promotions'))
+const ChatSupportAgents      = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/ChatSupportAgents'))
+const AdminNetworkDiscovery  = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/NetworkDiscovery'))
 
 // ── Manager pages — Customer APK-এ bundle হবে না ─────────────
-const ManagerDashboard    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Dashboard'))
-const ManagerTeam         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Team'))
-const VisitLog            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/VisitLog'))
-const ManagerOrders       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Orders'))
-const ManagerSettlements  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Settlements'))
-const ReturnReceiving     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/ReturnReceiving')) // ← নতুন (Phase 2)
-const SRLedger            = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/SRLedger'))
-const SalesOrderLedger    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/SalesOrderLedger'))
-const ManagerAttendance   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Attendance'))
-const ManagerCustomers    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Customers'))
-const ManagerRoutes       = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Routes'))
-const VisitOrder          = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/VisitOrder'))
-const LiveTracking        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/LiveTracking'))
-const TrailHistory        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/TrailHistory'))
-const ExpenseApprovals    = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/ExpenseApprovals'))
-const ReturnApprovals        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/ReturnApprovals'))
-const ManagerPortalDevices   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/PortalDevices'))
-const CommissionTeam         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/CommissionTeam'))
-const ManagerCreditApprovals = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/ManagerCreditApprovals'))
-const ManagerReports         = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Reports'))
-const ManagerSalarySheet     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/SalarySheet'))
-const ManagerPortalReturns   = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/PortalReturnRequests'))
-const ManagerCoverage        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Coverage'))
-const ManagerPromotions      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/manager/Promotions')) // ← Promotions Phase ৩
+const ManagerDashboard    = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/Dashboard'))
+const ManagerTeam         = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/Team'))
+const VisitLog            = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/VisitLog'))
+const ManagerOrders       = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/Orders'))
+const ManagerSettlements  = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/Settlements'))
+const ReturnReceiving     = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/ReturnReceiving')) // ← নতুন (Phase 2)
+const SRLedger            = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/SRLedger'))
+const SalesOrderLedger    = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/SalesOrderLedger'))
+const ManagerAttendance   = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/Attendance'))
+const ManagerCustomers    = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/Customers'))
+const ManagerRoutes       = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/Routes'))
+const VisitOrder          = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/VisitOrder'))
+const LiveTracking        = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/LiveTracking'))
+const TrailHistory        = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/TrailHistory'))
+const ExpenseApprovals    = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/ExpenseApprovals'))
+const ReturnApprovals        = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/ReturnApprovals'))
+const ManagerPortalDevices   = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/PortalDevices'))
+const CommissionTeam         = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/CommissionTeam'))
+const ManagerCreditApprovals = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/ManagerCreditApprovals'))
+const ManagerReports         = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/Reports'))
+const ManagerSalarySheet     = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/SalarySheet'))
+const ManagerPortalReturns   = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/PortalReturnRequests'))
+const ManagerCoverage        = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/Coverage'))
+const ManagerPromotions      = IS_LIMITED_APP ? null : lazy(() => import('./pages/manager/Promotions')) // ← Promotions Phase ৩
 
 // ── Worker pages — Customer APK-এ bundle হবে না ──────────────
 const WorkerDashboard  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/Dashboard'))
@@ -282,6 +298,15 @@ const HomeRedirect = () => {
     return <Navigate to="/customer-login" replace />
   }
 
+  // ─── SR APK: সরাসরি Worker flow-এ নিয়ে যাও ───────────────────
+  // (LandingPage/CustomerPortal এই বিল্ডে bundle-এ নেই, তাই এখানেই
+  // early-return করে দেওয়া হচ্ছে যাতে নিচের কোড কখনো ওগুলো render না করে)
+  if (IS_WORKER_APP) {
+    if (!user) return <Navigate to="/login" replace />
+    if (user.role === 'worker') return <Navigate to="/worker/dashboard" replace={false} />
+    return <Navigate to="/unauthorized" replace />
+  }
+
   // ─── Staff APK: আগের মতোই role-based prefetch + redirect ────
   useEffect(() => {
     if (!user) return
@@ -382,12 +407,18 @@ function AppWithPermissions() {
 
           {/* ── Public ── */}
           <Route path="/"                       element={<HomeRedirect />} />
-          <Route path="/customer-login"         element={<CustomerPortal />} />
-          <Route path="/customer-register"      element={<CustomerSelfRegister />} />
-          <Route path="/customer-forgot-password" element={<CustomerForgotPassword />} />
-          <Route path="/customer-email-verify" element={<CustomerEmailVerify />} />
-          <Route path="/customer-portal"        element={<Navigate to="/customer/dashboard" replace />} />
-          <Route path="/portal-oauth-callback"  element={<PortalOAuthCallback />} />
+
+          {/* Customer-only public routes — SR APK-এ নেই */}
+          {!IS_WORKER_APP && (
+            <>
+              <Route path="/customer-login"         element={<CustomerPortal />} />
+              <Route path="/customer-register"      element={<CustomerSelfRegister />} />
+              <Route path="/customer-forgot-password" element={<CustomerForgotPassword />} />
+              <Route path="/customer-email-verify" element={<CustomerEmailVerify />} />
+              <Route path="/customer-portal"        element={<Navigate to="/customer/dashboard" replace />} />
+              <Route path="/portal-oauth-callback"  element={<PortalOAuthCallback />} />
+            </>
+          )}
 
           {/* Customer APK-এ /landing ও /login → customer-login-এ redirect */}
           <Route path="/landing" element={IS_CUSTOMER_APP
@@ -399,25 +430,25 @@ function AppWithPermissions() {
             : <Login />}
           />
 
-          {/* SR Application — Customer APK-এ নেই */}
-          {!IS_CUSTOMER_APP && (
+          {/* SR Application (recruitment form) — Customer APK ও SR APK কোনোটাতেই নেই */}
+          {!IS_LIMITED_APP && (
             <Route path="/apply/sr" element={<SRApplicationForm />} />
           )}
 
-          {/* Start Trial — নতুন company self-signup — Customer APK-এ নেই */}
-          {!IS_CUSTOMER_APP && (
+          {/* Start Trial — নতুন company self-signup — Customer APK ও SR APK-এ নেই */}
+          {!IS_LIMITED_APP && (
             <Route path="/start-trial" element={<StartTrial />} />
           )}
 
           {/* Book Plan — নতুন কাস্টমার (পাবলিক) বা লগইন করা tenant admin
               (upgrade) দুটোই এখানে আসে, পেজ নিজেই auth state দেখে মোড
-              ঠিক করে — Customer APK-এ নেই (retail কাস্টমারের জন্য না) */}
-          {!IS_CUSTOMER_APP && (
+              ঠিক করে — Customer APK ও SR APK-এ নেই (retail কাস্টমার/SR-এর জন্য না) */}
+          {!IS_LIMITED_APP && (
             <Route path="/book-plan" element={<BookPlan />} />
           )}
 
-          {/* About Us / Contact Us — Customer APK-এ নেই, শুধু মূল ল্যান্ডিং সাইটে */}
-          {!IS_CUSTOMER_APP && (
+          {/* About Us / Contact Us — Customer APK ও SR APK-এ নেই, শুধু মূল ল্যান্ডিং সাইটে */}
+          {!IS_LIMITED_APP && (
             <>
               <Route path="/about"   element={<AboutUs />} />
               <Route path="/contact" element={<ContactUs />} />
@@ -429,7 +460,8 @@ function AppWithPermissions() {
             </>
           )}
 
-          {/* ── CUSTOMER ROUTES (দুই APK-এই থাকবে) ── */}
+          {/* ── CUSTOMER ROUTES (Main + Customer APK-এ থাকবে, SR APK-এ না) ── */}
+          {!IS_WORKER_APP && (
           <Route element={<CustomerGuard />}>
             <Route path="/customer" element={<CustomerLayout />}>
               <Route index                element={<Navigate to="dashboard" replace />} />
@@ -446,11 +478,25 @@ function AppWithPermissions() {
               <Route path="messages" element={<ComingSoonView title="মেসেজ" description="কোম্পানি ও অন্যান্য শপের সাথে ইন-অ্যাপ মেসেজিং — শীঘ্রই আসছে।" />} />
             </Route>
           </Route>
+          )}
 
           {/* ── STAFF ROUTES — Customer APK-এ সম্পূর্ণ বাদ ── */}
           {/* IS_CUSTOMER_APP=true হলে Vite এই পুরো block tree-shake করে */}
           {!IS_CUSTOMER_APP && (
             <>
+              {/* Unauthorized — Main + SR APK দুটোতেই থাকবে (HomeRedirect safety fallback) */}
+              <Route path="/unauthorized" element={
+                <div className="min-h-screen flex items-center justify-center">
+                  <div className="text-center">
+                    <h1 className="text-2xl font-bold text-red-600">অ্যাক্সেস নেই</h1>
+                    <p className="text-gray-600 mt-2">আপনার এই পৃষ্ঠা দেখার অনুমতি নেই।</p>
+                  </div>
+                </div>
+              } />
+
+              {/* ── PLATFORM/SUPERADMIN/ADMIN/MANAGER — Main App-only, SR APK-এ নেই ── */}
+              {!IS_WORKER_APP && (
+              <>
               {/* ── PLATFORM PANEL — platform_staff, tenant-user auth থেকে সম্পূর্ণ আলাদা ── */}
               <Route path="/platform/login" element={<PlatformLogin />} />
               <Route path="/platform" element={
@@ -486,16 +532,6 @@ function AppWithPermissions() {
                 <Route path="audit-log"    element={<SuperAdminAuditLog />} />
                 <Route path="platform-settings" element={<SuperAdminPlatformSettings />} />
               </Route>
-
-              {/* Unauthorized */}
-              <Route path="/unauthorized" element={
-                <div className="min-h-screen flex items-center justify-center">
-                  <div className="text-center">
-                    <h1 className="text-2xl font-bold text-red-600">অ্যাক্সেস নেই</h1>
-                    <p className="text-gray-600 mt-2">আপনার এই পৃষ্ঠা দেখার অনুমতি নেই।</p>
-                  </div>
-                </div>
-              } />
 
               {/* ── ADMIN ROUTES ── */}
               <Route path="/admin" element={
@@ -579,6 +615,9 @@ function AppWithPermissions() {
                 <Route path="promotions"                 element={<ManagerPromotions />} /> {/* ← Promotions Phase ৩ */}
                 <Route path="chat"                       element={<ChatInbox />} />
               </Route>
+              </>
+              )}
+              {/* ── PLATFORM/SUPERADMIN/ADMIN/MANAGER block ends — নিচের WORKER ROUTES Main + SR APK দুটোতেই থাকবে ── */}
 
               {/* ── WORKER ROUTES ── */}
               <Route path="/worker" element={

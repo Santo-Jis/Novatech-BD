@@ -4,10 +4,12 @@ import api from '../api/axios'
 
 // ─── Build-time mode ──────────────────────────────────────────
 const IS_CUSTOMER_APP = import.meta.env.VITE_APP_MODE === 'customer'
+const IS_WORKER_APP = import.meta.env.VITE_APP_MODE === 'worker'
 
 // ✅ GitHub Actions automatically এই numbers আপডেট করবে
-const CURRENT_VERSION_CODE = 273          // Main APK — build-apk.yml আপডেট করে
-const CURRENT_CUSTOMER_VERSION_CODE = 344   // Customer APK — build-customer-apk.yml আপডেট করে
+const CURRENT_VERSION_CODE = 272          // Main APK — build-apk.yml আপডেট করে
+const CURRENT_CUSTOMER_VERSION_CODE = 343   // Customer APK — build-customer-apk.yml আপডেট করে
+const CURRENT_SR_VERSION_CODE = 0           // SR APK — build-sr-apk.yml আপডেট করে (প্রথম রিলিজের আগে 0)
 
 export function useAppUpdate() {
   const [updateInfo, setUpdateInfo] = useState(null)
@@ -46,9 +48,18 @@ export function useAppUpdate() {
       if (!isNative) return
 
       // Customer APK → /api/app/customer-version
+      // SR APK      → /api/app/sr-version
       // Main APK    → /api/app/version (আগের মতো)
-      const endpoint = IS_CUSTOMER_APP ? '/app/customer-version' : '/app/version'
-      const currentCode = IS_CUSTOMER_APP ? CURRENT_CUSTOMER_VERSION_CODE : CURRENT_VERSION_CODE
+      const endpoint = IS_CUSTOMER_APP
+        ? '/app/customer-version'
+        : IS_WORKER_APP
+          ? '/app/sr-version'
+          : '/app/version'
+      const currentCode = IS_CUSTOMER_APP
+        ? CURRENT_CUSTOMER_VERSION_CODE
+        : IS_WORKER_APP
+          ? CURRENT_SR_VERSION_CODE
+          : CURRENT_VERSION_CODE
 
       const res = await api.get(endpoint)
       if (!res.data?.success) return

@@ -12,8 +12,8 @@ const router  = express.Router()
 const GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/latest/download/app-release.apk'
 
 const APP_VERSION = {
-  versionCode: 273,
-  versionName: '1.0.273',
+  versionCode: 272,
+  versionName: '1.0.272',
   apkUrl: 'https://zovorix-backend.onrender.com/api/app/download',
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
@@ -24,9 +24,9 @@ const APP_VERSION = {
 // GitHub Actions (build-customer-apk.yml) auto-update করবে
 // ─────────────────────────────────────────────────────────────
 // CUSTOMER_VERSION_CODE — এই comment টি রাখো, workflow grep করে এটা দিয়ে
-const CUSTOMER_VERSION_CODE = 344
-const CUSTOMER_VERSION_NAME = '1.0.344'
-const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/download/customer-v1.0.344/customer-release.apk'
+const CUSTOMER_VERSION_CODE = 343
+const CUSTOMER_VERSION_NAME = '1.0.343'
+const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/download/customer-v1.0.343/customer-release.apk'
 
 const CUSTOMER_APP_VERSION = {
   versionCode: CUSTOMER_VERSION_CODE,
@@ -34,6 +34,25 @@ const CUSTOMER_APP_VERSION = {
   apkUrl: 'https://zovorix-backend.onrender.com/api/app/customer-download',
   forceUpdate: false,
   changelog: 'Customer App প্রথম সংস্করণ।',
+}
+
+// ─────────────────────────────────────────────────────────────
+// SR (Worker) APK version
+// GitHub Actions (build-sr-apk.yml) auto-update করবে
+// ─────────────────────────────────────────────────────────────
+// SR_VERSION_CODE — এই comment টি রাখো, workflow grep করে এটা দিয়ে
+// (baseline 0 রাখা হয়েছে — build-sr-apk.yml প্রথমবার চললে ১-এ bump হয়ে
+//  versionName '1.0.1' হবে; Customer-এর মতোই versionCode == versionName-এর শেষ অংশ)
+const SR_VERSION_CODE = 0
+const SR_VERSION_NAME = '1.0.0'
+const SR_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/download/sr-v1.0.0/sr-release.apk'
+
+const SR_APP_VERSION = {
+  versionCode: SR_VERSION_CODE,
+  versionName: SR_VERSION_NAME,
+  apkUrl: 'https://zovorix-backend.onrender.com/api/app/sr-download',
+  forceUpdate: false,
+  changelog: 'SR App প্রথম সংস্করণ।',
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -100,6 +119,21 @@ router.get('/customer-version', (req, res) => {
 router.get('/customer-download', (req, res) => {
   const fileName = `ZovoriX-Customer-v${CUSTOMER_APP_VERSION.versionName}.apk`
   streamApkFromGitHub(CUSTOMER_GITHUB_APK_URL, fileName, res)
+})
+
+// ─────────────────────────────────────────────────────────────
+// SR (Worker) APK routes
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/app/sr-version
+router.get('/sr-version', (req, res) => {
+  res.json({ success: true, data: SR_APP_VERSION })
+})
+
+// GET /api/app/sr-download
+router.get('/sr-download', (req, res) => {
+  const fileName = `ZovoriX-SR-v${SR_APP_VERSION.versionName}.apk`
+  streamApkFromGitHub(SR_GITHUB_APK_URL, fileName, res)
 })
 
 module.exports = router
