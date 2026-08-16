@@ -200,7 +200,7 @@ export default function Settlement() {
         const [settRes, salesRes, stockRes, previewRes, colRes] = await Promise.allSettled([
           api.get('/settlements/my'),
           api.get('/sales/today-summary'),
-          api.get('/ledger/my-stock'),
+          api.get('/ledger/stock'),
           api.get('/settlements/today-preview'),
           api.get('/collections/settlement-summary'),
         ])
