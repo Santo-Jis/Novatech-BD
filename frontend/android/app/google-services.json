@@ -1,50 +1,42 @@
 {
   "project_info": {
-    "project_number": "1098950143887",
-    "firebase_url": "https://novatech-bd-10421-default-rtdb.firebaseio.com",
-    "project_id": "novatech-bd-10421",
-    "storage_bucket": "novatech-bd-10421.firebasestorage.app"
+    "project_number": "578352842284",
+    "firebase_url": "https://zovorix-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "zovorix",
+    "storage_bucket": "zovorix.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1098950143887:android:1b0aa15f7157883cb165fa",
+        "mobilesdk_app_id": "1:578352842284:android:6a5ccdbb61bb96ffe6b389",
         "android_client_info": {
-          "package_name": "com.novatech.bd"
+          "package_name": "com.zovorix.app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "1098950143887-08phec6ev083se0v6fmohigqfrr437gp.apps.googleusercontent.com",
+          "client_id": "578352842284-s0dk64hqiu590cfbshh75u8400p764r6.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.novatech.bd",
-            "certificate_hash": "da15d13b2dfe872dbe09989f3361a2674b7f4c2f"
-          }
-        },
-        {
-          "client_id": "1098950143887-hom6pe4pht5o7rt3lr8c5f4pt8arvnnu.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.novatech.bd",
+            "package_name": "com.zovorix.app",
             "certificate_hash": "f420e35d8aeeff660a810f7e44463eaccf9a7d55"
           }
         },
         {
-          "client_id": "1098950143887-0s1htavj6dh6p6vkrqumt62ljtce3qo2.apps.googleusercontent.com",
+          "client_id": "578352842284-ta0k3taqrkv7h82nnqnvhl8n2j13kj0n.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyBQzhh_60D5w76fS62gQSiJ5rW9IW858rE"
+          "current_key": "AIzaSyBIFF2r3Eq_wao2AmLy37Rj7QsvGrxkq90"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "1098950143887-0s1htavj6dh6p6vkrqumt62ljtce3qo2.apps.googleusercontent.com",
+              "client_id": "578352842284-ta0k3taqrkv7h82nnqnvhl8n2j13kj0n.apps.googleusercontent.com",
               "client_type": 3
             }
           ]
@@ -53,27 +45,64 @@
     },
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1098950143887:android:8202bff1e4de73c3b165fa",
+        "mobilesdk_app_id": "1:578352842284:android:9053d6115522b859e6b389",
         "android_client_info": {
-          "package_name": "com.novatech.customer"
+          "package_name": "com.zovorix.customer"
         }
       },
       "oauth_client": [
         {
-          "client_id": "1098950143887-0s1htavj6dh6p6vkrqumt62ljtce3qo2.apps.googleusercontent.com",
+          "client_id": "578352842284-7bqh3k04dgpv27f7roqpkgeig7fpjjn9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.zovorix.customer",
+            "certificate_hash": "f420e35d8aeeff660a810f7e44463eaccf9a7d55"
+          }
+        },
+        {
+          "client_id": "578352842284-ta0k3taqrkv7h82nnqnvhl8n2j13kj0n.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyBQzhh_60D5w76fS62gQSiJ5rW9IW858rE"
+          "current_key": "AIzaSyBIFF2r3Eq_wao2AmLy37Rj7QsvGrxkq90"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "1098950143887-0s1htavj6dh6p6vkrqumt62ljtce3qo2.apps.googleusercontent.com",
+              "client_id": "578352842284-ta0k3taqrkv7h82nnqnvhl8n2j13kj0n.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:578352842284:android:d2f3309e4ac875e0e6b389",
+        "android_client_info": {
+          "package_name": "com.zovorix.worker"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "578352842284-ta0k3taqrkv7h82nnqnvhl8n2j13kj0n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBIFF2r3Eq_wao2AmLy37Rj7QsvGrxkq90"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "578352842284-ta0k3taqrkv7h82nnqnvhl8n2j13kj0n.apps.googleusercontent.com",
               "client_type": 3
             }
           ]
