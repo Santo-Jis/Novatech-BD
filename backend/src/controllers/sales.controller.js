@@ -437,8 +437,8 @@ const createSale = async (req, res) => {
                     `SELECT current_credit, credit_limit
                      FROM customers
                      WHERE id = $1
-                     FOR UPDATE
-             AND tenant_id = $2`,
+                       AND tenant_id = $2
+                     FOR UPDATE`,
                     [customer_id, req.tenantId]
                 );
 
@@ -477,8 +477,8 @@ const createSale = async (req, res) => {
                        AND worker_id = $2
                        AND DATE(requested_at) = $3
                        AND status = 'approved'
-                     FOR UPDATE SKIP LOCKED
-             AND tenant_id = $4`,
+                       AND tenant_id = $4
+                     FOR UPDATE SKIP LOCKED`,
                     [requested_order_id, req.user.id, today, req.tenantId]
                 );
                 if (lockResult.rows.length === 0) {
