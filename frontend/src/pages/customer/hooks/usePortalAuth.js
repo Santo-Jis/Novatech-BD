@@ -57,6 +57,16 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [passwordLoggingIn, setPasswordLoggingIn] = useState(false)
   const [passwordError,   setPasswordError]   = useState('')
 
+  // ── OTP Login (SR-এর WhatsApp লিংকে ?c= থাকলে — password/Google
+  // ছাড়াই সরাসরি WhatsApp OTP দিয়ে লগইন, নতুন আর্কিটেকচার) ─────────
+  const [otpLoginStep,    setOtpLoginStep]    = useState('confirm') // 'confirm' | 'otp'
+  const [otpLoginInfo,    setOtpLoginInfo]    = useState(null)      // { shop_name, owner_name, shop_photo, customer_code }
+  const [otpLoginInfoErr, setOtpLoginInfoErr] = useState('')
+  const [otpValue,        setOtpValue]        = useState('')
+  const [otpSending,      setOtpSending]      = useState(false)
+  const [otpVerifying,    setOtpVerifying]    = useState(false)
+  const [otpError,        setOtpError]        = useState('')
+
   // ── Toast ───────────────────────────────────────────────────
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' })
 
@@ -609,6 +619,77 @@ export function usePortalAuth(defaultTab = 'summary') {
     } finally { setPasswordLoggingIn(false) }
   }
 
+  // ── OTP Login (SR-এর WhatsApp লিংক → "এটা কি আপনি?" → Continue →
+  // WhatsApp OTP → সরাসরি dashboard) ──────────────────────────────
+
+  // c= কোড দিয়ে shop_name/owner_name/shop_photo আনে — কনফার্ম কার্ডের জন্য
+  const loadOtpLoginInfo = async (code) => {
+    try {
+      const data = await portalFetch(`/portal/customer-info/${encodeURIComponent(code)}`)
+      setOtpLoginInfo(data.data)
+    } catch (err) {
+      setOtpLoginInfoErr(err.message || 'প্রোফাইল পাওয়া যায়নি। লিংকটি সঠিক কিনা যাচাই করুন।')
+    }
+  }
+
+  // Continue বাটন — WhatsApp-এ OTP পাঠায়, ধাপ 'otp'-তে নেয়। OTP-না-
+  // পেলে "আবার পাঠান" বাটনও এই একই ফাংশন পুনর্ব্যবহার করে (ধাপ আগে
+  // থেকেই 'otp' থাকবে বলে দ্বিতীয়বার no-op রিসেট)
+  const sendCustomerLoginOtp = async () => {
+    setOtpSending(true)
+    setOtpError('')
+    try {
+      await portalFetch('/portal/send-login-otp', {
+        method: 'POST',
+        body:   JSON.stringify({ customer_code: otpLoginInfo?.customer_code || getCustomerCode() }),
+      })
+      setOtpValue('')          // ✅ resend-এ আগের (ভুল) OTP input পুরনো থেকে যাওয়া ঠেকাতে
+      setOtpLoginStep('otp')
+    } catch (err) {
+      setOtpError(err.message || 'OTP পাঠানো যায়নি। একটু পর আবার চেষ্টা করুন।')
+    } finally { setOtpSending(false) }
+  }
+
+  // OTP যাচাই → googleLogin/passwordLogin-এর ঠিক একই post-success
+  // প্যাটার্ন (portal_jwt সংরক্ষণ → loadDashboard)। has_company সবসময়
+  // true (customer_code মানেই বিদ্যমান tenant-bound customers row),
+  // তাই no-company শাখা এখানে লাগে না — googleLogin/passwordLogin-এর
+  // মতো ব্রাঞ্চিং প্রয়োজন নেই।
+  const verifyCustomerLoginOtp = async (e) => {
+    if (e?.preventDefault) e.preventDefault()
+    if (!otpValue.trim() || otpValue.trim().length < 4) {
+      setOtpError('সঠিক OTP কোড দিন।')
+      return
+    }
+    setOtpVerifying(true)
+    setOtpError('')
+    try {
+      const deviceId = await getDeviceFingerprint()
+      const data = await portalFetch('/portal/verify-login-otp', {
+        method: 'POST',
+        body:   JSON.stringify({
+          customer_code: otpLoginInfo?.customer_code || getCustomerCode(),
+          otp:           otpValue.trim(),
+          device_id:     deviceId,
+        }),
+      })
+      const { portal_jwt, expires_in = 900 } = data.data
+      portalTokenStore.set(portal_jwt, expires_in)
+      portalJWTRef.current = portal_jwt
+      setPortalJWT(portal_jwt)
+      setOtpValue('')
+      await loadDashboard()
+    } catch (err) {
+      setOtpError(err.message || 'OTP মিলছে না অথবা মেয়াদ শেষ হয়ে গেছে।')
+    } finally { setOtpVerifying(false) }
+  }
+
+  // ফলব্যাক — Google/পাসওয়ার্ড দিয়ে ঢুকতে চাইলে পুরনো welcome ফর্মে যাওয়া
+  const useOtherLoginMethod = () => {
+    setOtpError('')
+    setPhase('welcome')
+  }
+
   // ── Init effect ──────────────────────────────────────────────
   //
   // ❌ আগের flow:
@@ -651,8 +732,15 @@ export function usePortalAuth(defaultTab = 'summary') {
           await loadDashboard()
         }
       } catch {
-        // Cookie নেই বা মেয়াদোত্তীর্ণ → Google login screen
-        setPhase('welcome')
+        // Cookie নেই বা মেয়াদোত্তীর্ণ
+        // ✅ SR link (?c=) দিয়ে এসেছে → নতুন OTP-login কনফার্ম স্ক্রিন
+        // (Google/password ফর্ম নয়) — নইলে আগের মতোই welcome স্ক্রিন
+        if (customerCodeFromURL) {
+          setPhase('otp-login')
+          loadOtpLoginInfo(customerCodeFromURL)
+        } else {
+          setPhase('welcome')
+        }
       }
     }
     init()
@@ -665,6 +753,9 @@ export function usePortalAuth(defaultTab = 'summary') {
     identifier, setIdentifier, password, setPassword,
     showPassword, setShowPassword, passwordLoggingIn, passwordError,
     passwordLogin,
+    otpLoginStep, otpLoginInfo, otpLoginInfoErr,
+    otpValue, setOtpValue, otpSending, otpVerifying, otpError,
+    sendCustomerLoginOtp, verifyCustomerLoginOtp, useOtherLoginMethod,
     toast,
     notifications, unreadCount, showBell, setShowBell,
     unreadBanner, setUnreadBanner, markAllAsRead, markOneRead,

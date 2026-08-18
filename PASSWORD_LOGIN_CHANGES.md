@@ -144,11 +144,51 @@ Render লগে ধরা পড়েছিল: WhatsApp সেশন ডি�
 
 **⚠️ এটা কোড বাগ ছিল না, ইনফ্রাস্ট্রাকচার সমস্যা:** Baileys WhatsApp Web সেশন ডিসকানেক্ট হয়ে গিয়েছিল (সম্ভবত re-authenticate/QR স্ক্যান লাগবে যেই সার্ভিসে Baileys হোস্ট করা আছে সেখানে)। কোডের ফিক্স শুধু silent failure-কে honest error-এ পরিণত করে — root cause (গেটওয়ে reconnect করা) আলাদাভাবে ঠিক করতে হবে।
 
+## 🆕 আপডেট (নবম ধাপ) — SR-added কাস্টমারের জন্য WhatsApp OTP সরাসরি লগইন (নতুন আর্কিটেকচার)
+
+SR নতুন কাস্টমার যোগ করে WhatsApp-এ পোর্টাল লিংক (`?c=customer_code`) পাঠালে, আগে সেটা generic Google/password login ফর্মে নিয়ে যেত — কোনো ইঙ্গিত ছিল না যে প্রোফাইল আগে থেকেই আছে, আর ভুল করে "নতুন কাস্টমার? রেজিস্ট্রেশন করুন" চাপলে সম্পূর্ণ বিচ্ছিন্ন একটা `persons` প্রোফাইল তৈরি হয়ে যেত (আগের purchase/credit history হারিয়ে)। এখন `?c=` লিংকে ক্লিক করলে সম্পূর্ণ নতুন, dedicated ফ্লো: SR-এর ফর্মের তথ্য (দোকান/মালিকের নাম + ছবি) দেখিয়ে **"এটা কি আপনি?" → Continue → WhatsApp OTP → সরাসরি dashboard** — password/Google/self-register কোনোটাই এই পথে আর ছোঁয়া হয় না।
+
+**✅ ডাটাবেস (Supabase project "novatechbd"-এ সরাসরি apply করা হয়েছে, MCP দিয়ে)**
+- `customer_login_otps` টেবিল — `customer_password_reset_otps`-এর মতোই owner-keyed প্যাটার্ন, কিন্তু ইচ্ছাকৃতভাবে আলাদা টেবিল: এখানে OTP verify হলে সরাসরি JWT সেশন ইস্যু হয়, password কোথাও ছোঁয়া হয় না (reset-token/set-password ধাপ নেই)
+- ফাইল: `migration_customer_login_otp.sql`
+
+**✅ Backend — `customerPortal.controller.js` + `customerPortal.routes.js`**
+- নতুন `getPublicCustomerByCode` — `GET /customer-info/:code` (Public) — shop_name/owner_name/shop_photo রিটার্ন করে, কনফার্ম কার্ডের জন্য
+- নতুন `sendLoginOtp` — `POST /send-login-otp` (Public) — WhatsApp গেটওয়ে সার্কিট-ব্রেকার চেক করে, `customer_login_otps`-এ OTP বসায়, `sendPortalOTPWhatsApp` প্রিমিটিভ পুনর্ব্যবহার করে পাঠায়। Rate-limit `customer_code` দিয়ে key করা (শুধু IP না) — ভিন্ন IP থেকেও একই কাস্টমারের WhatsApp স্প্যাম ঠেকাতে
+- নতুন `verifyLoginOtp` — `POST /verify-login-otp` (Public) — OTP মিললে `directGoogleAuth`/`passwordLogin`-এর হুবহু একই JWT payload ও response shape ইস্যু করে (dashboard/refresh/logout-এ কোনো নতুন শাখা লাগেনি)
+- `recordLoginEvent`-এ নতুন `login_method` মান: `'whatsapp_otp'` (আগে ছিল শুধু `'password'` | `'google'`)
+- `sendPortalLink`-এর WhatsApp মেসেজ টেক্সট আপডেট — এখন Continue+OTP ফ্লো বলে, আগের মতো Google/পাসওয়ার্ডের কথা বলে না
+
+**✅ Frontend**
+- **`hooks/usePortalAuth.js`** — নতুন `otpLoginStep`/`otpLoginInfo`/`otpValue` state + `loadOtpLoginInfo`/`sendCustomerLoginOtp`/`verifyCustomerLoginOtp`/`useOtherLoginMethod`। Init effect-এ: silent refresh-cookie ব্যর্থ হলে — `?c=` থাকলে phase `'otp-login'`, নাহলে আগের মতোই `'welcome'` (valid cookie থাকা returning কাস্টমার আগের মতোই সরাসরি dashboard-এ যায়, `?c=` থাকুক বা না থাকুক — অপরিবর্তিত)
+- **নতুন `components/views/OtpLoginView.jsx`** — কনফার্ম কার্ড + Continue (ধাপ ১), OTP ইনপুট (ধাপ ২), নিচে ছোট "অন্য উপায়ে (Google/পাসওয়ার্ড)" ফলব্যাক লিংক (পুরনো `welcome` ফেজে ফিরিয়ে দেয় — WhatsApp গেটওয়ে ডাউন থাকলে বা OTP অ্যাক্সেস না থাকলে আটকে না থাকার জন্য)
+- **`CustomerPortal.jsx`** — নতুন `otp-login` ফেজ ওয়্যার করা হয়েছে, `loading → otp-login/welcome → dashboard` ফ্লো কমেন্টে আপডেট করা হয়েছে
+
+**🔍 ট্রেস করে যাচাই করা হয়েছে (এই environment-এ live server নেই):**
+- Backend ফাইল দুটো (`controller`, `routes`) ও `usePortalAuth.js` — `node --check` পাস (`type: module` প্রজেক্ট বলে ESM import-ও ধরে)
+- Frontend JSX ফাইল দুটো (`CustomerPortal.jsx`, `OtpLoginView.jsx`) — এই environment-এ JSX-aware tooling (esbuild ইত্যাদি) ইনস্টল করা নেই, তাই brace/paren-balance স্ক্রিপ্ট + লাইন-বাই-লাইন ম্যানুয়াল রিভিউ দিয়ে যাচাই করা হয়েছে; আসল build/dev server-এ একবার নিশ্চিত করে নেওয়া ভালো
+- নতুন রুট তিনটা কোনো `portalAuth` middleware-এর পেছনে পড়েনি — রুট অর্ডার দেখে নিশ্চিত করা হয়েছে (public থাকা জরুরি ছিল)
+- `verifyLoginOtp`-এর response shape `directGoogleAuth`/`passwordLogin`-এর সাথে মিলিয়ে দেখা হয়েছে, যাতে `loadDashboard()` কোনো পরিবর্তন ছাড়াই কাজ করে
+
+**যা ইচ্ছাকৃতভাবে হাত দেওয়া হয়নি:**
+- পুরনো `resolveLink`/`verifyPortalToken` (redirect_id-ভিত্তিক, আগের সেশনে dead code হিসেবে চিহ্নিত) স্পর্শ করা হয়নি — এই নতুন ফ্লো সম্পূর্ণ আলাদা, পরিষ্কার নতুন এন্ডপয়েন্ট দিয়ে বানানো হয়েছে
+
+## 🆕 আপডেট (দশম ধাপ) — self-register duplicate-check-এ customers টেবিল যোগ
+
+নবম ধাপে চিহ্নিত হওয়া গ্যাপ ঠিক করা হলো: `sendRegisterOtp` ও `selfRegisterCustomer` — দুটোই আগে শুধু `persons` টেবিলে WhatsApp নম্বর খুঁজত, SR-added কাস্টমাররা যেখানে থাকে সেই `customers` টেবিল খুঁজত না। ফলে কেউ একই নম্বর দিয়ে self-register করলে সম্পূর্ণ বিচ্ছিন্ন একটা নতুন `persons` প্রোফাইল তৈরি হয়ে যেত।
+
+- দুটো ফাংশনেই এখন `persons` চেকের **আগে** `SELECT id FROM customers WHERE whatsapp = $1 AND is_active = true` চেক যোগ হয়েছে
+- Match পেলে `409 already_registered: true` + নতুন মেসেজ: "...SR-এর পাঠানো WhatsApp লিংকে গিয়ে Continue চাপুন — সরাসরি OTP দিয়ে ঢুকে যাবেন..." (নবম ধাপের OTP-login ফ্লোর দিকে নির্দেশ করে, যেটা এখন তাদের জন্য সবচেয়ে সহজ পথ)
+- ফ্রন্টএন্ডে **কোনো পরিবর্তন লাগেনি** — `CustomerSelfRegister.jsx`-এর error handling ইতিমধ্যেই generic (`setWaError(data.message || ...)`), তাই নতুন মেসেজ automatically সঠিকভাবে দেখাবে
+- `sendRegisterOtp`-এ এই চেক persons-এর মতোই *আগে* করা হয় (wizard শুরুতে); `selfRegisterCustomer`-এও একই চেক রাখা হয়েছে (ফ্রন্টএন্ড ওই আগের ধাপ বাইপাস করে সরাসরি এখানে এলেও যাতে আটকায়)
+- `node --check` পাস
+
 ## ⚠️ জানা সীমাবদ্ধতা
 
 1. পুরনো কাস্টমার যারা Google দিয়ে রেজিস্টার করেছেন (password_hash নেই): "পাসওয়ার্ড ভুলে গেছেন?" ফ্লো দিয়েই প্রথমবার পাসওয়ার্ড সেট করতে পারবেন — নতুন কোনো আলাদা UI বানানো হয়নি।
 2. প্রোফাইল/সেটিংস ট্যাব থেকে পাসওয়ার্ড পরিবর্তনের UI নেই — শুধু লগইন-কেন্দ্রিক কাজ করা হয়েছে।
 3. WhatsApp OTP ডেলিভারি নির্ভর করে Baileys সেশন লাইভ/কানেক্টেড থাকার উপর — সেশন ডিসকানেক্ট থাকলে `sendRegisterOtp`/forgot-password (WhatsApp channel) 503 রিটার্ন করবে সেই সময়।
+4. ~~SR-link OTP-login চালু হওয়ার পরেও self-register duplicate-check-এ customers টেবিল চেক করা হয় না~~ — দশম ধাপে ঠিক করা হয়েছে।
 
 ## 🧪 ডিপ্লয়ের আগে টেস্ট করার চেকলিস্ট
 
@@ -159,4 +199,9 @@ Render লগে ধরা পড়েছিল: WhatsApp সেশন ডি�
 - [ ] Password login করার পর dashboard/invoices স্বাভাবিকভাবে লোড হচ্ছে
 - [ ] Rate limiter কাজ করছে
 - [ ] Baileys সেশন ডাউন থাকা অবস্থায় WhatsApp OTP পাঠানোর চেষ্টা করলে ইউজার-ফ্রেন্ডলি এরর দেখাচ্ছে (crash না করে)
+- [ ] SR-এর পাঠানো `?c=` লিংকে ক্লিক করলে সরাসরি কনফার্ম কার্ড (শপ/মালিকের নাম) দেখাচ্ছে, generic login ফর্ম না
+- [ ] Continue চাপলে WhatsApp-এ আসলেই OTP আসছে, ভুল OTP দিলে স্পষ্ট এরর দেখাচ্ছে
+- [ ] সঠিক OTP দিলে সরাসরি dashboard লোড হচ্ছে (কোনো password/Google ধাপ ছাড়াই)
+- [ ] "অন্য উপায়ে" ফলব্যাক লিংক পুরনো password/Google ফর্মে ঠিকভাবে ফিরিয়ে দিচ্ছে
+- [ ] একই কাস্টমারের জন্য বারবার Continue চাপলে rate-limit কাজ করছে (৫/১৫মিন)
 

@@ -26,6 +26,9 @@ const selfRegisterUpload = multer({
 
 const {
     sendPortalLink,
+    getPublicCustomerByCode, // ✅ NEW: c= কোড দিয়ে shop_name/owner_name/shop_photo
+    sendLoginOtp,            // ✅ NEW: WhatsApp OTP লগইন ধাপ ১
+    verifyLoginOtp,          // ✅ NEW: WhatsApp OTP লগইন ধাপ ২
     selfRegisterCustomer,
     sendRegisterOtp,         // ✅ NEW: রেজিস্ট্রেশন WhatsApp OTP ধাপ ১
     verifyRegisterOtp,       // ✅ NEW: রেজিস্ট্রেশন WhatsApp OTP ধাপ ২
@@ -178,6 +181,20 @@ const passwordResetLimiter = rateLimit({
     message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
 });
 
+// c= কোড দিয়ে বেসিক তথ্য দেখা — read-only, কোনো OTP/মেসেজ পাঠায় না,
+// তাই বাকিগুলোর চেয়ে ছাড় বেশি: ১৫ মিনিটে IP প্রতি সর্বোচ্চ ২০ বার
+// (স্ক্র্যাপিং/enumeration নিরুৎসাহিত করতে যথেষ্ট, কিন্তু লিংকে বারবার
+// ক্লিক করা স্বাভাবিক ইউজারকে আটকাবে না)
+const customerInfoLimiter = rateLimit({
+    windowMs:     15 * 60 * 1000,
+    max:          20,
+    keyGenerator: (req) => `customer_info:${req.ip}`,
+    store:        makeRedisStore(),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
+});
+
 // রেজিস্ট্রেশন WhatsApp OTP — প্ল্যাটফর্মের একটামাত্র Baileys সেশন থেকে
 // পাঠানো হয় বলে স্প্যাম/abuse-এ পুরো নম্বরটাই ব্যান হওয়ার ঝুঁকি আছে —
 // তাই কড়া লিমিট: ১৫ মিনিটে IP প্রতি সর্বোচ্চ ৫ বার।
@@ -185,6 +202,34 @@ const registerOtpLimiter = rateLimit({
     windowMs:     15 * 60 * 1000,
     max:          5,
     keyGenerator: (req) => `register_otp:${req.ip}`,
+    store:        makeRedisStore(),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
+});
+
+// WhatsApp OTP লগইন — registerOtpLimiter-এর মতো একই কারণে কড়া
+// (প্ল্যাটফর্মের একটামাত্র Baileys সেশন, নম্বর ব্যান হওয়ার ঝুঁকি)।
+// customer_code দিয়ে key করা হয়েছে (শুধু IP না) — যাতে ভিন্ন
+// ভিন্ন IP থেকেও একই কাস্টমারের WhatsApp-এ বারবার OTP পাঠিয়ে
+// স্প্যাম করা না যায়; body না থাকলে/পার্স-না-হলে IP fallback।
+const loginOtpSendLimiter = rateLimit({
+    windowMs:     15 * 60 * 1000,
+    max:          5,
+    keyGenerator: (req) => `login_otp_send:${req.body?.customer_code || req.ip}`,
+    store:        makeRedisStore(),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
+});
+
+// Verify ধাপে guessing ঠেকাতে সামান্য বেশি ছাড় (৮) — সঠিক OTP টাইপ
+// করতে গিয়ে স্বাভাবিক টাইপো/রিট্রাই হতে পারে, কিন্তু ব্রুট-ফোর্স করার
+// মতো যথেষ্ট না (৬-ডিজিট, ১০ মিনিট মেয়াদ)
+const loginOtpVerifyLimiter = rateLimit({
+    windowMs:     15 * 60 * 1000,
+    max:          8,
+    keyGenerator: (req) => `login_otp_verify:${req.body?.customer_code || req.ip}`,
     store:        makeRedisStore(),
     standardHeaders: true,
     legacyHeaders:   false,
@@ -201,6 +246,14 @@ router.post('/self-register', selfRegisterLimiter,
     selfRegisterCustomer);
 router.post('/resolve-link',  resolveLink);
 router.get('/verify-token',   verifyPortalToken);
+
+// ✅ NEW: SR-এর WhatsApp লিংকে (?c=customer_code) ক্লিক করলে "এটা কি
+// আপনি?" কনফার্ম-স্ক্রিনের জন্য বেসিক তথ্য — নতুন OTP-লগইন ফ্লোর ধাপ ১
+router.get('/customer-info/:code', customerInfoLimiter, getPublicCustomerByCode);
+
+// ✅ NEW: WhatsApp OTP দিয়ে সরাসরি লগইন (password/Google ছাড়াই) — ধাপ ১+২
+router.post('/send-login-otp',   loginOtpSendLimiter,   sendLoginOtp);
+router.post('/verify-login-otp', loginOtpVerifyLimiter, verifyLoginOtp);
 
 // ✅ NEW: রেজিস্ট্রেশনের আগে WhatsApp নম্বর OTP verification (বাধ্যতামূলক)
 router.post('/send-register-otp',   registerOtpLimiter, sendRegisterOtp);

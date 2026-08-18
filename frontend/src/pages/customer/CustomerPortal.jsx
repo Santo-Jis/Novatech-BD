@@ -15,16 +15,21 @@
 //   components/OrderRequestTab.jsx  → order list / new / catalog
 //   components/views/LoadingView.jsx
 //   components/views/WelcomeView.jsx
+//   components/views/OtpLoginView.jsx       → SR-লিংকে (?c=) নতুন OTP-login কনফার্ম স্ক্রিন
 //   components/views/DashboardView.jsx
 //
 // ✅ পুরনো token-link ভিত্তিক 'login'/'invalid' phase ও তাদের ভিউ
 // (LoginView.jsx, InvalidView.jsx) বাদ দেওয়া হয়েছে — সেগুলো কখনো
-// সেট হতো না, dead code ছিল। এখন ফ্লো শুধু:
-//   loading → welcome (password login ফর্ম + Google বাটন) → dashboard
+// সেট হতো না, dead code ছিল। এখন ফ্লো:
+//   loading → otp-login (SR-লিংকে ?c= থাকলে, WhatsApp OTP দিয়ে সরাসরি)
+//           → welcome  (?c= ছাড়া, বা otp-login থেকে "অন্য উপায়ে" চাপলে —
+//                        password ফর্ম + Google বাটন)
+//           → dashboard
 
 import { usePortalAuth } from './hooks/usePortalAuth'
 import LoadingView    from './components/views/LoadingView'
 import WelcomeView    from './components/views/WelcomeView'
+import OtpLoginView   from './components/views/OtpLoginView'
 import DashboardView  from './components/views/DashboardView'
 import NoCompanyView  from './components/views/NoCompanyView'
 
@@ -32,6 +37,25 @@ export default function CustomerPortal({ defaultTab = 'home_feed' }) {
   const auth = usePortalAuth(defaultTab)
 
   if (auth.phase === 'loading')   return <LoadingView />
+
+  // ✅ নতুন: SR-এর WhatsApp লিংকে (?c=) ক্লিক করে প্রথমবার আসা কাস্টমার
+  // — password/Google ফর্ম না দেখিয়ে সরাসরি "এটা কি আপনি?" + WhatsApp
+  // OTP লগইন
+  if (auth.phase === 'otp-login') return (
+    <OtpLoginView
+      otpLoginStep={auth.otpLoginStep}
+      otpLoginInfo={auth.otpLoginInfo}
+      otpLoginInfoErr={auth.otpLoginInfoErr}
+      otpValue={auth.otpValue}         setOtpValue={auth.setOtpValue}
+      otpSending={auth.otpSending}
+      otpVerifying={auth.otpVerifying}
+      otpError={auth.otpError}
+      onSendOtp={auth.sendCustomerLoginOtp}
+      onVerifyOtp={auth.verifyCustomerLoginOtp}
+      onUseOtherMethod={auth.useOtherLoginMethod}
+    />
+  )
+
   if (auth.phase === 'welcome')   return (
     <WelcomeView
       tokenInfo={auth.tokenInfo}

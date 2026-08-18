@@ -167,7 +167,7 @@ const sendPortalLink = async (req, res) => {
             `আস্সালামু আলাইকুম ${cust.owner_name} ভাই,\n\n` +
             `আপনার *${cust.shop_name}* এর সকল ক্রয় তথ্য, বাকি ও পেমেন্ট ইতিহাস দেখতে নিচের লিংকে ক্লিক করুন:\n\n` +
             `🔗 ${portalLink}\n\n` +
-            `👆 লিংকে গিয়ে Google দিয়ে অথবা পাসওয়ার্ড সেট করে লগইন করুন — পরে সরাসরি ঢুকতে পারবেন!\n\n` +
+            `👆 লিংকে গিয়ে Continue চাপুন — WhatsApp-এ একটা OTP কোড যাবে, সেটা বসিয়ে দিলেই সরাসরি ঢুকে যাবেন!\n\n` +
             `_ZovoriX_`
         );
 
@@ -332,6 +332,222 @@ const verifyEmailToken = async (req, res) => {
     }
 };
 
+// ============================================================
+// PUBLIC: SR-এর পাঠানো WhatsApp লিংকের customer_code দিয়ে বেসিক
+// তথ্য (দোকানের নাম, মালিকের নাম, ছবি) দেখানো — "এটা কি আপনি?"
+// কনফার্ম-স্ক্রিনের জন্য। এখানে কোনো auth/secret লাগে না — ঠিক
+// sendPortalLink/directGoogleAuth-এর customer_code path যেভাবে
+// আগে থেকেই এই কোডটাকে secret না ধরে চেক করে, একই threat model।
+// আসল secret গেট হলো পরের ধাপ: WhatsApp OTP (নম্বরটা কার কাছে
+// আছে সেটাই প্রমাণ করে, শুধু কোড জানা/লিংক থাকাটা যথেষ্ট না)।
+//
+// GET /api/portal/customer-info/:code — Public
+// ============================================================
+const getPublicCustomerByCode = async (req, res) => {
+    try {
+        const code = String(req.params.code || '').trim();
+        if (!code) {
+            return res.status(400).json({ success: false, message: 'কাস্টমার কোড পাওয়া যায়নি।' });
+        }
+
+        const result = await query(
+            `SELECT shop_name, owner_name, shop_photo, customer_code
+             FROM customers
+             WHERE customer_code = $1 AND is_active = true
+             LIMIT 1`,
+            [code]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'লিংকটি সঠিক নয় অথবা প্রোফাইল পাওয়া যায়নি।' });
+        }
+
+        return res.status(200).json({ success: true, data: result.rows[0] });
+
+    } catch (error) {
+        logger.error('❌ Get Public Customer By Code Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
+    }
+};
+
+// ============================================================
+// PUBLIC: WhatsApp OTP দিয়ে সরাসরি লগইন — password/Google ছাড়াই।
+// SR-এর যোগ করা কাস্টমারের জন্য এটাই মূল প্রথমবার-অ্যাক্সেসের পথ:
+// getPublicCustomerByCode-এর "এটা কি আপনি?" কনফার্ম স্ক্রিনে Continue
+// চাপলে এই এন্ডপয়েন্ট কল হয়, WhatsApp-এ OTP যায়, verify হলে (নিচের
+// verifyLoginOtp) সরাসরি JWT সেশন ইস্যু হয় — password কোথাও ছোঁয়া
+// হয় না, self-register/persons টেবিলও ছোঁয়া হয় না (তাই আগের
+// duplicate-profile ঝুঁকিটাও এই পথে নেই)।
+//
+// forgot-password-এর মতো enumeration-নিরাপদ generic message দরকার
+// নেই — এখানে identifier customer_code (URL/লিংকে আগে থেকেই public,
+// getPublicCustomerByCode-এর মতোই), কোনো secret guess না।
+//
+// ধাপ ১: OTP পাঠাও — POST /api/portal/send-login-otp — Public
+// body: { customer_code }
+// ============================================================
+const sendLoginOtp = async (req, res) => {
+    try {
+        const cleanCode = String(req.body.customer_code || '').trim();
+        if (!cleanCode) {
+            return res.status(400).json({ success: false, message: 'কাস্টমার কোড পাওয়া যায়নি।' });
+        }
+
+        const { isWhatsAppLikelyDown } = require('../services/portalWhatsapp.service');
+        if (isWhatsAppLikelyDown()) {
+            return res.status(503).json({
+                success: false,
+                message: 'WhatsApp এই মুহূর্তে সাময়িকভাবে অনুপলব্ধ। একটু পর আবার চেষ্টা করুন।'
+            });
+        }
+
+        const result = await query(
+            `SELECT id, whatsapp FROM customers WHERE customer_code = $1 AND is_active = true LIMIT 1`,
+            [cleanCode]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল পাওয়া যায়নি।' });
+        }
+        const cust = result.rows[0];
+        if (!cust.whatsapp) {
+            return res.status(400).json({ success: false, message: 'এই প্রোফাইলে কোনো WhatsApp নম্বর নেই। আপনার SR-এর সাথে যোগাযোগ করুন।' });
+        }
+
+        const otp       = generateOTP(6);
+        const otpHash   = hashOTP(otp);
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // ১০ মিনিট
+
+        // আগের যেকোনো অব্যবহৃত OTP বাতিল — একসাথে একটাই বৈধ OTP থাকবে
+        await query(`DELETE FROM customer_login_otps WHERE customer_id = $1`, [cust.id]);
+        await query(
+            `INSERT INTO customer_login_otps (customer_id, otp, expires_at) VALUES ($1, $2, $3)`,
+            [cust.id, otpHash, expiresAt]
+        );
+
+        const { sendPortalOTPWhatsApp } = require('../services/portalWhatsapp.service');
+        const sendResult = await sendPortalOTPWhatsApp(cust.whatsapp, otp, 'লগইন যাচাই');
+
+        if (!sendResult.success) {
+            logger.warn(`⚠️ Login OTP পাঠানো যায়নি (${cust.id}): ${sendResult.reason}`);
+            return res.status(503).json({
+                success: false,
+                message: 'WhatsApp এই মুহূর্তে সাময়িকভাবে অনুপলব্ধ। একটু পর আবার চেষ্টা করুন।'
+            });
+        }
+
+        return res.status(200).json({ success: true, message: 'WhatsApp-এ OTP পাঠানো হয়েছে।' });
+
+    } catch (error) {
+        logger.error('❌ Send Login OTP Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
+    }
+};
+
+// ============================================================
+// ধাপ ২: OTP যাচাই → সরাসরি JWT সেশন। directGoogleAuth-এর
+// customer_code path ও passwordLogin-এর customer-path-এর response
+// shape-এর সাথে হুবহু মিল রাখা হয়েছে — frontend একই
+// dashboard-লোড/has_company লজিক পুনঃব্যবহার করতে পারবে, নতুন কোনো
+// শাখা লাগবে না।
+//
+// POST /api/portal/verify-login-otp — Public
+// body: { customer_code, otp, device_id }
+// ============================================================
+const verifyLoginOtp = async (req, res) => {
+    try {
+        const cleanCode = String(req.body.customer_code || '').trim();
+        const otp       = String(req.body.otp || '').trim();
+        const deviceId  = req.body.device_id || null;
+
+        if (!cleanCode || !otp) {
+            return res.status(400).json({ success: false, message: 'কাস্টমার কোড ও OTP দিন।' });
+        }
+
+        const result = await query(
+            `SELECT id, shop_name, owner_name, customer_code, email, whatsapp, person_id,
+                    current_credit, credit_limit, credit_balance
+             FROM customers WHERE customer_code = $1 AND is_active = true LIMIT 1`,
+            [cleanCode]
+        );
+        if (result.rows.length === 0) {
+            return res.status(400).json({ success: false, message: 'OTP মিলছে না অথবা মেয়াদ শেষ হয়ে গেছে।' });
+        }
+        const cust = result.rows[0];
+
+        const otpHash   = hashOTP(otp);
+        const otpResult = await query(
+            `SELECT id FROM customer_login_otps
+             WHERE customer_id = $1 AND otp = $2 AND used = false AND expires_at > NOW()
+             ORDER BY created_at DESC LIMIT 1`,
+            [cust.id, otpHash]
+        );
+        if (otpResult.rows.length === 0) {
+            return res.status(400).json({ success: false, message: 'OTP মিলছে না অথবা মেয়াদ শেষ হয়ে গেছে।' });
+        }
+        await query(`UPDATE customer_login_otps SET used = true WHERE id = $1`, [otpResult.rows[0].id]);
+
+        if (!process.env.JWT_PORTAL_SECRET) {
+            logger.error('❌ JWT_PORTAL_SECRET environment variable সেট নেই!');
+            return res.status(500).json({ success: false, message: 'Server configuration error.' });
+        }
+
+        const tokenRow     = await query('SELECT token_version FROM customer_portal_tokens WHERE customer_id = $1', [cust.id]);
+        const tokenVersion = tokenRow.rows[0]?.token_version || 1;
+
+        const jwtPayload = {
+            customer_id:   cust.id,
+            customer_code: cust.customer_code,
+            person_id:     cust.person_id || null,
+            email:         cust.email || null,
+            type:          'customer_portal',
+            token_version: tokenVersion,
+        };
+        const accessJWT  = jwt.sign(jwtPayload, process.env.JWT_PORTAL_SECRET, { expiresIn: '15m', algorithm: 'HS256' });
+        const refreshJWT = jwt.sign(
+            { ...jwtPayload, type: 'customer_portal_refresh' },
+            process.env.JWT_PORTAL_SECRET,
+            { expiresIn: '30d', algorithm: 'HS256' }
+        );
+        setRefreshCookie(res, refreshJWT);
+
+        logger.info(`✅ Login via WhatsApp OTP (customer): ${cust.customer_code || cust.id}`);
+
+        // fire-and-forget — recordLoginEvent নিজেই সব error ধরে, মূল
+        // লগইন রেসপন্স কখনো এর জন্য আটকাবে না (নিচে সংজ্ঞায়িত, কিন্তু
+        // module load শেষ হওয়ার পরেই এই ফাংশন actually চলে — এই ফাইলে
+        // passwordLogin/googleAuth-ও একই প্যাটার্নে আগে থেকে কল করে)
+        recordLoginEvent({
+            ownerType: 'customer', ownerId: cust.id, loginMethod: 'whatsapp_otp',
+            deviceFingerprint: deviceId, ipAddress: req.ip, userAgent: req.get('user-agent'),
+            email: cust.email, phone: cust.whatsapp, name: cust.owner_name,
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: 'লগইন সফল!',
+            data: {
+                portal_jwt:  accessJWT,
+                expires_in:  900,
+                has_company: true,
+                customer: {
+                    id:             cust.id,
+                    shop_name:      cust.shop_name,
+                    owner_name:     cust.owner_name,
+                    customer_code:  cust.customer_code,
+                    email:          cust.email,
+                    current_credit: cust.current_credit,
+                    credit_limit:   cust.credit_limit,
+                    credit_balance: cust.credit_balance,
+                }
+            }
+        });
+
+    } catch (error) {
+        logger.error('❌ Verify Login OTP Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
+    }
+};
+
 const selfRegisterCustomer = async (req, res) => {
     try {
         const { shop_name, owner_name, business_type, date_of_birth, whatsapp, sms_phone, email, password, confirm_password } = req.body;
@@ -407,6 +623,25 @@ const selfRegisterCustomer = async (req, res) => {
         // দিয়ে scope করা হয় না, কারণ persons কোনো কোম্পানির অধীনে না।
         // এক WhatsApp নম্বরে একটাই profile থাকবে, চাই সে যত কোম্পানির
         // সাথেই পরবর্তীতে connect হোক না কেন।
+        //
+        // ✅ NEW (নবম ধাপের ফলো-আপ): persons-এর পাশাপাশি customers
+        // টেবিলও চেক করা হচ্ছে — এখানে match পেলে (SR-added কাস্টমার)
+        // নতুন OTP-login (?c= লিংক) পথে পাঠানো হয়, sendRegisterOtp-এর
+        // ঠিক একই কারণে/একই মেসেজে (দেখুন উপরের কমেন্ট)। এই চেক
+        // sendRegisterOtp-এ আগেই হয় (wizard শুরুতে), কিন্তু ফ্রন্টএন্ড
+        // ওই ধাপ বাইপাস করলেও (সরাসরি API কল) যাতে এখানেও আটকায়।
+        const existingCustomer = await query(
+            `SELECT id FROM customers WHERE whatsapp = $1 AND is_active = true LIMIT 1`,
+            [cleanWhatsapp]
+        );
+        if (existingCustomer.rows.length > 0) {
+            return res.status(409).json({
+                success: false,
+                already_registered: true,
+                message: 'এই WhatsApp নম্বরে আপনার দোকান আগে থেকেই যোগ করা আছে। SR-এর পাঠানো WhatsApp লিংকে গিয়ে Continue চাপুন — সরাসরি OTP দিয়ে ঢুকে যাবেন, নতুন করে রেজিস্ট্রেশনের দরকার নেই।'
+            });
+        }
+
         const existing = await query(
             `SELECT id FROM persons WHERE whatsapp = $1 LIMIT 1`,
             [cleanWhatsapp]
@@ -1129,6 +1364,25 @@ const sendRegisterOtp = async (req, res) => {
             return res.status(503).json({
                 success: false,
                 message: 'এই মুহূর্তে WhatsApp-এ OTP পাঠানো যাচ্ছে না। একটু পর আবার চেষ্টা করুন।'
+            });
+        }
+
+        // ✅ NEW (নবম ধাপের ফলো-আপ): আগে শুধু persons চেক হতো — SR-added
+        // কাস্টমার (শুধু customers টেবিলে, persons-এ না) একই WhatsApp
+        // নম্বর দিয়ে self-register করলে ধরা পড়ত না, ফলে বিচ্ছিন্ন একটা
+        // persons প্রোফাইল তৈরি হয়ে যেত (আগের invoice/credit history
+        // থেকে আলাদা)। এখন customers টেবিলও আগে চেক করা হচ্ছে — matched
+        // হলে নতুন OTP-login (?c= লিংক) পথে পাঠানো হয়, যেটা এখন তাদের
+        // জন্য সবচেয়ে সহজ পথ (password/Google কোনোটাই লাগে না)।
+        const existingCustomer = await query(
+            `SELECT id FROM customers WHERE whatsapp = $1 AND is_active = true LIMIT 1`,
+            [cleanWhatsapp]
+        );
+        if (existingCustomer.rows.length > 0) {
+            return res.status(409).json({
+                success: false,
+                already_registered: true,
+                message: 'এই WhatsApp নম্বরে আপনার দোকান আগে থেকেই যোগ করা আছে। SR-এর পাঠানো WhatsApp লিংকে গিয়ে Continue চাপুন — সরাসরি OTP দিয়ে ঢুকে যাবেন, নতুন করে রেজিস্ট্রেশনের দরকার নেই।'
             });
         }
 
@@ -3177,6 +3431,9 @@ const logoutPortal = (req, res) => {
 
 module.exports = {
     sendPortalLink,
+    getPublicCustomerByCode, // ✅ NEW: c= কোড দিয়ে shop_name/owner_name/shop_photo — কনফার্ম স্ক্রিনের জন্য
+    sendLoginOtp,           // ✅ NEW: WhatsApp OTP লগইন ধাপ ১ (পাঠানো)
+    verifyLoginOtp,         // ✅ NEW: WhatsApp OTP লগইন ধাপ ২ (যাচাই → JWT)
     selfRegisterCustomer,  // ✅ NEW: কাস্টমার নিজে সাইন-আপ
     verifyEmailToken,       // ✅ NEW: রেজিস্ট্রেশন ইমেইল magic-link ভেরিফাই
     sendRegisterOtp,        // ✅ NEW: রেজিস্ট্রেশনে WhatsApp OTP ধাপ ১
