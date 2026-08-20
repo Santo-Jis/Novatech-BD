@@ -13,6 +13,7 @@
 //     স্পষ্টভাবে "VAT/Tax ছাড়া" লেখা থাকে যাতে ভুল বোঝাবুঝি না হয়,
 //     কারণ চূড়ান্ত বিল SR/অ্যাডমিন কনফার্ম করার পর ঠিক হয়।
 // ============================================================
+import { useState } from 'react'
 import { FiPackage, FiMapPin, FiX, FiAlertTriangle } from 'react-icons/fi'
 import CpCard from '../ui/CpCard'
 import CpButton from '../ui/CpButton'
@@ -27,6 +28,17 @@ const STATUS_META = {
   cancelled: { text: '❌ বাতিল',     variant: 'error' },
 }
 
+// ✅ NEW (ফেজ ৪ — মোবাইল ব্যাংকিং + রিফান্ড ফ্লো) — কাস্টমার নিজের
+// পেমেন্টের অবস্থা দেখতে পাবেন, বিশেষ করে বাতিল-করা অর্ডারে টাকা
+// ফেরত আসছে কিনা সেটা স্পষ্ট থাকা জরুরি (না হলে দুশ্চিন্তা/অভিযোগ হয়)
+const PAYMENT_META = {
+  pending_verification: { text: '⏳ পেমেন্ট যাচাই হচ্ছে',      variant: 'pending' },
+  paid:                 { text: '✅ পেমেন্ট নিশ্চিত হয়েছে',    variant: 'success' },
+  failed:                { text: '❌ পেমেন্ট মেলেনি',           variant: 'error' },
+  refund_pending:        { text: '💸 টাকা ফেরত আসছে',           variant: 'warning' },
+  refunded:              { text: '↩️ টাকা ফেরত দেওয়া হয়েছে',   variant: 'info' },
+}
+
 export default function OrderHistoryView({
   requests = [],
   loading = false,
@@ -38,7 +50,22 @@ export default function OrderHistoryView({
   onDismissSuccess,
   onTrack,
   onGoShop,
+  onCancelOrder,   // ✅ NEW (ফেজ ৪ — রিফান্ড ফ্লো) — pending অর্ডার নিজে বাতিল করার সুবিধা
 }) {
+  // ✅ NEW — কোন অর্ডারের "সত্যিই বাতিল করবেন?" কনফার্মেশন দেখানো হচ্ছে
+  const [confirmingId, setConfirmingId] = useState(null)
+  const [cancelling,   setCancelling]   = useState(false)
+
+  const handleCancelConfirm = async (id) => {
+    setCancelling(true)
+    try {
+      await onCancelOrder(id)
+    } finally {
+      setCancelling(false)
+      setConfirmingId(null)
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
       {deliveredToast && (
@@ -127,6 +154,15 @@ export default function OrderHistoryView({
                     <CpBadge variant={meta.variant}>{meta.text}</CpBadge>
                   </div>
 
+                  {/* ✅ NEW (ফেজ ৪) — পেমেন্ট/রিফান্ড অবস্থা, শুধু online_payment হলে */}
+                  {req.fulfillment_type === 'online_payment' && PAYMENT_META[req.payment_status] && (
+                    <div className="mb-2.5">
+                      <CpBadge variant={PAYMENT_META[req.payment_status].variant}>
+                        {PAYMENT_META[req.payment_status].text}
+                      </CpBadge>
+                    </div>
+                  )}
+
                   <div className="flex flex-col gap-1 mb-2.5">
                     {items.map((item, i) => (
                       <div key={i} className="flex justify-between gap-2 text-[13px] text-cp-text-secondary font-cp-body">
@@ -166,6 +202,39 @@ export default function OrderHistoryView({
                     >
                       <FiMapPin className="w-3.5 h-3.5" /> ট্র্যাকিং দেখুন
                     </button>
+                  )}
+
+                  {/* ✅ NEW (ফেজ ৪ — রিফান্ড ফ্লো): pending অর্ডার নিজে বাতিল
+                      করা যায় (cancelMyOrderRequest ব্যাকএন্ডে আগে থেকেই ছিল,
+                      কিন্তু ফ্রন্টএন্ডে কোথাও কল হতো না — এখন সংযুক্ত করা হলো,
+                      যাতে payment_status='paid' থাকা অর্ডার বাতিল করলে
+                      refund_pending-এ ঠিকভাবে যায়) */}
+                  {req.status === 'pending' && onCancelOrder && (
+                    confirmingId === req.id ? (
+                      <div className="mt-2.5 flex gap-2">
+                        <button
+                          onClick={() => setConfirmingId(null)}
+                          disabled={cancelling}
+                          className="flex-1 py-2 bg-cp-bg-alt text-cp-text-secondary rounded-xl text-[12px] font-semibold font-cp-body disabled:opacity-50"
+                        >
+                          না, থাক
+                        </button>
+                        <button
+                          onClick={() => handleCancelConfirm(req.id)}
+                          disabled={cancelling}
+                          className="flex-1 py-2 bg-cp-error text-white rounded-xl text-[12px] font-semibold font-cp-body disabled:opacity-50"
+                        >
+                          {cancelling ? 'বাতিল হচ্ছে...' : 'হ্যাঁ, বাতিল করুন'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmingId(req.id)}
+                        className="mt-2.5 w-full py-2 bg-white border border-cp-border text-cp-text-secondary rounded-xl text-[12px] font-semibold font-cp-body transition-colors flex items-center justify-center gap-1.5"
+                      >
+                        <FiX className="w-3.5 h-3.5" /> অর্ডার বাতিল করুন
+                      </button>
+                    )
                   )}
                 </div>
               </div>

@@ -15,7 +15,7 @@
 // ============================================================
 import { useState } from 'react'
 import clsx from 'clsx'
-import { FiPlus, FiPackage } from 'react-icons/fi'
+import { FiPlus, FiPackage, FiHeart } from 'react-icons/fi'
 import CpBadge from '../ui/CpBadge'
 import QtyStepper from './QtyStepper'
 import CompanyTag from '../CompanyTag'
@@ -25,14 +25,22 @@ import { LOW_STOCK_THRESHOLD } from './constants'
 // টেক্সট লাইনের বদলে CompanyTag (পার্ট ২-এর সাথে সামঞ্জস্যপূর্ণ), আর
 // isConnected=false হলে "নতুন কোম্পানি" ব্যাজ — অর্ডারের আগেই কাস্টমার
 // বুঝুক এটা তার চেনা ডিস্ট্রিবিউটর কিনা।
-export default function ProductCard({ product, qty = 0, onOpen, onAdd, onInc, onDec, onSetQty, isConnected = true }) {
+export default function ProductCard({
+  product, qty = 0, onOpen, onAdd, onInc, onDec, onSetQty, isConnected = true,
+  isWishlisted = false, onToggleWishlist,   // ✅ NEW (ফেজ ৩ — উইশলিস্ট)
+}) {
   const [imgError, setImgError]   = useState(false)
   const [imgLoaded, setImgLoaded] = useState(false)
 
-  const stock    = Number(product.available_stock) || 0
-  const inCart   = qty > 0
-  const lowStock = stock > 0 && stock <= LOW_STOCK_THRESHOLD
-  const price    = Number(product.final_price ?? product.base_price) || 0
+  const stock           = Number(product.available_stock) || 0
+  const inCart          = qty > 0
+  const lowStock        = stock > 0 && stock <= LOW_STOCK_THRESHOLD
+  const price           = Number(product.final_price ?? product.base_price) || 0
+  // ✅ NEW (ফেজ ০ — "বিশেষ মূল্য" ব্যাজ): getPortalProducts এখন list_price/
+  // has_special_price পাঠায় — এই কাস্টমারের রেজলভড দাম ডিফল্ট তালিকা-মূল্যের
+  // চেয়ে কম হলে true, তখন কাটা দাম + ব্যাজ দেখানো হয়
+  const hasSpecialPrice = !!product.has_special_price
+  const listPrice       = Number(product.list_price) || 0
 
   return (
     <div
@@ -64,6 +72,20 @@ export default function ProductCard({ product, qty = 0, onOpen, onAdd, onInc, on
             {qty}
           </span>
         )}
+        {/* ✅ NEW (ফেজ ৩ — উইশলিস্ট) — top-left, qty ব্যাজের (top-right)
+            সাথে সংঘর্ষ এড়াতে */}
+        {onToggleWishlist && (
+          <button
+            onClick={e => { e.stopPropagation(); onToggleWishlist(product) }}
+            className="absolute top-1.5 left-1.5 w-7 h-7 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-sm active:scale-90 transition-transform"
+            title={isWishlisted ? 'সেভড থেকে সরান' : 'পরে কেনার জন্য সেভ করুন'}
+          >
+            <FiHeart
+              className={isWishlisted ? 'w-3.5 h-3.5 text-cp-error' : 'w-3.5 h-3.5 text-cp-text-muted'}
+              fill={isWishlisted ? 'currentColor' : 'none'}
+            />
+          </button>
+        )}
       </div>
 
       {/* তথ্য */}
@@ -86,14 +108,23 @@ export default function ProductCard({ product, qty = 0, onOpen, onAdd, onInc, on
           <CpBadge variant="info" className="self-start">নতুন কোম্পানি</CpBadge>
         )}
 
-        <div className="flex items-baseline gap-1">
+        <div className="flex items-baseline gap-1 flex-wrap">
           <span className="font-cp-head font-bold text-[15px] text-cp-trust-700">
             ৳{price.toFixed(0)}
           </span>
+          {hasSpecialPrice && (
+            <span className="text-[10.5px] text-cp-text-muted line-through">
+              ৳{listPrice.toFixed(0)}
+            </span>
+          )}
           {product.unit && (
             <span className="text-[10px] text-cp-text-muted">/{product.unit}</span>
           )}
         </div>
+
+        {hasSpecialPrice && (
+          <CpBadge variant="info" className="self-start">বিশেষ মূল্য</CpBadge>
+        )}
 
         {lowStock && (
           <CpBadge variant="warning" className="self-start">

@@ -66,7 +66,13 @@ const getAdminManagerIds = async (tenantId) => {
 // থেকে ইচ্ছাকৃতভাবে আলাদা, কারণ এখানে কোনো মিউচুয়াল সম্মতি নেই)।
 const createOrderRequest = async (req, res) => {
     try {
-        const { items, note } = req.body;
+        const { items, note, payment } = req.body;
+        // ✅ NEW (ফেজ ৪ — মোবাইল ব্যাংকিং TrxID ভেরিফিকেশন)
+        // payment = { method: 'cod' | 'bkash_manual' | 'nagad_manual',
+        //             by_tenant: { [tenant_id]: { trx_id, sender_number } } }
+        // method না দিলে (পুরনো ক্লায়েন্ট/ডিফল্ট) 'cod' ধরা হয়।
+        const paymentMethod = payment?.method || 'cod';
+        const paymentByTenant = payment?.by_tenant || {};
 
         if (!items || !Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ success: false, message: 'কমপক্ষে একটি পণ্য সিলেক্ট করুন।' });
@@ -100,6 +106,28 @@ const createOrderRequest = async (req, res) => {
 
         if (tenantIds.length === 0) {
             return res.status(400).json({ success: false, message: 'নির্বাচিত পণ্যগুলো পাওয়া যায়নি।' });
+        }
+
+        // ✅ NEW (ফেজ ৪) — মোবাইল ব্যাংকিং হলে প্রতিটা কোম্পানির জন্য
+        // TrxID লাগবে (মাল্টি-ভেন্ডর কার্টে প্রতিটা কোম্পানির নম্বরে
+        // আলাদা করে টাকা পাঠাতে হয়) + ডুপ্লিকেট TrxID প্রতিরোধ
+        if (paymentMethod === 'bkash_manual' || paymentMethod === 'nagad_manual') {
+            for (const tenantId of tenantIds) {
+                const info = paymentByTenant[tenantId];
+                if (!info || !info.trx_id || !info.trx_id.trim()) {
+                    return res.status(400).json({ success: false, message: 'প্রতিটা কোম্পানির জন্য Transaction ID দিন।' });
+                }
+            }
+            for (const tenantId of tenantIds) {
+                const trxId = paymentByTenant[tenantId].trx_id.trim();
+                const dup = await query(
+                    `SELECT id FROM customer_order_requests WHERE tenant_id = $1 AND payment_trx_id = $2`,
+                    [tenantId, trxId]
+                );
+                if (dup.rows.length > 0) {
+                    return res.status(400).json({ success: false, message: `Transaction ID "${trxId}" আগেই ব্যবহার হয়েছে। সঠিক ID দিন।` });
+                }
+            }
         }
 
         // ── প্রতিটা কোম্পানির জন্য customer row resolve — reuse বা নতুন লাগবে
@@ -173,11 +201,25 @@ const createOrderRequest = async (req, res) => {
                     [customer.id, tenantId]
                 );
 
+                // ✅ NEW (ফেজ ৪) — এই tenant-এর payment তথ্য
+                const tenantPayment = paymentByTenant[tenantId] || {};
+                const isMobileBanking = paymentMethod === 'bkash_manual' || paymentMethod === 'nagad_manual';
+
                 const inserted = await cq(
-                    `INSERT INTO customer_order_requests (customer_id, items, note, status, tenant_id)
-                     VALUES ($1, $2::jsonb, $3, 'pending', $4)
+                    `INSERT INTO customer_order_requests
+                        (customer_id, items, note, status, tenant_id,
+                         fulfillment_type, payment_status, payment_method,
+                         payment_trx_id, payment_sender_number)
+                     VALUES ($1, $2::jsonb, $3, 'pending', $4, $5, $6, $7, $8, $9)
                      RETURNING id, created_at`,
-                    [customer.id, JSON.stringify(enrichedItems), note || null, tenantId]
+                    [
+                        customer.id, JSON.stringify(enrichedItems), note || null, tenantId,
+                        isMobileBanking ? 'online_payment' : 'order_request',
+                        isMobileBanking ? 'pending_verification' : 'unpaid',
+                        paymentMethod,
+                        isMobileBanking ? tenantPayment.trx_id.trim() : null,
+                        isMobileBanking ? (tenantPayment.sender_number || '').trim() || null : null,
+                    ]
                 );
 
                 results.push({
@@ -363,6 +405,7 @@ const getAllCompanyOrderRequests = async (req, res) => {
             `SELECT
                 cor.id, cor.items, cor.note, cor.status,
                 cor.admin_note, cor.created_at, cor.updated_at,
+                cor.fulfillment_type, cor.payment_status, cor.payment_method,
                 u.name_bn AS assigned_sr_name,
                 t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
              FROM customer_order_requests cor
@@ -415,7 +458,7 @@ const cancelMyOrderRequest = async (req, res) => {
         // করতে গেলে "পাওয়া যায়নি" দেখাত। এখন person_id দিয়ে (যেকোনো
         // কোম্পানির নিজের অর্ডার) চেক হয়।
         const existing = await query(
-            `SELECT cor.id, cor.status FROM customer_order_requests cor
+            `SELECT cor.id, cor.status, cor.payment_status FROM customer_order_requests cor
              JOIN customers c ON c.id = cor.customer_id
              WHERE cor.id = $1 AND c.person_id = $2`,
             [id, personId]
@@ -445,16 +488,28 @@ const cancelMyOrderRequest = async (req, res) => {
             });
         }
 
+        // ✅ NEW (ফেজ ৪ — রিফান্ড ফ্লো): অর্ডার এখনো 'pending' থাকা অবস্থাতেই
+        // মোবাইল ব্যাংকিং পেমেন্ট ভেরিফাই হয়ে যেতে পারে (admin দ্রুত চেক
+        // করলে) — সেক্ষেত্রে বাতিল করলে টাকা ফেরত দেওয়া বাকি থাকে, তাই
+        // payment_status='paid' হলে সাধারণ cancel না করে refund_pending-এ
+        // পাঠানো হয় (Admin-এর "রিফান্ড বাকি" কিউতে দেখা যাবে)।
+        const needsRefund = order.payment_status === 'paid';
+
         await query(
             `UPDATE customer_order_requests
-             SET status = 'cancelled', admin_note = 'কাস্টমার কর্তৃক বাতিল', updated_at = NOW()
+             SET status = 'cancelled',
+                 admin_note = 'কাস্টমার কর্তৃক বাতিল',
+                 payment_status = CASE WHEN payment_status = 'paid' THEN 'refund_pending' ELSE payment_status END,
+                 updated_at = NOW()
              WHERE id = $1`,
             [id]
         );
 
         return res.status(200).json({
             success: true,
-            message: 'অর্ডার বাতিল করা হয়েছে।'
+            message: needsRefund
+                ? 'অর্ডার বাতিল করা হয়েছে। আপনার পেমেন্ট শীঘ্রই ফেরত দেওয়া হবে।'
+                : 'অর্ডার বাতিল করা হয়েছে।'
         });
 
     } catch (error) {
@@ -505,6 +560,8 @@ const getAllOrderRequests = async (req, res) => {
                 cor.id, cor.items, cor.note, cor.status,
                 cor.admin_note, cor.created_at, cor.updated_at,
                 cor.customer_id,
+                cor.fulfillment_type, cor.payment_status, cor.payment_method,
+                cor.payment_trx_id, cor.payment_sender_number,
                 c.shop_name, c.owner_name, c.customer_code, c.whatsapp,
                 r.name AS route_name,
                 u.name_bn AS assigned_sr_name
@@ -587,16 +644,22 @@ const getAllOrderRequests = async (req, res) => {
 const updateOrderRequest = async (req, res) => {
     try {
         const { id }                     = req.params;
-        const { status, assigned_to, admin_note } = req.body;
+        const { status, assigned_to, admin_note, payment_status } = req.body;
 
         const validStatuses = ['pending', 'confirmed', 'assigned', 'delivered', 'cancelled'];
         if (status && !validStatuses.includes(status)) {
             return res.status(400).json({ success: false, message: 'অবৈধ স্ট্যাটাস।' });
         }
+        // ✅ NEW (ফেজ ৪ — মোবাইল ব্যাংকিং TrxID ভেরিফিকেশন): Admin/SR
+        // নিজের bKash/Nagad অ্যাপে TrxID মিলিয়ে এখান থেকে verify করবেন
+        const validPaymentStatuses = ['unpaid', 'pending_verification', 'paid', 'failed', 'refund_pending', 'refunded'];
+        if (payment_status && !validPaymentStatuses.includes(payment_status)) {
+            return res.status(400).json({ success: false, message: 'অবৈধ পেমেন্ট স্ট্যাটাস।' });
+        }
 
         // রিকোয়েস্ট আছে কিনা দেখো
         const existing = await query(
-            `SELECT cor.id, cor.customer_id, cor.status,
+            `SELECT cor.id, cor.customer_id, cor.status, cor.payment_status,
                     c.shop_name, c.owner_name
              FROM customer_order_requests cor
              JOIN customers c ON cor.customer_id = c.id
@@ -636,6 +699,18 @@ const updateOrderRequest = async (req, res) => {
         if (admin_note !== undefined) {
             updates.push(`admin_note = $${paramIdx++}`);
             values.push(admin_note);
+        }
+        // ✅ NEW (ফেজ ৪)
+        if (payment_status) {
+            updates.push(`payment_status = $${paramIdx++}`);
+            values.push(payment_status);
+        }
+        // ✅ NEW (ফেজ ৪ — রিফান্ড ফ্লো): Admin/SR যদি ইতিমধ্যে-পরিশোধিত
+        // (payment_status='paid') অর্ডার বাতিল করে, আর এই একই রিকোয়েস্টে
+        // payment_status স্পষ্টভাবে দেওয়া না থাকে — তাহলে স্বয়ংক্রিয়ভাবে
+        // refund_pending-এ যাবে (cancelMyOrderRequest-এর ঠিক একই লজিক)
+        if (status === 'cancelled' && request.payment_status === 'paid' && !payment_status) {
+            updates.push(`payment_status = 'refund_pending'`);
         }
 
         if (updates.length === 0) {
@@ -698,13 +773,19 @@ const updateOrderRequest = async (req, res) => {
 // GET /api/portal/products?page=1&limit=30&search=
 //
 // Query Params:
-//   page   — page নম্বর (default: 1)
-//   limit  — প্রতি পাতায় পণ্য সংখ্যা (default: 30, max: 100)
-//   search — নাম দিয়ে ফিল্টার (optional, case-insensitive)
+//   page     — page নম্বর (default: 1)
+//   limit    — প্রতি পাতায় পণ্য সংখ্যা (default: 30, max: 100)
+//   search   — নাম দিয়ে ফিল্টার (optional, case-insensitive)
+//   seller   — tenant_id দিয়ে ফিল্টার (optional)
+//   category — category_id দিয়ে ফিল্টার (optional) ✅ FIX (ফেজ ০)
+//   sort     — 'name' (ডিফল্ট) | 'newest' | 'bestseller' ✅ NEW (ফেজ ১)
 //
 // Response:
-//   data        — এই পাতার পণ্য তালিকা (price-enriched)
-//   pagination  — { page, limit, total, total_pages, has_next, has_prev }
+//   data — এই পাতার পণ্য তালিকা (price-enriched), প্রতিটায়:
+//     base_price/final_price — এই কাস্টমারের জন্য রেজলভড দাম (VAT/Tax সহ)
+//     list_price             — ডিফল্ট তালিকা-মূল্য (VAT/Tax সহ), তুলনার জন্য
+//     has_special_price      — true হলে base_price < list_price (✅ ফেজ ০)
+//   pagination — { page, limit, total, total_pages, has_next, has_prev }
 // ============================================================
 const getPortalProducts = async (req, res) => {
     try {
@@ -717,6 +798,10 @@ const getPortalProducts = async (req, res) => {
         // দিলে শুধু সেই কোম্পানির প্রোডাক্ট দেখাবে। খালি থাকলে (ডিফল্ট)
         // আগের মতোই সব কোম্পানির প্রোডাক্ট (marketplace-wide)।
         const sellerId = (req.query.seller || '').trim();
+        // ✅ FIX (ফেজ ০ — ক্যাটাগরি ফিল্টার বাগ): ?category=<category_id>
+        // আগে এই প্যারামটা পড়াই হতো না, তাই ফ্রন্টএন্ডের চিপ কাজ করত না।
+        // sellerId-এর মতোই প্যাটার্ন — খালি থাকলে সব ক্যাটাগরি দেখাবে।
+        const categoryId = (req.query.category || '').trim();
 
         // ✅ CORRECTED (2 Aug 2026): আগে এখানে ভুলবশত কাস্টমারের নিজের
         // tenant_id দিয়ে ফিল্টার করা হয়েছিল, ধরে নিয়ে যে এটা single-company
@@ -733,8 +818,9 @@ const getPortalProducts = async (req, res) => {
         // ── কাউন্ট কুয়েরির params: search/seller যেটা আছে সেটাই যোগ হয় ──
         const countConds  = [];
         const countParams = [];
-        if (search)   { countParams.push(`%${search}%`); countConds.push(`AND name ILIKE $${countParams.length}`); }
-        if (sellerId) { countParams.push(sellerId);       countConds.push(`AND tenant_id = $${countParams.length}`); }
+        if (search)     { countParams.push(`%${search}%`); countConds.push(`AND name ILIKE $${countParams.length}`); }
+        if (sellerId)   { countParams.push(sellerId);       countConds.push(`AND tenant_id = $${countParams.length}`); }
+        if (categoryId) { countParams.push(categoryId);     countConds.push(`AND category_id = $${countParams.length}`); }
 
         const countRes = await query(
             `SELECT COUNT(*) AS total
@@ -750,8 +836,26 @@ const getPortalProducts = async (req, res) => {
         // ── লিস্ট কুয়েরির params: limit, offset আগে, তারপর search/seller ──
         const listParams = [limit, offset];
         let listConds = '';
-        if (search)   { listParams.push(`%${search}%`); listConds += ` AND p.name ILIKE $${listParams.length}`; }
-        if (sellerId) { listParams.push(sellerId);       listConds += ` AND p.tenant_id = $${listParams.length}`; }
+        if (search)     { listParams.push(`%${search}%`); listConds += ` AND p.name ILIKE $${listParams.length}`; }
+        if (sellerId)   { listParams.push(sellerId);       listConds += ` AND p.tenant_id = $${listParams.length}`; }
+        if (categoryId) { listParams.push(categoryId);     listConds += ` AND p.category_id = $${listParams.length}`; }
+
+        // ✅ NEW (ফেজ ১ — বেস্টসেলার/নতুন রো): ?sort=name|newest|bestseller
+        // ডিফল্ট 'name' — মূল গ্রিডের existing আচরণ অপরিবর্তিত থাকে।
+        const sortMode = (req.query.sort || 'name').trim();
+        let orderByClause  = 'p.name ASC';
+        let bestsellerJoin = '';
+        if (sortMode === 'newest') {
+            orderByClause = 'p.created_at DESC';
+        } else if (sortMode === 'bestseller') {
+            bestsellerJoin = `LEFT JOIN (
+                SELECT product_id, SUM(quantity) AS total_sold
+                FROM sale_items
+                WHERE created_at >= NOW() - INTERVAL '90 days'
+                GROUP BY product_id
+            ) sold ON sold.product_id = p.id`;
+            orderByClause = 'COALESCE(sold.total_sold, 0) DESC, p.name ASC';
+        }
 
         const { rows } = await query(
             `SELECT p.id, p.name, p.price, p.vat, p.tax, p.unit, p.description, p.image_url,
@@ -760,10 +864,11 @@ const getPortalProducts = async (req, res) => {
                     (p.stock - COALESCE(p.reserved_stock, 0)) AS available_stock
              FROM products p
              JOIN tenants t ON t.id = p.tenant_id
+             ${bestsellerJoin}
              WHERE p.is_active = true
                AND (p.stock - COALESCE(p.reserved_stock, 0)) > 0
                ${listConds}
-             ORDER BY p.name ASC
+             ORDER BY ${orderByClause}
              LIMIT $1 OFFSET $2`,
             listParams
         );
@@ -785,24 +890,31 @@ const getPortalProducts = async (req, res) => {
         // কাস্টমার যা দেবে সেটা final_price (VAT + Tax সহ)
         const { calcFinalPrice } = require('../services/price.utils');
         const enriched = rows.map(p => {
-            const basePrice = resolvedPrices[p.id] ?? parseFloat(p.price);
+            const listPrice = parseFloat(p.price); // tenant-এর ডিফল্ট/তালিকা মূল্য (price_list রেজোলিউশনের আগে)
+            const basePrice = resolvedPrices[p.id] ?? listPrice;
             const { vatAmount, taxAmount, finalPrice } = calcFinalPrice(basePrice, p.vat, p.tax);
+            // ✅ NEW (ফেজ ০ — "বিশেষ মূল্য" ব্যাজ): এই কাস্টমার/রুটের জন্য
+            // price_list resolve করে যদি ডিফল্ট list price-এর চেয়ে কম আসে,
+            // সেটাই "আপনার জন্য বিশেষ মূল্য"।
+            const { finalPrice: listFinalPrice } = calcFinalPrice(listPrice, p.vat, p.tax);
             return {
-                id:              p.id,
-                name:            p.name,
-                unit:            p.unit,
-                description:     p.description,
-                image_url:       p.image_url,
-                available_stock: p.available_stock,
-                tenant_id:       p.tenant_id,
-                company_name:    p.company_name,
-                company_name_bn: p.company_name_bn,
-                logo_url:        p.logo_url,
-                base_price:      basePrice,
-                vat_amount:      vatAmount,
-                tax_amount:      taxAmount,
-                final_price:     finalPrice,
-                has_extra:       vatAmount > 0 || taxAmount > 0,
+                id:                p.id,
+                name:              p.name,
+                unit:              p.unit,
+                description:       p.description,
+                image_url:         p.image_url,
+                available_stock:   p.available_stock,
+                tenant_id:         p.tenant_id,
+                company_name:      p.company_name,
+                company_name_bn:   p.company_name_bn,
+                logo_url:          p.logo_url,
+                base_price:        basePrice,
+                vat_amount:        vatAmount,
+                tax_amount:        taxAmount,
+                final_price:       finalPrice,
+                has_extra:         vatAmount > 0 || taxAmount > 0,
+                list_price:        listFinalPrice,
+                has_special_price: basePrice < listPrice,
             };
         });
 
@@ -822,6 +934,156 @@ const getPortalProducts = async (req, res) => {
     } catch (error) {
         logger.error('❌ getPortalProducts Error:', error.message);
         return res.status(500).json({ success: false, message: 'পণ্য তালিকা আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/categories
+// ✅ FIX (ফেজ ০ — ক্যাটাগরি ফিল্টার বাগ): এই রুটটাই আগে ব্যাকএন্ডে
+// ছিল না (শুধু /api/categories ছিল, admin auth দিয়ে, portalAuth দিয়ে
+// না) — তাই ফ্রন্টএন্ডের চিপ রো silent fail হয়ে কখনো দেখাই যেত না।
+//
+// getProductSellers-এর মতোই marketplace-wide: যেসব ক্যাটাগরিতে
+// অন্তত ১টা active/in-stock প্রোডাক্ট আছে, শুধু তাদের ছোট তালিকা
+// (customer কোন কোম্পানির সাথে connected তা দিয়ে ফিল্টার হয় না)।
+// ============================================================
+const getPortalCategories = async (req, res) => {
+    try {
+        const { rows } = await query(
+            `SELECT DISTINCT c.id, c.name, c.name_bn
+             FROM product_categories c
+             JOIN products p ON p.category_id = c.id
+             WHERE p.is_active = true
+               AND (p.stock - COALESCE(p.reserved_stock, 0)) > 0
+             ORDER BY c.name ASC`
+        );
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        logger.error('❌ getPortalCategories Error:', error.message);
+        res.status(500).json({ success: false, message: 'ক্যাটাগরি তালিকা আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/payment-info?tenant_ids=id1,id2
+// ✅ NEW (ফেজ ৪ — মোবাইল ব্যাংকিং TrxID ভেরিফিকেশন)
+// চেকআউটে প্রতিটা বিক্রেতা-গ্রুপের bKash/Nagad নম্বর দেখানোর জন্য —
+// system_settings-এ tenant admin যা সেভ করেছেন (Settings পেজ থেকে)
+// সেটাই রিড করে। খালি স্ট্রিং থাকলে (এখনো সেটআপ করেনি) সেই তথ্য
+// বাদ দেওয়া হয় — ফ্রন্টএন্ড তখন সেই কোম্পানির জন্য মোবাইল ব্যাংকিং
+// অপশন লুকিয়ে রাখবে।
+// ============================================================
+const getTenantPaymentInfo = async (req, res) => {
+    try {
+        const tenantIds = (req.query.tenant_ids || '').split(',').map(s => s.trim()).filter(Boolean);
+        if (tenantIds.length === 0) {
+            return res.json({ success: true, data: {} });
+        }
+        const result = await query(
+            `SELECT tenant_id, key, value FROM system_settings
+             WHERE tenant_id = ANY($1::uuid[]) AND key IN ('bkash_number', 'nagad_number')`,
+            [tenantIds]
+        );
+        const byTenant = {};
+        result.rows.forEach(r => {
+            if (!r.value) return; // খালি মানে সেটআপ করেনি
+            byTenant[r.tenant_id] ??= {};
+            byTenant[r.tenant_id][r.key] = r.value;
+        });
+        return res.json({ success: true, data: byTenant });
+    } catch (error) {
+        logger.error('❌ getTenantPaymentInfo Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/products/:id/related
+// ✅ NEW (ফেজ ২ — রিলেটেড/ক্রস-সেল প্রোডাক্ট)
+// প্রথমে একই ক্যাটাগরির প্রোডাক্ট, তারপর একই বিক্রেতার প্রোডাক্ট দিয়ে
+// পূরণ। enrichment ঠিক getPortalProducts-এর মতোই, তাই ফ্রন্টএন্ডে
+// একই ProductCard সরাসরি রিইউজ করা যায়।
+// ============================================================
+const getRelatedProducts = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { customer_id } = req.portalUser;
+
+        const custResult = await query(`SELECT route_id FROM customers WHERE id = $1`, [customer_id]);
+        if (custResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
+        }
+        const { route_id: routeId } = custResult.rows[0];
+
+        const baseRes = await query(`SELECT category_id, tenant_id FROM products WHERE id = $1`, [id]);
+        if (baseRes.rows.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+        const { category_id: categoryId, tenant_id: tenantId } = baseRes.rows[0];
+
+        const { rows } = await query(
+            `SELECT p.id, p.name, p.price, p.vat, p.tax, p.unit, p.image_url,
+                    p.tenant_id, t.company_name, t.company_name_bn, t.logo_url,
+                    (p.stock - COALESCE(p.reserved_stock, 0)) AS available_stock,
+                    (p.category_id = $2) AS same_category
+             FROM products p
+             JOIN tenants t ON t.id = p.tenant_id
+             WHERE p.is_active = true
+               AND p.id != $1
+               AND (p.stock - COALESCE(p.reserved_stock, 0)) > 0
+               AND (p.category_id = $2 OR p.tenant_id = $3)
+             ORDER BY same_category DESC, p.name ASC
+             LIMIT 8`,
+            [id, categoryId, tenantId]
+        );
+
+        if (rows.length === 0) {
+            return res.json({ success: true, data: [] });
+        }
+
+        const byTenant = {};
+        rows.forEach(p => { (byTenant[p.tenant_id] ??= []).push(p); });
+
+        const priceMaps = {};
+        await Promise.all(Object.keys(byTenant).map(async (tId) => {
+            const { prices } = await getResolvedPrices(query, {
+                tenantId: tId, customerId: customer_id, routeId, channel: 'app_ecommerce',
+                productIds: byTenant[tId].map(p => p.id),
+            });
+            priceMaps[tId] = prices;
+        }));
+
+        const { calcFinalPrice } = require('../services/price.utils');
+        const enriched = rows.map(p => {
+            const listPrice = parseFloat(p.price);
+            const basePrice = priceMaps[p.tenant_id]?.[p.id] ?? listPrice;
+            const { vatAmount, taxAmount, finalPrice } = calcFinalPrice(basePrice, p.vat, p.tax);
+            const { finalPrice: listFinalPrice } = calcFinalPrice(listPrice, p.vat, p.tax);
+            return {
+                id:                p.id,
+                name:              p.name,
+                unit:              p.unit,
+                image_url:         p.image_url,
+                available_stock:   p.available_stock,
+                tenant_id:         p.tenant_id,
+                company_name:      p.company_name,
+                company_name_bn:   p.company_name_bn,
+                logo_url:          p.logo_url,
+                base_price:        basePrice,
+                vat_amount:        vatAmount,
+                tax_amount:        taxAmount,
+                final_price:       finalPrice,
+                has_extra:         vatAmount > 0 || taxAmount > 0,
+                list_price:        listFinalPrice,
+                has_special_price: basePrice < listPrice,
+            };
+        });
+
+        return res.json({ success: true, data: enriched });
+
+    } catch (error) {
+        logger.error('❌ getRelatedProducts Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সংশ্লিষ্ট পণ্য আনতে সমস্যা হয়েছে।' });
     }
 };
 
@@ -1317,11 +1579,22 @@ const getPortalProductDetail = async (req, res) => {
         const { prices: resolvedPrices } = await getResolvedPrices(query, {
             tenantId: p.tenant_id, customerId: customer_id, routeId, channel: 'app_ecommerce', productIds: [p.id]
         });
-        const basePrice = resolvedPrices[p.id] ?? parseFloat(p.price);
+        const listPrice = parseFloat(p.price);
+        const basePrice = resolvedPrices[p.id] ?? listPrice;
 
         // ── Price breakdown ───────────────────────────────────
         const { calcFinalPrice } = require('../services/price.utils');
         const { vatAmount, taxAmount, finalPrice } = calcFinalPrice(basePrice, p.vat, p.tax);
+        // ✅ NEW (ফেজ ০) — getPortalProducts-এর মতোই "বিশেষ মূল্য" তথ্য
+        const { finalPrice: listFinalPrice } = calcFinalPrice(listPrice, p.vat, p.tax);
+
+        // ✅ NEW (ফেজ ২ — মাল্টি-ইমেজ গ্যালারি): cover ছবি (image_url) +
+        // product_images টেবিলের সব ছবি, sort_order অনুযায়ী
+        const galleryRes = await query(
+            `SELECT image_url FROM product_images WHERE product_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+            [id]
+        );
+        const gallery = [p.image_url, ...galleryRes.rows.map(r => r.image_url)].filter(Boolean);
 
         return res.status(200).json({
             success: true,
@@ -1331,17 +1604,20 @@ const getPortalProductDetail = async (req, res) => {
                 unit:            p.unit,
                 description:     p.description || '',
                 image_url:       p.image_url   || null,
+                gallery,         // ✅ NEW (ফেজ ২)
                 tenant_id:       p.tenant_id,
                 company_name:    p.company_name,
                 available_stock: parseInt(p.available_stock),
                 in_stock:        parseInt(p.available_stock) > 0,
                 // Price breakdown — কাস্টমার দেখতে পাবে কোথায় কত যাচ্ছে
                 pricing: {
-                    base_price:  basePrice,
-                    vat_amount:  vatAmount,
-                    tax_amount:  taxAmount,
-                    final_price: finalPrice,
-                    has_extra:   vatAmount > 0 || taxAmount > 0,
+                    base_price:        basePrice,
+                    vat_amount:        vatAmount,
+                    tax_amount:        taxAmount,
+                    final_price:       finalPrice,
+                    has_extra:         vatAmount > 0 || taxAmount > 0,
+                    list_price:        listFinalPrice,
+                    has_special_price: basePrice < listPrice,
                 },
             }
         });
@@ -1361,8 +1637,11 @@ module.exports = {
     updateOrderRequest,
     notifyAdminStockWarning,
     getPortalProducts,
+    getPortalCategories,   // ✅ NEW (ফেজ ০)
+    getTenantPaymentInfo,  // ✅ NEW (ফেজ ৪)
     getProductSellers,
     getPortalProductDetail,
+    getRelatedProducts,    // ✅ NEW (ফেজ ২)
     getOrderTracking,
     createReturnRequest,
     getMyReturnRequests,

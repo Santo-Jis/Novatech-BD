@@ -40,16 +40,18 @@
 //     (/portal/product-sellers + getPortalProducts-এ ?seller=)
 //   • connectedCompanyIds — /portal/connections/my-companies থেকে,
 //     ProductCard-এ "নতুন কোম্পানি" ব্যাজ দেখানোর জন্য
-//   ⚠️ চলার পথে দেখলাম: ক্যাটাগরি ফিল্টার (উপরের #২) আসলে কাজ করে না —
-//   /portal/categories রুটটাই ব্যাকএন্ডে নেই (category.routes.js আছে
-//   কিন্তু /api/categories-এ, admin auth দিয়ে, portalAuth দিয়ে না), আর
-//   getPortalProducts কখনোই ?category= প্যারাম পড়ে না। তাই চিপ রো-টা
-//   silent fail হয়ে কখনো দেখাই যায় না। এই পার্টের স্কোপের বাইরে বলে
-//   ঠিক করিনি — কিন্তু ঠিক এই একই প্যাটার্নে (নতুন ফিল্টার) কাজ করছিলাম
-//   বলে চোখে পড়ল, তাই নোট করে রাখলাম।
+//
+// ✅ FIX (ফেজ ০): উপরের #২-তে যে ক্যাটাগরি ফিল্টার বাগের কথা বলা
+// হয়েছিল (portalAuth দিয়ে /portal/categories রুট না থাকা, আর
+// getPortalProducts-এ ?category= না পড়া) — সেটা এখন ঠিক হয়েছে।
+// এই ফাইলে কোনো পরিবর্তন লাগেনি, শুধু ব্যাকএন্ড wiring।
+//
+// ✅ NEW (ফেজ ০ — "বিশেষ মূল্য" ব্যাজ): getPortalProducts এখন
+// list_price/has_special_price পাঠায় (ProductCard ও ProductDetailSheet-এ
+// দেখানো হয়) — এই ফাইলে কোনো পরিবর্তন লাগেনি, ডেটা এমনিতেই pass-through হয়।
 // ============================================================
-import { useState, useEffect, useRef } from 'react'
-import { FiShoppingBag, FiClock } from 'react-icons/fi'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import { FiShoppingBag, FiClock, FiHeart } from 'react-icons/fi'
 import { portalFetch } from '../utils/api'
 import OrderTrackingModal from './OrderTrackingModal'
 import ShopView from './ecommerce/ShopView'
@@ -57,12 +59,13 @@ import ProductDetailSheet from './ecommerce/ProductDetailSheet'
 import CartBar from './ecommerce/CartBar'
 import CheckoutSheet from './ecommerce/CheckoutSheet'
 import OrderHistoryView from './ecommerce/OrderHistoryView'
+import WishlistView from './ecommerce/WishlistView'
 
 const PAGE_SIZE = 12
 
 export default function OrderRequestTab({ portalJWT }) {
   // ── সাব-ট্যাব ──────────────────────────────────────────────
-  const [subTab, setSubTab] = useState('shop')   // 'shop' | 'history'
+  const [subTab, setSubTab] = useState('shop')   // 'shop' | 'history' | 'saved' ✅ ফেজ ৩
 
   // ── শপ / প্রোডাক্ট ─────────────────────────────────────────
   const [products,        setProducts]        = useState([])
@@ -84,6 +87,17 @@ export default function OrderRequestTab({ portalJWT }) {
   // "নতুন কোম্পানি" ব্যাজ দেখাবে না — লোড হওয়ার আগে ভুল ব্যাজ ফ্ল্যাশ
   // করার চেয়ে চুপ থাকা ভালো)
   const [connectedCompanyIds, setConnectedCompanyIds] = useState(null)
+  // ✅ NEW (ফেজ ১ — আইটেম ৩) — হোরাইজন্টাল-স্ক্রল রো, শুধু ডিফল্ট
+  // (কোনো সার্চ/ফিল্টার একটিভ না থাকা) ভিউতে দেখা যায়
+  const [bestsellers,        setBestsellers]        = useState([])
+  const [newArrivals,        setNewArrivals]        = useState([])
+  // ✅ NEW (ফেজ ৩ — উইশলিস্ট)
+  const [wishlist,        setWishlist]        = useState([])
+  const [wishlistLoading, setWishlistLoading] = useState(true)
+  const wishlistIds = useMemo(() => new Set(wishlist.map(p => p.id)), [wishlist])
+  // ✅ NEW (ফেজ ৩ — সম্প্রতি দেখা) — শুধু session state, নতুন টেবিল লাগেনি
+  const [recentlyViewedIds, setRecentlyViewedIds] = useState([]) // সাম্প্রতিক আগে
+  const recentlyViewed = recentlyViewedIds.map(id => productCache.current[id]).filter(Boolean)
 
   // প্রতিটা fetch/add-এ প্রতিটা প্রোডাক্ট এখানে জমা হয় (id → product)
   const productCache = useRef({})
@@ -92,9 +106,15 @@ export default function OrderRequestTab({ portalJWT }) {
   const [cart,            setCart]            = useState({})  // { [productId]: qty }
   const [note,            setNote]            = useState('')
   const [selectedProduct, setSelectedProduct] = useState(null)
+  // ✅ NEW (ফেজ ২ — প্রোডাক্ট পেজ রিচনেস)
+  const [relatedProducts, setRelatedProducts] = useState([])
+  const [relatedLoading,  setRelatedLoading]  = useState(false)
   const [showCheckout,    setShowCheckout]    = useState(false)
   const [submitting,      setSubmitting]      = useState(false)
   const [submitError,     setSubmitError]     = useState(null)
+  // ✅ NEW (ফেজ ০ — Promotions এক্সপোজার): checkout খোলা অবস্থায়
+  // { applicable_promotions, total_discount, free_items } | null
+  const [promotionInfo,   setPromotionInfo]   = useState(null)
 
   // ── অর্ডার হিস্টোরি ────────────────────────────────────────
   const [requests,        setRequests]        = useState([])
@@ -172,6 +192,111 @@ export default function OrderRequestTab({ portalJWT }) {
     } catch { /* silent */ }
   }
 
+  // ✅ NEW (ফেজ ১ — আইটেম ৩) — বেস্টসেলার/নতুন রো। loadCategories-এর
+  // মতোই graceful — ব্যর্থ হলে চুপচাপ, রো-ই দেখাবে না
+  const loadBestsellers = async () => {
+    try {
+      const data = await portalFetch('/portal/products?sort=bestseller&limit=10', {
+        headers: { Authorization: `Bearer ${portalJWT}` }
+      })
+      const prods = data.data || []
+      prods.forEach(p => { productCache.current[p.id] = p })
+      setBestsellers(prods)
+    } catch { /* silent — optional রো */ }
+  }
+
+  const loadNewArrivals = async () => {
+    try {
+      const data = await portalFetch('/portal/products?sort=newest&limit=10', {
+        headers: { Authorization: `Bearer ${portalJWT}` }
+      })
+      const prods = data.data || []
+      prods.forEach(p => { productCache.current[p.id] = p })
+      setNewArrivals(prods)
+    } catch { /* silent — optional রো */ }
+  }
+
+  // ✅ NEW (ফেজ ৩ — উইশলিস্ট)
+  const loadWishlist = async () => {
+    setWishlistLoading(true)
+    try {
+      const data = await portalFetch('/portal/wishlist', {
+        headers: { Authorization: `Bearer ${portalJWT}` }
+      })
+      const items = data.data || []
+      items.forEach(p => { productCache.current[p.id] = p })
+      setWishlist(items)
+    } catch { /* silent — ট্যাবটা খালি দেখাবে, ক্র্যাশ করবে না */ }
+    finally { setWishlistLoading(false) }
+  }
+
+  // অপ্টিমিস্টিক — UI সাথে সাথে বদলায়, API ব্যাকগ্রাউন্ডে; ব্যর্থ হলে revert
+  const toggleWishlist = async (product) => {
+    const already = wishlistIds.has(product.id)
+    if (already) {
+      setWishlist(prev => prev.filter(p => p.id !== product.id))
+      try {
+        await portalFetch(`/portal/wishlist/${product.id}`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${portalJWT}` }
+        })
+      } catch {
+        setWishlist(prev => [...prev, product]) // revert
+      }
+    } else {
+      setWishlist(prev => [product, ...prev])
+      try {
+        await portalFetch('/portal/wishlist', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${portalJWT}` },
+          body: JSON.stringify({ product_id: product.id })
+        })
+      } catch {
+        setWishlist(prev => prev.filter(p => p.id !== product.id)) // revert
+      }
+    }
+  }
+
+  // ✅ NEW (ফেজ ২ — প্রোডাক্ট পেজ রিচনেস) — শিট সাথে সাথে cached ডেটা
+  // দিয়ে খুলে যায় (ইনস্ট্যান্ট, আগের UX অপরিবর্তিত), তারপর background-এ
+  // গ্যালারি + রিলেটেড প্রোডাক্ট fetch হয়ে merge হয়। fetch ব্যর্থ হলে
+  // চুপচাপ — cached ডেটা দিয়েই (গ্যালারি/রিলেটেড ছাড়া) চলবে।
+  const openProductDetail = async (product) => {
+    setSelectedProduct(product)
+    setRelatedProducts([])
+    setRelatedLoading(true)
+
+    // ✅ NEW (ফেজ ৩ — সম্প্রতি দেখা) — সবচেয়ে সাম্প্রতিক আগে, ডুপ্লিকেট
+    // বাদ, সর্বোচ্চ ১০টা
+    setRecentlyViewedIds(prev => [product.id, ...prev.filter(id => id !== product.id)].slice(0, 10))
+
+    portalFetch(`/portal/products/${product.id}`, {
+      headers: { Authorization: `Bearer ${portalJWT}` }
+    }).then(data => {
+      const detail = data.data
+      if (!detail) return
+      const merged = {
+        ...product,
+        gallery:           detail.gallery || [],
+        base_price:        detail.pricing?.base_price        ?? product.base_price,
+        final_price:       detail.pricing?.final_price       ?? product.final_price,
+        list_price:        detail.pricing?.list_price        ?? product.list_price,
+        has_special_price: detail.pricing?.has_special_price ?? product.has_special_price,
+        available_stock:   detail.available_stock ?? product.available_stock,
+      }
+      productCache.current[product.id] = merged
+      // ইউজার ইতিমধ্যে অন্য প্রোডাক্টে সরে গেলে পুরনো fetch-এর ফলাফল বসিয়ে দেওয়া ঠিক না
+      setSelectedProduct(curr => (curr && curr.id === product.id) ? merged : curr)
+    }).catch(() => { /* silent — cached data দিয়েই চলবে */ })
+
+    portalFetch(`/portal/products/${product.id}/related`, {
+      headers: { Authorization: `Bearer ${portalJWT}` }
+    }).then(data => {
+      setRelatedProducts(data.data || [])
+    }).catch(() => { /* silent — রো-টাই দেখাবে না */ })
+      .finally(() => setRelatedLoading(false))
+  }
+
   const loadRequests = async () => {
     setRequestsLoading(true)
     setRequestsError(null)
@@ -191,6 +316,22 @@ export default function OrderRequestTab({ portalJWT }) {
     }
   }
 
+  // ✅ NEW (ফেজ ৪ — রিফান্ড ফ্লো) — pending অর্ডার বাতিল। ব্যাকএন্ড
+  // (cancelMyOrderRequest) নিজে থেকেই বুঝে নেয় payment_status='paid'
+  // থাকলে refund_pending-এ পাঠাতে হবে কিনা — এখানে শুধু কল + রিফ্রেশ।
+  const cancelOrder = async (id) => {
+    try {
+      const res = await portalFetch(`/portal/order-requests/${id}/cancel`, {
+        method: 'PATCH',
+        headers: { Authorization: `Bearer ${portalJWT}` }
+      })
+      setSuccessMsg(res.message || 'অর্ডার বাতিল করা হয়েছে।')
+      loadRequests()
+    } catch (e) {
+      setRequestsError(e.message || 'অর্ডার বাতিল করতে সমস্যা হয়েছে।')
+    }
+  }
+
   // ✅ শপ ডিফল্ট ল্যান্ডিং হলেও হিস্টোরি সমান্তরালে লোড হয় —
   // তাই "আমার অর্ডার"-এ সুইচ করলে অপেক্ষা করতে হয় না, আর
   // pendingCount ব্যাজ শুরু থেকেই সঠিক দেখায়।
@@ -200,6 +341,9 @@ export default function OrderRequestTab({ portalJWT }) {
     loadCategories()
     loadSellers()             // ✅ নতুন (পার্ট ৩)
     loadConnectedCompanies()  // ✅ নতুন (পার্ট ৩)
+    loadBestsellers()         // ✅ NEW (ফেজ ১ — আইটেম ৩)
+    loadNewArrivals()         // ✅ NEW (ফেজ ১ — আইটেম ৩)
+    loadWishlist()            // ✅ NEW (ফেজ ৩)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -304,6 +448,71 @@ export default function OrderRequestTab({ portalJWT }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [checkoutItems.length, showCheckout])
 
+  // ✅ NEW (ফেজ ৩ — কুপন-কোড)
+  const [promoCode, setPromoCode] = useState('')
+  // ✅ NEW (ফেজ ৪ — মোবাইল ব্যাংকিং)
+  const [paymentMethod, setPaymentMethod] = useState('cod')   // 'cod' | 'bkash_manual' | 'nagad_manual'
+  const [tenantPaymentInfo, setTenantPaymentInfo] = useState({}) // { [tenantId]: {bkash_number, nagad_number} }
+  const [trxInputs, setTrxInputs] = useState({})                // { [tenantId]: {trx_id, sender_number} }
+
+  // ✅ NEW (ফেজ ০ — Promotions এক্সপোজার) — CheckoutSheet-এর sellerGroups
+  // এর মতোই tenant_id দিয়ে পাঠানো হয়, ব্যাকএন্ড প্রতিটা কোম্পানির জন্য
+  // আলাদাভাবে ক্যালকুলেট করে। শুধু তথ্যমূলক — ব্যর্থ হলে চুপচাপ লুকানো
+  // থাকে (কার্ট/চেকআউট ব্লক হয় না)।
+  // codeOverride দিলে (কুপন "প্রয়োগ" বাটনে) সেটা ব্যবহার হয়, নাহলে
+  // বর্তমান promoCode state — undefined vs '' আলাদা রাখা হয়েছে যাতে
+  // "কোড ফাঁকা করে আবার লোড" আর "state-এর বর্তমান মান দিয়ে লোড" গুলিয়ে
+  // না যায়।
+  const loadPromotions = async (codeOverride) => {
+    if (checkoutItems.length === 0) { setPromotionInfo(null); return }
+    try {
+      const items = checkoutItems.map(({ product, qty }) => ({
+        product_id: product.id,
+        tenant_id:  product.tenant_id,
+        price:      Number(product.base_price) || 0,
+        qty,
+      }))
+      const code = codeOverride !== undefined ? codeOverride : promoCode
+      const data = await portalFetch('/portal/promotions/calculate', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${portalJWT}` },
+        body: JSON.stringify({ items, promo_code: code || undefined })
+      })
+      setPromotionInfo(data.data || null)
+    } catch {
+      setPromotionInfo(null)
+    }
+  }
+
+  // কুপন "প্রয়োগ করুন" বাটনে ক্লিক — state আপডেট + সাথে সাথে রিক্যালকুলেট
+  const applyPromoCode = (code) => {
+    setPromoCode(code)
+    loadPromotions(code)
+  }
+
+  // ✅ NEW (ফেজ ৪) — checkout-এ থাকা প্রতিটা কোম্পানির bKash/Nagad নম্বর
+  const loadPaymentInfo = async () => {
+    const tenantIds = [...new Set(checkoutItems.map(({ product }) => product.tenant_id))]
+    if (tenantIds.length === 0) { setTenantPaymentInfo({}); return }
+    try {
+      const data = await portalFetch(`/portal/payment-info?tenant_ids=${tenantIds.join(',')}`, {
+        headers: { Authorization: `Bearer ${portalJWT}` }
+      })
+      setTenantPaymentInfo(data.data || {})
+    } catch { setTenantPaymentInfo({}) } // silent — মোবাইল ব্যাংকিং অপশনটাই লুকানো থাকবে
+  }
+
+  const updateTrxInput = (tenantId, field, value) => {
+    setTrxInputs(prev => ({ ...prev, [tenantId]: { ...prev[tenantId], [field]: value } }))
+  }
+
+  // checkout খোলার সময়, বা খোলা অবস্থায় আইটেম/qty বদলালে রিক্যালকুলেট
+  useEffect(() => {
+    if (showCheckout) { loadPromotions(); loadPaymentInfo() }
+    else setPromotionInfo(null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showCheckout, checkoutItems.map(i => `${i.product.id}:${i.qty}`).join(',')])
+
   // ── সার্চ ──────────────────────────────────────────────────
   // overrideValue দরকার কারণ "✕ ক্লিয়ার" বাটনে onSearchChange('')
   // আর onSearchSubmit('') একই হ্যান্ডলারে পরপর কল হয় — React state
@@ -343,18 +552,38 @@ export default function OrderRequestTab({ portalJWT }) {
   // ফেইল করলে শিটের ভেতরেই কারণ দেখায়, কার্ট/নোট অক্ষত থাকে।
   const handleConfirm = async () => {
     if (checkoutItems.length === 0) return
+    // ✅ NEW (ফেজ ৪) — মোবাইল ব্যাংকিং হলে প্রতিটা কোম্পানির TrxID লাগবে
+    // (CheckoutSheet-এও একই ভ্যালিডেশনে সাবমিট বাটন disabled থাকে,
+    // এখানে দ্বিতীয়বার — সরাসরি এই ফাংশন কল হলেও যেন গার্ড থাকে)
+    const isMobileBanking = paymentMethod === 'bkash_manual' || paymentMethod === 'nagad_manual'
+    if (isMobileBanking) {
+      const tenantIds = [...new Set(checkoutItems.map(({ product }) => product.tenant_id))]
+      const allFilled = tenantIds.every(tid => trxInputs[tid]?.trx_id?.trim())
+      if (!allFilled) {
+        setSubmitError('প্রতিটা কোম্পানির জন্য Transaction ID দিন।')
+        return
+      }
+    }
+
     setSubmitting(true)
     setSubmitError(null)
     try {
       const items = checkoutItems.map(({ product, qty }) => ({ product_id: product.id, qty }))
+      const payment = isMobileBanking
+        ? { method: paymentMethod, by_tenant: trxInputs }
+        : { method: 'cod' }
       const res = await portalFetch('/portal/order-request', {
         method: 'POST',
         headers: { Authorization: `Bearer ${portalJWT}` },
-        body: JSON.stringify({ items, note })
+        body: JSON.stringify({ items, note, payment })
       })
       setCart({})
       setNote('')
       setShowCheckout(false)
+      setPromotionInfo(null)
+      setPromoCode('')
+      setPaymentMethod('cod')
+      setTrxInputs({})
       // ✅ ব্যাকএন্ডের নিজের message সরাসরি ব্যবহার — এতে "একাধিক কোম্পানিতে
       // ভাগ হয়ে গেছে" কেসটাও সঠিকভাবে দেখা যাবে (আগে এখানে client-side
       // আলাদা করে মেসেজ বানানো হতো যা শুধু ২টা কেস জানত, split-এর কথা জানত না)
@@ -370,7 +599,7 @@ export default function OrderRequestTab({ portalJWT }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* সাব-ট্যাব সুইচ: শপ ⇄ আমার অর্ডার */}
+      {/* সাব-ট্যাব সুইচ: শপ ⇄ আমার অর্ডার ⇄ সেভড (✅ ফেজ ৩) */}
       <div className="flex bg-cp-bg-alt rounded-xl p-1 gap-1">
         <button
           onClick={() => setSubTab('shop')}
@@ -390,16 +619,31 @@ export default function OrderRequestTab({ portalJWT }) {
               : 'flex-1 h-9 rounded-lg text-cp-text-secondary text-[13px] font-cp-head font-semibold flex items-center justify-center gap-1.5 transition-colors'
           }
         >
-          <FiClock className="w-3.5 h-3.5" /> আমার অর্ডার
+          <FiClock className="w-3.5 h-3.5" /> অর্ডার
           {pendingCount > 0 && (
             <span className="bg-cp-warmth-600 text-white text-[9.5px] font-cp-head font-bold min-w-[16px] h-[16px] px-1 rounded-full flex items-center justify-center">
               {pendingCount}
             </span>
           )}
         </button>
+        <button
+          onClick={() => setSubTab('saved')}
+          className={
+            subTab === 'saved'
+              ? 'flex-1 h-9 rounded-lg bg-white shadow-sm text-cp-trust-700 text-[13px] font-cp-head font-bold flex items-center justify-center gap-1.5 transition-colors'
+              : 'flex-1 h-9 rounded-lg text-cp-text-secondary text-[13px] font-cp-head font-semibold flex items-center justify-center gap-1.5 transition-colors'
+          }
+        >
+          <FiHeart className="w-3.5 h-3.5" /> সেভড
+          {wishlist.length > 0 && (
+            <span className="bg-cp-trust-600 text-white text-[9.5px] font-cp-head font-bold min-w-[16px] h-[16px] px-1 rounded-full flex items-center justify-center">
+              {wishlist.length}
+            </span>
+          )}
+        </button>
       </div>
 
-      {subTab === 'shop' ? (
+      {subTab === 'shop' && (
         <ShopView
           products={sortedProducts}
           initialLoading={initialLoading}
@@ -412,7 +656,7 @@ export default function OrderRequestTab({ portalJWT }) {
           sort={sort}
           onSortChange={setSort}
           cart={cart}
-          onOpenDetail={setSelectedProduct}
+          onOpenDetail={openProductDetail}
           onAdd={addToCart}
           onInc={incQty}
           onDec={decQty}
@@ -428,8 +672,15 @@ export default function OrderRequestTab({ portalJWT }) {
           selectedSeller={sellerId}
           onSelectSeller={selectSeller}
           connectedCompanyIds={connectedCompanyIds}
+          bestsellers={bestsellers}
+          newArrivals={newArrivals}
+          recentlyViewed={recentlyViewed}
+          wishlistIds={wishlistIds}
+          onToggleWishlist={toggleWishlist}
         />
-      ) : (
+      )}
+
+      {subTab === 'history' && (
         <OrderHistoryView
           requests={requests}
           loading={requestsLoading}
@@ -440,6 +691,24 @@ export default function OrderRequestTab({ portalJWT }) {
           successMsg={successMsg}
           onDismissSuccess={() => setSuccessMsg('')}
           onTrack={setTrackingId}
+          onCancelOrder={cancelOrder}
+          onGoShop={() => setSubTab('shop')}
+        />
+      )}
+
+      {subTab === 'saved' && (
+        <WishlistView
+          items={wishlist}
+          loading={wishlistLoading}
+          cart={cart}
+          onOpenDetail={openProductDetail}
+          onAdd={addToCart}
+          onInc={incQty}
+          onDec={decQty}
+          onSetQty={setExactQty}
+          connectedCompanyIds={connectedCompanyIds}
+          wishlistIds={wishlistIds}
+          onToggleWishlist={toggleWishlist}
           onGoShop={() => setSubTab('shop')}
         />
       )}
@@ -447,11 +716,19 @@ export default function OrderRequestTab({ portalJWT }) {
       <ProductDetailSheet
         product={selectedProduct}
         qty={selectedProduct ? (cart[selectedProduct.id] || 0) : 0}
-        onClose={() => setSelectedProduct(null)}
+        onClose={() => { setSelectedProduct(null); setRelatedProducts([]) }}
         onAdd={addToCart}
         onInc={incQty}
         onDec={decQty}
         onSetQty={setExactQty}
+        cart={cart}
+        relatedProducts={relatedProducts}
+        relatedLoading={relatedLoading}
+        onOpenRelated={openProductDetail}
+        connectedCompanyIds={connectedCompanyIds}
+        isWishlisted={selectedProduct ? wishlistIds.has(selectedProduct.id) : false}
+        onToggleWishlist={toggleWishlist}
+        wishlistIds={wishlistIds}
         isConnected={
           connectedCompanyIds === null || !selectedProduct
             ? true
@@ -478,9 +755,17 @@ export default function OrderRequestTab({ portalJWT }) {
           onSetQty={setExactQty}
           onRemove={removeFromCart}
           pendingCount={pendingCount}
+          promotionInfo={promotionInfo}
+          promoCode={promoCode}
+          onApplyPromoCode={applyPromoCode}
+          paymentMethod={paymentMethod}
+          onPaymentMethodChange={setPaymentMethod}
+          tenantPaymentInfo={tenantPaymentInfo}
+          trxInputs={trxInputs}
+          onTrxInputChange={updateTrxInput}
           submitting={submitting}
           submitError={submitError}
-          onClose={() => { if (!submitting) { setShowCheckout(false); setSubmitError(null) } }}
+          onClose={() => { if (!submitting) { setShowCheckout(false); setSubmitError(null); setPromoCode(''); setPaymentMethod('cod'); setTrxInputs({}) } }}
           onConfirm={handleConfirm}
         />
       )}

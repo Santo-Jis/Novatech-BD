@@ -137,6 +137,7 @@ const AdminCustomerOrderRequests = IS_LIMITED_APP ? null : lazy(() => import('./
 const AdminLeaveManagement   = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/AdminLeaveManagement'))
 const AdminPromotions        = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Promotions'))
 const ChatSupportAgents      = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/ChatSupportAgents'))
+const AdminCompanyPosts      = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/CompanyPosts')) // ✅ NEW (ফেজ ১)
 const AdminNetworkDiscovery  = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/NetworkDiscovery'))
 
 // ── Manager pages — Customer APK-এ bundle হবে না ─────────────
@@ -575,6 +576,7 @@ function AppWithPermissions() {
                 <Route path="promotions"        element={<AdminPromotions />} />
                 <Route path="chat"              element={<ChatInbox />} />
                 <Route path="support-agents"    element={<ChatSupportAgents />} />
+                <Route path="company-posts"     element={<AdminCompanyPosts />} />
               </Route>
 
               {/* ── MANAGER ROUTES ── */}

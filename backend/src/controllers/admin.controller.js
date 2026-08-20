@@ -47,6 +47,11 @@ const SETTINGS_GROUPS = {
         label: 'কোম্পানি তথ্য',
         keys: ['company_name', 'company_address', 'company_phone', 'company_email'],
     },
+    payment: {
+        // ✅ NEW (ফেজ ৪ — মোবাইল ব্যাংকিং TrxID ভেরিফিকেশন)
+        label: 'মোবাইল ব্যাংকিং পেমেন্ট',
+        keys: ['bkash_number', 'nagad_number'],
+    },
 };
 
 // ✅ Phase 1 (26 July 2026): এই key গুলো এখন platform-level (Super Admin

@@ -10,7 +10,10 @@ const {
     createProduct,
     updateProduct,
     adjustStock,
-    getStockMovements
+    getStockMovements,
+    getProductImages,     // ✅ NEW (ফেজ ২)
+    addProductImage,      // ✅ NEW (ফেজ ২)
+    deleteProductImage,   // ✅ NEW (ফেজ ২)
 } = require('../controllers/product.controller');
 
 const {
@@ -85,5 +88,10 @@ router.get('/:id/suppliers',
     allowRoles('admin', 'manager', 'accountant'),
     getProductSuppliers
 );
+
+// ✅ NEW (ফেজ ২ — মাল্টি-ইমেজ গ্যালারি)
+router.get('/:id/images',           auth, getProductImages);
+router.post('/:id/images',          auth, allowRoles('admin'), addProductImage);
+router.delete('/:id/images/:imageId', auth, allowRoles('admin'), deleteProductImage);
 
 module.exports = router;

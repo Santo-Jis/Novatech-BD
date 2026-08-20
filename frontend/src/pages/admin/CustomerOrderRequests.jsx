@@ -27,6 +27,24 @@ const StatusBadge = ({ status }) => {
   )
 }
 
+// ✅ NEW (ফেজ ৪ — মোবাইল ব্যাংকিং TrxID ভেরিফিকেশন)
+const PaymentStatusBadge = ({ status }) => {
+  const map = {
+    pending_verification: { label: '⏳ যাচাই বাকি',   bg: '#FEF3C7', color: '#92400E' },
+    paid:                 { label: '✅ যাচাই হয়েছে',   bg: '#D1FAE5', color: '#065F46' },
+    failed:                { label: '❌ মেলেনি',        bg: '#FEE2E2', color: '#991B1B' },
+    refund_pending:        { label: '💸 রিফান্ড বাকি',   bg: '#FFEDD5', color: '#9A3412' },
+    refunded:              { label: '↩️ রিফান্ড হয়েছে',  bg: '#F3E8FF', color: '#6B21A8' },
+  }
+  const s = map[status]
+  if (!s) return null
+  return (
+    <span style={{ background: s.bg, color: s.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700 }}>
+      {s.label}
+    </span>
+  )
+}
+
 export default function CustomerOrderRequests() {
   const [requests, setRequests]     = useState([])
   const [workers,  setWorkers]      = useState([])
@@ -92,6 +110,18 @@ export default function CustomerOrderRequests() {
   const openModal = (req) => {
     setSelected(req)
     setForm({ status: req.status, assigned_to: req.assigned_to || '', admin_note: req.admin_note || '' })
+  }
+
+  // ✅ NEW (ফেজ ৪) — Admin নিজের bKash/Nagad অ্যাপে TrxID মিলিয়ে
+  // এখান থেকে সরাসরি যাচাই করবেন, মডাল খোলা লাগবে না
+  const quickVerify = async (id, payment_status) => {
+    try {
+      await api.patch(`/customer-order-requests/${id}`, { payment_status })
+      showToast(payment_status === 'paid' ? '✅ পেমেন্ট যাচাই হয়েছে!' : '❌ পেমেন্ট বাতিল করা হয়েছে।')
+      loadRequests()
+    } catch {
+      showToast('❌ আপডেট করতে সমস্যা হয়েছে।')
+    }
   }
 
   const filterOptions = [
@@ -226,6 +256,54 @@ export default function CustomerOrderRequests() {
                   <p style={{ fontSize: 12, color: '#0369a1', marginBottom: 8 }}>
                     💬 কাস্টমারের নোট: {req.note}
                   </p>
+                )}
+
+                {/* ✅ NEW (ফেজ ৪ — মোবাইল ব্যাংকিং TrxID ভেরিফিকেশন) */}
+                {req.fulfillment_type === 'online_payment' && (
+                  <div style={{ background: '#FFFBEB', border: '1px solid #FDE68A', borderRadius: 10, padding: '10px 12px', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: '#92400E' }}>
+                        {req.payment_method === 'bkash_manual' ? '📱 bKash' : req.payment_method === 'nagad_manual' ? '📱 Nagad' : '📱 মোবাইল ব্যাংকিং'} পেমেন্ট
+                      </span>
+                      <PaymentStatusBadge status={req.payment_status} />
+                    </div>
+                    <p style={{ fontSize: 12, color: '#78350F', margin: 0 }}>
+                      TrxID: <b>{req.payment_trx_id || '—'}</b>
+                    </p>
+                    {req.payment_sender_number && (
+                      <p style={{ fontSize: 12, color: '#78350F', margin: '2px 0 0' }}>
+                        প্রেরকের নম্বর: <b>{req.payment_sender_number}</b>
+                      </p>
+                    )}
+                    {req.payment_status === 'pending_verification' && (
+                      <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                        <button
+                          onClick={() => quickVerify(req.id, 'paid')}
+                          style={{ flex: 1, padding: '7px', background: '#16A34A', color: 'white', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          ✅ যাচাই সম্পন্ন
+                        </button>
+                        <button
+                          onClick={() => quickVerify(req.id, 'failed')}
+                          style={{ flex: 1, padding: '7px', background: '#DC2626', color: 'white', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                        >
+                          ❌ মেলেনি
+                        </button>
+                      </div>
+                    )}
+                    {/* ✅ NEW (ফেজ ৪ — রিফান্ড ফ্লো): অর্ডার বাতিল হয়েছে
+                        কিন্তু টাকা আগেই নেওয়া হয়েছিল — নিজের bKash/Nagad
+                        অ্যাপ থেকে Send Money করে ফেরত দেওয়ার পর এখানে
+                        ট্যাপ করবেন */}
+                    {req.payment_status === 'refund_pending' && (
+                      <button
+                        onClick={() => quickVerify(req.id, 'refunded')}
+                        style={{ width: '100%', padding: '7px', marginTop: 8, background: '#EA580C', color: 'white', border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                      >
+                        💸 রিফান্ড পাঠানো হয়েছে (কনফার্ম করুন)
+                      </button>
+                    )}
+                  </div>
                 )}
 
                 {/* অ্যাকশন বাটন */}

@@ -5,7 +5,7 @@ import { useAppStore } from '../store/app.store'
 import ErrorBoundary from '../components/ErrorBoundary'
 import NotificationBell from '../components/NotificationBell'
 import ChatBell from '../components/ChatBell'
-import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiSend, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag, FiLink, FiTruck, FiClipboard, FiArchive, FiFileText, FiBox } from 'react-icons/fi'
+import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiSend, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag, FiLink, FiTruck, FiClipboard, FiArchive, FiFileText, FiBox, FiVolume2 } from 'react-icons/fi'
 
 // সবসময় দেখা যাবে — গ্রুপের বাইরে (ঘন ঘন ব্যবহার হয়)
 const pinnedItems = [
@@ -41,6 +41,7 @@ const navGroups = [
       { path: '/admin/batches',    icon: <FiArchive />,  label: 'ব্যাচ ও মেয়াদ' },
       { path: '/admin/price-lists', icon: <FiTag />,     label: 'মূল্য তালিকা' },
       { path: '/admin/promotions', icon: <FiTag />,     label: 'অফার / প্রমোশন' },
+      { path: '/admin/company-posts', icon: <FiVolume2 />, label: 'কোম্পানির পোস্ট' },
       { path: '/admin/routes',     icon: <FiMapPin />,  label: 'রুট ম্যানেজমেন্ট' },
     ],
   },

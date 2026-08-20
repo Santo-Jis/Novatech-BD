@@ -17,7 +17,8 @@
 // filtered list থেকে না) — তাই সার্চ পাল্টালেও কার্টের আইটেমের
 // নাম "product_id" হয়ে যাওয়ার পুরনো বাগ এখানে হয় না।
 // ============================================================
-import { FiX, FiPlus, FiTrash2, FiPackage, FiAlertTriangle, FiAlertCircle, FiSend } from 'react-icons/fi'
+import { useState } from 'react'
+import { FiX, FiPlus, FiTrash2, FiPackage, FiAlertTriangle, FiAlertCircle, FiSend, FiTag } from 'react-icons/fi'
 import CpButton from '../ui/CpButton'
 import QtyStepper from './QtyStepper'
 import CompanyTag from '../CompanyTag'
@@ -44,11 +45,21 @@ export default function CheckoutSheet({
   onSetQty,
   onRemove,
   pendingCount = 0,
+  promotionInfo = null, // ✅ NEW (ফেজ ০) — { applicable_promotions, total_discount, free_items, code_matched } | null
+  promoCode = '',        // ✅ NEW (ফেজ ৩ — কুপন-কোড) — সর্বশেষ "প্রয়োগ করা" কোড
+  onApplyPromoCode,       // ✅ NEW (ফেজ ৩)
+  paymentMethod = 'cod',         // ✅ NEW (ফেজ ৪) — 'cod' | 'bkash_manual' | 'nagad_manual'
+  onPaymentMethodChange,          // ✅ NEW (ফেজ ৪)
+  tenantPaymentInfo = {},         // ✅ NEW (ফেজ ৪) — { [tenantId]: { bkash_number, nagad_number } }
+  trxInputs = {},                 // ✅ NEW (ফেজ ৪) — { [tenantId]: { trx_id, sender_number } }
+  onTrxInputChange,                // ✅ NEW (ফেজ ৪)
   submitting = false,
   submitError = null,
   onClose,
   onConfirm,
 }) {
+  const [codeInput, setCodeInput] = useState(promoCode || '')
+
   const subtotal  = items.reduce((s, { product, qty }) => s + (Number(product.base_price) || 0) * qty, 0)
   const vatTotal  = items.reduce((s, { product, qty }) => s + (Number(product.vat_amount) || 0) * qty, 0)
   const taxTotal  = items.reduce((s, { product, qty }) => s + (Number(product.tax_amount) || 0) * qty, 0)
@@ -80,6 +91,16 @@ export default function CheckoutSheet({
   }, {})
   const sellerGroupList = Object.values(sellerGroups)
   const sellerCount = sellerGroupList.length
+
+  // ✅ NEW (ফেজ ৪) — একটা method তখনই অফার করা হবে যদি cart-এর
+  // প্রতিটা বিক্রেতা-গ্রুপেই সেই নম্বর configured থাকে (multi-vendor
+  // চেকআউটে uniform রাখতে, জটিলতা কমাতে — নাহলে এক কোম্পানির bKash
+  // নম্বর নেই এমন অবস্থায় "bKash বাছুন" দেখানো বিভ্রান্তিকর হতো)
+  const bkashAvailable = sellerGroupList.length > 0 && sellerGroupList.every(g => tenantPaymentInfo[g.tenantId]?.bkash_number)
+  const nagadAvailable = sellerGroupList.length > 0 && sellerGroupList.every(g => tenantPaymentInfo[g.tenantId]?.nagad_number)
+  const isMobileBanking = paymentMethod === 'bkash_manual' || paymentMethod === 'nagad_manual'
+  // সব গ্রুপে TrxID পূরণ হয়েছে কিনা — মোবাইল ব্যাংকিং হলে সাবমিট-এর আগে লাগবে
+  const allTrxFilled = sellerGroupList.every(g => trxInputs[g.tenantId]?.trx_id?.trim())
 
   return (
     <div
@@ -181,6 +202,141 @@ export default function CheckoutSheet({
                 ))}
               </div>
 
+              {/* ✅ NEW (ফেজ ৩ — কুপন-কোড) — DB-তে promo_code কলাম আগে
+                  থেকেই ছিল, শুধু dormant; matching লজিকে ও এখানে UI-তে
+                  এক্সপোজ করা হলো */}
+              {/* ✅ NEW (ফেজ ৪) — পেমেন্ট পদ্ধতি */}
+              {onPaymentMethodChange && (
+                <div>
+                  <p className="text-[12px] font-semibold text-cp-text-secondary mb-1.5 font-cp-body">পেমেন্ট পদ্ধতি</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => onPaymentMethodChange('cod')}
+                      className={paymentMethod === 'cod'
+                        ? 'rounded-xl border-2 border-cp-trust-500 bg-cp-trust-100 p-2.5 text-left'
+                        : 'rounded-xl border-2 border-cp-border bg-white p-2.5 text-left'}
+                    >
+                      <p className="text-[12.5px] font-bold text-cp-text-primary font-cp-head">🚚 ক্যাশ অন ডেলিভারি</p>
+                      <p className="text-[10px] text-cp-text-muted mt-0.5 font-cp-body">ডেলিভারিতে নগদ পরিশোধ</p>
+                    </button>
+                    {(bkashAvailable || nagadAvailable) && (
+                      <button
+                        onClick={() => onPaymentMethodChange(bkashAvailable ? 'bkash_manual' : 'nagad_manual')}
+                        className={isMobileBanking
+                          ? 'rounded-xl border-2 border-cp-trust-500 bg-cp-trust-100 p-2.5 text-left'
+                          : 'rounded-xl border-2 border-cp-border bg-white p-2.5 text-left'}
+                      >
+                        <p className="text-[12.5px] font-bold text-cp-text-primary font-cp-head">📱 মোবাইল ব্যাংকিং</p>
+                        <p className="text-[10px] text-cp-text-muted mt-0.5 font-cp-body">এখনই bKash/Nagad-এ পে করুন</p>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* bKash/Nagad দুটোই উপলব্ধ হলে বেছে নেওয়ার অপশন */}
+                  {isMobileBanking && bkashAvailable && nagadAvailable && (
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => onPaymentMethodChange('bkash_manual')}
+                        className={paymentMethod === 'bkash_manual'
+                          ? 'flex-1 py-1.5 rounded-lg bg-cp-trust-500 text-white text-[11px] font-cp-head font-bold'
+                          : 'flex-1 py-1.5 rounded-lg bg-cp-bg-alt text-cp-text-secondary text-[11px] font-cp-head font-bold'}
+                      >
+                        bKash
+                      </button>
+                      <button
+                        onClick={() => onPaymentMethodChange('nagad_manual')}
+                        className={paymentMethod === 'nagad_manual'
+                          ? 'flex-1 py-1.5 rounded-lg bg-cp-trust-500 text-white text-[11px] font-cp-head font-bold'
+                          : 'flex-1 py-1.5 rounded-lg bg-cp-bg-alt text-cp-text-secondary text-[11px] font-cp-head font-bold'}
+                      >
+                        Nagad
+                      </button>
+                    </div>
+                  )}
+
+                  {/* মোবাইল ব্যাংকিং বাছলে — প্রতিটা বিক্রেতার জন্য আলাদা
+                      নম্বর + TrxID এন্ট্রি (মাল্টি-ভেন্ডর হলে একাধিকবার
+                      Send Money করতে হবে, প্রতিটা কোম্পানির নম্বরে আলাদা) */}
+                  {isMobileBanking && (
+                    <div className="flex flex-col gap-2.5 mt-3">
+                      {sellerGroupList.map(group => {
+                        const info   = tenantPaymentInfo[group.tenantId] || {}
+                        const number = paymentMethod === 'bkash_manual' ? info.bkash_number : info.nagad_number
+                        const groupTotal = group.entries.reduce((s, { product, qty }) => s + (Number(product.final_price ?? product.base_price) || 0) * qty, 0)
+                        const trx = trxInputs[group.tenantId] || { trx_id: '', sender_number: '' }
+                        return (
+                          <div key={group.tenantId} className="rounded-xl border border-cp-border p-3 flex flex-col gap-2">
+                            {sellerCount > 1 && (
+                              <p className="text-[11px] font-semibold text-cp-text-secondary font-cp-body">{group.sellerName}</p>
+                            )}
+                            <p className="text-[12px] text-cp-text-primary font-cp-body">
+                              এই নম্বরে <span className="font-bold">৳{groupTotal.toFixed(2)}</span> Send Money করুন: <span className="font-bold text-cp-trust-700">{number || '—'}</span>
+                            </p>
+                            <input
+                              value={trx.trx_id}
+                              onChange={e => onTrxInputChange(group.tenantId, 'trx_id', e.target.value.toUpperCase())}
+                              placeholder="Transaction ID (TrxID)"
+                              className="w-full h-9 px-3 rounded-lg border border-cp-border bg-white text-[12px] font-cp-body focus:outline-none focus:border-cp-trust-500"
+                            />
+                            <input
+                              value={trx.sender_number}
+                              onChange={e => onTrxInputChange(group.tenantId, 'sender_number', e.target.value)}
+                              placeholder="যে নম্বর থেকে পাঠিয়েছেন (সম্পূর্ণ বা শেষ ৫ সংখ্যা)"
+                              className="w-full h-9 px-3 rounded-lg border border-cp-border bg-white text-[12px] font-cp-body focus:outline-none focus:border-cp-trust-500"
+                            />
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {onApplyPromoCode && (
+                <div className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <FiTag className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-cp-text-muted pointer-events-none" />
+                    <input
+                      value={codeInput}
+                      onChange={e => setCodeInput(e.target.value.toUpperCase())}
+                      onKeyDown={e => { if (e.key === 'Enter' && codeInput) onApplyPromoCode(codeInput) }}
+                      placeholder="প্রোমো কোড থাকলে দিন (ঐচ্ছিক)"
+                      className="w-full h-10 pl-8 pr-3 rounded-xl border border-cp-border bg-white text-[12.5px] font-cp-body text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:border-cp-trust-500"
+                    />
+                  </div>
+                  <button
+                    onClick={() => codeInput && onApplyPromoCode(codeInput)}
+                    disabled={!codeInput}
+                    className="px-4 h-10 rounded-xl bg-cp-trust-500 active:bg-cp-trust-900 text-white text-[12px] font-cp-head font-bold disabled:opacity-40 flex-shrink-0"
+                  >
+                    প্রয়োগ
+                  </button>
+                </div>
+              )}
+
+              {/* ✅ NEW (ফেজ ০ — Promotions এক্সপোজার): প্রযোজ্য অফার —
+                  শুধু তথ্যের জন্য, নিচের "সর্বমোট"-এ এখনো যোগ হয়নি
+                  (SR অর্ডার কনফার্ম করার সময় প্রয়োগ করবেন)। কুপন-কোড
+                  দেওয়া থাকলে তিন রকম ফলাফল দেখানো হয়: প্রযোজ্য অফার
+                  পাওয়া গেছে, কোড ভুল, বা কোড ঠিক কিন্তু শর্ত পূরণ হয়নি। */}
+              {promotionInfo?.applicable_promotions?.length > 0 ? (
+                <div className="bg-cp-trust-100 rounded-xl p-3 flex flex-col gap-1.5">
+                  <p className="text-[11px] font-semibold text-cp-trust-700 font-cp-body">🏷️ প্রযোজ্য অফার</p>
+                  {promotionInfo.applicable_promotions.map(p => (
+                    <p key={p.promotion_id} className="text-[12px] text-cp-trust-700 font-cp-body leading-relaxed">
+                      {p.message}
+                    </p>
+                  ))}
+                  <p className="text-[10.5px] text-cp-trust-600 font-cp-body">
+                    অর্ডার কনফার্ম করার সময় SR এই ছাড় প্রয়োগ করবেন
+                  </p>
+                </div>
+              ) : promoCode && promotionInfo?.code_matched === false ? (
+                <p className="text-[12px] text-cp-error font-cp-body px-1">এই কোডটি সঠিক নয় বা মেয়াদ শেষ হয়ে গেছে</p>
+              ) : promoCode && promotionInfo?.code_matched === true ? (
+                <p className="text-[12px] text-cp-text-secondary font-cp-body px-1">কোডটি সঠিক, কিন্তু এখনো শর্ত পূরণ হয়নি (যেমন ন্যূনতম অর্ডার-মূল্য)</p>
+              ) : null}
+
               {/* দামের ব্রেকডাউন */}
               <div className="bg-cp-bg-alt rounded-xl p-3.5 flex flex-col gap-1.5">
                 <PriceRow label="সাব-টোটাল" value={subtotal} />
@@ -200,19 +356,23 @@ export default function CheckoutSheet({
                 </div>
               )}
 
-              {/* নোট */}
+              {/* নোট — ✅ NEW (ফেজ ৪ — Path A পলিশ): ডেলিভারি-নির্দিষ্ট
+                  লেবেল/প্লেসহোল্ডার, আগে জেনেরিক "নোট" ছিল */}
               <div>
                 <label className="text-[12px] font-semibold text-cp-text-secondary mb-1.5 block font-cp-body">
-                  নোট (ঐচ্ছিক)
+                  ডেলিভারি নোট (ঐচ্ছিক)
                 </label>
                 <textarea
                   value={note}
                   onChange={e => onNoteChange(e.target.value)}
                   disabled={submitting}
                   rows={2}
-                  placeholder="বিশেষ কোনো নির্দেশনা থাকলে লিখুন..."
+                  placeholder="ডেলিভারির সময়/ঠিকানা নিয়ে বিশেষ কিছু থাকলে লিখুন..."
                   className="w-full rounded-xl border border-cp-border p-3 text-[13px] font-cp-body text-cp-text-primary placeholder:text-cp-text-muted resize-none focus:outline-none focus:border-cp-trust-500 disabled:opacity-60"
                 />
+                <p className="text-[10.5px] text-cp-text-muted mt-1.5 font-cp-body">
+                  📦 সাধারণত ১–৩ কার্যদিবসের মধ্যে SR যোগাযোগ করে ডেলিভারি নিশ্চিত করেন
+                </p>
               </div>
 
               {/* সাবমিট এরর — শিট বন্ধ না হয়ে এখানেই স্পষ্ট কারণ দেখাবে */}
@@ -245,6 +405,7 @@ export default function CheckoutSheet({
               className="flex-[1.4]"
               icon={FiSend}
               loading={submitting}
+              disabled={submitting || (isMobileBanking && !allTrxFilled)}
               onClick={onConfirm}
             >
               {submitting ? 'পাঠানো হচ্ছে...' : 'নিশ্চিত করুন'}

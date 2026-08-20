@@ -197,6 +197,7 @@ const creditApprovalRoutes      = require('./routes/creditApproval.routes'); // 
 const jisAiRoutes               = require('./routes/jisai.routes');           // ✅ JIS-AI WhatsApp integration
 const collectionRoutes          = require('./routes/collection.routes');       // ✅ collection (বাকি আদায়)
 const promotionRoutes           = require('./routes/promotion.routes');        // ← নতুন (Promotions)
+const companyPostRoutes         = require('./routes/companyPost.routes');      // ✅ NEW (ফেজ ১ — কোম্পানির পোস্ট)
 const deliveryRoutes            = require('./routes/delivery.routes');         // ← নতুন (Deliveries)
 const coverageRoutes            = require('./routes/coverage.routes');         // ← নতুন (Coverage)
 const leaderboardRoutes         = require('./routes/leaderboard.routes');      // ← নতুন (Leaderboard)
@@ -263,6 +264,7 @@ app.use('/api/return',                  returnRoutes);
 app.use('/api/credit-approvals',        creditApprovalRoutes); // ✅ credit approval workflow
 app.use('/api/collections',             collectionRoutes);     // ✅ collection (বাকি আদায়)
 app.use('/api/promotions',              promotionRoutes);      // ← নতুন
+app.use('/api/company-posts',           companyPostRoutes);    // ✅ NEW (ফেজ ১)
 app.use('/api/deliveries',              deliveryRoutes);       // ← নতুন
 app.use('/api/coverage',                coverageRoutes);       // ← নতুন
 app.use('/api/leaderboard',             leaderboardRoutes);    // ← নতুন

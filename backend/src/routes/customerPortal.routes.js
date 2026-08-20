@@ -60,7 +60,9 @@ const {
 } = require('../controllers/customerPortal.controller');
 
 const { sendCreditReminder } = require('../controllers/creditReminder.controller');
-const { getPortalActivePromotions } = require('../controllers/promotion.controller'); // ← Promotions Phase ৫
+// ✅ getPortalActivePromotions ইতিমধ্যে আছে (Promotions Phase ৫) — শুধু
+// calculatePortalPromotions যোগ করা হলো (ফেজ ০ — checkout discount calc)
+const { getPortalActivePromotions, calculatePortalPromotions } = require('../controllers/promotion.controller'); // ← Promotions Phase ৫ + ✅ NEW (ফেজ ০)
 const {
     getNotifications,
     markAllRead,
@@ -73,12 +75,24 @@ const {
     getMyOrderRequests,
     cancelMyOrderRequest,
     getPortalProducts,
+    getPortalCategories,
+    getTenantPaymentInfo,
     getProductSellers,
     getPortalProductDetail,
+    getRelatedProducts,
     getOrderTracking,
     createReturnRequest,
     getMyReturnRequests,
 } = require('../controllers/customerOrderRequest.controller');
+
+// ✅ NEW (ফেজ ১ — কোম্পানির পোস্ট)
+const { getPortalCompanyPosts } = require('../controllers/companyPost.controller');
+
+// ✅ NEW (ফেজ ৩ — উইশলিস্ট)
+const { getWishlist, addToWishlist, removeFromWishlist } = require('../controllers/wishlist.controller');
+
+// ✅ NEW (ফেজ ৪ — Path B ভিত্তি: ঠিকানা-বুক)
+const { getAddresses, addAddress, updateAddress, deleteAddress } = require('../controllers/customerAddress.controller');
 
 const { auth }          = require('../middlewares/auth');
 const { aiTokenBucket } = require('../middlewares/aiTokenBucket');
@@ -310,7 +324,20 @@ router.patch('/notifications/:id/read',    portalAuth, markOneRead);
 
 router.get('/products',                    portalAuth, getPortalProducts);
 router.get('/products/:id',                portalAuth, getPortalProductDetail);
+router.get('/products/:id/related',        portalAuth, getRelatedProducts); // ✅ NEW (ফেজ ২)
+router.get('/categories',                  portalAuth, getPortalCategories); // ✅ FIX (ফেজ ০)
+router.get('/payment-info',                portalAuth, getTenantPaymentInfo); // ✅ NEW (ফেজ ৪)
 router.get('/product-sellers',             portalAuth, getProductSellers); // ✅ NEW (পার্ট ৩)
+router.get('/promotions/active',           portalAuth, getPortalActivePromotions); // ← Promotions Phase ৫
+router.post('/promotions/calculate',       portalAuth, calculatePortalPromotions); // ✅ NEW (ফেজ ০)
+router.get('/company-posts',               portalAuth, getPortalCompanyPosts); // ✅ NEW (ফেজ ১)
+router.get('/wishlist',                    portalAuth, getWishlist);          // ✅ NEW (ফেজ ৩)
+router.post('/wishlist',                   portalAuth, addToWishlist);        // ✅ NEW (ফেজ ৩)
+router.delete('/wishlist/:productId',      portalAuth, removeFromWishlist);   // ✅ NEW (ফেজ ৩)
+router.get('/addresses',                   portalAuth, getAddresses);         // ✅ NEW (ফেজ ৪)
+router.post('/addresses',                  portalAuth, addAddress);           // ✅ NEW (ফেজ ৪)
+router.put('/addresses/:id',               portalAuth, updateAddress);        // ✅ NEW (ফেজ ৪)
+router.delete('/addresses/:id',            portalAuth, deleteAddress);        // ✅ NEW (ফেজ ৪)
 router.get('/promotions/active',           portalAuth, getPortalActivePromotions); // ← Promotions Phase ৫
 router.post('/order-request',              portalAuth, createOrderRequest);
 router.get('/order-requests',              portalAuth, getMyOrderRequests);

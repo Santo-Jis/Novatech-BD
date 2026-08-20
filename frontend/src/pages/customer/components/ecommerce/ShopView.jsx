@@ -11,7 +11,7 @@
 // করবে। সর্ট সম্পূর্ণ ক্লায়েন্ট-সাইডে (যা লোড হয়ে আছে তার উপর) —
 // এতে ব্যাকএন্ডে কোনো পরিবর্তন লাগে না।
 // ============================================================
-import { FiSearch, FiX, FiPackage, FiAlertTriangle, FiChevronDown } from 'react-icons/fi'
+import { FiSearch, FiX, FiPackage, FiAlertTriangle, FiChevronDown, FiTrendingUp, FiZap, FiClock } from 'react-icons/fi'
 import ProductCard from './ProductCard'
 import CpButton from '../ui/CpButton'
 import { getCompanyColor } from '../../utils/companyColor'
@@ -21,6 +21,43 @@ const SORT_OPTIONS = [
   { key: 'price_asc',  label: 'কম দাম আগে' },
   { key: 'price_desc', label: 'বেশি দাম আগে' },
 ]
+
+// ✅ NEW (ফেজ ১ — আইটেম ৩) — হরাইজন্টাল-স্ক্রল রো, ProductCard-ই
+// রিইউজ করে (একই ব্যাজ/বিশেষ-মূল্য/অ্যাড-টু-কার্ট/উইশলিস্ট লজিক, আলাদা
+// কার্ড কম্পোনেন্ট বানানো লাগেনি) — শুধু একটা fixed-width র‍্যাপারে বসানো
+function HorizontalProductRow({
+  title, icon: Icon, tone = 'trust', products, cart, onOpenDetail, onAdd, onInc, onDec, onSetQty,
+  connectedCompanyIds, wishlistIds, onToggleWishlist,   // ✅ NEW (ফেজ ৩)
+}) {
+  if (!products.length) return null
+  const iconColor = tone === 'warmth' ? 'text-cp-warmth-600' : 'text-cp-trust-500'
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 mb-2">
+        <Icon className={`w-3.5 h-3.5 ${iconColor}`} />
+        <p className="text-[12px] font-bold text-cp-text-primary font-cp-head">{title}</p>
+      </div>
+      <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-1">
+        {products.map(p => (
+          <div key={p.id} className="w-[148px] flex-shrink-0">
+            <ProductCard
+              product={p}
+              qty={cart[p.id] || 0}
+              onOpen={onOpenDetail}
+              onAdd={onAdd}
+              onInc={onInc}
+              onDec={onDec}
+              onSetQty={onSetQty}
+              isConnected={connectedCompanyIds === null ? true : connectedCompanyIds.has(p.tenant_id)}
+              isWishlisted={wishlistIds ? wishlistIds.has(p.id) : false}
+              onToggleWishlist={onToggleWishlist}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function ProductCardSkeleton() {
   return (
@@ -64,6 +101,11 @@ export default function ShopView({
   selectedSeller = '',
   onSelectSeller,
   connectedCompanyIds = null,
+  bestsellers = [],   // ✅ NEW (ফেজ ১ — আইটেম ৩)
+  newArrivals = [],   // ✅ NEW (ফেজ ১ — আইটেম ৩)
+  recentlyViewed = [],           // ✅ NEW (ফেজ ৩ — সম্প্রতি দেখা)
+  wishlistIds,                   // ✅ NEW (ফেজ ৩ — উইশলিস্ট)
+  onToggleWishlist,               // ✅ NEW (ফেজ ৩ — উইশলিস্ট)
 }) {
   return (
     <div className="flex flex-col gap-3">
@@ -139,6 +181,59 @@ export default function ShopView({
         </div>
       )}
 
+      {/* ✅ NEW (ফেজ ১/৩) — সম্প্রতি দেখা → বেস্টসেলার → নতুন, এই ক্রমে।
+          শুধু ডিফল্ট ভিউতে (কোনো সার্চ/ক্যাটাগরি/বিক্রেতা ফিল্টার
+          একটিভ না থাকলে) — ফিল্টার করা অবস্থায় এগুলো বিভ্রান্তিকর হতো */}
+      {!committedSearch && !selectedCategory && !selectedSeller && (
+        <>
+          <HorizontalProductRow
+            title="সম্প্রতি দেখেছেন"
+            icon={FiClock}
+            tone="trust"
+            products={recentlyViewed}
+            cart={cart}
+            onOpenDetail={onOpenDetail}
+            onAdd={onAdd}
+            onInc={onInc}
+            onDec={onDec}
+            onSetQty={onSetQty}
+            connectedCompanyIds={connectedCompanyIds}
+            wishlistIds={wishlistIds}
+            onToggleWishlist={onToggleWishlist}
+          />
+          <HorizontalProductRow
+            title="বেস্টসেলার"
+            icon={FiTrendingUp}
+            tone="warmth"
+            products={bestsellers}
+            cart={cart}
+            onOpenDetail={onOpenDetail}
+            onAdd={onAdd}
+            onInc={onInc}
+            onDec={onDec}
+            onSetQty={onSetQty}
+            connectedCompanyIds={connectedCompanyIds}
+            wishlistIds={wishlistIds}
+            onToggleWishlist={onToggleWishlist}
+          />
+          <HorizontalProductRow
+            title="নতুন পণ্য"
+            icon={FiZap}
+            tone="trust"
+            products={newArrivals}
+            cart={cart}
+            onOpenDetail={onOpenDetail}
+            onAdd={onAdd}
+            onInc={onInc}
+            onDec={onDec}
+            onSetQty={onSetQty}
+            connectedCompanyIds={connectedCompanyIds}
+            wishlistIds={wishlistIds}
+            onToggleWishlist={onToggleWishlist}
+          />
+        </>
+      )}
+
       {/* সর্ট চিপ + মোট সংখ্যা */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
@@ -196,6 +291,8 @@ export default function ShopView({
                 onDec={onDec}
                 onSetQty={onSetQty}
                 isConnected={connectedCompanyIds === null ? true : connectedCompanyIds.has(p.tenant_id)}
+                isWishlisted={wishlistIds ? wishlistIds.has(p.id) : false}
+                onToggleWishlist={onToggleWishlist}
               />
             ))}
           </div>

@@ -348,11 +348,96 @@ const getStockMovements = async (req, res) => {
     }
 };
 
+// ============================================================
+// PRODUCT IMAGE GALLERY — ✅ NEW (ফেজ ২ — মাল্টি-ইমেজ গ্যালারি)
+// products.image_url কভার/প্রথম ছবি হিসেবে থাকে (অপরিবর্তিত), এই
+// টেবিল ADDITIONAL গ্যালারি ছবি। প্রতিটা এন্ডপয়েন্টে tenant_id
+// দিয়ে product-এর মালিকানা যাচাই করা হয় — অন্য কোম্পানির প্রোডাক্টের
+// গ্যালারি এডিট করতে পারবে না।
+// ============================================================
+
+// GET /api/products/:id/images
+const getProductImages = async (req, res) => {
+    try {
+        const owns = await query(
+            `SELECT id FROM products WHERE id = $1 AND tenant_id = $2`,
+            [req.params.id, req.tenantId]
+        );
+        if (!owns.rows.length) {
+            return res.status(404).json({ success: false, message: 'পণ্য পাওয়া যায়নি।' });
+        }
+        const result = await query(
+            `SELECT * FROM product_images WHERE product_id = $1 ORDER BY sort_order ASC, created_at ASC`,
+            [req.params.id]
+        );
+        return res.json({ success: true, data: result.rows });
+    } catch (error) {
+        logger.error('❌ getProductImages Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// POST /api/products/:id/images  { image_url }
+const addProductImage = async (req, res) => {
+    try {
+        const { image_url } = req.body;
+        if (!image_url) {
+            return res.status(400).json({ success: false, message: 'ছবির URL দিন।' });
+        }
+        const owns = await query(
+            `SELECT id FROM products WHERE id = $1 AND tenant_id = $2`,
+            [req.params.id, req.tenantId]
+        );
+        if (!owns.rows.length) {
+            return res.status(404).json({ success: false, message: 'পণ্য পাওয়া যায়নি।' });
+        }
+        // সর্বোচ্চ ৬টা গ্যালারি ছবি — মোবাইল ডেটার কথা মাথায় রেখে
+        const countRes = await query(`SELECT COUNT(*) FROM product_images WHERE product_id = $1`, [req.params.id]);
+        if (parseInt(countRes.rows[0].count) >= 6) {
+            return res.status(400).json({ success: false, message: 'সর্বোচ্চ ৬টা ছবি যোগ করা যাবে।' });
+        }
+        const result = await query(
+            `INSERT INTO product_images (product_id, image_url, sort_order)
+             VALUES ($1, $2, COALESCE((SELECT MAX(sort_order)+1 FROM product_images WHERE product_id = $1), 0))
+             RETURNING *`,
+            [req.params.id, image_url]
+        );
+        return res.status(201).json({ success: true, data: result.rows[0] });
+    } catch (error) {
+        logger.error('❌ addProductImage Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+// DELETE /api/products/:id/images/:imageId
+const deleteProductImage = async (req, res) => {
+    try {
+        const owns = await query(
+            `SELECT id FROM products WHERE id = $1 AND tenant_id = $2`,
+            [req.params.id, req.tenantId]
+        );
+        if (!owns.rows.length) {
+            return res.status(404).json({ success: false, message: 'পণ্য পাওয়া যায়নি।' });
+        }
+        await query(
+            `DELETE FROM product_images WHERE id = $1 AND product_id = $2`,
+            [req.params.imageId, req.params.id]
+        );
+        return res.json({ success: true, message: 'ছবি সরানো হয়েছে।' });
+    } catch (error) {
+        logger.error('❌ deleteProductImage Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getProducts,
     getProduct,
     createProduct,
     updateProduct,
     adjustStock,
-    getStockMovements
+    getStockMovements,
+    getProductImages,     // ✅ NEW (ফেজ ২)
+    addProductImage,      // ✅ NEW (ফেজ ২)
+    deleteProductImage,   // ✅ NEW (ফেজ ২)
 };

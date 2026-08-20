@@ -793,6 +793,94 @@ const getPortalActivePromotions = async (req, res) => {
     }
 };
 
+// ============================================================
+// POST /api/portal/promotions/calculate
+// ✅ NEW (ফেজ ০/৩ — Promotions পোর্টাল এক্সপোজার + কুপন-কোড)
+// calculatePromotions (উপরে, worker/admin)-এর ঠিক একই getEligiblePromotions
+// ইঞ্জিন ব্যবহার করে (margin guard/budget cap/stacking/targeting সব
+// এমনিতেই পাওয়া যায়, ডুপ্লিকেট করতে হয়নি) — কিন্তু portal cart-এ
+// একাধিক কোম্পানির item থাকতে পারে (multi-vendor), তাই tenant_id
+// দিয়ে group করে প্রতিটা group আলাদাভাবে শুধু সেই tenant-এর
+// promotion-এর বিপরীতে ক্যালকুলেট হয়।
+//
+// ⚠️ READ-ONLY / তথ্যমূলক প্রিভিউ — এটা শুধু চেকআউটে "প্রযোজ্য অফার"
+// মেসেজ দেখানোর জন্য, recordPromotionUsage/deductFreeGiftStock এখানে
+// call হয় না — portal order-request ফ্লোতে এখনো কোনো "commit" ধাপ
+// নেই (sales.controller.js-এর createSale-এর মতো), SR অর্ডার প্রসেস
+// করার সময় ম্যানুয়ালি প্রয়োগ করবেন।
+// ============================================================
+
+const calculatePortalPromotions = async (req, res) => {
+    try {
+        const { items = [], promo_code } = req.body;
+        const { customer_id } = req.portalUser;
+
+        if (!items.length) {
+            return res.json({ success: true, data: { applicable_promotions: [], total_discount: 0, free_items: [], code_matched: null } });
+        }
+
+        const byTenant = {};
+        items.forEach(i => { (byTenant[i.tenant_id] ??= []).push(i); });
+        const tenantIds = Object.keys(byTenant);
+
+        const results = await Promise.all(
+            tenantIds.map(tenantId =>
+                getEligiblePromotions({
+                    queryFn:    query,
+                    tenantId,
+                    items:      byTenant[tenantId],
+                    customerId: customer_id || null,
+                    promoCode:  promo_code || null,
+                })
+            )
+        );
+
+        const combined = results.reduce((acc, r) => ({
+            applicable:      [...acc.applicable, ...r.applicable],
+            payableDiscount: acc.payableDiscount + r.payableDiscount,
+            freeItems:       [...acc.freeItems, ...r.freeItems],
+        }), { applicable: [], payableDiscount: 0, freeItems: [] });
+
+        // ✅ (ফেজ ৩ — কুপন-কোড): promo_code দেওয়া থাকলে, কোনো tenant-এর
+        // promotions-এ ওই কোড আদৌ আছে কিনা (শর্ত পূরণ হোক বা না হোক) —
+        // "কোড ভুল" বনাম "কোড ঠিক কিন্তু শর্ত মেলেনি" আলাদা করে দেখানোর
+        // জন্য। getEligiblePromotions এই তথ্য ফেরত দেয় না (এলিজিবল-ই বা
+        // অ-এলিজিবল, শুধু সেটাই বলে), তাই এখানে আলাদা ছোট চেক।
+        let codeMatched = null;
+        if (promo_code && promo_code.trim()) {
+            const codeCheck = await query(
+                `SELECT id FROM promotions WHERE UPPER(promo_code) = UPPER($1) AND tenant_id = ANY($2::uuid[])`,
+                [promo_code.trim(), tenantIds]
+            );
+            codeMatched = codeCheck.rows.length > 0;
+        }
+
+        return res.json({
+            success: true,
+            data: {
+                applicable_promotions: combined.applicable.map(a => ({
+                    promotion_id    : a.promotion.id,
+                    name            : a.promotion.name,
+                    type            : a.promotion.type,
+                    discount_amount : a.discountAmount,
+                    reduces_payable : a.reducesPayable,
+                    message         : a.message,
+                })),
+                // total_discount = বিল আসলে যতটা কমবে (calculatePromotions-এর
+                // মতোই payableDiscount ব্যবহার — buy_x_get_y-এর ফ্রি আইটেমের
+                // মূল্য বাদে, সেটা free_items-এ আলাদাভাবে আছে)
+                total_discount: Math.round(combined.payableDiscount * 100) / 100,
+                free_items:     combined.freeItems,
+                code_matched:   codeMatched,
+            }
+        });
+
+    } catch (err) {
+        logger.error('[Promotion] calculatePortalPromotions error:', err.message);
+        return res.status(500).json({ success: false, message: 'ছাড় হিসাব করতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getAllPromotions,
     createPromotion,
@@ -804,6 +892,7 @@ module.exports = {
     getActivePromotions,
     getPortalActivePromotions, // ← Phase ৫
     calculatePromotions,
+    calculatePortalPromotions, // ✅ NEW (ফেজ ০/৩ — পোর্টাল multi-vendor checkout প্রিভিউ)
     getPromotionReport,
     getPromotionsDashboardSummary,
 };

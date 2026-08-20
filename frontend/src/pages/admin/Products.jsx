@@ -5,6 +5,7 @@ import Button from '../../components/ui/Button'
 import Input, { Textarea, Select } from '../../components/ui/Input'
 import Modal from '../../components/ui/Modal'
 import StockMovementsModal from '../../components/StockMovementsModal'
+import ProductGalleryModal from '../../components/ProductGalleryModal'
 import ProductImportModal from '../../components/ProductImportModal'
 import toast from 'react-hot-toast'
 import {
@@ -171,6 +172,9 @@ export default function AdminProducts() {
   const [tab,        setTab]        = useState('basic') // 'basic' | 'pricing' | 'image'
   const [movOpen,    setMovOpen]    = useState(false)
   const [movProduct, setMovProduct] = useState(null)
+  // ✅ NEW (ফেজ ২ — মাল্টি-ইমেজ গ্যালারি)
+  const [galleryOpen,    setGalleryOpen]    = useState(false)
+  const [galleryProduct, setGalleryProduct] = useState(null)
   const [importOpen, setImportOpen] = useState(false)
   const [productSuppliers,        setProductSuppliers]        = useState([])
   const [loadingProductSuppliers, setLoadingProductSuppliers] = useState(false)
@@ -454,6 +458,13 @@ export default function AdminProducts() {
             title="স্টক মুভমেন্ট ইতিহাস"
           >
             <FiList size={15} />
+          </button>
+          <button
+            onClick={() => { setGalleryProduct(row); setGalleryOpen(true) }}
+            className="p-1.5 rounded-lg hover:bg-purple-50 text-purple-500"
+            title="ছবির গ্যালারি"
+          >
+            <FiImage size={15} />
           </button>
         </div>
       )
@@ -971,6 +982,15 @@ export default function AdminProducts() {
         onClose={() => { setMovOpen(false); setMovProduct(null) }}
         productId={movProduct?.id}
         productName={movProduct?.name}
+      />
+
+      {/* ✅ NEW (ফেজ ২) — ছবির গ্যালারি Modal */}
+      <ProductGalleryModal
+        isOpen={galleryOpen}
+        onClose={() => { setGalleryOpen(false); setGalleryProduct(null) }}
+        productId={galleryProduct?.id}
+        productName={galleryProduct?.name}
+        coverUrl={galleryProduct?.image_url}
       />
 
       {/* বাল্ক CSV ইম্পোর্ট Modal */}

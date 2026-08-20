@@ -4,18 +4,18 @@
 //
 // এখন যা আছে (real data):
 //   • সাম্প্রতিক ইনভয়েসগুলো "পোস্ট"-এর মতো কার্ড আকারে (InvoiceCard পুনঃব্যবহার)
+//   • মার্কেটিং অফার (Phase ৫ — promotions engine)
+//   • কোম্পানি কর্তৃক পোস্ট (company_posts টেবিল, admin/CompanyPosts.jsx থেকে তৈরি)
 // এখন যা এখনো ব্যাকএন্ডে কোড হয়নি (placeholder — স্পষ্টভাবে "শীঘ্রই আসছে" দেখানো হচ্ছে,
 // যাতে ব্যবহারকারী ভুল না বোঝেন যে ফিচারটা ভাঙা):
-//   • কোম্পানি কর্তৃক পোস্ট
-//   • মার্কেটিং অফার
 //   • কাস্টমার কর্তৃক পোস্ট
 //
-// এই ফাইল self-contained — নিজের ইনভয়েস fetch নিজেই করে, শুধু portalJWT prop নেয়
-// (InvoicesTab.jsx / OrderRequestTab.jsx-এর একই প্যাটার্ন অনুসরণ করে)।
+// এই ফাইল self-contained — নিজের ইনভয়েস/পোস্ট/অফার fetch নিজেই করে, শুধু
+// portalJWT prop নেয় (InvoicesTab.jsx / OrderRequestTab.jsx-এর একই প্যাটার্ন অনুসরণ করে)।
 // ═══════════════════════════════════════════════════════════════
 
 import { useState, useEffect } from 'react'
-import { FiFileText, FiVolume2, FiTag, FiUsers } from 'react-icons/fi'
+import { FiFileText, FiVolume2, FiTag, FiUsers, FiExternalLink } from 'react-icons/fi'
 import { portalFetch } from '../../utils/api'
 import { fmtDate } from '../../utils/helpers'
 import InvoiceCard from '../InvoiceCard'
@@ -62,6 +62,10 @@ export default function HomeFeed({ portalJWT }) {
   const [offers,        setOffers]        = useState([])
   const [offersLoading, setOffersLoading] = useState(true)
 
+  // ✅ NEW (ফেজ ১) — কোম্পানির পোস্ট
+  const [posts,        setPosts]        = useState([])
+  const [postsLoading, setPostsLoading] = useState(true)
+
   useEffect(() => {
     let cancelled = false
     setOffersLoading(true)
@@ -71,6 +75,19 @@ export default function HomeFeed({ portalJWT }) {
       .then(res => { if (!cancelled) setOffers(res.data || []) })
       .catch(() => { if (!cancelled) setOffers([]) }) // চুপচাপ খালি — feed-এর বাকি অংশ যেন আটকে না যায়
       .finally(() => { if (!cancelled) setOffersLoading(false) })
+    return () => { cancelled = true }
+  }, [portalJWT])
+
+  // ✅ NEW (ফেজ ১)
+  useEffect(() => {
+    let cancelled = false
+    setPostsLoading(true)
+    portalFetch('/portal/company-posts?limit=10', {
+      headers: { Authorization: `Bearer ${portalJWT}` }
+    })
+      .then(res => { if (!cancelled) setPosts(res.data || []) })
+      .catch(() => { if (!cancelled) setPosts([]) })
+      .finally(() => { if (!cancelled) setPostsLoading(false) })
     return () => { cancelled = true }
   }, [portalJWT])
 
@@ -89,10 +106,47 @@ export default function HomeFeed({ portalJWT }) {
   return (
     <div className="flex flex-col gap-3.5">
 
-      {/* ── কোম্পানির পোস্ট (placeholder) ── */}
+      {/* ── কোম্পানির পোস্ট (✅ ফেজ ১ — এখন real data) ── */}
       <div>
         <SectionLabel label="কোম্পানির পোস্ট" tone="trust" />
-        <ComingSoonCard icon={FiVolume2} title="কোম্পানির পোস্ট এখানে দেখা যাবে" desc="আপনার কানেক্টেড কোম্পানিগুলো নতুন পণ্য, আপডেট বা ঘোষণা পোস্ট করলে এখানে দেখতে পাবেন।" />
+
+        {postsLoading && (
+          <div className="rounded-2xl bg-cp-bg-alt animate-pulse" style={{ height: 76 }} />
+        )}
+
+        {!postsLoading && posts.length === 0 && (
+          <ComingSoonCard icon={FiVolume2} title="এখনো কোনো পোস্ট নেই" desc="আপনার কানেক্টেড কোম্পানিগুলো নতুন পণ্য, আপডেট বা ঘোষণা পোস্ট করলে এখানে দেখতে পাবেন।" />
+        )}
+
+        {!postsLoading && posts.length > 0 && (
+          <div className="flex flex-col gap-3">
+            {posts.map(post => (
+              <div key={post.id} className="rounded-2xl bg-cp-bg-surface border border-cp-border overflow-hidden">
+                <PostHeader
+                  icon={FiVolume2}
+                  tone="trust"
+                  title={post.company_name_bn || post.company_name}
+                  subtitle={fmtDate(post.created_at)}
+                />
+                {post.image_url && (
+                  <img src={post.image_url} alt="" className="w-full max-h-56 object-cover" />
+                )}
+                <div className="px-4 pb-3.5 pt-1">
+                  <p className="text-[13px] font-bold text-cp-text-primary font-cp-head mb-1">{post.title}</p>
+                  {post.body && (
+                    <p className="text-[12px] text-cp-text-muted leading-relaxed">{post.body}</p>
+                  )}
+                  {post.link_url && (
+                    <a href={post.link_url} target="_blank" rel="noopener noreferrer"
+                       className="mt-2 inline-flex items-center gap-1 text-[11.5px] font-semibold text-cp-trust-600">
+                      বিস্তারিত দেখুন <FiExternalLink size={11} />
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── মার্কেটিং অফার (Phase ৫ — আসল ডেটা) ── */}
