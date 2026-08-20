@@ -81,6 +81,14 @@ superAdminApi.interceptors.response.use(
     } else if (status >= 500) {
       toast.error('সার্ভারে সমস্যা হয়েছে। পরে চেষ্টা করুন।')
       error._toastShown = true
+    } else if (status && error.response?.data?.message) {
+      // ⚠️ নতুন — আগে 400/404/409 (যেমন seat-count vs headcount ভ্যালিডেশন)
+      // এখানে কোনো branch-এ না পড়ায় সম্পূর্ণ নীরবে fail করতো — PlanBookings.jsx-এর
+      // catch{} খালি, ধরে নেওয়া হয়েছিল "toast ইতিমধ্যে interceptor দেখিয়ে দিয়েছে",
+      // কিন্তু ৪xx-এর জন্য সেটা সত্যি ছিল না। এখন backend-এর পাঠানো নির্দিষ্ট
+      // মেসেজটাই দেখানো হচ্ছে, যাতে কোনো ভ্যালিডেশন এরর নীরবে হারিয়ে না যায়।
+      toast.error(error.response.data.message)
+      error._toastShown = true
     }
 
     return Promise.reject(error)

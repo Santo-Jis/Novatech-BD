@@ -3,6 +3,60 @@ const crypto  = require('crypto');
 const { query, withTransaction } = require('../config/db');
 
 // ============================================================
+// SEAT-COUNT vs বর্তমান HEADCOUNT ভ্যালিডেশন — নতুন, ৯ আগস্ট ২০২৬
+// ------------------------------------------------------------
+// আগে কোনো role-এর নতুন seat_count কমিয়ে সাবমিট করলে (upgrade রিকোয়েস্টে)
+// কোনো বাধা ছিল না — approve হলে tenant_seats.seat_count নেমে যেত, কিন্তু
+// বিদ্যমান active কর্মচারীরা কেউ সরানো হতো না (সিস্টেম কাউকে জোর করে বের
+// করে না)। ফলে বাস্তবে যত কর্মচারী আছে তার চেয়ে কম সিটের দামে বিল হতো
+// (jobs/tenantInvoice.job.js, tenant_seat_history-ভিত্তিক) — একটা নীরব
+// রেভিনিউ-লিক, আর Admin/Super Admin কেউই কোথাও কোনো সংকেত পেতেন না।
+//
+// এই ফাংশন employee.controller.js-এর assertSeatAvailable()-এর ঠিক একই
+// কোয়েরি-প্যাটার্ন ব্যবহার করে (status != 'archived' গণনা — active+suspended
+// দুটোই "ব্যবহৃত" ধরা হয়) যাতে দুই জায়গায় "headcount" এর সংজ্ঞা না মেলার
+// ঝুঁকি না থাকে।
+//
+// দুই জায়গায় কল হয় (দুটোই দরকার — submission আর approval-এর মাঝে
+// headcount বদলে যেতে পারে):
+//   ১. createBooking() — সাবমিট করার সাথে সাথেই Admin-কে জানিয়ে দেওয়া
+//   ২. approveBooking() — শেষ মুহূর্তের নিরাপত্তা, transaction-এর ভিতরে
+//      (upsertSeats()-এর ঠিক আগে), FOR UPDATE লক দিয়ে race-condition এড়ানো
+//
+// queryFn প্যারামিটার — createBooking-এ module-level query, approveBooking-এ
+// client.query (transaction-এর মধ্যে) — দুটোই (text, params) => Promise<{rows}>
+// একই সিগনেচার, তাই একই ফাংশন দুই জায়গাতেই কাজ করে।
+const assertSeatCountsNotBelowHeadcount = async (queryFn, tenantId, seatCounts) => {
+  const problems = [];
+  for (const [role, requestedRaw] of Object.entries(seatCounts || {})) {
+    const requested = Number(requestedRaw) || 0;
+    if (requested <= 0) continue; // ০ বা খালি — এই role নতুন বুকিং-এ নেই, স্কিপ
+
+    const usedRes = await queryFn(
+      `SELECT COUNT(*)::int AS used FROM users
+       WHERE tenant_id = $1 AND role::text = $2 AND status != 'archived'`,
+      [tenantId, role]
+    );
+    const used = usedRes.rows[0]?.used ?? 0;
+
+    if (requested < used) {
+      problems.push({ role, current_active: used, requested });
+    }
+  }
+
+  if (problems.length > 0) {
+    const roleLabels = { worker: 'SR', manager: 'ম্যানেজার', stock_keeper: 'স্টক কিপার', shop_keeper: 'শপ কিপার', admin: 'অ্যাডমিন' };
+    const detail = problems
+      .map((p) => `${roleLabels[p.role] || p.role}: বর্তমানে ${p.current_active} জন সক্রিয়, রিকোয়েস্টে ${p.requested}`)
+      .join('; ');
+    throw Object.assign(
+      new Error(`নতুন সিট-সংখ্যা বর্তমান সক্রিয় কর্মচারীর চেয়ে কম হতে পারবে না। ${detail}। আগে অতিরিক্ত কর্মচারী সাসপেন্ড/আর্কাইভ করুন, অথবা বেশি সিট রিকোয়েস্ট করুন।`),
+      { status: 400, code: 'SEAT_BELOW_HEADCOUNT', problems }
+    );
+  }
+};
+
+// ============================================================
 // PLAN BOOKING — কাস্টমার-facing "প্ল্যান বুক করুন" ফ্লো-র backend।
 // ------------------------------------------------------------
 // দুই এন্ট্রি পয়েন্ট, একই টেবিল (plan_booking_requests):
@@ -78,6 +132,11 @@ const createBooking = async (payload) => {
   }
   if (!tenant_id && !isValidSlug(slug)) {
     throw Object.assign(new Error('Slug শুধু ছোট হাতের ইংরেজি অক্ষর, সংখ্যা ও হাইফেন — ৩-৩০ ক্যারেক্টার।'), { status: 400 });
+  }
+  if (tenant_id) {
+    // শুধু existing tenant upgrade-এ প্রযোজ্য — নতুন সাইনআপে তুলনা করার
+    // মতো কোনো বিদ্যমান headcount নেই।
+    await assertSeatCountsNotBelowHeadcount(query, tenant_id, seat_counts);
   }
 
   const result = await query(
@@ -196,6 +255,15 @@ const approveBooking = async (id, { reviewerLabel = 'super-admin-key', adminNote
          booking.company_email, booking.billing_name, booking.billing_email, booking.tenant_id]
       );
       tenant = updated.rows[0];
+
+      // শেষ মুহূর্তের রি-চেক — submission আর approval-এর মাঝে সময় গ্যাপ
+      // থাকতে পারে (TrxID ম্যানুয়ালি ভেরিফাই করা হয়), এই ফাঁকে headcount
+      // বদলে যেতে পারে। client.query দিয়ে — একই ট্রানজেকশনে, atomic।
+      await assertSeatCountsNotBelowHeadcount(
+        (text, params) => client.query(text, params),
+        tenant.id,
+        seatCounts
+      );
 
       await upsertSeats(client, tenant.id, booking.requested_plan, seatCounts);
 
