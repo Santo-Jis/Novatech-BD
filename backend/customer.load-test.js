@@ -7,7 +7,7 @@
  * Node.js শুধু লাগবে (jest নয়), তাই Termux-এও চলবে।
  *
  * Environment setup:
- *   export BASE_URL="https://zovorix-backend.onrender.com"
+ *   export BASE_URL="https://zovorix.onrender.com"
  *   export TEST_ADMIN_EMAIL="admin@zovorix.bd"
  *   export TEST_ADMIN_PASSWORD="AdminPass1"
  *   export TEST_MANAGER_EMAIL="manager@zovorix.bd"

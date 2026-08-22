@@ -15,7 +15,7 @@ import { portalTokenStore } from './portalTokenStore'
 //    তাই relative '/api' APK-তে কোনো real server-এ পৌঁছায় না।
 //    native platform-এ তাই সবসময় Render-এর পূর্ণ (absolute) URL ব্যবহার করা হচ্ছে।
 export const BACKEND = Capacitor.isNativePlatform()
-  ? (import.meta.env.VITE_API_URL || 'https://novatechbd-backend.onrender.com/api')
+  ? (import.meta.env.VITE_API_URL || 'https://zovorix.onrender.com/api')
   : import.meta.env.DEV
     ? (import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
     : '/api'

@@ -14,7 +14,7 @@ const GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/latest/dow
 const APP_VERSION = {
   versionCode: 277,
   versionName: '1.0.277',
-  apkUrl: 'https://zovorix-backend.onrender.com/api/app/download',
+  apkUrl: 'https://zovorix.onrender.com/api/app/download',
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
 }
@@ -31,7 +31,7 @@ const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/d
 const CUSTOMER_APP_VERSION = {
   versionCode: CUSTOMER_VERSION_CODE,
   versionName: CUSTOMER_VERSION_NAME,
-  apkUrl: 'https://zovorix-backend.onrender.com/api/app/customer-download',
+  apkUrl: 'https://zovorix.onrender.com/api/app/customer-download',
   forceUpdate: false,
   changelog: 'Customer App প্রথম সংস্করণ।',
 }
@@ -50,7 +50,7 @@ const SR_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/downloa
 const SR_APP_VERSION = {
   versionCode: SR_VERSION_CODE,
   versionName: SR_VERSION_NAME,
-  apkUrl: 'https://zovorix-backend.onrender.com/api/app/sr-download',
+  apkUrl: 'https://zovorix.onrender.com/api/app/sr-download',
   forceUpdate: false,
   changelog: 'SR App প্রথম সংস্করণ।',
 }

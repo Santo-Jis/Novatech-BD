@@ -36,7 +36,7 @@ const https = require('https');
 const http  = require('http');
 
 // ─── Config ────────────────────────────────────────────────
-const BASE_URL = process.env.BASE_URL || 'https://zovorix-backend.onrender.com';
+const BASE_URL = process.env.BASE_URL || 'https://zovorix.onrender.com';
 
 // Customer Portal Load Test Config
 const TEST_CUSTOMER_ID    = process.env.TEST_CUSTOMER_ID    || '68734e30-df31-4337-a5cf-a7b813bb415a';

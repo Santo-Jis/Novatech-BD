@@ -27,7 +27,7 @@ export const tokenStore = {
 //    তাই native platform-এ সবসময় Render-এর পূর্ণ URL ব্যবহার করা হচ্ছে (customer app-এর মতোই ফিক্স)।
 const api = axios.create({
   baseURL: Capacitor.isNativePlatform()
-    ? (import.meta.env.VITE_API_URL || 'https://novatechbd-backend.onrender.com/api')
+    ? (import.meta.env.VITE_API_URL || 'https://zovorix.onrender.com/api')
     : import.meta.env.DEV
       ? (import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
       : '/api',
