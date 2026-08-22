@@ -556,7 +556,7 @@ export default function DashboardView({
             {/* ══ প্রোফাইল ══ */}
             {/* ✅ NEW: Phase 2 ফ্রন্টএন্ড — শপ তথ্য/এরিয়া/বিজনেস-ফিল্ড/discoverable টগল
                 (ব্যাকএন্ড GET/PUT /api/portal/profile/area-field আগে থেকেই রেডি ছিল) */}
-            {activeTab === 'profile' && <ProfileTab portalJWT={portalJWT} />}
+            {activeTab === 'profile' && <ProfileTab portalJWT={portalJWT} onTabChange={onTabChange} />}
             {false && (
               <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
                 {!complaintOpen ? (

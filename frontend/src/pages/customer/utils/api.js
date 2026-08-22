@@ -45,9 +45,13 @@ export const portalFetch = async (path, options = {}, retries = 1, _skipRefresh 
   const timeout    = setTimeout(() => controller.abort(), 15000)
 
   // ── Token auto-inject ────────────────────────────────────
-  const token   = portalTokenStore.get()
+  // FormData body (multipart আপলোড) হলে JSON content-type চাপানো যাবে না —
+  // fetch/browser নিজেই সঠিক boundary-সহ multipart/form-data হেডার বসায়,
+  // এখানে জোর করে 'application/json' দিলে সার্ভার-সাইড multer পার্স ফেইল করবে।
+  const token    = portalTokenStore.get()
+  const isFormData = options.body instanceof FormData
   const headers = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...options.headers,
   }

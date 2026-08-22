@@ -10,15 +10,15 @@
 // (01-Requirements-Spec.md ধারা ৩.৩)। ConnectionsTab.jsx-এর মতোই
 // self-contained: portalJWT prop নেয়, নিজের state/fetch নিজেই সামলায়।
 
-import { useState, useEffect, useCallback } from 'react'
-import { FiCheck, FiMapPin, FiEye, FiEyeOff } from 'react-icons/fi'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { FiCheck, FiMapPin, FiEye, FiEyeOff, FiPhone, FiMessageCircle, FiMail, FiLock, FiCamera, FiCheckCircle, FiUser, FiX, FiLink, FiChevronRight, FiShield, FiSmartphone, FiClock, FiTrash2 } from 'react-icons/fi'
 import { portalFetch } from '../utils/api'
 import CpCard from './ui/CpCard'
 import CpButton from './ui/CpButton'
 import CpInput from './ui/CpInput'
 import CpBadge from './ui/CpBadge'
 
-export default function ProfileTab({ portalJWT }) {
+export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
   const authHeader = { Authorization: `Bearer ${portalJWT}` }
 
   const [loading,  setLoading]  = useState(true)
@@ -26,13 +26,30 @@ export default function ProfileTab({ portalJWT }) {
   const [errorMsg, setErrorMsg] = useState('')
   const [savedMsg, setSavedMsg] = useState('')
 
+  // ── আইডেন্টিটি হেডার — read-only ডেটা + ছবি/QR ── (form state-এর বাইরে,
+  // কারণ form সরাসরি PUT /area-field বডিতে যায়, এগুলো আলাদা এন্ডপয়েন্ট/read-only)
+  const [person, setPerson] = useState({ full_name: '', shop_photo: '', qr_code: '', is_verified: null })
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const [qrOpen, setQrOpen] = useState(false)
+  const shopPhotoInputRef = useRef(null)
+
   const [divisions,      setDivisions]      = useState([])
   const [districts,      setDistricts]      = useState([])
   const [businessFields, setBusinessFields] = useState([])
+  const [companyCount,   setCompanyCount]   = useState(null) // null = এখনো লোড হয়নি
+
+  // ── অ্যাকাউন্ট ও নিরাপত্তা ── (login history + devices, password modal)
+  const [security, setSecurity] = useState(null) // null = এখনো লোড হয়নি/ব্যর্থ
+  const [pwOpen,    setPwOpen]    = useState(false)
+  const [pwForm,    setPwForm]    = useState({ current_password: '', new_password: '', confirm_password: '' })
+  const [pwSaving,  setPwSaving]  = useState(false)
+  const [pwError,   setPwError]   = useState('')
+  const [revokingId, setRevokingId] = useState(null) // কোন device_id revoke হচ্ছে এখন
 
   const [form, setForm] = useState({
     shop_name: '', address: '', division_id: '', district_id: '',
     discoverable: true, business_field_ids: [],
+    phone: '', whatsapp: '', email: '',
   })
 
   // ── প্রাথমিক লোড: রেফারেন্স ডেটা + নিজের বর্তমান প্রোফাইল ──────
@@ -55,6 +72,15 @@ export default function ProfileTab({ portalJWT }) {
         district_id:  me.district_id || '',
         discoverable: me.discoverable !== false,
         business_field_ids: (me.business_fields || []).map(f => f.id),
+        phone:    me.phone || '',
+        whatsapp: me.whatsapp || '',
+        email:    me.email || '',
+      })
+      setPerson({
+        full_name:   me.full_name || '',
+        shop_photo:  me.shop_photo || '',
+        qr_code:     me.qr_code || '',
+        is_verified: me.is_verified ?? null,
       })
 
       if (me.division_id) {
@@ -65,6 +91,26 @@ export default function ProfileTab({ portalJWT }) {
       setErrorMsg('প্রোফাইল তথ্য আনতে সমস্যা হয়েছে।')
     } finally {
       setLoading(false)
+    }
+
+    // সংযুক্ত কোম্পানির সংখ্যা — ইচ্ছাকৃতভাবে উপরের মূল try/catch-এর বাইরে,
+    // কারণ ConnectionsTab.jsx-এর /my-qr কলের মতোই এটাও একটা সেকেন্ডারি
+    // সামারি; এটা ব্যর্থ হলেও শপ-নাম/ঠিকানা/যোগাযোগের মতো মূল প্রোফাইল
+    // ডেটা লোড হওয়া আটকে যাওয়া উচিত না।
+    try {
+      const compRes = await portalFetch('/portal/connections/my-companies', { headers: authHeader })
+      setCompanyCount((compRes.data || []).length)
+    } catch {
+      setCompanyCount(null) // silent — সামারি সেকশন এই অবস্থায় নিজেই hide থাকবে
+    }
+
+    // অ্যাকাউন্ট ও নিরাপত্তা — একই কারণে independent, login-history/devices
+    // একটা tertiary সেকশন, এর ব্যর্থতায় বাকি প্রোফাইল প্রভাবিত হবে না
+    try {
+      const secRes = await portalFetch('/portal/profile/security', { headers: authHeader })
+      setSecurity(secRes.data || { login_events: [], devices: [] })
+    } catch {
+      setSecurity(null) // silent — সেকশন নিজে থেকেই hide থাকবে
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -90,6 +136,41 @@ export default function ProfileTab({ portalJWT }) {
     }))
   }
 
+  // ── শপ-ফটো আপলোড (POST /portal/profile/photo, multipart) ─────
+  const onShopPhotoSelected = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // একই ফাইল আবার সিলেক্ট করলেও onChange ফায়ার হবে
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('শুধু ছবি আপলোড করা যাবে।')
+      return
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setErrorMsg('ছবির সাইজ ৫MB-এর বেশি হতে পারবে না।')
+      return
+    }
+
+    setPhotoUploading(true); setErrorMsg(''); setSavedMsg('')
+    try {
+      const fd = new FormData()
+      fd.append('shop_photo', file)
+      const res = await portalFetch('/portal/profile/photo', {
+        method: 'POST',
+        headers: authHeader,
+        body: fd,
+      })
+      if (res.data?.shop_photo) {
+        setPerson(p => ({ ...p, shop_photo: res.data.shop_photo }))
+        setSavedMsg('✅ শপের ছবি আপডেট হয়েছে।')
+      }
+    } catch {
+      setErrorMsg('ছবি আপলোড করতে সমস্যা হয়েছে, আবার চেষ্টা করুন।')
+    } finally {
+      setPhotoUploading(false)
+    }
+  }
+
   const save = async () => {
     setSaving(true); setSavedMsg(''); setErrorMsg('')
     try {
@@ -103,6 +184,9 @@ export default function ProfileTab({ portalJWT }) {
           district_id:  form.district_id || null,
           discoverable: form.discoverable,
           business_field_ids: form.business_field_ids,
+          phone:    form.phone,
+          whatsapp: form.whatsapp,
+          email:    form.email,
         }),
       })
       setSavedMsg('✅ প্রোফাইল আপডেট হয়েছে।')
@@ -113,14 +197,137 @@ export default function ProfileTab({ portalJWT }) {
     }
   }
 
+  // ── পাসওয়ার্ড পরিবর্তন (POST /portal/profile/password) ──────
+  const changePassword = async () => {
+    setPwError('')
+    if (!pwForm.current_password || !pwForm.new_password) {
+      setPwError('বর্তমান ও নতুন পাসওয়ার্ড দিন।')
+      return
+    }
+    if (pwForm.new_password.length < 6) {
+      setPwError('ন্যূনতম ৬ ডিজিট/অক্ষরের পাসওয়ার্ড দিন।')
+      return
+    }
+    if (pwForm.new_password !== pwForm.confirm_password) {
+      setPwError('নতুন পাসওয়ার্ড দুটো মিলছে না।')
+      return
+    }
+
+    setPwSaving(true)
+    try {
+      await portalFetch('/portal/profile/password', {
+        method: 'POST',
+        headers: authHeader,
+        body: JSON.stringify({
+          current_password: pwForm.current_password,
+          new_password:      pwForm.new_password,
+        }),
+      })
+      setPwOpen(false)
+      setPwForm({ current_password: '', new_password: '', confirm_password: '' })
+      setSavedMsg('✅ পাসওয়ার্ড পরিবর্তন হয়েছে।')
+    } catch (e) {
+      // portalFetch-এর thrown error-এ সার্ভারের message থাকলে সেটাই দেখাই
+      // (যেমন "বর্তমান পাসওয়ার্ড ভুল"), নাহলে জেনেরিক বার্তা
+      setPwError(e?.message || 'পাসওয়ার্ড পরিবর্তন করতে সমস্যা হয়েছে।')
+    } finally {
+      setPwSaving(false)
+    }
+  }
+
+  // ── ডিভাইস revoke (POST /portal/profile/devices/:id/revoke) ──
+  const revokeDevice = async (deviceId) => {
+    setRevokingId(deviceId)
+    try {
+      await portalFetch(`/portal/profile/devices/${deviceId}/revoke`, {
+        method: 'POST',
+        headers: authHeader,
+      })
+      setSecurity(s => s && { ...s, devices: s.devices.filter(d => d.id !== deviceId) })
+      setSavedMsg('✅ ডিভাইস মুছে ফেলা হয়েছে।')
+    } catch {
+      setErrorMsg('ডিভাইস মুছতে সমস্যা হয়েছে, আবার চেষ্টা করুন।')
+    } finally {
+      setRevokingId(null)
+    }
+  }
+
   const fieldName = (f) => f.name_bn || f.name_en
+
+  // discoverable প্রিভিউতে division/district নাম দেখাতে — id মিশ্র টাইপ হতে
+  // পারে (API-থেকে number, <select> থেকে string), তাই String() দিয়ে তুলনা
+  const areaLabel = () => {
+    const divName  = divisions.find(d => String(d.id) === String(form.division_id))
+    const distName = districts.find(d => String(d.id) === String(form.district_id))
+    return [distName?.name_bn || distName?.name_en, divName?.name_bn || divName?.name_en]
+      .filter(Boolean).join(', ')
+  }
 
   if (loading) {
     return <CpCard padding="md"><p className="text-xs text-cp-text-muted text-center">লোড হচ্ছে...</p></CpCard>
   }
 
+  const previewAreaLabel = areaLabel()
+
   return (
     <div className="flex flex-col gap-3">
+      {/* ── আইডেন্টিটি হেডার ── */}
+      <CpCard padding="md">
+        <div className="flex items-center gap-3">
+          {/* শপ-ফটো + আপলোড ওভারলে */}
+          <div className="relative flex-shrink-0">
+            <div className="w-[72px] h-[72px] rounded-2xl overflow-hidden bg-cp-bg-alt border border-cp-border flex items-center justify-center">
+              {person.shop_photo
+                ? <img src={person.shop_photo} alt="শপের ছবি" className="w-full h-full object-cover" />
+                : <FiUser className="text-cp-text-muted" size={28} />
+              }
+            </div>
+            <button
+              onClick={() => shopPhotoInputRef.current?.click()}
+              disabled={photoUploading}
+              className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-cp-trust-500 border-2 border-white flex items-center justify-center disabled:opacity-60"
+            >
+              <FiCamera className="text-white" size={13} />
+            </button>
+            <input
+              ref={shopPhotoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={onShopPhotoSelected}
+            />
+          </div>
+
+          {/* নাম + verified ব্যাজ */}
+          <div className="flex-1 min-w-0">
+            <p className="text-base font-bold text-cp-text-primary truncate">
+              {form.shop_name || 'শপের নাম নেই'}
+            </p>
+            {person.full_name && (
+              <p className="text-xs text-cp-text-muted truncate">{person.full_name}</p>
+            )}
+            {person.is_verified && (
+              <div className="mt-1">
+                <CpBadge variant="verified" icon={FiCheckCircle}>ভেরিফায়েড</CpBadge>
+              </div>
+            )}
+          </div>
+
+          {/* QR বাটন — qr_code ইতিমধ্যে GET /area-field রেসপন্সেই আছে, আলাদা কল লাগছে না */}
+          <button
+            onClick={() => setQrOpen(true)}
+            className="flex-shrink-0 w-11 h-11 rounded-xl bg-cp-bg-alt border border-cp-border flex items-center justify-center"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cp-text-secondary">
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <path d="M14 14h3v3h-3zM19 14v3M14 19h3M19 19h2" />
+            </svg>
+          </button>
+        </div>
+      </CpCard>
+
       {savedMsg && (
         <CpCard variant="sunken" padding="sm"><span className="text-xs text-cp-confidence-600 font-medium">{savedMsg}</span></CpCard>
       )}
@@ -144,6 +351,56 @@ export default function ProfileTab({ portalJWT }) {
           value={form.address}
           onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
         />
+      </CpCard>
+
+      {/* ── যোগাযোগের তথ্য ── */}
+      {/* discoverable চালু থাকলে এই ৩টা ফিল্ড connect হওয়ার আগ পর্যন্ত
+          distributor-দের কাছে masked থাকে (discovery.controller.js এর
+          getDiscoveryShops-এই এই মাস্কিং হয়) — সেটার ইঙ্গিত দিতে প্রতিটা
+          ইনপুটের পাশে ছোট eye/lock আইকন, ক্লিকযোগ্য না, শুধু ভিজ্যুয়াল হিন্ট। */}
+      <CpCard padding="md" className="flex flex-col gap-3">
+        <p className="text-xs font-semibold text-cp-text-secondary">যোগাযোগের তথ্য</p>
+        <CpInput
+          label="ফোন নম্বর"
+          icon={FiPhone}
+          placeholder="01XXXXXXXXX"
+          value={form.phone}
+          onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+          rightElement={
+            form.discoverable
+              ? <FiEye className="text-cp-text-muted" size={16} />
+              : <FiLock className="text-cp-text-muted" size={16} />
+          }
+        />
+        <CpInput
+          label="হোয়াটসঅ্যাপ নম্বর"
+          icon={FiMessageCircle}
+          placeholder="01XXXXXXXXX"
+          value={form.whatsapp}
+          onChange={e => setForm(f => ({ ...f, whatsapp: e.target.value }))}
+          rightElement={
+            form.discoverable
+              ? <FiEye className="text-cp-text-muted" size={16} />
+              : <FiLock className="text-cp-text-muted" size={16} />
+          }
+        />
+        <CpInput
+          label="ইমেইল"
+          icon={FiMail}
+          placeholder="shop@example.com"
+          value={form.email}
+          onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
+          rightElement={
+            form.discoverable
+              ? <FiEye className="text-cp-text-muted" size={16} />
+              : <FiLock className="text-cp-text-muted" size={16} />
+          }
+        />
+        <p className="text-[11px] text-cp-text-muted leading-snug">
+          {form.discoverable
+            ? 'এই তথ্যগুলো কোনো ডিস্ট্রিবিউটর আপনার সাথে Connect করার আগ পর্যন্ত দেখতে পাবে না।'
+            : 'Discovery বন্ধ থাকায় এই তথ্যগুলো কোনো ডিস্ট্রিবিউটর discovery লিস্টে দেখতে পাবে না।'}
+        </p>
       </CpCard>
 
       {/* ── সার্ভিস এরিয়া ── */}
@@ -230,9 +487,236 @@ export default function ProfileTab({ portalJWT }) {
         </div>
       </CpCard>
 
+      {/* ── লাইভ প্রিভিউ: ডিস্ট্রিবিউটর যেভাবে দেখবে ── */}
+      {/* discovery.controller.js-এর getDiscoveryShops মাস্কিং লজিকের সাথে হুবহু
+          মিলিয়ে রেন্ডার করা — নতুন কোনো API কল লাগছে না, শুধু ফর্মের বর্তমান
+          state থেকেই বানানো। ২টা কেস:
+          (১) discoverable=false → person discovery query-র WHERE p.discoverable=true
+              শর্তেই বাদ পড়ে যায়, অর্থাৎ কোনো distributor-এর লিস্টেই আসবে না —
+              এটা শুধু "contact info hidden" থেকে ভিন্ন, তাই আলাদা বার্তা।
+          (২) discoverable=true → shop_name/address/division/district সবসময়
+              দেখা যায়; owner_name/phone/whatsapp/email শুধু connection_status
+              === 'connected' হলে unlock হয় — তার আগ পর্যন্ত এই প্রিভিউ সেই
+              locked অবস্থাটাই দেখায়, কারণ এটাই ডিফল্ট/সবচেয়ে বেশি প্রযোজ্য অবস্থা। */}
+      <CpCard variant="sunken" padding="md" className="flex flex-col gap-3">
+        <p className="text-xs font-semibold text-cp-text-secondary">ডিস্ট্রিবিউটর আপনাকে যেভাবে দেখবে</p>
+
+        {!form.discoverable ? (
+          <div className="flex items-center gap-2.5 py-1">
+            <FiEyeOff className="text-cp-text-muted flex-shrink-0" size={16} />
+            <p className="text-xs text-cp-text-muted leading-snug">
+              আপনি এখন Discovery লিস্টেই নেই — কোনো ডিস্ট্রিবিউটর আপনাকে খুঁজে পাবে না, নতুন করে Connect হওয়ার আগ পর্যন্ত।
+            </p>
+          </div>
+        ) : (
+          <>
+            <CpCard padding="sm" className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-bold text-cp-text-primary truncate">
+                  {form.shop_name || 'শপের নাম নেই'}
+                </p>
+                <CpBadge variant="pending">Connect হয়নি</CpBadge>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <FiMapPin className="text-cp-text-muted flex-shrink-0 mt-0.5" size={13} />
+                <p className="text-xs text-cp-text-secondary leading-snug">
+                  {form.address || 'ঠিকানা নেই'}
+                  {previewAreaLabel ? ` — ${previewAreaLabel}` : ''}
+                </p>
+              </div>
+
+              {/* locked ফিল্ড — placeholder, ব্লার-স্টাইল */}
+              <div className="flex flex-col gap-1 mt-1 pt-2 border-t border-cp-border/60">
+                {[
+                  { icon: FiUser,          label: 'মালিকের নাম' },
+                  { icon: FiPhone,         label: 'ফোন নম্বর'   },
+                  { icon: FiMessageCircle, label: 'হোয়াটসঅ্যাপ' },
+                  { icon: FiMail,          label: 'ইমেইল'       },
+                ].map(({ icon: Icon, label }) => (
+                  <div key={label} className="flex items-center gap-1.5">
+                    <Icon className="text-cp-text-muted flex-shrink-0" size={12} />
+                    <span className="text-[11px] text-cp-text-muted italic">{label} — লুকানো</span>
+                    <FiLock className="text-cp-text-muted flex-shrink-0 ml-auto" size={11} />
+                  </div>
+                ))}
+              </div>
+            </CpCard>
+            <p className="text-[11px] text-cp-text-muted leading-snug">
+              ডিস্ট্রিবিউটর প্রথমে শুধু এইটুকুই দেখবে। আপনার সাথে Connect হয়ে গেলে (আপনার QR স্ক্যান করে বা রিকোয়েস্ট গ্রহণ করলে) মালিকের নাম, ফোন, হোয়াটসঅ্যাপ ও ইমেইলও দেখতে পারবে।
+            </p>
+          </>
+        )}
+      </CpCard>
+
+      {/* ── সংযুক্ত কোম্পানি — মিনি সামারি ── */}
+      {/* পুরো ConnectionsTab এখানে আনা হচ্ছে না, শুধু count + নেভিগেশন লিংক।
+          GET /portal/connections/my-companies (loadAll-এ ইতিমধ্যে কল হয়েছে,
+          independent try/catch-এ) — status='connected' ফিল্টার করা, pending
+          বাদ, তাই এখানে "সংযুক্ত" বলাটা সঠিক। কল ব্যর্থ হলে companyCount
+          null-ই থেকে যায় এবং এই কার্ড নিজে থেকেই hide হয়ে যায় — একটা
+          সেকেন্ডারি সামারির জন্য এরর-ব্যানার দেখানো অতিরিক্ত। */}
+      {companyCount !== null && (
+        <CpCard padding="md" pressable onClick={() => onTabChange('network')}>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-cp-trust-100 flex items-center justify-center flex-shrink-0">
+              <FiLink className="text-cp-trust-600" size={16} />
+            </div>
+            <p className="flex-1 text-sm font-medium text-cp-text-primary">
+              {companyCount === 0
+                ? 'এখনো কোনো কোম্পানির সাথে সংযুক্ত নন'
+                : `${companyCount}টি কোম্পানির সাথে সংযুক্ত`}
+            </p>
+            <FiChevronRight className="text-cp-text-muted flex-shrink-0" size={16} />
+          </div>
+        </CpCard>
+      )}
+
       <CpButton variant="primary" fullWidth loading={saving} onClick={save}>
         সংরক্ষণ করুন
       </CpButton>
+
+      {/* ── অ্যাকাউন্ট ও নিরাপত্তা ── */}
+      {/* save-বাটনের নিচে, স্বতন্ত্র সেকশন হিসেবে — এর নিজস্ব save-action
+          (পাসওয়ার্ড মোডালের ভেতরের সাবমিট) আছে, উপরের মূল ফর্ম-সেভের সাথে
+          কোনো সম্পর্ক নেই, তাই একসাথে না রেখে আলাদা রাখা হলো যাতে ইউজার
+          "সংরক্ষণ করুন" বাটনকে এই সেকশনের জন্যও প্রযোজ্য মনে না করে।
+          security === null মানে লোড হয়নি/ব্যর্থ হয়েছে — সেক্ষেত্রে পুরো
+          সেকশনই hide থাকে, একটা tertiary সেকশনের জন্য এরর-ব্যানার অতিরিক্ত। */}
+      {security && (
+        <CpCard padding="md" className="flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <FiShield className="text-cp-trust-500 flex-shrink-0" size={16} />
+            <p className="text-xs font-semibold text-cp-text-secondary">অ্যাকাউন্ট ও নিরাপত্তা</p>
+          </div>
+
+          <CpButton variant="secondary" size="sm" onClick={() => setPwOpen(true)}>
+            পাসওয়ার্ড পরিবর্তন করুন
+          </CpButton>
+
+          {/* সংযুক্ত ডিভাইস — শুধু customer-connected অবস্থায় থাকে
+              (customer_portal_devices.customer_id NOT NULL) */}
+          {security.devices.length > 0 && (
+            <div className="flex flex-col gap-1 pt-2 border-t border-cp-border/60">
+              <p className="text-[11px] font-medium text-cp-text-muted mb-1">সংযুক্ত ডিভাইস</p>
+              {security.devices.map(d => (
+                <div key={d.id} className="flex items-center gap-2.5 py-1.5">
+                  <FiSmartphone className="text-cp-text-muted flex-shrink-0" size={15} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-cp-text-primary truncate">
+                      {d.device_label || d.google_email || 'অজানা ডিভাইস'}
+                    </p>
+                    {d.last_used_at && (
+                      <p className="text-[10px] text-cp-text-muted">
+                        সর্বশেষ ব্যবহার: {new Date(d.last_used_at).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => revokeDevice(d.id)}
+                    disabled={revokingId === d.id}
+                    className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-cp-error disabled:opacity-50"
+                  >
+                    <FiTrash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* সাম্প্রতিক লগইন — সর্বোচ্চ ৩টা, নতুন-ডিভাইস হলে হাইলাইট */}
+          {security.login_events.length > 0 && (
+            <div className="flex flex-col gap-1 pt-2 border-t border-cp-border/60">
+              <p className="text-[11px] font-medium text-cp-text-muted mb-1">সাম্প্রতিক লগইন</p>
+              {security.login_events.slice(0, 3).map(ev => (
+                <div key={ev.id} className="flex items-center gap-2.5 py-1">
+                  <FiClock className="text-cp-text-muted flex-shrink-0" size={13} />
+                  <p className="text-[11px] text-cp-text-secondary flex-1">
+                    {new Date(ev.created_at).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    {(ev.city || ev.country) && ` — ${[ev.city, ev.country].filter(Boolean).join(', ')}`}
+                  </p>
+                  {ev.is_new_device && <CpBadge variant="warning">নতুন ডিভাইস</CpBadge>}
+                </div>
+              ))}
+            </div>
+          )}
+        </CpCard>
+      )}
+
+      {/* ── QR মোডাল ── (ConnectionsTab.jsx-এর QR মোডালের সাথে একই প্যাটার্ন,
+          কিন্তু আলাদা fetch লাগছে না — qr_code আগে থেকেই GET /area-field থেকে person state-এ আছে) */}
+      {qrOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" onClick={() => setQrOpen(false)}>
+          <div className="bg-white w-full max-w-[480px] rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <p className="text-base font-bold text-cp-text-primary">আমার QR কোড</p>
+              <button onClick={() => setQrOpen(false)}><FiX size={20} className="text-cp-text-muted" /></button>
+            </div>
+            {person.qr_code ? (
+              <div className="flex flex-col items-center gap-3 pb-4">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(person.qr_code)}`}
+                  alt="QR কোড"
+                  className="w-[220px] h-[220px] rounded-2xl border border-cp-border"
+                />
+                <p className="text-sm font-semibold text-cp-text-primary">{form.shop_name}</p>
+                <p className="text-xs text-cp-text-muted text-center px-6">
+                  ডিস্ট্রিবিউটর সামনাসামনি এই QR স্ক্যান করলে সাথে সাথে সংযোগ হয়ে যাবে — অনুমোদনের দরকার নেই।
+                </p>
+              </div>
+            ) : (
+              <p className="text-xs text-cp-text-muted text-center py-8">QR কোড পাওয়া যায়নি।</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── পাসওয়ার্ড পরিবর্তন মোডাল ── (QR মোডালের সাথে একই bottom-sheet প্যাটার্ন) */}
+      {pwOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50"
+          onClick={() => { setPwOpen(false); setPwError('') }}
+        >
+          <div className="bg-white w-full max-w-[480px] rounded-t-3xl p-5 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-1">
+              <p className="text-base font-bold text-cp-text-primary">পাসওয়ার্ড পরিবর্তন</p>
+              <button onClick={() => { setPwOpen(false); setPwError('') }}>
+                <FiX size={20} className="text-cp-text-muted" />
+              </button>
+            </div>
+
+            {pwError && (
+              <p className="text-xs text-cp-error bg-cp-error-bg rounded-xl px-3 py-2">{pwError}</p>
+            )}
+
+            <CpInput
+              label="বর্তমান পাসওয়ার্ড"
+              type="password"
+              icon={FiLock}
+              value={pwForm.current_password}
+              onChange={e => setPwForm(f => ({ ...f, current_password: e.target.value }))}
+            />
+            <CpInput
+              label="নতুন পাসওয়ার্ড"
+              type="password"
+              icon={FiLock}
+              placeholder="ন্যূনতম ৬ ডিজিট/অক্ষর"
+              value={pwForm.new_password}
+              onChange={e => setPwForm(f => ({ ...f, new_password: e.target.value }))}
+            />
+            <CpInput
+              label="নতুন পাসওয়ার্ড আবার লিখুন"
+              type="password"
+              icon={FiLock}
+              value={pwForm.confirm_password}
+              onChange={e => setPwForm(f => ({ ...f, confirm_password: e.target.value }))}
+            />
+
+            <CpButton variant="primary" fullWidth loading={pwSaving} onClick={changePassword} className="mt-1 mb-2">
+              পরিবর্তন করুন
+            </CpButton>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

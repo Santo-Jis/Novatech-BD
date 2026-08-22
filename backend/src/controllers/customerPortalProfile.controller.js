@@ -5,6 +5,8 @@
 
 const { query } = require('../config/db');
 const logger    = require('../config/logger');
+const bcrypt    = require('bcryptjs');
+const { uploadToCloudinary } = require('../services/employee.service');
 
 // ⚠️ FIX: person_id সরাসরি JWT-তে থাকলে (নতুন token) সেটাই ব্যবহার করে,
 // না থাকলে (পুরনো token) customer_id দিয়ে DB lookup fallback করে।
@@ -30,7 +32,8 @@ const getMyAreaAndField = async (req, res) => {
         const personId = await getPersonId(req.portalUser);
 
         const p = await query(
-            `SELECT shop_name, address, division_id, district_id, discoverable
+            `SELECT shop_name, address, division_id, district_id, discoverable,
+                    phone, whatsapp, email, full_name, shop_photo, qr_code
              FROM persons WHERE id = $1`,
             [personId]
         );
@@ -43,7 +46,24 @@ const getMyAreaAndField = async (req, res) => {
             [personId]
         );
 
-        res.json({ success: true, data: { ...p.rows[0], business_fields: fields.rows } });
+        // is_verified customers টেবিলে (per-tenant-connection), persons-এ না —
+        // একজন person একাধিক তেনন্টের সাথে connected থাকতে পারে, প্রতিটার
+        // verification আলাদা হতে পারে। এখানে শুধু বর্তমান সক্রিয় সেশনের
+        // customer_id (portalUser থেকে) অনুযায়ী verified স্ট্যাটাস দেখানো হচ্ছে —
+        // "গ্লোবাল verified" বলে কিছু নেই এই ডেটা মডেলে।
+        let isVerified = null;
+        if (req.portalUser?.customer_id) {
+            const v = await query(
+                `SELECT is_verified FROM customers WHERE id = $1`,
+                [req.portalUser.customer_id]
+            );
+            isVerified = v.rows[0]?.is_verified ?? null;
+        }
+
+        res.json({
+            success: true,
+            data: { ...p.rows[0], business_fields: fields.rows, is_verified: isVerified },
+        });
     } catch (err) {
         if (err.message === 'PERSON_NOT_LINKED') {
             return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
@@ -55,13 +75,14 @@ const getMyAreaAndField = async (req, res) => {
 
 // ============================================================
 // PUT /api/portal/profile/area-field
-// { shop_name, address, division_id, district_id, discoverable, business_field_ids: [] }
+// { shop_name, address, division_id, district_id, discoverable,
+//   business_field_ids: [], phone, whatsapp, email }
 // সব ফিল্ড optional — যা পাঠানো হবে শুধু তা আপডেট হবে
 // ============================================================
 const updateMyAreaAndField = async (req, res) => {
     try {
         const personId = await getPersonId(req.portalUser);
-        const { shop_name, address, division_id, district_id, discoverable, business_field_ids } = req.body;
+        const { shop_name, address, division_id, district_id, discoverable, business_field_ids, phone, whatsapp, email } = req.body;
 
         await query(
             `UPDATE persons SET
@@ -70,9 +91,12 @@ const updateMyAreaAndField = async (req, res) => {
                 division_id  = COALESCE($4, division_id),
                 district_id  = COALESCE($5, district_id),
                 discoverable = COALESCE($6, discoverable),
+                phone        = COALESCE($7, phone),
+                whatsapp     = COALESCE($8, whatsapp),
+                email        = COALESCE($9, email),
                 updated_at   = NOW()
              WHERE id = $1`,
-            [personId, shop_name, address, division_id, district_id, discoverable]
+            [personId, shop_name, address, division_id, district_id, discoverable, phone, whatsapp, email]
         );
 
         if (Array.isArray(business_field_ids)) {
@@ -100,4 +124,213 @@ const updateMyAreaAndField = async (req, res) => {
     }
 };
 
-module.exports = { getMyAreaAndField, updateMyAreaAndField };
+// ============================================================
+// POST /api/portal/profile/photo
+// multipart/form-data — ফিল্ড নাম 'shop_photo' এবং/অথবা 'profile_photo',
+// দুটোর যেকোনো একটা বা দুটোই একসাথে পাঠানো যাবে (route-এ multer .fields()
+// দিয়ে registration-flow-এর মতোই সেটআপ করা)।
+// ============================================================
+const updateMyPhoto = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser);
+
+        const shopFile    = req.files?.shop_photo?.[0];
+        const profileFile = req.files?.profile_photo?.[0];
+
+        if (!shopFile && !profileFile) {
+            return res.status(400).json({ success: false, message: 'কোনো ছবি পাওয়া যায়নি।' });
+        }
+
+        let shopPhotoUrl    = null;
+        let profilePhotoUrl = null;
+
+        if (shopFile) {
+            shopPhotoUrl = await uploadToCloudinary(
+                shopFile.buffer, 'shops', `shop_${personId}_${Date.now()}`, shopFile.mimetype
+            );
+        }
+        if (profileFile) {
+            profilePhotoUrl = await uploadToCloudinary(
+                profileFile.buffer, 'customer_profiles', `profile_${personId}_${Date.now()}`, profileFile.mimetype
+            );
+        }
+
+        // Cloudinary কনফিগ না থাকলে uploadToCloudinary null রিটার্ন করে
+        // (দেখুন employee.service.js) — সেক্ষেত্রে persons.shop_photo/profile_photo
+        // ভুলবশত null দিয়ে ওভাররাইট না হয়ে যায়, তাই শুধু সফল আপলোডই COALESCE করছি।
+        await query(
+            `UPDATE persons SET
+                shop_photo    = COALESCE($2, shop_photo),
+                profile_photo = COALESCE($3, profile_photo),
+                updated_at    = NOW()
+             WHERE id = $1`,
+            [personId, shopPhotoUrl, profilePhotoUrl]
+        );
+
+        if ((shopFile && !shopPhotoUrl) || (profileFile && !profilePhotoUrl)) {
+            return res.status(502).json({
+                success: false,
+                message: 'ছবি আপলোড করা যায়নি, একটু পর আবার চেষ্টা করুন।',
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'ছবি আপডেট হয়েছে।',
+            data: { shop_photo: shopPhotoUrl, profile_photo: profilePhotoUrl },
+        });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ updateMyPhoto error:', err.message);
+        res.status(500).json({ success: false, message: 'ছবি আপলোড করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/profile/security
+// লগইন-হিস্ট্রি + সংযুক্ত ডিভাইস — দুটোই একসাথে।
+//
+// login_events: person_id দিয়েই query হয় (customer_portal_login_events-এ
+// customer_id/person_id দুটোর একটা কলাম ব্যবহৃত হয় recordLoginEvent-এ),
+// কিন্তু person_id সবসময় resolve করা যায় getPersonId দিয়ে, তাই এখানে
+// সবসময় person_id দিয়েই খোঁজা — customer-type আর person-type দুই account-ই
+// covers করে, কারণ customer-type লগইনেও ownerType='customer' হলে সেটা
+// customer_id কলামে যায়, person_id কলামে না। তাই person_id দিয়ে খোঁজা
+// শুধু person-type অ্যাকাউন্টের ইতিহাস দেখাবে — customer-type অ্যাকাউন্টের
+// জন্য customer_id কলামেও খুঁজতে হবে req.portalUser.customer_id দিয়ে।
+//
+// devices: customer_portal_devices.customer_id NOT NULL (দেখুন
+// customerPortal.controller.js-এর পথ ২ কমেন্ট) — person-only অবস্থায়
+// (customer_id null) কোনো device row-ই থাকে না, তাই সেক্ষেত্রে data.devices
+// খালি array থাকবে, এটাই প্রত্যাশিত আচরণ, এরর না।
+// ============================================================
+const getMySecurityInfo = async (req, res) => {
+    try {
+        const personId   = await getPersonId(req.portalUser);
+        const customerId = req.portalUser?.customer_id || null;
+
+        // login_events — person_id এবং (থাকলে) customer_id দুটো কলামেই
+        // ঘটতে পারা রো একত্রে, সাম্প্রতিক ১০টা
+        const events = await query(
+            `SELECT id, login_method, device_fingerprint, ip_address, city, country,
+                    user_agent, is_new_device, created_at
+             FROM customer_portal_login_events
+             WHERE (person_id = $1 ${customerId ? 'OR customer_id = $2' : ''})
+             ORDER BY created_at DESC
+             LIMIT 10`,
+            customerId ? [personId, customerId] : [personId]
+        );
+
+        // devices — শুধু customer-connected অবস্থায়
+        let devices = [];
+        if (customerId) {
+            const d = await query(
+                `SELECT id, device_label, google_email, is_active, added_at, last_used_at
+                 FROM customer_portal_devices
+                 WHERE customer_id = $1 AND is_active = true
+                 ORDER BY last_used_at DESC NULLS LAST, added_at DESC`,
+                [customerId]
+            );
+            devices = d.rows;
+        }
+
+        res.json({ success: true, data: { login_events: events.rows, devices } });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getMySecurityInfo error:', err.message);
+        res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/portal/profile/password
+// { current_password, new_password }
+//
+// resolvePortalOwner-এর ঠিক একই dispatch-নিয়ম — req.portalUser.customer_id
+// truthy হলে customers.password_hash, নাহলে persons.password_hash। JWT
+// payload-এ customer_id/person_id দুটোই থাকে (login handler গুলো দেখুন),
+// একটা সবসময় null — এখান থেকেই dispatch করা যায়, আলাদা DB lookup লাগে না।
+// ============================================================
+const changeMyPassword = async (req, res) => {
+    try {
+        const { current_password, new_password } = req.body;
+
+        if (!current_password || !new_password) {
+            return res.status(400).json({ success: false, message: 'বর্তমান ও নতুন পাসওয়ার্ড দিন।' });
+        }
+        if (new_password.length < 6) {
+            return res.status(400).json({ success: false, message: 'ন্যূনতম ৬ ডিজিট/অক্ষরের পাসওয়ার্ড দিন।' });
+        }
+
+        const isCustomerType = !!req.portalUser?.customer_id;
+        const table = isCustomerType ? 'customers' : 'persons';
+        const ownerId = isCustomerType ? req.portalUser.customer_id : await getPersonId(req.portalUser);
+
+        const owner = await query(`SELECT password_hash FROM ${table} WHERE id = $1`, [ownerId]);
+        if (owner.rows.length === 0 || !owner.rows[0].password_hash) {
+            return res.status(400).json({ success: false, message: 'এই অ্যাকাউন্টে পাসওয়ার্ড সেট করা নেই — Google লগইন ব্যবহার করুন।' });
+        }
+
+        const isValid = await bcrypt.compare(current_password, owner.rows[0].password_hash);
+        if (!isValid) {
+            return res.status(400).json({ success: false, message: 'বর্তমান পাসওয়ার্ড ভুল।' });
+        }
+
+        const newHash = await bcrypt.hash(new_password, 10);
+        await query(`UPDATE ${table} SET password_hash = $1 WHERE id = $2`, [newHash, ownerId]);
+
+        logger.info(`✅ Password changed (self-service, ${table}): ${ownerId}`);
+        res.json({ success: true, message: 'পাসওয়ার্ড পরিবর্তন হয়েছে।' });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ changeMyPassword error:', err.message);
+        res.status(500).json({ success: false, message: 'পাসওয়ার্ড পরিবর্তন করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/portal/profile/devices/:deviceId/revoke
+// নিজের ডিভাইস নিজে revoke — path-এ deviceId নিলেও query-তে সবসময়
+// customer_id = req.portalUser.customer_id দিয়ে scope করা হয়, তাই কেউ
+// অন্য কারো device_id পাঠালেও সেই রো UPDATE-এ ধরা পড়বে না (admin-side
+// revokeDevice-এর মতো path-param থেকে customerId নেওয়া হচ্ছে না — এখানে
+// customerId সবসময় JWT থেকে, কখনো client-supplied না)।
+// ============================================================
+const revokeMyDevice = async (req, res) => {
+    try {
+        const { deviceId } = req.params;
+        const customerId = req.portalUser?.customer_id;
+
+        if (!customerId) {
+            return res.status(400).json({ success: false, message: 'এই অ্যাকাউন্টে কোনো ডিভাইস-তালিকা নেই।' });
+        }
+
+        const result = await query(
+            `UPDATE customer_portal_devices
+             SET is_active = false
+             WHERE id = $1 AND customer_id = $2
+             RETURNING id, device_label`,
+            [deviceId, customerId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'ডিভাইস পাওয়া যায়নি।' });
+        }
+
+        res.json({ success: true, message: `"${result.rows[0].device_label}" মুছে ফেলা হয়েছে।` });
+    } catch (err) {
+        logger.error('❌ revokeMyDevice error:', err.message);
+        res.status(500).json({ success: false, message: 'ডিভাইস মুছতে সমস্যা হয়েছে।' });
+    }
+};
+
+module.exports = {
+    getMyAreaAndField, updateMyAreaAndField, updateMyPhoto,
+    getMySecurityInfo, changeMyPassword, revokeMyDevice,
+};
