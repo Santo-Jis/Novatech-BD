@@ -7,7 +7,7 @@ import { useRef } from 'react'
 import clsx from 'clsx'
 import { FiSend } from 'react-icons/fi'
 
-export default function Composer({ value, onChange, onSend, onTypingChange, sending, accent, placeholder }) {
+export default function Composer({ value, onChange, onSend, onTypingChange, sending, accent, placeholder, leadingAction }) {
   const taRef = useRef(null)
 
   const handleSend = () => {
@@ -25,7 +25,9 @@ export default function Composer({ value, onChange, onSend, onTypingChange, send
 
   return (
     <div className="flex-shrink-0 border-t border-cp-border backdrop-blur-lg bg-white/85 px-3 py-2.5">
-      <div className="flex items-end gap-2 bg-cp-bg-sunken rounded-3xl px-3.5 py-2 border border-transparent focus-within:border-cp-border-focus transition-colors">
+      <div className="flex items-end gap-2">
+        {leadingAction}
+        <div className="flex-1 flex items-end gap-2 bg-cp-bg-sunken rounded-3xl px-3.5 py-2 border border-transparent focus-within:border-cp-border-focus transition-colors">
         <textarea
           ref={taRef}
           value={value}
@@ -62,6 +64,7 @@ export default function Composer({ value, onChange, onSend, onTypingChange, send
             <FiSend size={15} className="-ml-0.5" />
           )}
         </button>
+        </div>
       </div>
     </div>
   )

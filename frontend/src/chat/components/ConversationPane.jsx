@@ -9,12 +9,14 @@
 import { useEffect, useRef } from 'react'
 import clsx from 'clsx'
 import { FiWifiOff } from 'react-icons/fi'
+import { ref, update } from 'firebase/database'
 import { useChatEngine } from '../hooks/useChatEngine'
 import { useOthersOnline } from '../hooks/usePresence'
 import ThreadHeader from './ThreadHeader'
 import MessageBubble from './MessageBubble'
 import TypingDots from './TypingDots'
 import Composer from './Composer'
+import AttachMenu from './AttachMenu'
 
 export default function ConversationPane({
   chatApi,
@@ -37,6 +39,7 @@ export default function ConversationPane({
   tabs,
   composerValue,
   onComposerChange,
+  customerId, // Phase 2: দিলেই "+" কার্ড-অ্যাটাচ বাটন দেখা যাবে (এখন staff-only, ChatInbox.jsx থেকে আসে)
 }) {
   const engine = useChatEngine({ chatApi, db, uid, ready, threadId, senderType, senderName })
   const { anyOnline } = useOthersOnline(db, threadId, uid)
@@ -50,6 +53,20 @@ export default function ConversationPane({
     if (!composerValue.trim()) return
     engine.send(composerValue)
     onComposerChange('')
+  }
+
+  // Phase 3, Session 2 — staff-only (customerId থাকলেই এই মোড, AttachMenu-এর মতোই)।
+  // dual-write: REST → chat_flagged_messages (এক্সপোর্ট/অডিটের আসল সোর্স),
+  // RTDB update → শুধু ওই মেসেজেই flagType বসে, বাকি ফিল্ড অক্ষত থাকে (তাই set() না, update())
+  const handleFlag = async (msg, flagType) => {
+    try {
+      await chatApi.flagMessage(threadId, msg.clientId, flagType, msg.text)
+      if (db && msg.id) {
+        await update(ref(db, `chats/${threadId}/messages/${msg.id}`), { flagType })
+      }
+    } catch (e) {
+      console.error('[chat] flag message failed:', e.message)
+    }
   }
 
   return (
@@ -102,6 +119,7 @@ export default function ConversationPane({
                 readState={engine.getReadState(m)}
                 onRetry={engine.retryFailed}
                 onDiscard={engine.discardFailed}
+                onFlag={customerId ? handleFlag : undefined}
               />
             ))}
             {engine.typingOthers && <TypingDots accent={accent} />}
@@ -118,6 +136,9 @@ export default function ConversationPane({
         sending={engine.sending}
         accent={accent}
         placeholder={composerPlaceholder}
+        leadingAction={
+          customerId ? <AttachMenu chatApi={chatApi} customerId={customerId} onAttach={engine.sendCard} accent={accent} /> : null
+        }
       />
 
       <style>{`

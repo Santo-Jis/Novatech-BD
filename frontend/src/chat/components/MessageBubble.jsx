@@ -7,9 +7,16 @@
 // নতুন: রিড-রিসিট টিক (নিজের পাঠানো মেসেজে) + অফলাইন-কিউ স্ট্যাটাস
 // (pending ঘড়ি-আইকন, failed হলে লাল রিট্রাই বাটন)।
 
+import { useState } from 'react'
 import clsx from 'clsx'
-import { FiCheck, FiClock, FiAlertCircle, FiRefreshCw, FiX } from 'react-icons/fi'
+import { FiCheck, FiClock, FiAlertCircle, FiRefreshCw, FiX, FiFlag, FiDollarSign, FiTag } from 'react-icons/fi'
 import { clockTime } from '../utils/time'
+import CardMessage from '../cards/CardMessage'
+
+const FLAG_META = {
+  price_quote: { label: 'প্রাইস কোট', Icon: FiTag },
+  payment_promise: { label: 'পেমেন্ট প্রমিজ', Icon: FiDollarSign },
+}
 
 const ACCENT = {
   trust: {
@@ -64,9 +71,43 @@ function LocalStatusBadge({ status, onRetry, onDiscard }) {
   return null
 }
 
-export default function MessageBubble({ msg, mine, accent, showSender, readState, onRetry, onDiscard }) {
+function FlagMenu({ onPick }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative inline-block">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        type="button"
+        aria-label="ফ্ল্যাগ করুন"
+        className="text-cp-text-muted/60 hover:text-cp-text-secondary p-0.5 -m-0.5"
+      >
+        <FiFlag size={11} />
+      </button>
+      {open && (
+        <div className="absolute bottom-5 right-0 w-40 bg-white border border-cp-border rounded-xl shadow-lg overflow-hidden z-20">
+          {Object.entries(FLAG_META).map(([key, { label, Icon }]) => (
+            <button
+              key={key}
+              onClick={() => {
+                onPick(key)
+                setOpen(false)
+              }}
+              type="button"
+              className="w-full flex items-center gap-2 px-3 py-2 text-left text-[12px] text-cp-text-primary hover:bg-cp-bg-alt"
+            >
+              <Icon size={12} className="text-cp-text-muted" /> {label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function MessageBubble({ msg, mine, accent, showSender, readState, onRetry, onDiscard, onFlag }) {
   const isLocalOnly = Boolean(msg._localStatus)
   const isFailed = msg._localStatus === 'failed'
+  const canFlag = onFlag && mine && msg.kind !== 'card' && !isLocalOnly
 
   return (
     <div className={clsx('flex mb-2.5 animate-msg-in', mine ? 'justify-end' : 'justify-start')}>
@@ -74,22 +115,41 @@ export default function MessageBubble({ msg, mine, accent, showSender, readState
         {!mine && showSender && msg.senderName && (
           <p className="text-[11px] font-semibold text-cp-text-muted mb-1 ml-1">{msg.senderName}</p>
         )}
-        <div
-          className={clsx(
-            'px-3.5 py-2.5 text-[14px] leading-relaxed font-cp-body whitespace-pre-wrap break-words',
-            mine
-              ? clsx('text-white rounded-2xl rounded-br-md shadow-sm', ACCENT[accent].mineBg, isFailed && 'opacity-60')
-              : 'bg-white text-cp-text-primary rounded-2xl rounded-bl-md border border-cp-border'
-          )}
-        >
-          {msg.text}
-        </div>
+        {msg.kind === 'card' ? (
+          <div className={clsx(isFailed && 'opacity-60')}>
+            <CardMessage msg={msg} />
+          </div>
+        ) : (
+          <div
+            className={clsx(
+              'px-3.5 py-2.5 text-[14px] leading-relaxed font-cp-body whitespace-pre-wrap break-words',
+              mine
+                ? clsx('text-white rounded-2xl rounded-br-md shadow-sm', ACCENT[accent].mineBg, isFailed && 'opacity-60')
+                : 'bg-white text-cp-text-primary rounded-2xl rounded-bl-md border border-cp-border'
+            )}
+          >
+            {msg.text}
+          </div>
+        )}
+        {msg.flagType && (
+          <p className={clsx('flex items-center gap-1 text-[10px] font-medium mt-1', mine ? 'justify-end mr-1 text-cp-text-muted' : 'ml-1 text-cp-text-muted')}>
+            {(() => {
+              const { label, Icon } = FLAG_META[msg.flagType]
+              return (
+                <>
+                  <Icon size={10} /> {label}
+                </>
+              )
+            })()}
+          </p>
+        )}
         <div className={clsx('flex items-center gap-1.5 text-[10px] text-cp-text-muted mt-1', mine ? 'justify-end mr-1' : 'ml-1')}>
           <span>{clockTime(msg.createdAt)}</span>
           {mine && isLocalOnly && (
             <LocalStatusBadge status={msg._localStatus} onRetry={() => onRetry?.(msg.clientId)} onDiscard={() => onDiscard?.(msg.clientId)} />
           )}
           {mine && !isLocalOnly && <ReceiptTicks readState={readState} accent={accent} />}
+          {canFlag && !msg.flagType && <FlagMenu onPick={(flagType) => onFlag(msg, flagType)} />}
         </div>
       </div>
     </div>

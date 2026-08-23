@@ -17,11 +17,13 @@
 
 import { useState, useEffect } from 'react'
 import clsx from 'clsx'
-import { FiMessageCircle, FiHeadphones, FiInbox } from 'react-icons/fi'
+import { FiMessageCircle, FiHeadphones, FiInbox, FiFileText, FiRadio } from 'react-icons/fi'
 import { createChatApi } from '../../chat/api/chatApi'
 import { useChatIdentity } from '../../chat/hooks/useChatIdentity'
 import { timeAgo } from '../../chat/utils/time'
 import ConversationPane from '../../chat/components/ConversationPane'
+import NotesPanel from '../../chat/notes/NotesPanel'
+import BroadcastPanel from '../../chat/broadcast/BroadcastPanel'
 
 // ── থ্রেড-লিস্ট hook — staff-নির্দিষ্ট শেপ (flat personal[]/support[]), তাই
 // shared engine-এর অংশ না (দেখুন chatApi.js-এর টপ কমেন্ট) ──
@@ -106,6 +108,8 @@ export default function ChatInbox() {
   const [tab, setTab] = useState('personal')
   const [openId, setOpenId] = useState(null)
   const [composerValue, setComposerValue] = useState('')
+  const [notesOpen, setNotesOpen] = useState(false)
+  const [broadcastOpen, setBroadcastOpen] = useState(false)
 
   const list = threads[tab] || []
   const activeItem = list.find((t) => t.id === openId)
@@ -113,6 +117,7 @@ export default function ChatInbox() {
 
   useEffect(() => {
     setComposerValue('')
+    setNotesOpen(false)
   }, [openId])
 
   const handleOpen = (item) => setOpenId(item.id)
@@ -121,11 +126,20 @@ export default function ChatInbox() {
   // h-full কাজ করবে যদি প্রতিটা layout-এর <main> flex-col শেলের ভেতর flex-1
   // হিসেবে বসানো থাকে (এই কোডবেসের standard প্যাটার্ন)। min-height সেফটি-নেট।
   return (
-    <div className="h-full min-h-[560px] lg:grid lg:grid-cols-[360px_1fr] bg-cp-bg-base">
+    <div className="relative h-full min-h-[560px] lg:grid lg:grid-cols-[360px_1fr] bg-cp-bg-base">
       {/* ── ইনবক্স ── */}
       <div className={clsx('h-full overflow-y-auto border-r border-cp-border bg-white flex flex-col', openId && 'hidden lg:flex')}>
         <div className="px-4 py-3 border-b border-cp-border">
-          <h2 className="font-cp-head font-bold text-[17px] text-cp-text-primary mb-2">মেসেজ</h2>
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="font-cp-head font-bold text-[17px] text-cp-text-primary">মেসেজ</h2>
+            <button
+              onClick={() => setBroadcastOpen(true)}
+              type="button"
+              className="flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-full bg-cp-trust-50 text-cp-trust-700 text-[11.5px] font-semibold hover:bg-cp-trust-100 transition-colors"
+            >
+              <FiRadio size={12} /> ব্রডকাস্ট
+            </button>
+          </div>
           <div className="relative flex bg-cp-bg-sunken rounded-full p-1 h-10">
             <span
               className={clsx(
@@ -179,7 +193,7 @@ export default function ChatInbox() {
       </div>
 
       {/* ── থ্রেড ভিউ ── */}
-      <div className={clsx('h-full flex flex-col', !openId && 'hidden lg:flex lg:items-center lg:justify-center')}>
+      <div className={clsx('relative h-full flex flex-col', !openId && 'hidden lg:flex lg:items-center lg:justify-center')}>
         {activeItem ? (
           <ConversationPane
             key={activeItem.id}
@@ -191,6 +205,7 @@ export default function ChatInbox() {
             senderType="staff"
             senderName="স্টাফ"
             accent={accent}
+            customerId={activeItem.customer_id}
             avatar={<Avatar name={activeItem.shop_name || activeItem.owner_name} accent={accent} />}
             title={activeItem.shop_name || activeItem.owner_name || 'কাস্টমার'}
             subtitle={tab === 'support' ? 'সাপোর্ট থ্রেড' : 'কাস্টমার চ্যাট'}
@@ -206,6 +221,18 @@ export default function ChatInbox() {
         ) : (
           <p className="text-cp-text-secondary text-[14px]">বাম পাশ থেকে একটা কথোপকথন বেছে নিন</p>
         )}
+
+        {activeItem && !notesOpen && (
+          <button
+            onClick={() => setNotesOpen(true)}
+            type="button"
+            className="absolute top-3 right-3 z-10 flex items-center gap-1.5 pl-2.5 pr-3 py-1.5 rounded-full bg-amber-100 text-amber-800 text-[11.5px] font-semibold shadow-sm hover:bg-amber-200 transition-colors"
+          >
+            <FiFileText size={13} /> নোট
+          </button>
+        )}
+
+        {activeItem && notesOpen && <NotesPanel chatApi={chatApi} threadId={activeItem.id} onClose={() => setNotesOpen(false)} />}
       </div>
 
       <style>{`
@@ -213,6 +240,10 @@ export default function ChatInbox() {
         .animate-pulse-glow { animation: pulse-glow 1.8s ease-in-out infinite; }
         @media (prefers-reduced-motion: reduce) { .animate-pulse-glow { animation: none !important; } }
       `}</style>
+
+      {broadcastOpen && (
+        <BroadcastPanel chatApi={chatApi} db={db} uid={uid} ready={ready} senderName="স্টাফ" onClose={() => setBroadcastOpen(false)} />
+      )}
     </div>
   )
 }

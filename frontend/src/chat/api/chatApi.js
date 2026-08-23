@@ -39,6 +39,63 @@ function createStaffChatApi() {
     async notify(threadId, preview) {
       await api.post(`/chat/threads/${threadId}/notify`, { preview })
     },
+
+    // ── Phase 2: বিজনেস কার্ড (staff-only এই সেশনে) ──
+    async getDueCard(customerId) {
+      const res = await api.get(`/chat/cards/due/${customerId}`)
+      return res.data.data
+    },
+    async getDeliveries(customerId) {
+      // বিদ্যমান এন্ডপয়েন্ট রিইউজ — নতুন ব্যাকএন্ড লাগেনি (দেখুন README-এর tenant-check নোট)
+      const res = await api.get(`/deliveries/customer/${customerId}`)
+      return res.data.data
+    },
+
+    // ── Phase 3: ইন্টারনাল নোট (staff-only, RTDB-এর সম্পূর্ণ বাইরে) ──
+    async listNotes(threadId) {
+      const res = await api.get(`/chat/threads/${threadId}/notes`)
+      return res.data.data
+    },
+    async addNote(threadId, text, mentionedUserIds = []) {
+      const res = await api.post(`/chat/threads/${threadId}/notes`, { text, mentionedUserIds })
+      return res.data.data
+    },
+    async listTeamMembers() {
+      const res = await api.get('/chat/team-members')
+      return res.data.data
+    },
+
+    // ── Phase 3, Session 2: SLA + অডিট ──
+    async flagMessage(threadId, clientId, flagType, text) {
+      const res = await api.post(`/chat/threads/${threadId}/flag`, { clientId, flagType, text })
+      return res.data.data
+    },
+    async getSlaStats(days = 7) {
+      const res = await api.get('/chat/sla/stats', { params: { days } })
+      return res.data.data
+    },
+    async listFlaggedMessages(days = 30) {
+      const res = await api.get('/chat/flagged', { params: { days } })
+      return res.data.data
+    },
+
+    // ── Phase 3, Session 3: ব্রডকাস্ট ──
+    async listRoutes() {
+      const res = await api.get('/routes')
+      return res.data.data
+    },
+    async listRouteCustomers(routeId) {
+      const res = await api.get(`/routes/${routeId}/customers`)
+      return res.data.data
+    },
+    async resolveBroadcastRecipients(customerIds) {
+      const res = await api.post('/chat/broadcast/resolve', { customerIds })
+      return res.data.data
+    },
+    async logBroadcast(text, totalRecipients, successCount) {
+      const res = await api.post('/chat/broadcast/log', { text, totalRecipients, successCount })
+      return res.data.data
+    },
   }
 }
 
