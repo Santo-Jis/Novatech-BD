@@ -33,7 +33,7 @@ const getMyAreaAndField = async (req, res) => {
 
         const p = await query(
             `SELECT shop_name, address, division_id, district_id, discoverable,
-                    phone, whatsapp, email, full_name, shop_photo, qr_code
+                    phone, whatsapp, email, full_name, shop_photo, profile_photo, qr_code, bio
              FROM persons WHERE id = $1`,
             [personId]
         );
@@ -76,13 +76,13 @@ const getMyAreaAndField = async (req, res) => {
 // ============================================================
 // PUT /api/portal/profile/area-field
 // { shop_name, address, division_id, district_id, discoverable,
-//   business_field_ids: [], phone, whatsapp, email }
+//   business_field_ids: [], phone, whatsapp, email, bio }
 // সব ফিল্ড optional — যা পাঠানো হবে শুধু তা আপডেট হবে
 // ============================================================
 const updateMyAreaAndField = async (req, res) => {
     try {
         const personId = await getPersonId(req.portalUser);
-        const { shop_name, address, division_id, district_id, discoverable, business_field_ids, phone, whatsapp, email } = req.body;
+        const { shop_name, address, division_id, district_id, discoverable, business_field_ids, phone, whatsapp, email, bio } = req.body;
 
         await query(
             `UPDATE persons SET
@@ -94,9 +94,10 @@ const updateMyAreaAndField = async (req, res) => {
                 phone        = COALESCE($7, phone),
                 whatsapp     = COALESCE($8, whatsapp),
                 email        = COALESCE($9, email),
+                bio          = COALESCE($10, bio),
                 updated_at   = NOW()
              WHERE id = $1`,
-            [personId, shop_name, address, division_id, district_id, discoverable, phone, whatsapp, email]
+            [personId, shop_name, address, division_id, district_id, discoverable, phone, whatsapp, email, bio]
         );
 
         if (Array.isArray(business_field_ids)) {

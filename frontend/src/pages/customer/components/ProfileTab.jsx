@@ -28,10 +28,12 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
 
   // ── আইডেন্টিটি হেডার — read-only ডেটা + ছবি/QR ── (form state-এর বাইরে,
   // কারণ form সরাসরি PUT /area-field বডিতে যায়, এগুলো আলাদা এন্ডপয়েন্ট/read-only)
-  const [person, setPerson] = useState({ full_name: '', shop_photo: '', qr_code: '', is_verified: null })
-  const [photoUploading, setPhotoUploading] = useState(false)
+  const [person, setPerson] = useState({ full_name: '', shop_photo: '', profile_photo: '', qr_code: '', is_verified: null })
+  const [uploadingCover,  setUploadingCover]  = useState(false) // শপ-ফটো (cover)
+  const [uploadingAvatar, setUploadingAvatar] = useState(false) // মালিকের ছবি (circular avatar)
   const [qrOpen, setQrOpen] = useState(false)
-  const shopPhotoInputRef = useRef(null)
+  const shopPhotoInputRef    = useRef(null)
+  const profilePhotoInputRef = useRef(null)
 
   const [divisions,      setDivisions]      = useState([])
   const [districts,      setDistricts]      = useState([])
@@ -45,7 +47,7 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
   const [form, setForm] = useState({
     shop_name: '', address: '', division_id: '', district_id: '',
     discoverable: true, business_field_ids: [],
-    phone: '', whatsapp: '', email: '',
+    phone: '', whatsapp: '', email: '', bio: '',
   })
 
   // ── প্রাথমিক লোড: রেফারেন্স ডেটা + নিজের বর্তমান প্রোফাইল ──────
@@ -71,12 +73,14 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
         phone:    me.phone || '',
         whatsapp: me.whatsapp || '',
         email:    me.email || '',
+        bio:      me.bio || '',
       })
       setPerson({
-        full_name:   me.full_name || '',
-        shop_photo:  me.shop_photo || '',
-        qr_code:     me.qr_code || '',
-        is_verified: me.is_verified ?? null,
+        full_name:     me.full_name || '',
+        shop_photo:    me.shop_photo || '',
+        profile_photo: me.profile_photo || '',
+        qr_code:       me.qr_code || '',
+        is_verified:   me.is_verified ?? null,
       })
 
       if (me.division_id) {
@@ -121,8 +125,10 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
     }))
   }
 
-  // ── শপ-ফটো আপলোড (POST /portal/profile/photo, multipart) ─────
-  const onShopPhotoSelected = async (e) => {
+  // ── ফটো আপলোড (POST /portal/profile/photo, multipart) ────────
+  // field: 'shop_photo' (cover) বা 'profile_photo' (গোলাকার avatar) —
+  // দুটো আপলোড-বাটনই একই হ্যান্ডলার শেয়ার করে, শুধু target field আলাদা
+  const onPhotoSelected = (field) => async (e) => {
     const file = e.target.files?.[0]
     e.target.value = '' // একই ফাইল আবার সিলেক্ট করলেও onChange ফায়ার হবে
     if (!file) return
@@ -136,23 +142,24 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
       return
     }
 
-    setPhotoUploading(true); setErrorMsg(''); setSavedMsg('')
+    const setUploading = field === 'shop_photo' ? setUploadingCover : setUploadingAvatar
+    setUploading(true); setErrorMsg(''); setSavedMsg('')
     try {
       const fd = new FormData()
-      fd.append('shop_photo', file)
+      fd.append(field, file)
       const res = await portalFetch('/portal/profile/photo', {
         method: 'POST',
         headers: authHeader,
         body: fd,
       })
-      if (res.data?.shop_photo) {
-        setPerson(p => ({ ...p, shop_photo: res.data.shop_photo }))
-        setSavedMsg('✅ শপের ছবি আপডেট হয়েছে।')
+      if (res.data?.[field]) {
+        setPerson(p => ({ ...p, [field]: res.data[field] }))
+        setSavedMsg(field === 'shop_photo' ? '✅ কভার ছবি আপডেট হয়েছে।' : '✅ প্রোফাইল ছবি আপডেট হয়েছে।')
       }
     } catch {
       setErrorMsg('ছবি আপলোড করতে সমস্যা হয়েছে, আবার চেষ্টা করুন।')
     } finally {
-      setPhotoUploading(false)
+      setUploading(false)
     }
   }
 
@@ -172,6 +179,7 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
           phone:    form.phone,
           whatsapp: form.whatsapp,
           email:    form.email,
+          bio:      form.bio,
         }),
       })
       setSavedMsg('✅ প্রোফাইল আপডেট হয়েছে।')
@@ -201,60 +209,95 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {/* ── আইডেন্টিটি হেডার ── */}
-      <CpCard padding="md">
-        <div className="flex items-center gap-3">
-          {/* শপ-ফটো + আপলোড ওভারলে */}
-          <div className="relative flex-shrink-0">
-            <div className="w-[72px] h-[72px] rounded-2xl overflow-hidden bg-cp-bg-alt border border-cp-border flex items-center justify-center">
-              {person.shop_photo
-                ? <img src={person.shop_photo} alt="শপের ছবি" className="w-full h-full object-cover" />
-                : <FiUser className="text-cp-text-muted" size={28} />
+      {/* ── আইডেন্টিটি হেডার (Facebook-স্টাইল কভার + গোলাকার অ্যাভাটার) ── */}
+      <CpCard padding="none" className="overflow-hidden">
+        {/* কভার — শপের ছবি, wide ব্যানার */}
+        <div className="relative w-full h-32 bg-cp-bg-alt">
+          {person.shop_photo && (
+            <img src={person.shop_photo} alt="কভার ছবি" className="w-full h-full object-cover" />
+          )}
+          <button
+            onClick={() => shopPhotoInputRef.current?.click()}
+            disabled={uploadingCover}
+            className="absolute top-2.5 right-2.5 w-9 h-9 rounded-full bg-black/45 border border-white/40 flex items-center justify-center disabled:opacity-60"
+          >
+            <FiCamera className="text-white" size={15} />
+          </button>
+          <input
+            ref={shopPhotoInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={onPhotoSelected('shop_photo')}
+          />
+        </div>
+
+        <div className="px-4 pb-4">
+          {/* অ্যাভাটার — কভারের উপর overlap, negative margin দিয়ে */}
+          <div className="relative -mt-10 mb-2 inline-block">
+            <div className="w-20 h-20 rounded-full overflow-hidden bg-cp-bg-alt border-4 border-white flex items-center justify-center">
+              {person.profile_photo
+                ? <img src={person.profile_photo} alt="প্রোফাইল ছবি" className="w-full h-full object-cover" />
+                : <FiUser className="text-cp-text-muted" size={30} />
               }
             </div>
             <button
-              onClick={() => shopPhotoInputRef.current?.click()}
-              disabled={photoUploading}
+              onClick={() => profilePhotoInputRef.current?.click()}
+              disabled={uploadingAvatar}
               className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-cp-trust-500 border-2 border-white flex items-center justify-center disabled:opacity-60"
             >
               <FiCamera className="text-white" size={13} />
             </button>
             <input
-              ref={shopPhotoInputRef}
+              ref={profilePhotoInputRef}
               type="file"
               accept="image/*"
               className="hidden"
-              onChange={onShopPhotoSelected}
+              onChange={onPhotoSelected('profile_photo')}
             />
           </div>
 
-          {/* নাম + verified ব্যাজ */}
-          <div className="flex-1 min-w-0">
-            <p className="text-base font-bold text-cp-text-primary truncate">
-              {form.shop_name || 'শপের নাম নেই'}
-            </p>
-            {person.full_name && (
-              <p className="text-xs text-cp-text-muted truncate">{person.full_name}</p>
-            )}
-            {person.is_verified && (
-              <div className="mt-1">
-                <CpBadge variant="verified" icon={FiCheckCircle}>ভেরিফায়েড</CpBadge>
-              </div>
-            )}
+          {/* নাম + মালিক + verified ব্যাজ + QR — অ্যাভাটারের নিচে */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-base font-bold text-cp-text-primary truncate">
+                {form.shop_name || 'শপের নাম নেই'}
+              </p>
+              {person.full_name && (
+                <p className="text-xs text-cp-text-muted truncate">{person.full_name}</p>
+              )}
+              {person.is_verified && (
+                <div className="mt-1">
+                  <CpBadge variant="verified" icon={FiCheckCircle}>ভেরিফায়েড</CpBadge>
+                </div>
+              )}
+            </div>
+
+            {/* QR বাটন — qr_code ইতিমধ্যে GET /area-field রেসপন্সেই আছে, আলাদা কল লাগছে না */}
+            <button
+              onClick={() => setQrOpen(true)}
+              className="flex-shrink-0 w-11 h-11 rounded-xl bg-cp-bg-alt border border-cp-border flex items-center justify-center"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cp-text-secondary">
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+                <path d="M14 14h3v3h-3zM19 14v3M14 19h3M19 19h2" />
+              </svg>
+            </button>
           </div>
 
-          {/* QR বাটন — qr_code ইতিমধ্যে GET /area-field রেসপন্সেই আছে, আলাদা কল লাগছে না */}
-          <button
-            onClick={() => setQrOpen(true)}
-            className="flex-shrink-0 w-11 h-11 rounded-xl bg-cp-bg-alt border border-cp-border flex items-center justify-center"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cp-text-secondary">
-              <rect x="3" y="3" width="7" height="7" rx="1" />
-              <rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" />
-              <path d="M14 14h3v3h-3zM19 14v3M14 19h3M19 19h2" />
-            </svg>
-          </button>
+          {/* বায়ো — ইনলাইন-এডিটেবল, Facebook "intro" টেক্সটের মতো, সরাসরি
+              form.bio-তেই থাকে তাই নিচের "সংরক্ষণ করুন" দিয়েই সেভ হয়,
+              আলাদা কোনো সাবমিট/মোডাল লাগে না */}
+          <textarea
+            value={form.bio}
+            onChange={e => setForm(f => ({ ...f, bio: e.target.value.slice(0, 280) }))}
+            placeholder="নিজের বা শপের সম্পর্কে কিছু লিখুন..."
+            rows={2}
+            className="mt-3 w-full resize-none rounded-xl border border-cp-border bg-white px-3 py-2 text-sm text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500"
+          />
+          <p className="mt-1 text-right text-[10px] text-cp-text-muted">{form.bio.length}/280</p>
         </div>
       </CpCard>
 
