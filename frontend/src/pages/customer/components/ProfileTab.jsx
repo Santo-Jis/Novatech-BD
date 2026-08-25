@@ -11,7 +11,7 @@
 // self-contained: portalJWT prop নেয়, নিজের state/fetch নিজেই সামলায়।
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { FiCheck, FiMapPin, FiEye, FiEyeOff, FiPhone, FiMessageCircle, FiMail, FiLock, FiCamera, FiCheckCircle, FiUser, FiX, FiLink, FiChevronRight, FiShield, FiSmartphone, FiClock, FiTrash2 } from 'react-icons/fi'
+import { FiCheck, FiMapPin, FiEye, FiEyeOff, FiPhone, FiMessageCircle, FiMail, FiLock, FiCamera, FiCheckCircle, FiUser, FiX, FiLink, FiChevronRight } from 'react-icons/fi'
 import { portalFetch } from '../utils/api'
 import CpCard from './ui/CpCard'
 import CpButton from './ui/CpButton'
@@ -38,13 +38,9 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
   const [businessFields, setBusinessFields] = useState([])
   const [companyCount,   setCompanyCount]   = useState(null) // null = এখনো লোড হয়নি
 
-  // ── অ্যাকাউন্ট ও নিরাপত্তা ── (login history + devices, password modal)
-  const [security, setSecurity] = useState(null) // null = এখনো লোড হয়নি/ব্যর্থ
-  const [pwOpen,    setPwOpen]    = useState(false)
-  const [pwForm,    setPwForm]    = useState({ current_password: '', new_password: '', confirm_password: '' })
-  const [pwSaving,  setPwSaving]  = useState(false)
-  const [pwError,   setPwError]   = useState('')
-  const [revokingId, setRevokingId] = useState(null) // কোন device_id revoke হচ্ছে এখন
+  // ── অ্যাকাউন্ট ও নিরাপত্তা সেকশন ProfileTab থেকে সরিয়ে
+  // AccountMenu → SettingsPage → SecurityPanel-এ নিয়ে যাওয়া হয়েছে।
+  // (security, pwOpen, pwForm, pwSaving, pwError, revokingId — সব সরানো)
 
   const [form, setForm] = useState({
     shop_name: '', address: '', division_id: '', district_id: '',
@@ -93,25 +89,14 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
       setLoading(false)
     }
 
-    // সংযুক্ত কোম্পানির সংখ্যা — ইচ্ছাকৃতভাবে উপরের মূল try/catch-এর বাইরে,
-    // কারণ ConnectionsTab.jsx-এর /my-qr কলের মতোই এটাও একটা সেকেন্ডারি
-    // সামারি; এটা ব্যর্থ হলেও শপ-নাম/ঠিকানা/যোগাযোগের মতো মূল প্রোফাইল
-    // ডেটা লোড হওয়া আটকে যাওয়া উচিত না।
+    // সংযুক্ত কোম্পানির সংখ্যা — ইচ্ছাকৃতভাবে উপরের মূল try/catch-এর বাইরে
     try {
       const compRes = await portalFetch('/portal/connections/my-companies', { headers: authHeader })
       setCompanyCount((compRes.data || []).length)
     } catch {
-      setCompanyCount(null) // silent — সামারি সেকশন এই অবস্থায় নিজেই hide থাকবে
+      setCompanyCount(null)
     }
-
-    // অ্যাকাউন্ট ও নিরাপত্তা — একই কারণে independent, login-history/devices
-    // একটা tertiary সেকশন, এর ব্যর্থতায় বাকি প্রোফাইল প্রভাবিত হবে না
-    try {
-      const secRes = await portalFetch('/portal/profile/security', { headers: authHeader })
-      setSecurity(secRes.data || { login_events: [], devices: [] })
-    } catch {
-      setSecurity(null) // silent — সেকশন নিজে থেকেই hide থাকবে
-    }
+    // ✅ Security fetch সরানো হয়েছে — এখন SecurityPanel.jsx-এ
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { loadAll() }, [loadAll])
@@ -194,61 +179,6 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
       setErrorMsg('আপডেট করতে সমস্যা হয়েছে, আবার চেষ্টা করুন।')
     } finally {
       setSaving(false)
-    }
-  }
-
-  // ── পাসওয়ার্ড পরিবর্তন (POST /portal/profile/password) ──────
-  const changePassword = async () => {
-    setPwError('')
-    if (!pwForm.current_password || !pwForm.new_password) {
-      setPwError('বর্তমান ও নতুন পাসওয়ার্ড দিন।')
-      return
-    }
-    if (pwForm.new_password.length < 6) {
-      setPwError('ন্যূনতম ৬ ডিজিট/অক্ষরের পাসওয়ার্ড দিন।')
-      return
-    }
-    if (pwForm.new_password !== pwForm.confirm_password) {
-      setPwError('নতুন পাসওয়ার্ড দুটো মিলছে না।')
-      return
-    }
-
-    setPwSaving(true)
-    try {
-      await portalFetch('/portal/profile/password', {
-        method: 'POST',
-        headers: authHeader,
-        body: JSON.stringify({
-          current_password: pwForm.current_password,
-          new_password:      pwForm.new_password,
-        }),
-      })
-      setPwOpen(false)
-      setPwForm({ current_password: '', new_password: '', confirm_password: '' })
-      setSavedMsg('✅ পাসওয়ার্ড পরিবর্তন হয়েছে।')
-    } catch (e) {
-      // portalFetch-এর thrown error-এ সার্ভারের message থাকলে সেটাই দেখাই
-      // (যেমন "বর্তমান পাসওয়ার্ড ভুল"), নাহলে জেনেরিক বার্তা
-      setPwError(e?.message || 'পাসওয়ার্ড পরিবর্তন করতে সমস্যা হয়েছে।')
-    } finally {
-      setPwSaving(false)
-    }
-  }
-
-  // ── ডিভাইস revoke (POST /portal/profile/devices/:id/revoke) ──
-  const revokeDevice = async (deviceId) => {
-    setRevokingId(deviceId)
-    try {
-      await portalFetch(`/portal/profile/devices/${deviceId}/revoke`, {
-        method: 'POST',
-        headers: authHeader,
-      })
-      setSecurity(s => s && { ...s, devices: s.devices.filter(d => d.id !== deviceId) })
-      setSavedMsg('✅ ডিভাইস মুছে ফেলা হয়েছে।')
-    } catch {
-      setErrorMsg('ডিভাইস মুছতে সমস্যা হয়েছে, আবার চেষ্টা করুন।')
-    } finally {
-      setRevokingId(null)
     }
   }
 
@@ -575,75 +505,11 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
         সংরক্ষণ করুন
       </CpButton>
 
-      {/* ── অ্যাকাউন্ট ও নিরাপত্তা ── */}
-      {/* save-বাটনের নিচে, স্বতন্ত্র সেকশন হিসেবে — এর নিজস্ব save-action
-          (পাসওয়ার্ড মোডালের ভেতরের সাবমিট) আছে, উপরের মূল ফর্ম-সেভের সাথে
-          কোনো সম্পর্ক নেই, তাই একসাথে না রেখে আলাদা রাখা হলো যাতে ইউজার
-          "সংরক্ষণ করুন" বাটনকে এই সেকশনের জন্যও প্রযোজ্য মনে না করে।
-          security === null মানে লোড হয়নি/ব্যর্থ হয়েছে — সেক্ষেত্রে পুরো
-          সেকশনই hide থাকে, একটা tertiary সেকশনের জন্য এরর-ব্যানার অতিরিক্ত। */}
-      {security && (
-        <CpCard padding="md" className="flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <FiShield className="text-cp-trust-500 flex-shrink-0" size={16} />
-            <p className="text-xs font-semibold text-cp-text-secondary">অ্যাকাউন্ট ও নিরাপত্তা</p>
-          </div>
+      {/* ✅ অ্যাকাউন্ট ও নিরাপত্তা সেকশন এখানে আর নেই —
+          AccountMenu (☰) → সেটিংস → পাসওয়ার্ড ও নিরাপত্তা-তে সরানো হয়েছে।
+          (SecurityPanel.jsx) */}
 
-          <CpButton variant="secondary" size="sm" onClick={() => setPwOpen(true)}>
-            পাসওয়ার্ড পরিবর্তন করুন
-          </CpButton>
-
-          {/* সংযুক্ত ডিভাইস — শুধু customer-connected অবস্থায় থাকে
-              (customer_portal_devices.customer_id NOT NULL) */}
-          {security.devices.length > 0 && (
-            <div className="flex flex-col gap-1 pt-2 border-t border-cp-border/60">
-              <p className="text-[11px] font-medium text-cp-text-muted mb-1">সংযুক্ত ডিভাইস</p>
-              {security.devices.map(d => (
-                <div key={d.id} className="flex items-center gap-2.5 py-1.5">
-                  <FiSmartphone className="text-cp-text-muted flex-shrink-0" size={15} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-medium text-cp-text-primary truncate">
-                      {d.device_label || d.google_email || 'অজানা ডিভাইস'}
-                    </p>
-                    {d.last_used_at && (
-                      <p className="text-[10px] text-cp-text-muted">
-                        সর্বশেষ ব্যবহার: {new Date(d.last_used_at).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      </p>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => revokeDevice(d.id)}
-                    disabled={revokingId === d.id}
-                    className="flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-cp-error disabled:opacity-50"
-                  >
-                    <FiTrash2 size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* সাম্প্রতিক লগইন — সর্বোচ্চ ৩টা, নতুন-ডিভাইস হলে হাইলাইট */}
-          {security.login_events.length > 0 && (
-            <div className="flex flex-col gap-1 pt-2 border-t border-cp-border/60">
-              <p className="text-[11px] font-medium text-cp-text-muted mb-1">সাম্প্রতিক লগইন</p>
-              {security.login_events.slice(0, 3).map(ev => (
-                <div key={ev.id} className="flex items-center gap-2.5 py-1">
-                  <FiClock className="text-cp-text-muted flex-shrink-0" size={13} />
-                  <p className="text-[11px] text-cp-text-secondary flex-1">
-                    {new Date(ev.created_at).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    {(ev.city || ev.country) && ` — ${[ev.city, ev.country].filter(Boolean).join(', ')}`}
-                  </p>
-                  {ev.is_new_device && <CpBadge variant="warning">নতুন ডিভাইস</CpBadge>}
-                </div>
-              ))}
-            </div>
-          )}
-        </CpCard>
-      )}
-
-      {/* ── QR মোডাল ── (ConnectionsTab.jsx-এর QR মোডালের সাথে একই প্যাটার্ন,
-          কিন্তু আলাদা fetch লাগছে না — qr_code আগে থেকেই GET /area-field থেকে person state-এ আছে) */}
+      {/* ── QR মোডাল ── */}
       {qrOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" onClick={() => setQrOpen(false)}>
           <div className="bg-white w-full max-w-[480px] rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
@@ -670,53 +536,6 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
         </div>
       )}
 
-      {/* ── পাসওয়ার্ড পরিবর্তন মোডাল ── (QR মোডালের সাথে একই bottom-sheet প্যাটার্ন) */}
-      {pwOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/50"
-          onClick={() => { setPwOpen(false); setPwError('') }}
-        >
-          <div className="bg-white w-full max-w-[480px] rounded-t-3xl p-5 flex flex-col gap-3" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-1">
-              <p className="text-base font-bold text-cp-text-primary">পাসওয়ার্ড পরিবর্তন</p>
-              <button onClick={() => { setPwOpen(false); setPwError('') }}>
-                <FiX size={20} className="text-cp-text-muted" />
-              </button>
-            </div>
-
-            {pwError && (
-              <p className="text-xs text-cp-error bg-cp-error-bg rounded-xl px-3 py-2">{pwError}</p>
-            )}
-
-            <CpInput
-              label="বর্তমান পাসওয়ার্ড"
-              type="password"
-              icon={FiLock}
-              value={pwForm.current_password}
-              onChange={e => setPwForm(f => ({ ...f, current_password: e.target.value }))}
-            />
-            <CpInput
-              label="নতুন পাসওয়ার্ড"
-              type="password"
-              icon={FiLock}
-              placeholder="ন্যূনতম ৬ ডিজিট/অক্ষর"
-              value={pwForm.new_password}
-              onChange={e => setPwForm(f => ({ ...f, new_password: e.target.value }))}
-            />
-            <CpInput
-              label="নতুন পাসওয়ার্ড আবার লিখুন"
-              type="password"
-              icon={FiLock}
-              value={pwForm.confirm_password}
-              onChange={e => setPwForm(f => ({ ...f, confirm_password: e.target.value }))}
-            />
-
-            <CpButton variant="primary" fullWidth loading={pwSaving} onClick={changePassword} className="mt-1 mb-2">
-              পরিবর্তন করুন
-            </CpButton>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

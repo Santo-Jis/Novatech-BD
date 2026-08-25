@@ -33,6 +33,10 @@ import TopBar from '../dashboard/TopBar'
 import AccountMenu from '../dashboard/AccountMenu'
 import SummaryTab from '../dashboard/SummaryTab'
 import HomeFeed from '../dashboard/HomeFeed'
+// ✅ NEW — ☰ মেনুর সাব-পেজ (AccountMenu-এর onNavigate prop দিয়ে খোলে)
+import SettingsPage from '../dashboard/SettingsPage'
+import PersonalizationPage from '../dashboard/PersonalizationPage'
+import PrivacyTermsPage from '../dashboard/PrivacyTermsPage'
 import { NOTIF_CONFIG } from '../dashboard/NotificationBell'
 import BottomNav, { getActiveSectionId, getActiveSection } from '../dashboard/BottomNav'
 
@@ -108,6 +112,8 @@ export default function DashboardView({
   const [showCreditConfirm,    setShowCreditConfirm]    = useState(false)
   const [showReturnConfirm,    setShowReturnConfirm]    = useState(false)
   const [menuOpen,             setMenuOpen]             = useState(false)
+  // ✅ NEW — null | 'settings' | 'personalization' | 'privacy'
+  const [menuPage,             setMenuPage]             = useState(null)
   const [returnSubTab,         setReturnSubTab]         = useState('requests')
 
   const fmtCur = (n) => parseFloat(n || 0).toLocaleString('en-US')
@@ -179,7 +185,28 @@ export default function DashboardView({
         markOneRead={markOneRead}
         onTabChange={onTabChange}
         onLogoutClick={() => { setMenuOpen(false); setShowLogoutConfirm(true) }}
+        onNavigate={(page) => { setMenuOpen(false); setMenuPage(page) }}
       />
+
+      {/* ═══ ☰ সাব-পেজ (settings / personalization / privacy) ══════════
+          ব্যাক চাপলে menuPage null হয়ে AccountMenu আবার খোলে — স্বাভাবিক
+          মেনু → পেজ → ব্যাক → মেনু নেভিগেশন স্ট্যাক। */}
+      {menuPage === 'settings' && (
+        <SettingsPage
+          portalJWT={portalJWT}
+          onBack={() => { setMenuPage(null); setMenuOpen(true) }}
+        />
+      )}
+      {menuPage === 'personalization' && (
+        <PersonalizationPage
+          onBack={() => { setMenuPage(null); setMenuOpen(true) }}
+        />
+      )}
+      {menuPage === 'privacy' && (
+        <PrivacyTermsPage
+          onBack={() => { setMenuPage(null); setMenuOpen(true) }}
+        />
+      )}
 
       {/* ═══ MAIN CONTENT ════════════════════════════════════════ */}
       {/* ✅ FIX: আগে এখানে px-4 ছিল যার ফলে দুই পাশে cp-bg-base (হালকা নীল)

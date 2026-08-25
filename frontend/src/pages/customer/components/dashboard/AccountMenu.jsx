@@ -1,80 +1,83 @@
 // components/dashboard/AccountMenu.jsx
 // ═══════════════════════════════════════════════════════════════
-// ধাপ ৩ — ☰ হ্যামবার্গার চাপলে যেই মেনু খোলে
-// আগে DashboardHeader.jsx-এ যা যা ছিল (শপ নাম, verified ব্যাজ, নোটিফিকেশন
-// বেল, লগআউট) — সব এখানে। SR কন্টাক্ট কার্ড (আগে HomeFeed.jsx-এ পিন করা
-// ছিল) এখনো এখানে নিয়ে আসা হলো — কোনো ফাংশনালিটি মোছা হয়নি, শুধু
-// Facebook-এর মতো ☰ মেনুর ভেতরে সরানো হলো (হোম ফিড এখন পরিষ্কার থাকবে)।
+// ☰ হ্যামবার্গার মেনু — Facebook মোবাইলের side-drawer প্যাটার্ন।
+//
+//   ┌──────────────────┬──────────────────────────┐
+//   │  backdrop (dim)  │  drawer (ডান দিক, 85vw) │
+//   │  tap → বন্ধ     │  প্রোফাইল পিল            │
+//   │                  │  SR কন্টাক্ট             │
+//   │                  │  সেটিংস / পারসোনালাই... │
+//   │                  │  প্রাইভেসি               │
+//   │                  │  লগআউট                   │
+//   └──────────────────┴──────────────────────────┘
+//
+// নতুন prop: `onNavigate(key)` — 'settings' | 'personalization' | 'privacy'
+// DashboardView.jsx-এ menuPage state রেন্ডার করে সাব-পেজ খোলে।
+// বাকি সব prop আগের মতোই।
 // ═══════════════════════════════════════════════════════════════
 
-import { FiX, FiLogOut } from 'react-icons/fi'
+import { FiX, FiLogOut, FiSettings, FiSliders, FiShield, FiChevronRight, FiUser, FiPhone, FiCheckCircle } from 'react-icons/fi'
 import NotificationBell from './NotificationBell'
+
+const MENU_ITEMS = [
+  { key: 'settings',        icon: FiSettings, label: 'সেটিংস' },
+  { key: 'personalization', icon: FiSliders,  label: 'পারসোনালাইজেশন' },
+  { key: 'privacy',         icon: FiShield,   label: 'প্রাইভেসি ও শর্তাবলী' },
+]
 
 export default function AccountMenu({
   open, onClose, customer, portalJWT,
   notifications, unreadCount, showBell, setShowBell, markAllAsRead, markOneRead, onTabChange,
-  onLogoutClick,
+  onLogoutClick, onNavigate,
 }) {
   if (!open) return null
 
+  const initial = customer?.shop_name?.trim?.()?.[0]?.toUpperCase() || '?'
+
   return (
-    <div className="fixed inset-0 z-40" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40" />
+    <div className="fixed inset-0 z-40">
+      <style>{`
+        @keyframes cpSlideFromRight { from{transform:translateX(100%)} to{transform:translateX(0)} }
+        @keyframes cpFadeBackdrop   { from{opacity:0} to{opacity:1} }
+      `}</style>
+
+      {/* Backdrop — tap করলে বন্ধ */}
       <div
-        onClick={(e) => e.stopPropagation()}
-        className="absolute top-16 left-2.5 right-2.5 rounded-3xl overflow-hidden shadow-2xl bg-gradient-to-br from-cp-trust-900 via-cp-trust-900 to-cp-trust-700"
-        style={{ animation: 'slideDown 0.18s ease-out' }}
+        className="absolute inset-0 bg-black/50"
+        onClick={onClose}
+        style={{ animation: 'cpFadeBackdrop 0.22s ease-out' }}
+      />
+
+      {/* Drawer — ডান দিক থেকে slide in */}
+      <div
+        className="absolute right-0 top-0 bottom-0 bg-cp-bg-alt flex flex-col overflow-y-auto"
+        style={{
+          width: '85vw',
+          maxWidth: 360,
+          animation: 'cpSlideFromRight 0.22s ease-out',
+          boxShadow: '-4px 0 24px rgba(0,0,0,0.18)',
+        }}
       >
-        <style>{`@keyframes slideDown{from{transform:translateY(-12px);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
-
-        <div className="p-5">
-          {/* ── শপ পরিচিতি ── */}
-          <div className="flex items-start justify-between mb-4">
-            <div className="min-w-0">
-              <span className="text-[9px] text-white/35 tracking-[2px] uppercase block mb-1">CUSTOMER PORTAL</span>
-              <h1 className="text-xl font-bold text-white leading-tight font-cp-head truncate">{customer.shop_name}</h1>
-              <div className="flex items-center gap-1.5 mt-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-cp-confidence-600 flex-shrink-0 shadow-[0_0_8px_rgba(14,155,108,0.9)]" />
-                <span className="text-[10px] text-white/40 truncate">{customer.owner_name} • {customer.customer_code}</span>
-              </div>
-              <span
-                className={`inline-flex items-center gap-1 mt-2 text-[10px] font-bold px-2.5 py-1 rounded-full border ${
-                  customer.is_verified
-                    ? 'bg-cp-confidence-600/15 text-cp-confidence-300 border-cp-confidence-600/30'
-                    : 'bg-cp-warmth-600/15 text-cp-warmth-300 border-cp-warmth-600/30'
-                }`}
-              >
-                {customer.is_verified ? '✅ Verified কাস্টমার' : '⏳ Unverified — SR ভিজিটের অপেক্ষায়'}
-              </span>
+        {/* ── প্রোফাইল পিল ── */}
+        <div className="px-3 pt-4 pb-1 flex-shrink-0">
+          <div className="bg-cp-bg-surface rounded-full pl-2 pr-2 py-2 flex items-center gap-2.5 shadow-sm">
+            <div className="w-10 h-10 rounded-full bg-cp-trust-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+              {initial}
             </div>
-            <button
-              onClick={onClose}
-              aria-label="বন্ধ করুন"
-              className="w-9 h-9 rounded-xl bg-white/10 border border-white/15 text-white/70 flex items-center justify-center flex-shrink-0"
-            >
-              <FiX size={16} />
-            </button>
-          </div>
-
-          {/* ── SR কন্টাক্ট ── */}
-          {customer?.assigned_sr_name && (
-            <div className="rounded-2xl px-4 py-3 flex items-center gap-3 bg-white/[0.06] border border-white/[0.08] mb-3">
-              <div className="w-10 h-10 rounded-2xl bg-white/[0.14] flex items-center justify-center text-lg flex-shrink-0">🧑‍💼</div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[9px] text-white/50 font-bold uppercase tracking-wider">আপনার বিক্রয় প্রতিনিধি</p>
-                <p className="text-[13px] text-white font-bold mt-0.5 truncate">{customer.assigned_sr_name}</p>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1">
+                <p className="text-[15px] font-bold text-cp-text-primary font-cp-head truncate">
+                  {customer.shop_name}
+                </p>
+                {customer.is_verified && (
+                  <FiCheckCircle size={12} className="text-cp-confidence-600 flex-shrink-0" />
+                )}
               </div>
-              {customer?.assigned_sr_phone && (
-                <a href={`tel:${customer.assigned_sr_phone}`} className="no-underline bg-white/[0.14] rounded-xl px-3 py-2 flex flex-col items-center gap-0.5 flex-shrink-0">
-                  <span className="text-lg">📞</span>
-                  <span className="text-[8.5px] text-white font-bold">কল</span>
-                </a>
-              )}
+              <p className="text-[10.5px] text-cp-text-muted truncate">
+                {customer.owner_name}
+              </p>
             </div>
-          )}
 
-          {/* ── নোটিফিকেশন + লগআউট ── */}
-          <div className="flex items-center gap-2.5">
             <NotificationBell
               notifications={notifications}
               unreadCount={unreadCount}
@@ -85,13 +88,74 @@ export default function AccountMenu({
               markOneRead={markOneRead}
               onTabChange={onTabChange}
             />
+
             <button
-              onClick={onLogoutClick}
-              className="flex-1 h-10 rounded-xl bg-white/10 border border-white/15 text-white/80 text-[12px] font-semibold flex items-center justify-center gap-1.5"
+              onClick={onClose}
+              aria-label="বন্ধ করুন"
+              className="w-8 h-8 rounded-full bg-cp-bg-alt text-cp-text-secondary flex items-center justify-center flex-shrink-0"
             >
-              <FiLogOut size={14} /> লগআউট
+              <FiX size={17} />
             </button>
           </div>
+        </div>
+
+        {/* ── SR কন্টাক্ট ── */}
+        {customer?.assigned_sr_name && (
+          <div className="px-3 pt-4 pb-1 flex-shrink-0">
+            <p className="text-[11px] font-bold text-cp-text-muted uppercase tracking-wide mb-2 px-1">
+              আপনার বিক্রয় প্রতিনিধি
+            </p>
+            <div className="bg-cp-bg-surface rounded-2xl px-3 py-3 flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-cp-bg-alt text-cp-trust-700 flex items-center justify-center flex-shrink-0">
+                <FiUser size={15} />
+              </div>
+              <p className="flex-1 text-[14px] font-semibold text-cp-text-primary truncate">
+                {customer.assigned_sr_name}
+              </p>
+              {customer?.assigned_sr_phone && (
+                <a
+                  href={`tel:${customer.assigned_sr_phone}`}
+                  className="no-underline w-9 h-9 rounded-full bg-cp-trust-100 text-cp-trust-600 flex items-center justify-center flex-shrink-0"
+                  aria-label="কল করুন"
+                >
+                  <FiPhone size={14} />
+                </a>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ── মেনু লিস্ট ── */}
+        <div className="px-3 pt-4 flex-shrink-0">
+          <p className="text-[11px] font-bold text-cp-text-muted uppercase tracking-wide mb-2 px-1">
+            অ্যাকাউন্ট
+          </p>
+          <div className="bg-cp-bg-surface rounded-2xl overflow-hidden divide-y divide-cp-border/70">
+            {MENU_ITEMS.map(({ key, icon: Icon, label }) => (
+              <button
+                key={key}
+                onClick={() => onNavigate?.(key)}
+                className="w-full flex items-center gap-3.5 px-4 py-3.5 text-left active:bg-cp-bg-alt transition-colors"
+              >
+                <Icon size={19} className="text-cp-text-primary flex-shrink-0" />
+                <span className="flex-1 text-[14.5px] font-medium text-cp-text-primary">{label}</span>
+                <FiChevronRight size={15} className="text-cp-text-muted flex-shrink-0" />
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* স্পেসার — লগআউট নিচে রাখে */}
+        <div className="flex-1" />
+
+        {/* ── লগআউট ── */}
+        <div className="px-3 pt-3 pb-6 flex-shrink-0">
+          <button
+            onClick={onLogoutClick}
+            className="w-full h-11 rounded-full bg-cp-bg-sunken text-cp-text-primary text-[14px] font-semibold flex items-center justify-center gap-2"
+          >
+            <FiLogOut size={15} /> লগআউট
+          </button>
         </div>
       </div>
     </div>

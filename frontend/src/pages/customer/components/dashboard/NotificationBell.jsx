@@ -20,11 +20,11 @@ export default function NotificationBell({
     <div className="relative">
       <button
         onClick={() => { setShowBell(v => !v); if (unreadCount > 0) markAllAsRead(portalJWT) }}
-        className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 text-white flex items-center justify-center relative"
+        className="w-9 h-9 rounded-full bg-cp-bg-alt text-cp-text-secondary flex items-center justify-center relative flex-shrink-0"
       >
-        <FiBell size={18} />
+        <FiBell size={17} />
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-cp-error text-white rounded-full min-w-[18px] h-[18px] text-[10px] font-bold flex items-center justify-center border-2 border-cp-trust-900 px-0.5">
+          <span className="absolute -top-1 -right-1 bg-cp-error text-white rounded-full min-w-[18px] h-[18px] text-[10px] font-bold flex items-center justify-center border-2 border-cp-bg-surface px-0.5">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}
