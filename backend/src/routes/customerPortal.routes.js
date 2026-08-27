@@ -96,7 +96,7 @@ const { getAddresses, addAddress, updateAddress, deleteAddress } = require('../c
 
 const { auth }          = require('../middlewares/auth');
 const { aiTokenBucket } = require('../middlewares/aiTokenBucket');
-const { customerAiChat, getCustomerChatHistory } = require('../controllers/customerAiChat.controller');
+const { customerAiChat, customerAiChatStream, getCustomerChatHistory } = require('../controllers/customerAiChat.controller');
 
 // ── Portal JWT Middleware ─────────────────────────────────────
 // ⚠️ FIX: আগে এখানে একই লজিকের একটা আলাদা inline কপি ছিল, যেটাতে
@@ -356,6 +356,7 @@ router.post('/complaint',                  portalAuth, complaintLimiter, submitC
 router.get('/complaint',                   portalAuth, getMyComplaints);
 
 router.post('/ai-chat',        portalAuth, aiTokenBucket, customerAiChat);
+router.post('/ai-chat/stream', portalAuth, aiTokenBucket, customerAiChatStream); // ✅ AI চ্যাট রি-ডিজাইন (স্ট্রিমিং) — নতুন, additive, /ai-chat অপরিবর্তিত
 router.get('/ai-chat/history', portalAuth, getCustomerChatHistory);
 
 module.exports = router;

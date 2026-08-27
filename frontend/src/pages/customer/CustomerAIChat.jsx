@@ -3,6 +3,7 @@
 // Security: শুধু নিজের data দেখতে পাবে — backend-এ JWT-bound
 
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { streamAIChat } from './utils/streamChat' // ✅ ধাপ ১ (স্ট্রিমিং)
 
 const BACKEND = import.meta.env.DEV
   ? (import.meta.env.VITE_API_URL || 'http://localhost:5000/api')
@@ -148,6 +149,14 @@ function TypingIndicator() {
 }
 
 // ── Main Component ─────────────────────────────────────────────
+// ✅ ফিক্স: welcome মেসেজ টেক্সট একবারই সংজ্ঞায়িত — আগে শুধু mount-effect-এ
+// ছিল, clearChat-এও এখন লাগছে, তাই ডুপ্লিকেট না করে হেল্পার বানানো হলো
+const getWelcomeMessage = (shopName) => ({
+  role: 'assistant',
+  content: `আস্সালামু আলাইকুম! 👋\n\n${shopName || 'আপনাকে'} স্বাগতম।\n\nআমি আপনার ব্যক্তিগত সহকারী — কেনাকাটার তথ্য, বাকি, পেমেন্ট বা SR-এর সাথে যোগাযোগ — যেকোনো বিষয়ে সাহায্য করতে পারি।\n\nকী জানতে চান? 😊`,
+  time: null,
+})
+
 export default function CustomerAIChat() {
   // Customer info from JWT
   const [customerInfo, setCustomerInfo] = useState({})
@@ -167,6 +176,12 @@ export default function CustomerAIChat() {
   const [historyLoaded, setHistLoaded]= useState(false)
   const bottomRef                     = useRef(null)
   const inputRef                      = useRef(null)
+  const abortRef                      = useRef(null) // ✅ ধাপ ১: চলমান স্ট্রিম cancel করার জন্য
+  const forceNewThreadRef             = useRef(false) // ✅ ফিক্স: "নতুন চ্যাট"-এর পরের মেসেজে backend-কে new_thread:true পাঠানোর সিগন্যাল
+
+  // ✅ ধাপ ১: unmount হলে চলমান স্ট্রিম (থাকলে) cancel — অন্যথায় stream শেষ
+  // হওয়ার পর unmounted কম্পোনেন্টে setMessages() কল হতে পারে
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   // Scroll to bottom
   useEffect(() => {
@@ -178,11 +193,7 @@ export default function CustomerAIChat() {
     if (!customerInfo.shop_name || historyLoaded) return
     setHistLoaded(true)
 
-    const welcome = {
-      role: 'assistant',
-      content: `আস্সালামু আলাইকুম! 👋\n\n${customerInfo.shop_name || 'আপনাকে'} স্বাগতম।\n\nআমি আপনার ব্যক্তিগত সহকারী — কেনাকাটার তথ্য, বাকি, পেমেন্ট বা SR-এর সাথে যোগাযোগ — যেকোনো বিষয়ে সাহায্য করতে পারি।\n\nকী জানতে চান? 😊`,
-      time: null,
-    }
+    const welcome = getWelcomeMessage(customerInfo.shop_name)
 
     // Recent history আনো
     portalGet('/portal/ai-chat/history?limit=10')
@@ -199,6 +210,30 @@ export default function CustomerAIChat() {
   // Token info state
   const [tokenInfo, setTokenInfo] = useState(null)
 
+  // ✅ ধাপ ১: legacy non-streaming কল — আগের মতোই, কিন্তু এখন আলাদা
+  // ফাংশনে বের করা হয়েছে যাতে streaming ব্যর্থ হলে (নেটওয়ার্ক-লেভেলে,
+  // কোনো chunk দেখানোর আগেই) এটাতেই transparently fallback করা যায় —
+  // customer কিছুই টের পায় না, ঠিক আগের মতো অভিজ্ঞতা পায়।
+  // ✅ ফিক্স: recentHistory প্যারামিটার বাদ — server-side memory (ধাপ ১,
+  // শেষ অংশ) চালু হওয়ার পর backend client-history আর পড়েই না, শুধু
+  // new_thread flag গ্রহণ করে।
+  const sendLegacy = useCallback(async (msg, newThread) => {
+    const res = await portalPost('/portal/ai-chat', { message: msg, new_thread: newThread })
+
+    if (res.data.tokens_remaining !== undefined) {
+      setTokenInfo({
+        remaining: res.data.tokens_remaining,
+        max:       res.data.tokens_max,
+        // ✅ ফিক্স (পথে পাওয়া প্রি-এক্সিস্টিং bug): আগে res.data.reset_in_minutes
+        // পড়া হতো, কিন্তু backend কখনো এই নামে ফিল্ড পাঠায়নি (আসলটা
+        // refill_in_seconds) — মানে "· NaN/undefinedমি পরে reset" দেখাতো।
+        resetIn: Math.ceil((res.data.refill_in_seconds || 0) / 60),
+      })
+    }
+
+    setMessages(prev => [...prev, { role: 'assistant', content: res.data.reply, time: null }])
+  }, [])
+
   // Send message
   const send = useCallback(async (text) => {
     const msg = (text || input).trim()
@@ -206,58 +241,129 @@ export default function CustomerAIChat() {
 
     setInput('')
 
-    // ✅ Fix: recentHistory নেওয়া হচ্ছে setMessages-এর আগে
-    // যাতে নতুন userMsg history-তে duplicate না হয়
-    const recentHistory = messages.slice(-6).map(m => ({
-      role: m.role, content: m.content
-    }))
+    // ✅ ফিক্স: client-truncated history আর পাঠানো হয় না (backend এখন
+    // server-side thread থেকে context নেয়) — এই একটা মেসেজের জন্যই
+    // new_thread flag ক্যাপচার করে সাথে সাথে রিসেট করছি, যাতে পরের
+    // মেসেজে আবার প্রযোজ্য না হয়ে যায়
+    const newThread = forceNewThreadRef.current
+    forceNewThreadRef.current = false
 
     const userMsg = { role: 'user', content: msg, time: null }
     setMessages(prev => [...prev, userMsg])
     setLoading(true)
 
+    // ✅ ধাপ ১ (স্ট্রিমিং): প্রথম chunk আসার আগ পর্যন্ত এখনো "typing dots"
+    // দেখানো হয় (loading=true) — প্রথম real content এলেই dots সরে গিয়ে
+    // আসল টেক্সট বাড়তে থাকে। assistantStarted শুধু এই callback-জুড়ে
+    // synchronously ট্র্যাক করার জন্য (React state async, তাই ref লাগবে)।
+    const assistantStarted = { current: false }
+
+    // আগের কোনো স্ট্রিম চলমান থাকলে (স্বাভাবিক ব্যবহারে থাকার কথা না,
+    // যেহেতু button disabled থাকে loading-এ) বাতিল করে নতুনটা শুরু করি
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
     try {
-      const res = await portalPost('/portal/ai-chat', {
+      await streamAIChat({
+        backend: BACKEND,
+        jwt: getPortalJWT(),
         message: msg,
-        history: recentHistory,
+        newThread,
+        signal: controller.signal,
+        onChunk: (delta) => {
+          if (!assistantStarted.current) {
+            assistantStarted.current = true
+            setLoading(false)
+            setMessages(prev => [...prev, { role: 'assistant', content: delta, time: null, streaming: true }])
+          } else {
+            setMessages(prev => {
+              const next = [...prev]
+              const last = next[next.length - 1]
+              next[next.length - 1] = { ...last, content: last.content + delta }
+              return next
+            })
+          }
+        },
+        onDone: (evt) => {
+          if (evt.tokens_remaining !== undefined) {
+            setTokenInfo({
+              remaining: evt.tokens_remaining,
+              max:       evt.tokens_max,
+              resetIn:   Math.ceil((evt.refill_in_seconds || 0) / 60),
+            })
+          }
+          if (assistantStarted.current) {
+            setMessages(prev => {
+              const next = [...prev]
+              next[next.length - 1] = { ...next[next.length - 1], streaming: false }
+              return next
+            })
+          }
+        },
+        onError: async (err, networkLevel) => {
+          if (networkLevel && !assistantStarted.current) {
+            // ✅ এখনো customer কিছুই দেখেনি — নিরাপদে পুরনো non-streaming
+            // পথে fallback, কোনো visible ব্যবধান ছাড়াই
+            try {
+              await sendLegacy(msg, newThread)
+            } catch (legacyErr) {
+              setMessages(prev => [...prev, {
+                role: 'assistant',
+                content: `❌ ${legacyErr.message || 'সমস্যা হয়েছে। আবার চেষ্টা করুন।'}`,
+                time: null,
+              }])
+            }
+            return
+          }
+          // কিছু টেক্সট ইতিমধ্যে দেখানো হয়ে গেছে — নতুন করে fallback করলে
+          // duplicate/confusing হবে, তাই এখানেই error দেখাই
+          const errText = `❌ ${err.message || 'সমস্যা হয়েছে। আবার চেষ্টা করুন।'}`
+          if (assistantStarted.current) {
+            setMessages(prev => {
+              const next = [...prev]
+              const last = next[next.length - 1]
+              next[next.length - 1] = { ...last, content: last.content + '\n\n' + errText, streaming: false }
+              return next
+            })
+          } else {
+            setMessages(prev => [...prev, { role: 'assistant', content: errText, time: null }])
+          }
+        },
       })
-
-      // Token info আপডেট করো (backend থেকে আসে)
-      if (res.data.tokens_remaining !== undefined) {
-        setTokenInfo({
-          remaining:       res.data.tokens_remaining,
-          max:             res.data.tokens_max,
-          resetIn:         res.data.reset_in_minutes,
-        })
-      }
-
-      const aiMsg = {
-        role:    'assistant',
-        content: res.data.reply,
-        time:    null,
-      }
-      setMessages(prev => [...prev, aiMsg])
-
     } catch (err) {
+      // streamAIChat নিজে কখনো throw করার কথা না (সব onError দিয়ে যায়),
+      // তবু defensive — অপ্রত্যাশিত কিছু হলে UI hang না করে অন্তত error দেখাক
       setMessages(prev => [...prev, {
-        role:    'assistant',
+        role: 'assistant',
         content: `❌ ${err.message || 'সমস্যা হয়েছে। আবার চেষ্টা করুন।'}`,
-        time:    null,
+        time: null,
       }])
     } finally {
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 100)
     }
-  }, [input, loading, messages])
+  }, [input, loading, sendLegacy])
 
   const handleKey = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send() }
   }
 
+  // ✅ মূল ফিক্স: আগে setHistLoaded(false) করলে mount-effect আবার
+  // ট্রিগার হয়ে Firebase থেকে পুরনো history নিঃশব্দে reload করে ফেলত —
+  // "নতুন চ্যাট" চাপলে সংক্ষিপ্ত খালি-হওয়ার ঝলক দেখিয়ে ঠিক সেই পুরনো
+  // কথোপকথনই আবার ফিরে আসত। এখন historyLoaded স্পর্শই করা হচ্ছে না
+  // (effect তাই আর re-trigger হয় না), সরাসরি welcome মেসেজ বসানো হচ্ছে —
+  // সত্যিকারের ফাঁকা চ্যাট।
+  //
+  // forceNewThreadRef.current = true মানে পরের মেসেজে backend-কেও
+  // new_thread:true পাঠানো হবে (ধাপ ১-এর server-side memory থেকে
+  // আলাদা থ্রেড শুরু হবে) — শুধু UI ফাঁকা দেখানো না, AI-ও সত্যিই পুরনো
+  // context ভুলে যাবে।
   const clearChat = () => {
-    setHistLoaded(false)
-    setMessages([])
-    setTimeout(() => setHistLoaded(false), 50)
+    abortRef.current?.abort() // চলমান স্ট্রিম থাকলে বাতিল, নতুন চ্যাটে stray update ঠেকাতে
+    setMessages([getWelcomeMessage(customerInfo.shop_name)])
+    forceNewThreadRef.current = true
   }
 
   const isNewChat = messages.length <= 1
