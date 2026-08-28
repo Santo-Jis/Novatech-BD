@@ -1,6 +1,45 @@
 const logger = require('../config/logger');
 const { query } = require('../config/db');
 const { adjustDefaultWarehouseStock } = require('../services/warehouseStock.utils'); // ← per-warehouse স্টক ধাপ ৪
+const { uploadToCloudinary } = require('../services/employee.service'); // ✅ FIX: base64 ছবি Cloudinary-তে সরানোর জন্য
+
+// ============================================================
+// ✅ FIX (২৬ আগস্ট ২০২৬): image_url raw base64 (data:image/...;base64,...)
+// আকারে এলে সরাসরি DB-তে সেভ হয়ে যাচ্ছিল — একেকটা ছবি গড়ে ~২৭৩ KB,
+// কিছু ১.৬ MB পর্যন্ত। ফলে /portal/products লিস্ট, ডিটেইল, related —
+// প্রতিটা রেসপন্স কয়েকশ KB থেকে কয়েক MB হয়ে যাচ্ছিল, আর স্লো/অস্থির
+// মোবাইল নেটওয়ার্কে (৫ KB/s-এর মতো) frontend-এর ১৫s timeout পার হয়ে
+// product detail sheet ক্র্যাশ করছিল (ErrorBoundary "কিছু একটা ভুল
+// হয়েছে" স্ক্রিন)।
+//
+// এই হেল্পার base64 ধরলে Cloudinary-তে আপলোড করে ছোট্ট URL রিটার্ন করে
+// (বাকি সব মডিউলে যেভাবে uploadToCloudinary ব্যবহার হয় সেই একই ইউটিলিটি,
+// শুধু এখানে ইনপুট multer file না হয়ে JSON body-এর base64 string)।
+// আগে থেকেই http(s) URL হলে অপরিবর্তিত রেখে দেয়। খালি/undefined হলেও
+// অপরিবর্তিত রিটার্ন করে (updateProduct-এর COALESCE পার্শিয়াল-আপডেট
+// প্যাটার্নের সাথে সামঞ্জস্যপূর্ণ থাকার জন্য)।
+// ============================================================
+const BASE64_IMAGE_RE = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/;
+
+const resolveImageUrl = async (rawUrl, folder, filenameHint) => {
+    if (!rawUrl) return rawUrl;
+
+    const match = BASE64_IMAGE_RE.exec(rawUrl);
+    if (!match) return rawUrl; // ইতিমধ্যে normal URL — অপরিবর্তিত
+
+    const [, mimetype, base64Payload] = match;
+    const buffer = Buffer.from(base64Payload, 'base64');
+    const safeHint = String(filenameHint || 'product').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const filename = `${safeHint}-${Date.now()}`;
+
+    const uploadedUrl = await uploadToCloudinary(buffer, folder, filename, mimetype);
+    if (!uploadedUrl) {
+        // চুপচাপ raw base64 DB-তে পড়তে দেওয়া হবে না — বরং স্পষ্ট error,
+        // যাতে সমস্যাটা আবার নিঃশব্দে ফিরে না আসে
+        throw new Error('IMAGE_UPLOAD_FAILED');
+    }
+    return uploadedUrl;
+};
 
 // ============================================================
 // GET PRODUCTS
@@ -143,6 +182,9 @@ const createProduct = async (req, res) => {
             });
         }
 
+        // ✅ FIX: base64 এলে Cloudinary URL-এ রূপান্তর, DB-তে raw base64 নয়
+        const resolvedImageUrl = await resolveImageUrl(image_url, 'products', sku);
+
         const result = await query(
             `INSERT INTO products (name, sku, price, stock, unit,
                 image_url, description,
@@ -153,7 +195,7 @@ const createProduct = async (req, res) => {
              RETURNING *`,
             [
                 name, sku, price, stock || 0, unit || 'pcs',
-                image_url    || null,
+                resolvedImageUrl || null,
                 description  || null,
                 discount     || 0,
                 discount_type || 'flat',
@@ -191,6 +233,9 @@ const createProduct = async (req, res) => {
         if (error.code === '23505') {
             return res.status(400).json({ success: false, message: 'এই SKU আগে থেকেই আছে।' });
         }
+        if (error.message === 'IMAGE_UPLOAD_FAILED') {
+            return res.status(502).json({ success: false, message: 'ছবি আপলোড ব্যর্থ হয়েছে, আবার চেষ্টা করুন।' });
+        }
         return res.status(500).json({ success: false, message: 'পণ্য তৈরিতে সমস্যা হয়েছে।' });
     }
 };
@@ -209,6 +254,11 @@ const updateProduct = async (req, res) => {
             vat, tax,
             cost_price, category_id, brand, reorder_point
         } = req.body;
+
+        // ✅ FIX: base64 এলে Cloudinary URL-এ রূপান্তর, DB-তে raw base64 নয়।
+        // image_url না পাঠালে (undefined/null) resolveImageUrl অপরিবর্তিত
+        // রিটার্ন করে, তাই COALESCE-এর পার্শিয়াল-আপডেট আচরণ ঠিক থাকে।
+        const resolvedImageUrl = await resolveImageUrl(image_url, 'products', req.params.id);
 
         const result = await query(
             `UPDATE products SET
@@ -236,7 +286,7 @@ const updateProduct = async (req, res) => {
                 price       ?? null,
                 unit        ?? null,
                 is_active   ?? null,
-                image_url   ?? null,
+                resolvedImageUrl ?? null,
                 description ?? null,
                 discount    ?? null,
                 discount_type ?? null,
@@ -263,6 +313,9 @@ const updateProduct = async (req, res) => {
 
     } catch (error) {
         logger.error('❌ Update Product Error:', error.message);
+        if (error.message === 'IMAGE_UPLOAD_FAILED') {
+            return res.status(502).json({ success: false, message: 'ছবি আপলোড ব্যর্থ হয়েছে, আবার চেষ্টা করুন।' });
+        }
         return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
     }
 };
@@ -396,15 +449,22 @@ const addProductImage = async (req, res) => {
         if (parseInt(countRes.rows[0].count) >= 6) {
             return res.status(400).json({ success: false, message: 'সর্বোচ্চ ৬টা ছবি যোগ করা যাবে।' });
         }
+
+        // ✅ FIX: base64 এলে Cloudinary URL-এ রূপান্তর, DB-তে raw base64 নয়
+        const resolvedImageUrl = await resolveImageUrl(image_url, 'products/gallery', req.params.id);
+
         const result = await query(
             `INSERT INTO product_images (product_id, image_url, sort_order)
              VALUES ($1, $2, COALESCE((SELECT MAX(sort_order)+1 FROM product_images WHERE product_id = $1), 0))
              RETURNING *`,
-            [req.params.id, image_url]
+            [req.params.id, resolvedImageUrl]
         );
         return res.status(201).json({ success: true, data: result.rows[0] });
     } catch (error) {
         logger.error('❌ addProductImage Error:', error.message);
+        if (error.message === 'IMAGE_UPLOAD_FAILED') {
+            return res.status(502).json({ success: false, message: 'ছবি আপলোড ব্যর্থ হয়েছে, আবার চেষ্টা করুন।' });
+        }
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
