@@ -14,7 +14,7 @@ const { uploadToCloudinary } = require('../services/employee.service'); // ✅ F
 //
 // এই হেল্পার base64 ধরলে Cloudinary-তে আপলোড করে ছোট্ট URL রিটার্ন করে
 // (বাকি সব মডিউলে যেভাবে uploadToCloudinary ব্যবহার হয় সেই একই ইউটিলিটি,
-// শুধু এখানে ইনপুট multer file না হয়ে JSON body-এর base64 string)।
+// শুধু এখানে ইনপুট multer file না হয়ে JSON body-এর base64 string)
 // আগে থেকেই http(s) URL হলে অপরিবর্তিত রেখে দেয়। খালি/undefined হলেও
 // অপরিবর্তিত রিটার্ন করে (updateProduct-এর COALESCE পার্শিয়াল-আপডেট
 // প্যাটার্নের সাথে সামঞ্জস্যপূর্ণ থাকার জন্য)।
