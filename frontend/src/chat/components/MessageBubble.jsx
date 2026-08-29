@@ -12,6 +12,7 @@ import clsx from 'clsx'
 import { FiCheck, FiClock, FiAlertCircle, FiRefreshCw, FiX, FiFlag, FiDollarSign, FiTag } from 'react-icons/fi'
 import { clockTime } from '../utils/time'
 import CardMessage from '../cards/CardMessage'
+import VoicePlayer from '../voice/VoicePlayer'
 
 const FLAG_META = {
   price_quote: { label: 'প্রাইস কোট', Icon: FiTag },
@@ -107,7 +108,7 @@ function FlagMenu({ onPick }) {
 export default function MessageBubble({ msg, mine, accent, showSender, readState, onRetry, onDiscard, onFlag }) {
   const isLocalOnly = Boolean(msg._localStatus)
   const isFailed = msg._localStatus === 'failed'
-  const canFlag = onFlag && mine && msg.kind !== 'card' && !isLocalOnly
+  const canFlag = onFlag && mine && !msg.kind && !isLocalOnly
 
   return (
     <div className={clsx('flex mb-2.5 animate-msg-in', mine ? 'justify-end' : 'justify-start')}>
@@ -118,6 +119,21 @@ export default function MessageBubble({ msg, mine, accent, showSender, readState
         {msg.kind === 'card' ? (
           <div className={clsx(isFailed && 'opacity-60')}>
             <CardMessage msg={msg} />
+          </div>
+        ) : msg.kind === 'voice' ? (
+          <div
+            className={clsx(
+              'px-3 py-2.5 rounded-2xl',
+              mine
+                ? clsx(ACCENT[accent].mineBg, 'rounded-br-md shadow-sm', isFailed && 'opacity-60')
+                : 'bg-white rounded-bl-md border border-cp-border'
+            )}
+          >
+            {msg.voiceUrl ? (
+              <VoicePlayer url={msg.voiceUrl} duration={msg.voiceDuration} mine={mine} accent={accent} />
+            ) : (
+              <p className="text-[12.5px] text-white/70">আপলোড হচ্ছে...</p>
+            )}
           </div>
         ) : (
           <div

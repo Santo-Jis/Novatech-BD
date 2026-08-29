@@ -137,6 +137,10 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
             senderName: item.senderName,
             text: item.text,
             createdAt: serverTimestamp(),
+            // ⚠️ RTDB undefined ভ্যালু গ্রহণ করে না — তাই plain টেক্সট মেসেজে
+            // এই কী-গুলো একদমই বাদ (null-ও না), শুধু কার্ড/ভয়েস হলে যোগ হয়
+            ...(item.kind === 'card' ? { kind: 'card', cardType: item.cardType, cardPayload: item.cardPayload } : {}),
+            ...(item.kind === 'voice' ? { kind: 'voice', voiceUrl: item.voiceUrl, voiceDuration: item.voiceDuration } : {}),
           })
         }
         // ⚠️ notify() শুধু push-notification-এর জন্য — মেসেজটা ততক্ষণে RTDB-তে
@@ -220,6 +224,42 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
     [threadId, senderType, senderName]
   )
 
+  // Phase 1 (দেরিতে) — ভয়েস নোট পাঠানো। আপলোড ইতিমধ্যে হয়ে গেছে (নেটওয়ার্ক
+  // লাগে বলে অফলাইন-কিউ করা হয়নি, দেখুন VoiceRecordButton.jsx) — এখান থেকে
+  // শুধু ছোট RTDB মেসেজটা যায়, যেটা টেক্সট/কার্ডের মতোই অফলাইন-সেফ
+  const sendVoice = useCallback(
+    (voiceUrl, voiceDuration) => {
+      if (!threadId) return
+      notifyTypingRef.current?.(false)
+      enqueueMessage({
+        threadId,
+        text: '🎤 ভয়েস বার্তা',
+        senderType,
+        senderName,
+        kind: 'voice',
+        voiceUrl,
+        voiceDuration,
+      })
+    },
+    [threadId, senderType, senderName]
+  )
+  const sendCard = useCallback(
+    (cardType, cardPayload, previewText) => {
+      if (!threadId) return
+      notifyTypingRef.current?.(false)
+      enqueueMessage({
+        threadId,
+        text: previewText || 'একটা কার্ড শেয়ার করা হয়েছে',
+        senderType,
+        senderName,
+        kind: 'card',
+        cardType,
+        cardPayload,
+      })
+    },
+    [threadId, senderType, senderName]
+  )
+
   useEffect(() => {
     return () => {
       if (typingStopTimeoutRef.current) clearTimeout(typingStopTimeoutRef.current)
@@ -254,6 +294,8 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
       text: i.text,
       createdAt: i.createdAtLocal,
       _localStatus: i.status, // 'pending' | 'sending' | 'failed'
+      ...(i.kind === 'card' ? { kind: 'card', cardType: i.cardType, cardPayload: i.cardPayload } : {}),
+      ...(i.kind === 'voice' ? { kind: 'voice', voiceUrl: i.voiceUrl, voiceDuration: i.voiceDuration } : {}),
     })),
   ].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
 
@@ -261,6 +303,8 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
     messages: displayMessages,
     messagesLoading,
     send,
+    sendCard,
+    sendVoice,
     sending: pendingForThread.some((i) => i.status === 'sending'),
     typingOthers,
     notifyTyping,

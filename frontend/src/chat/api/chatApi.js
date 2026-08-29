@@ -96,6 +96,31 @@ function createStaffChatApi() {
       const res = await api.post('/chat/broadcast/log', { text, totalRecipients, successCount })
       return res.data.data
     },
+
+    // ── Phase 4: AI কোপাইলট (on-demand) ──
+    async draftReply(recentMessages, customerName) {
+      const res = await api.post('/chat/ai/draft-reply', { recentMessages, customerName })
+      return res.data.data
+    },
+    async summarizeThread(recentMessages, customerName) {
+      const res = await api.post('/chat/ai/summarize', { recentMessages, customerName })
+      return res.data.data
+    },
+    async checkRisk(recentMessages, customerName) {
+      const res = await api.post('/chat/ai/risk-check', { recentMessages, customerName })
+      return res.data.data
+    },
+
+    // ── Phase 1 (দেরিতে): ভয়েস নোট ──
+    async uploadVoice(threadId, blob, durationSeconds) {
+      const formData = new FormData()
+      formData.append('audio', blob, 'voice.webm')
+      formData.append('durationSeconds', String(durationSeconds))
+      const res = await api.post(`/chat/threads/${threadId}/voice`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return res.data.data
+    },
   }
 }
 
@@ -130,6 +155,19 @@ function createCustomerChatApi() {
         method: 'POST',
         body: JSON.stringify({ preview }),
       })
+    },
+
+    // ── Phase 1 (দেরিতে): ভয়েস নোট — portalFetch এখন FormData সঠিকভাবে
+    // হ্যান্ডল করে (Content-Type জোর করে বসায় না FormData body-তে) ──
+    async uploadVoice(threadId, blob, durationSeconds) {
+      const formData = new FormData()
+      formData.append('audio', blob, 'voice.webm')
+      formData.append('durationSeconds', String(durationSeconds))
+      const res = await portalFetch(`/portal/chat/threads/${threadId}/voice`, {
+        method: 'POST',
+        body: formData,
+      })
+      return res.data
     },
   }
 }

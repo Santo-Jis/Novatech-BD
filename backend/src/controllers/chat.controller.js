@@ -16,6 +16,10 @@ const logger = require('../config/logger')
 const { sendPushToMany } = require('../services/fcm.service')
 const { sendCustomerPush } = require('../services/fcm.service')
 const { mintChatToken, syncThreadParticipants } = require('../services/chatFirebase.service')
+const { callAI } = require('../services/ai.service')
+const { AIAccessBlockedError } = require('../services/tenantAI.service')
+const { buildDraftReplyPrompt, buildSummaryPrompt, buildRiskCheckPrompt, parseRiskCheckResponse } = require('../services/chatAI.service')
+const { uploadAudioToCloudinary } = require('../services/chatMedia.service')
 
 const FULL_VISIBILITY_ROLES = ['admin', 'superadmin', 'asm', 'rsm']
 const TEAM_VISIBILITY_ROLES = ['manager', 'supervisor']
@@ -444,6 +448,107 @@ const logBroadcast = async (req, res) => {
   }
 }
 
+// ============================================================
+// Phase 4 — ইন্টেলিজেন্স লেয়ার (AI কোপাইলট)
+//
+// ⚠️ তিনটাই on-demand/staff-triggered — "অটো" না। tenantAI.service.js-এর
+// resolveAIAccess() (BYOK/platform-key/wallet) callAI()-এর ভেতরেই হয়,
+// প্রতি-মেসেজে অটোমেটিক AI কল হলে wallet নিঃশব্দে শেষ হয়ে যেতে পারত —
+// তাই staff স্পষ্ট বাটন চাপলেই কল হয়, ঠিক যেমন customerAiChat.controller.js
+// প্যাটার্ন অনুসরণ করে (callAI + AIAccessBlockedError re-throw)।
+//
+// মেসেজ-হিস্ট্রি RTDB থেকে ব্যাকএন্ড নিজে টানে না — ফ্রন্টএন্ড তার লাইভ
+// engine.messages থেকে recentMessages হিসেবে পাঠায় (body-তে)।
+// ============================================================
+
+function handleAIError(e, res, label) {
+  if (e instanceof AIAccessBlockedError) {
+    logger.warn(`[chat-ai] ${label} blocked:`, e.message)
+    return res.status(403).json({ success: false, message: e.message, error_code: e.code })
+  }
+  logger.error(`[chat-ai] ${label} error:`, e.message)
+  const status = e.response?.status
+  const msg = status === 429 ? 'একটু পরে আবার চেষ্টা করুন।' : 'AI ফিচারে সমস্যা হয়েছে।'
+  return res.status(500).json({ success: false, message: msg })
+}
+
+// POST /api/chat/ai/draft-reply   body: { recentMessages: [], customerName }
+const draftReply = async (req, res) => {
+  try {
+    const { recentMessages, customerName } = req.body
+    if (!Array.isArray(recentMessages) || !recentMessages.length) {
+      return res.status(400).json({ success: false, message: 'কথোপকথনের ইতিহাস দিন' })
+    }
+    const prompt = buildDraftReplyPrompt(recentMessages, customerName)
+    const result = await callAI(prompt, 'daily', null, [], { tenantId: req.user.tenantId, userId: req.user.id, source: 'chat_draft_reply' })
+    res.json({ success: true, data: { reply: result.text.trim() } })
+  } catch (e) {
+    handleAIError(e, res, 'draftReply')
+  }
+}
+
+// POST /api/chat/ai/summarize   body: { recentMessages: [], customerName }
+const summarizeThread = async (req, res) => {
+  try {
+    const { recentMessages, customerName } = req.body
+    if (!Array.isArray(recentMessages) || !recentMessages.length) {
+      return res.status(400).json({ success: false, message: 'কথোপকথনের ইতিহাস দিন' })
+    }
+    const prompt = buildSummaryPrompt(recentMessages, customerName)
+    const result = await callAI(prompt, 'daily', null, [], { tenantId: req.user.tenantId, userId: req.user.id, source: 'chat_summarize' })
+    res.json({ success: true, data: { summary: result.text.trim() } })
+  } catch (e) {
+    handleAIError(e, res, 'summarizeThread')
+  }
+}
+
+// POST /api/chat/ai/risk-check   body: { recentMessages: [], customerName }
+const checkRisk = async (req, res) => {
+  try {
+    const { recentMessages, customerName } = req.body
+    if (!Array.isArray(recentMessages) || !recentMessages.length) {
+      return res.status(400).json({ success: false, message: 'কথোপকথনের ইতিহাস দিন' })
+    }
+    const prompt = buildRiskCheckPrompt(recentMessages, customerName)
+    const result = await callAI(prompt, 'daily', null, [], { tenantId: req.user.tenantId, userId: req.user.id, source: 'chat_risk_check' })
+    res.json({ success: true, data: parseRiskCheckResponse(result.text) })
+  } catch (e) {
+    handleAIError(e, res, 'checkRisk')
+  }
+}
+
+// ============================================================
+// Phase 1 (দেরিতে সম্পূর্ণ হচ্ছে) — ভয়েস নোট আপলোড
+//
+// শুধু আপলোড + URL রিটার্ন — RTDB-তে kind:'voice' মেসেজ পাঠানো ফ্রন্টএন্ড
+// নিজেই করে (useChatEngine.sendVoice, ঠিক sendCard()-এর প্যাটার্নেই)।
+// অফলাইন-কিউ সাপোর্ট নেই ইচ্ছাকৃতভাবে — বাইনারি ফাইল আপলোড অফলাইনে কিউ করা
+// (আর পরে রিলায়েবলি রিট্রাই করা) টেক্সট/কার্ডের চেয়ে অনেক বেশি জটিল;
+// মাইক বাটন অফলাইনে ডিজেবল থাকবে ফ্রন্টএন্ডে (স্পষ্ট, সৎ সীমাবদ্ধতা)।
+// ============================================================
+
+// POST /api/chat/threads/:id/voice   multipart: audio (file), body: { durationSeconds }
+const uploadVoiceNote = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: 'অডিও ফাইল দিন' })
+    const { id: threadId } = req.params
+    const { tenantId } = req.user
+    const durationSeconds = Math.min(600, Math.max(1, parseInt(req.body.durationSeconds) || 0))
+
+    const threadCheck = await query('SELECT id FROM chat_threads WHERE id = $1 AND tenant_id = $2', [threadId, tenantId])
+    if (!threadCheck.rows.length) return res.status(404).json({ success: false, message: 'থ্রেড পাওয়া যায়নি' })
+
+    const filename = `voice_${threadId}_${Date.now()}`
+    const url = await uploadAudioToCloudinary(req.file.buffer, `chat-voice/${tenantId}`, filename, req.file.mimetype)
+    if (!url) return res.status(500).json({ success: false, message: 'আপলোড ব্যর্থ হয়েছে' })
+
+    res.json({ success: true, data: { url, durationSeconds } })
+  } catch (e) {
+    logger.error('[chat] uploadVoiceNote error:', e.message)
+    res.status(500).json({ success: false, message: 'ভয়েস নোট আপলোড করতে সমস্যা হয়েছে' })
+  }
+}
+
 // ── Support agent management (admin-only, route-level allowRoles দিয়ে গার্ড করা) ──
 
 const listSupportAgents = async (req, res) => {
@@ -494,4 +599,6 @@ module.exports = {
   listInternalNotes, addInternalNote, listTeamMembers,
   getSlaStats, flagMessage, listFlaggedMessages,
   resolveBroadcastRecipients, logBroadcast,
+  draftReply, summarizeThread, checkRisk,
+  uploadVoiceNote,
 }

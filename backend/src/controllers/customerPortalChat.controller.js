@@ -16,6 +16,7 @@ const { query } = require('../config/db')
 const logger = require('../config/logger')
 const { sendPushToMany } = require('../services/fcm.service')
 const { mintChatToken, syncThreadParticipants, resolveSupportStaffIds, resolvePersonalStaffIds } = require('../services/chatFirebase.service')
+const { uploadAudioToCloudinary } = require('../services/chatMedia.service')
 
 // GET /api/portal/chat/firebase-token — person_id-ভিত্তিক, সব কোম্পানিতে একই identity
 const getFirebaseToken = async (req, res) => {
@@ -178,4 +179,24 @@ const notifyNewMessage = async (req, res) => {
   }
 }
 
-module.exports = { getFirebaseToken, ensureThreads, listAllThreads, markRead, notifyNewMessage }
+// POST /api/portal/chat/threads/:id/voice   multipart: audio (file), body: { durationSeconds }
+const uploadVoiceNote = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: 'অডিও ফাইল দিন' })
+    const durationSeconds = Math.min(600, Math.max(1, parseInt(req.body.durationSeconds) || 0))
+
+    const { rows } = await query('SELECT id, tenant_id FROM chat_threads WHERE id = $1 AND person_id = $2', [req.params.id, req.portalUser.person_id])
+    if (!rows.length) return res.status(404).json({ success: false, message: 'থ্রেড পাওয়া যায়নি' })
+
+    const filename = `voice_${req.params.id}_${Date.now()}`
+    const url = await uploadAudioToCloudinary(req.file.buffer, `chat-voice/${rows[0].tenant_id}`, filename, req.file.mimetype)
+    if (!url) return res.status(500).json({ success: false, message: 'আপলোড ব্যর্থ হয়েছে' })
+
+    res.json({ success: true, data: { url, durationSeconds } })
+  } catch (e) {
+    logger.error('[chat] uploadVoiceNote (portal) error:', e.message)
+    res.status(500).json({ success: false, message: 'ভয়েস নোট আপলোড করতে সমস্যা হয়েছে' })
+  }
+}
+
+module.exports = { getFirebaseToken, ensureThreads, listAllThreads, markRead, notifyNewMessage, uploadVoiceNote }

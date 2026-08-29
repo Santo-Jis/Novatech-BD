@@ -48,13 +48,18 @@ export function subscribeQueue(fn) {
   return () => listeners.delete(fn)
 }
 
-export function enqueueMessage({ threadId, text, senderType, senderName }) {
+export function enqueueMessage({ threadId, text, senderType, senderName, kind, cardType, cardPayload, voiceUrl, voiceDuration }) {
   const item = {
     clientId: `local_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     threadId,
     text,
     senderType,
     senderName,
+    kind: kind || 'text', // 'text' | 'card' | 'voice'
+    cardType: cardType || null, // Phase 2: 'due' | 'delivery'
+    cardPayload: cardPayload || null,
+    voiceUrl: voiceUrl || null, // Phase 1 (দেরিতে): ইতিমধ্যে-আপলোড-করা ভয়েস নোটের URL
+    voiceDuration: voiceDuration || null,
     createdAtLocal: Date.now(),
     status: 'pending', // 'pending' | 'sending' | 'failed'
     attempts: 0,

@@ -1,7 +1,18 @@
 const express = require('express')
 const router = express.Router()
+const multer = require('multer')
 const { auth } = require('../middlewares/auth')
 const { allowRoles, isManagement } = require('../middlewares/roleCheck')
+
+const voiceUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('audio/')) return cb(new Error('শুধু অডিও ফাইল আপলোড করা যাবে।'))
+    cb(null, true)
+  },
+})
+
 const {
   getFirebaseToken,
   listThreads,
@@ -19,6 +30,10 @@ const {
   listFlaggedMessages,
   resolveBroadcastRecipients,
   logBroadcast,
+  draftReply,
+  summarizeThread,
+  checkRisk,
+  uploadVoiceNote,
 } = require('../controllers/chat.controller')
 
 router.get('/firebase-token',       auth, getFirebaseToken)
@@ -46,6 +61,15 @@ router.get('/flagged',              auth, allowRoles('admin'), listFlaggedMessag
 // সাথে সঙ্গতিপূর্ণ গার্ড — admin/manager/supervisor/asm/rsm)
 router.post('/broadcast/resolve',   auth, isManagement, resolveBroadcastRecipients)
 router.post('/broadcast/log',       auth, isManagement, logBroadcast)
+
+// Phase 4 — AI কোপাইলট (on-demand, যেকোনো staff — খরচের গেট callAI-এর ভেতরেই
+// প্রতি-tenant wallet/BYOK চেক দিয়ে হয়, এখানে আলাদা role-restriction লাগেনি)
+router.post('/ai/draft-reply',      auth, draftReply)
+router.post('/ai/summarize',        auth, summarizeThread)
+router.post('/ai/risk-check',       auth, checkRisk)
+
+// Phase 1 (দেরিতে) — ভয়েস নোট আপলোড
+router.post('/threads/:id/voice',   auth, voiceUpload.single('audio'), uploadVoiceNote)
 
 // শুধু Admin — support থ্রেডে কার access থাকবে
 router.get('/support-agents',            auth, allowRoles('admin'), listSupportAgents)
