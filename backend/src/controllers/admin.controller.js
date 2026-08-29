@@ -326,6 +326,23 @@ const downloadInvoicePdf = async (req, res) => {
 };
 
 // ============================================================
+// TENANT STATUS (lightweight) — GET /api/admin/tenant-status
+// AdminLayout.jsx-এর trial-expiry গেটের জন্য।
+// ============================================================
+const getTenantStatus = async (req, res) => {
+    try {
+        const status = await billingService.getTenantStatus(req.tenantId);
+        if (!status) {
+            return res.status(404).json({ success: false, message: 'টেন্যান্ট পাওয়া যায়নি।' });
+        }
+        return res.status(200).json({ success: true, data: status });
+    } catch (error) {
+        logger.error('❌ Get Tenant Status Error:', error.message);
+        return res.status(500).json({ success: false, message: 'স্ট্যাটাস আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // SMS LOGS
 // GET /api/admin/sms-logs?status=&type=&from=&to=&page=&limit=
 // ============================================================
@@ -711,4 +728,5 @@ module.exports = {
     getBillingSummary,
     getInvoices,
     downloadInvoicePdf,
+    getTenantStatus,
 };

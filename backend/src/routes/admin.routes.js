@@ -24,6 +24,7 @@ const {
     getBillingSummary,
     getInvoices,
     downloadInvoicePdf,
+    getTenantStatus,
 } = require('../controllers/admin.controller');
 
 // ✅ NEW — কাস্টমার সেলফ-রেজিস্ট্রেশন লিংকের জন্য কোম্পানির slug
@@ -59,6 +60,9 @@ router.get('/billing/summary', auth, isAdmin, getBillingSummary);
 // ── Invoice History (Admin only, READ-ONLY) — jobs/tenantInvoice.job.js এর রেকর্ড ──
 router.get('/billing/invoices',        auth, isAdmin, getInvoices);
 router.get('/billing/invoices/:id/pdf', auth, isAdmin, downloadInvoicePdf);
+
+// ── Tenant Status (lightweight, trial-expiry গেটের জন্য) ──
+router.get('/tenant-status', auth, isAdmin, getTenantStatus);
 
 // ── Audit & Stats (Admin only) ───────────────────────────────
 router.get('/audit-logs',      auth, isAdmin, getAuditLogs);

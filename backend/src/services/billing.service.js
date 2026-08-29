@@ -221,5 +221,20 @@ const generateInvoicePdfBuffer = (invoice) => {
   });
 };
 
-module.exports = { getBillingSummary, listInvoices, getInvoiceById, generateInvoicePdfBuffer };
+// ============================================================
+// TENANT STATUS (lightweight)
+// GET /api/admin/tenant-status
+// শুধু {status, trial_ends_at} — AdminLayout.jsx-এর trial-expiry গেটের
+// জন্য, প্রতি admin সেশনে একবার চেক হয়। getBillingSummary()-এর মতো
+// ভারী (seats/customers/ai_usage query) না, ইচ্ছাকৃতভাবে আলাদা রাখা হলো।
+// ============================================================
+const getTenantStatus = async (tenantId) => {
+  const result = await query(
+    `SELECT status, trial_ends_at FROM tenants WHERE id = $1`,
+    [tenantId]
+  );
+  return result.rows[0] || null;
+};
+
+module.exports = { getBillingSummary, listInvoices, getInvoiceById, generateInvoicePdfBuffer, getTenantStatus };
 

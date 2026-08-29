@@ -144,6 +144,25 @@ const auth = async (req, res, next) => {
                     code: 'TENANT_INACTIVE'
                 });
             }
+            // নতুন — jobs/trialExpiry.job.js প্রতি ঘণ্টায় trial_ends_at পার
+            // হওয়া tenant-দের এই স্ট্যাটাসে নিয়ে আসে। শুধু admin-কে ঢুকতে
+            // দেওয়া হয় (আপগ্রেড পেজ দেখার জন্য — AdminLayout.jsx-এ গেট
+            // বসানো আছে, ওখানেই আসল "ভিতরে ঢুকতে গেলে পেইডে যেতে হবে"
+            // ব্লক হয়)। বাকি সব role এখানেই সম্পূর্ণ ব্লক।
+            // ⚠️ status==='trial_expired' এর পাশাপাশি trial_ends_at সরাসরি
+            // তুলনাও — জব ঘণ্টায় একবার চলে, তাই শুধু status-নির্ভর হলে
+            // মেয়াদ শেষ হওয়া আর status আপডেটের মাঝে সাময়িক ফাঁক থাকতো।
+            const isTrialExpired = tenant && (
+                tenant.status === 'trial_expired' ||
+                (tenant.status === 'trial' && tenant.trial_ends_at && new Date(tenant.trial_ends_at) < new Date())
+            );
+            if (isTrialExpired && req.user.role !== 'admin') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'ফ্রি ট্রায়াল শেষ হয়ে গেছে। আপনার প্রতিষ্ঠানের Admin-কে প্ল্যান আপগ্রেড করতে বলুন।',
+                    code: 'TRIAL_EXPIRED'
+                });
+            }
         } catch (tenantErr) {
             logger.warn('⚠️ Tenant status check failed (fail-open):', tenantErr.message);
         }

@@ -2,10 +2,11 @@ import { useState, useMemo, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../store/auth.store'
 import { useAppStore } from '../store/app.store'
+import api from '../api/axios'
 import ErrorBoundary from '../components/ErrorBoundary'
 import NotificationBell from '../components/NotificationBell'
 import ChatBell from '../components/ChatBell'
-import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiSend, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag, FiLink, FiTruck, FiClipboard, FiArchive, FiFileText, FiBox, FiVolume2 } from 'react-icons/fi'
+import { FiHome, FiUsers, FiCheckSquare, FiBarChart2, FiCpu, FiSettings, FiPackage, FiBell, FiSend, FiMenu, FiX, FiLogOut, FiChevronDown, FiUser, FiMessageSquare, FiUserPlus, FiGrid, FiDollarSign, FiCreditCard, FiShield, FiRotateCcw, FiInbox, FiMapPin, FiSmartphone, FiShoppingCart, FiCalendar, FiTag, FiLink, FiTruck, FiClipboard, FiArchive, FiFileText, FiBox, FiVolume2, FiClock } from 'react-icons/fi'
 
 // সবসময় দেখা যাবে — গ্রুপের বাইরে (ঘন ঘন ব্যবহার হয়)
 const pinnedItems = [
@@ -117,6 +118,28 @@ export default function AdminLayout() {
   const { allUnreadCount, darkMode, toggleDarkMode } = useAppStore()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
+  const navigate = useNavigate()
+
+  // ── ট্রায়াল-মেয়াদ গেট ──────────────────────────────────────
+  // jobs/trialExpiry.job.js status='trial_expired' করে দিলে (বা
+  // middlewares/auth.js-এ লাইভ trial_ends_at চেক ধরে ফেললে — backend
+  // admin-কে ঢুকতে দেয়, কিন্তু ফ্রন্টএন্ডে এখানে পুরো প্যানেলের বদলে
+  // শুধু আপগ্রেড CTA দেখানো হয়। হালকা এন্ডপয়েন্ট, প্রতি সেশনে একবার।
+  // ⚠️ চেক শেষ হওয়ার আগে সাময়িক flash এড়াতে ডিফল্ট "ব্লকড না" ধরা
+  // হয়েছে — আসল নিরাপত্তা backend-এই (non-admin role এমনিতেই ব্লক)।
+  const [trialExpired, setTrialExpired] = useState(false)
+  const [trialEndsAt, setTrialEndsAt] = useState(null)
+
+  useEffect(() => {
+    if (user?.role !== 'admin') return
+    api.get('/admin/tenant-status')
+      .then((res) => {
+        const { status, trial_ends_at } = res.data.data
+        setTrialExpired(status === 'trial_expired')
+        setTrialEndsAt(trial_ends_at)
+      })
+      .catch(() => {}) // চুপচাপ — নেটওয়ার্ক সমস্যায় পুরো প্যানেল ব্লক করা ঠিক না
+  }, [user?.role])
 
   // যে গ্রুপে current route আছে সেটা বের করা
   const activeGroupKey = useMemo(() => {
@@ -130,6 +153,36 @@ export default function AdminLayout() {
   useEffect(() => {
     if (activeGroupKey) setOpenGroupKey(activeGroupKey)
   }, [activeGroupKey])
+
+  // ট্রায়াল শেষ — পুরো প্যানেলের বদলে শুধু আপগ্রেড স্ক্রিন (sidebar/nav-সহ
+  // কিছুই দেখানো হয় না, "ভিতরে ঢুকতে হলে পেইডে যেতে হবে")
+  if (trialExpired) {
+    return (
+      <div className="min-h-screen w-full bg-gray-50 dark:bg-slate-900 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white dark:bg-slate-800 rounded-2xl shadow-lg p-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mx-auto mb-4">
+            <FiClock size={28} className="text-amber-600 dark:text-amber-400" />
+          </div>
+          <h1 className="text-lg font-bold text-gray-800 dark:text-white mb-2">আপনার ফ্রি ট্রায়াল শেষ হয়ে গেছে</h1>
+          <p className="text-sm text-gray-600 dark:text-gray-300 mb-1">
+            {trialEndsAt && `৩ মাসের ট্রায়াল ${new Date(trialEndsAt).toLocaleDateString('bn-BD')} তারিখে শেষ হয়েছে।`}
+          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-300 mb-6">
+            কাজ চালিয়ে যেতে একটা প্ল্যান বেছে নিন। আপনার সব ডেটা সুরক্ষিত আছে, আপগ্রেড করলেই আবার পুরোপুরি অ্যাক্সেস পাবেন।
+          </p>
+          <button
+            onClick={() => navigate('/book-plan')}
+            className="w-full bg-primary hover:bg-primary/90 text-white font-medium py-3 rounded-xl transition-colors mb-3"
+          >
+            প্ল্যান বেছে নিন
+          </button>
+          <button onClick={logout} className="text-sm text-gray-500 dark:text-gray-400 hover:underline">
+            লগ-আউট করুন
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen w-full bg-gray-50 dark:bg-slate-900 transition-colors">

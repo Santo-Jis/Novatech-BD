@@ -66,7 +66,7 @@ const getTenantById = async (tenantId) => {
   }
 
   const result = await query(
-    `SELECT id, slug, company_name, status, plan FROM tenants WHERE id = $1`,
+    `SELECT id, slug, company_name, status, plan, trial_ends_at FROM tenants WHERE id = $1`,
     [tenantId]
   );
 

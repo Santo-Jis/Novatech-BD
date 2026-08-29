@@ -97,6 +97,23 @@ const login = async (req, res) => {
                     code: 'TENANT_INACTIVE'
                 });
             }
+            // নতুন — ট্রায়াল শেষ হলে শুধু admin লগইন করতে পারবে (আপগ্রেড
+            // পেজের জন্য), বাকি সব role এখানেই ব্লক — middlewares/auth.js-এর
+            // সাথে হুবহু মেলানো লজিক (দুই জায়গায় দরকার: লগইনের মুহূর্তে
+            // এখানে, আর ইতিমধ্যে-লগইন-করা সেশনের জন্য ওখানে)। status-এর
+            // পাশাপাশি trial_ends_at সরাসরি তুলনা — jobs/trialExpiry.job.js
+            // ঘণ্টায় একবার চলে, তাই শুধু status-নির্ভর হলে সাময়িক ফাঁক থাকতো।
+            const isTrialExpired = tenant && (
+                tenant.status === 'trial_expired' ||
+                (tenant.status === 'trial' && tenant.trial_ends_at && new Date(tenant.trial_ends_at) < new Date())
+            );
+            if (isTrialExpired && user.role !== 'admin') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'ফ্রি ট্রায়াল শেষ হয়ে গেছে। আপনার প্রতিষ্ঠানের Admin-কে প্ল্যান আপগ্রেড করতে বলুন।',
+                    code: 'TRIAL_EXPIRED'
+                });
+            }
         } catch (tenantErr) {
             logger.warn('⚠️ Login tenant status check failed (fail-open):', tenantErr.message);
         }

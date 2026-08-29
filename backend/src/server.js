@@ -367,6 +367,7 @@ const { startReservedStockJob }     = require('./jobs/reservedStock.job');
 const { startSessionCleanupJob }    = require('./jobs/sessionCleanup.job');
 const { startNotificationScheduleJob } = require('./jobs/notificationSchedule.job');   // ← নতুন
 const { startTenantInvoiceJob }      = require('./jobs/tenantInvoice.job');   // ← নতুন (বিলিং)
+const { startTrialExpiryJob }        = require('./jobs/trialExpiry.job');   // ← নতুন (ট্রায়াল মেয়াদ)
 
 
 // ============================================================
@@ -420,6 +421,7 @@ seedPlatformStaffFromEnv();
         startSessionCleanupJob();
         startNotificationScheduleJob();   // ← নতুন
         startTenantInvoiceJob();   // ← নতুন (বিলিং)
+        startTrialExpiryJob();   // ← নতুন (ট্রায়াল মেয়াদ)
 
         logger.info('✅ Background jobs চালু হয়েছে');
 
