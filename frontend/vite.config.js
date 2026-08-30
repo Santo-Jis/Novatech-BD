@@ -34,6 +34,15 @@ export default defineConfig({
   },
 
   build: {
+    // ✅ TEMP DEBUG (৩১ আগস্ট ২০২৬): sourcemap সাময়িকভাবে অন করা হলো।
+    // একটা crash কয়েকবার ফিক্স করার পরেও ফিরে আসছে, আর minified stack
+    // trace-এ শুধু single-letter নাম (যেমন "Ui") দেখা যাচ্ছে — আসল
+    // component/লাইন বোঝা যাচ্ছে না। sourcemap থাকলে Chrome DevTools-এর
+    // Console-এ resolved (আসল ফাইল/লাইন-সহ) stack trace দেখা যাবে।
+    // কারণ ধরা পড়ার পর এটা আবার false করে দেওয়া উচিত (bundle সাইজ/
+    // বিল্ড সময় বাড়ায়, আর সোর্স কোড কারিগরিভাবে exposed হয়ে যায়)।
+    sourcemap: true,
+
     // ✅ FIX: chunk warning threshold বাড়ানো হয়েছে
     // recharts (410 kB) + firebase (379 kB) এর জন্য 500 kB যথেষ্ট না
     chunkSizeWarningLimit: 600,
