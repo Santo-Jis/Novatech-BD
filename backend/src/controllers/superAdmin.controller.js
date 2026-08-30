@@ -150,8 +150,8 @@ const createTenant = async (req, res) => {
   try {
     // ১. Tenant তৈরি
     const tenantResult = await query(
-      `INSERT INTO tenants (slug, company_name, company_name_bn, plan, max_employees, max_customers, ai_tokens_monthly, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active')
+      `INSERT INTO tenants (slug, company_name, company_name_bn, plan, max_employees, max_customers, ai_tokens_monthly, status, first_activated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', NOW())
        RETURNING *`,
       [slug, company_name, company_name_bn || null, plan, finalMaxEmployees, finalMaxCustomers, finalAiTokens]
     );

@@ -103,10 +103,21 @@ const runTenantInvoiceGeneration = async ({ reason = 'scheduled' } = {}) => {
         const totalDays      = periodEndDay - periodStartDay + 1;
 
         const tenantsResult = await query(
-            `SELECT id, plan FROM tenants WHERE status IN ('active', 'suspended')`
+            `SELECT id, plan, first_activated_at FROM tenants WHERE status IN ('active', 'suspended')`
         );
 
         for (const tenant of tenantsResult.rows) {
+            // ⚠️ নতুন — first_activated_at-এর আগের কোনো দিন কখনো বিল হবে না,
+            // এমনকি tenant_seat_history-তে সেই সময়ের (ট্রায়াল-যুগের) সিট
+            // রেকর্ড থাকলেও — নাহলে trial→active রূপান্তরের আগের ট্রায়াল-
+            // দিনগুলোও ভুলভাবে বিল হয়ে যেত (২৬ তারিখে কেনা প্ল্যান, ১
+            // তারিখের জব ভুলভাবে পুরো মাস ধরে ফেলতো)। first_activated_at
+            // NULL হলে (পুরনো/legacy tenant, এই ফিচারের আগে থেকেই active)
+            // — ক্ল্যাম্প করা হয় না, আগের আচরণ বজায় থাকে।
+            const effectivePeriodStartDay = tenant.first_activated_at
+                ? Math.max(periodStartDay, toDayNum(tenant.first_activated_at))
+                : periodStartDay;
+
             // period_end পর্যন্ত সব history — তার আগেই effective হয়েছে এমন সব
             // এন্ট্রি লাগবে (এমনকি period শুরুর অনেক আগেরটাও, যদি সেটাই সর্বশেষ হয়)
             const historyResult = await query(
@@ -126,7 +137,7 @@ const runTenantInvoiceGeneration = async ({ reason = 'scheduled' } = {}) => {
             let breakdown = [];
             let total = 0;
             for (const role of Object.keys(byRole)) {
-                const segments = computeRoleSegments(byRole[role], tenant.plan, periodStartDay, periodEndDay, totalDays);
+                const segments = computeRoleSegments(byRole[role], tenant.plan, effectivePeriodStartDay, periodEndDay, totalDays);
                 breakdown = breakdown.concat(segments);
                 total += segments.reduce((sum, s) => sum + s.subtotal, 0);
             }

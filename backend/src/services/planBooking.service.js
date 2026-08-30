@@ -243,6 +243,7 @@ const approveBooking = async (id, { reviewerLabel = 'super-admin-key', adminNote
         `UPDATE tenants SET
            plan = $1, status = 'active',
            subscription_ends_at = NOW() + ($2 || ' days')::interval,
+           first_activated_at = COALESCE(first_activated_at, NOW()),
            company_address  = COALESCE($3, company_address),
            company_phone    = COALESCE($4, company_phone),
            company_email    = COALESCE($5, company_email),
@@ -280,10 +281,10 @@ const approveBooking = async (id, { reviewerLabel = 'super-admin-key', adminNote
       const tenantRes = await client.query(
         `INSERT INTO tenants
            (slug, company_name, company_name_bn, plan, max_employees, max_customers, ai_tokens_monthly,
-            status, subscription_ends_at, company_address, company_phone, company_email,
+            status, subscription_ends_at, first_activated_at, company_address, company_phone, company_email,
             billing_name, billing_email, industry, company_size, country, division, city,
             timezone, website, referral_source)
-         VALUES ($1,$2,$3,$4, NULL, NULL, NULL, 'active', NOW() + ($5 || ' days')::interval,
+         VALUES ($1,$2,$3,$4, NULL, NULL, NULL, 'active', NOW() + ($5 || ' days')::interval, NOW(),
                  $6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
          RETURNING *`,
         [booking.slug, booking.company_name, booking.company_name_bn, booking.requested_plan,
