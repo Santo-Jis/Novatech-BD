@@ -29,6 +29,9 @@ const RETRY_INTERVAL_MS = 15000
 export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, senderName }) {
   const [rtdbMessages, setRtdbMessages] = useState([])
   const [messagesLoading, setMessagesLoading] = useState(false)
+  // ✅ ফিক্স: onValue() ব্যর্থ হলে (permission-denied/নেটওয়ার্ক) আগে কোনো সিগন্যাল
+  // ছিল না — messagesLoading চিরকাল true থেকে যেত, UI-তে স্পিনার আটকে থাকত।
+  const [messagesError, setMessagesError] = useState(null)
   const [queueSnapshot, setQueueSnapshot] = useState([])
   const [typingOthers, setTypingOthers] = useState(false)
   const [readsMap, setReadsMap] = useState({})
@@ -71,33 +74,55 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
       return
     }
     setMessagesLoading(true)
+    setMessagesError(null)
     lastReadMarkedForCountRef.current = 0
 
+    // ⚠️ ফিক্স: প্রতিটা onValue()-এ এখন তৃতীয় আর্গুমেন্ট হিসেবে একটা error/cancel
+    // callback যোগ করা হলো। আগে এটা ছিল না — RTDB read ব্যর্থ হলে (rules.json-এ
+    // .read না থাকলে/permission-denied, ভুল databaseURL, নেটওয়ার্ক ব্লক ইত্যাদি)
+    // success callback কখনোই ডাকা হতো না, ফলে messagesLoading চিরকাল true থেকে
+    // যেত আর ইউজার স্পিনার দেখেই আটকে থাকতেন — কোনো এরর, কোনো ফিডব্যাক ছাড়াই।
     const msgsNode = ref(db, `chats/${threadId}/messages`)
-    onValue(msgsNode, (snap) => {
-      const val = snap.val() || {}
-      const list = Object.entries(val)
-        .map(([id, m]) => ({ id, ...m }))
-        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
-      setRtdbMessages(list)
-      setMessagesLoading(false)
-    })
+    onValue(
+      msgsNode,
+      (snap) => {
+        const val = snap.val() || {}
+        const list = Object.entries(val)
+          .map(([id, m]) => ({ id, ...m }))
+          .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+        setRtdbMessages(list)
+        setMessagesLoading(false)
+      },
+      (err) => {
+        console.error('[chat] messages onValue ব্যর্থ:', err.message)
+        setMessagesLoading(false)
+        setMessagesError(err.message || 'মেসেজ লোড করা যায়নি')
+      }
+    )
     messagesListenerRef.current = msgsNode
 
     const typingNode = ref(db, `chats/${threadId}/typing`)
-    onValue(typingNode, (snap) => {
-      const val = snap.val() || {}
-      const anyoneTyping = Object.entries(val).some(
-        ([otherUid, ts]) => otherUid !== uid && isFresh(ts, TYPING_STALE_MS)
-      )
-      setTypingOthers(anyoneTyping)
-    })
+    onValue(
+      typingNode,
+      (snap) => {
+        const val = snap.val() || {}
+        const anyoneTyping = Object.entries(val).some(
+          ([otherUid, ts]) => otherUid !== uid && isFresh(ts, TYPING_STALE_MS)
+        )
+        setTypingOthers(anyoneTyping)
+      },
+      (err) => console.error('[chat] typing onValue ব্যর্থ:', err.message)
+    )
     typingListenerRef.current = typingNode
 
     const readsNode = ref(db, `chats/${threadId}/reads`)
-    onValue(readsNode, (snap) => {
-      setReadsMap(snap.val() || {})
-    })
+    onValue(
+      readsNode,
+      (snap) => {
+        setReadsMap(snap.val() || {})
+      },
+      (err) => console.error('[chat] reads onValue ব্যর্থ:', err.message)
+    )
     readsListenerRef.current = readsNode
 
     return () => {
@@ -217,9 +242,14 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
   const send = useCallback(
     (text) => {
       const trimmed = (text || '').trim()
-      if (!trimmed || !threadId) return
+      // ✅ ফিক্স: আগে এখানে শুধু `return` করা হতো (undefined), ফলে কলার
+      // (ConversationPane.jsx) বুঝতেই পারত না পাঠানো সত্যিই হয়েছে কিনা, আর
+      // যেভাবেই হোক composer বক্স খালি করে দিত — মনে হতো মেসেজ "পাঠানো হলো"
+      // অথচ কিছুই কিউ হয়নি। এখন true/false রিটার্ন করে আসল ফলাফল জানানো হয়।
+      if (!trimmed || !threadId) return false
       notifyTypingRef.current?.(false)
       enqueueMessage({ threadId, text: trimmed, senderType, senderName })
+      return true
     },
     [threadId, senderType, senderName]
   )
@@ -302,6 +332,9 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
   return {
     messages: displayMessages,
     messagesLoading,
+    // ✅ ফিক্স: এখন এই hook থেকে RTDB read-error UI-তে পাঠানো যাচ্ছে, যাতে
+    // ConversationPane.jsx চাইলে অনন্ত-স্পিনারের বদলে বন্ধুত্বপূর্ণ error দেখাতে পারে
+    messagesError,
     send,
     sendCard,
     sendVoice,

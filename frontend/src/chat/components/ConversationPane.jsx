@@ -56,8 +56,11 @@ export default function ConversationPane({
 
   const handleSend = () => {
     if (!composerValue.trim()) return
-    engine.send(composerValue)
-    onComposerChange('')
+    // ✅ ফিক্স: আগে send()-এর রেজাল্ট না দেখেই composer খালি করা হতো — তাই
+    // send() ব্যর্থ হলেও (থ্রেড এখনো রেডি না) মনে হতো মেসেজ "পাঠানো হয়ে গেছে"।
+    // এখন সত্যিই কিউ হলে তবেই বক্স খালি হয়।
+    const ok = engine.send(composerValue)
+    if (ok) onComposerChange('')
   }
 
   // Phase 4 — AI কোপাইলট। মেসেজ-হিস্ট্রি এখান থেকেই (লাইভ engine.messages) —
@@ -141,9 +144,22 @@ export default function ConversationPane({
       )}
 
       <div className="flex-1 overflow-y-auto px-3.5 py-4">
-        {engine.messagesLoading ? (
+        {/* ✅ ফিক্স: আগে শুধু `engine.messagesLoading` চেক হতো, ফলে RTDB read
+            আটকে গেলে (permission-denied/নেটওয়ার্ক) messagesLoading চিরকাল true
+            থেকে যেত আর গোটা মেসেজ-এরিয়াই স্পিনারের পেছনে আটকে থাকত — এমনকি
+            লোকালি কিউ হওয়া (আপনার সদ্য-পাঠানো) মেসেজও দেখানো হতো না।
+            এখন: সত্যিই কোনো মেসেজ (RTDB বা pending-queue) না থাকলে তবেই
+            লোডিং/এম্পটি/এরর অবস্থা দেখানো হয় — নাহলে যা আছে তা-ই দেখানো হয়। */}
+        {engine.messages.length === 0 && engine.messagesLoading ? (
           <div className="flex justify-center pt-10">
             <span className="w-6 h-6 border-2 border-cp-border border-t-cp-trust-500 rounded-full animate-spin" />
+          </div>
+        ) : engine.messages.length === 0 && engine.messagesError ? (
+          <div className="flex flex-col items-center justify-center text-center pt-16 px-6">
+            <p className="font-cp-head font-semibold text-cp-text-primary text-[15px]">মেসেজ লোড করা যায়নি</p>
+            <p className="text-[13px] text-cp-text-secondary mt-1 max-w-[240px]">
+              ইন্টারনেট সংযোগ চেক করে আবার চেষ্টা করুন। সমস্যা থাকলে পেজ রিফ্রেশ করুন।
+            </p>
           </div>
         ) : engine.messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center text-center pt-16 px-6">
@@ -160,6 +176,11 @@ export default function ConversationPane({
           </div>
         ) : (
           <>
+            {engine.messagesError && (
+              <p className="text-center text-[11px] text-cp-error mb-2">
+                লাইভ সংযোগে সমস্যা হচ্ছে — নতুন মেসেজ দেরিতে দেখা যেতে পারে
+              </p>
+            )}
             {engine.messages.map((m) => (
               <MessageBubble
                 key={m.id}
