@@ -195,6 +195,9 @@ export default function DashboardView({
         <SettingsPage
           portalJWT={portalJWT}
           onBack={() => { setMenuPage(null); setMenuOpen(true) }}
+          onGoToProfile={() => { setMenuPage(null); onTabChange('profile') }}
+          onGoToReports={() => { setMenuPage(null); onTabChange('summary') }}
+          onLogout={onLogout}
         />
       )}
       {menuPage === 'personalization' && (

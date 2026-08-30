@@ -768,15 +768,19 @@ const passwordLogin = async (req, res) => {
             owner     = customerResult.rows[0];
         } else {
             // ── ২. না পেলে persons টেবিলে (company-বিহীন profile) ──
+            // ✅ deletion_requested_at IS NULL — self-deleted person-only
+            // অ্যাকাউন্ট যাতে পাসওয়ার্ড দিয়ে আবার ঢুকতে না পারে (নতুন কোনো
+            // কলাম লাগেনি, deletion-preview/delete-account এন্ডপয়েন্টে
+            // ব্যবহৃত একই কলাম এখানে চেক করা হচ্ছে)
             const personResult = isEmail
                 ? await query(
                     `SELECT id, full_name, shop_name, email, whatsapp, password_hash
-                     FROM persons WHERE LOWER(email) = $1 LIMIT 1`,
+                     FROM persons WHERE LOWER(email) = $1 AND deletion_requested_at IS NULL LIMIT 1`,
                     [email]
                   )
                 : await query(
                     `SELECT id, full_name, shop_name, email, whatsapp, password_hash
-                     FROM persons WHERE whatsapp = ANY($1) OR phone = ANY($1) LIMIT 1`,
+                     FROM persons WHERE (whatsapp = ANY($1) OR phone = ANY($1)) AND deletion_requested_at IS NULL LIMIT 1`,
                     [phoneCandidates]
                   );
 

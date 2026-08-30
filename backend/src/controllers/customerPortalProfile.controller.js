@@ -7,6 +7,7 @@ const { query } = require('../config/db');
 const logger    = require('../config/logger');
 const bcrypt    = require('bcryptjs');
 const { uploadToCloudinary } = require('../services/employee.service');
+const { invalidatePortalAuthCache } = require('../services/portalCache.service');
 
 // ⚠️ FIX: person_id সরাসরি JWT-তে থাকলে (নতুন token) সেটাই ব্যবহার করে,
 // না থাকলে (পুরনো token) customer_id দিয়ে DB lookup fallback করে।
@@ -331,7 +332,79 @@ const revokeMyDevice = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET /api/portal/profile/deletion-preview
+// ডিলিট করার আগে — connected কোম্পানিগুলোতে বকেয়া ক্রেডিট থাকলে
+// দেখায় (transparency-এর জন্য, block করে না — কাস্টমার নিজেই সিদ্ধান্ত
+// নেবে)।
+// ============================================================
+const getDeletionPreview = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser);
+
+        const balances = await query(
+            `SELECT c.credit_balance, t.company_name
+             FROM customers c
+             JOIN tenants t ON t.id = c.tenant_id
+             WHERE c.person_id = $1 AND c.is_active = true AND c.credit_balance != 0`,
+            [personId]
+        );
+
+        res.json({ success: true, data: { outstanding_balances: balances.rows } });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getDeletionPreview error:', err.message);
+        res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/portal/profile/delete-account
+// { reason? }
+//
+// ✅ সরাসরি এখনই কার্যকর — কোনো admin/SR রিভিউ/অপেক্ষা নেই। এটা
+// কাস্টমারের নিজের স্বাধীন অ্যাকাউন্ট, নিজের সিদ্ধান্ত।
+//
+// লগইন আটকাতে নতুন কোনো মেকানিজম বানাতে হয়নি — is_active=false
+// ইতিমধ্যে passwordLogin/verifyLoginOtp/deviceLogin সব জায়গায়
+// WHERE-ক্লজে চেক করা হয় (existing, বহু জায়গায় ব্যবহৃত)। person-only
+// সেশনের জন্য passwordLogin-এর persons lookup-এ এখন
+// deletion_requested_at IS NULL চেক যোগ করা হয়েছে।
+// ============================================================
+const deleteMyAccount = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser);
+        const { reason } = req.body;
+
+        const custRows = await query(
+            `SELECT id FROM customers WHERE person_id = $1 AND is_active = true`,
+            [personId]
+        );
+
+        await query(`UPDATE customers SET is_active = false WHERE person_id = $1 AND is_active = true`, [personId]);
+        await query(`UPDATE persons SET deletion_requested_at = NOW(), deletion_reason = $2 WHERE id = $1`, [personId, reason || null]);
+
+        for (const row of custRows.rows) {
+            await invalidatePortalAuthCache(row.id);
+        }
+
+        logger.info(`🗑️ Account self-deleted: person ${personId} (${custRows.rows.length}টা connection deactivated)`);
+
+        res.json({ success: true, message: 'আপনার অ্যাকাউন্ট ডিলিট করা হয়েছে।' });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ deleteMyAccount error:', err.message);
+        res.status(500).json({ success: false, message: 'ডিলিট করতে সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
+    }
+};
+
 module.exports = {
     getMyAreaAndField, updateMyAreaAndField, updateMyPhoto,
     getMySecurityInfo, changeMyPassword, revokeMyDevice,
+    // ✅ NEW — immediate self-service, admin/SR রিভিউ নেই
+    getDeletionPreview, deleteMyAccount,
 };

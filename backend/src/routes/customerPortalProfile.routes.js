@@ -7,7 +7,7 @@ const router  = express.Router();
 const multer  = require('multer');
 const { portalAuth } = require('../middlewares/portalAuthShared');
 
-const { getMyAreaAndField, updateMyAreaAndField, updateMyPhoto, getMySecurityInfo, changeMyPassword, revokeMyDevice } = require('../controllers/customerPortalProfile.controller');
+const { getMyAreaAndField, updateMyAreaAndField, updateMyPhoto, getMySecurityInfo, changeMyPassword, revokeMyDevice, getDeletionPreview, deleteMyAccount } = require('../controllers/customerPortalProfile.controller');
 
 // customerPortal.routes.js-এর selfRegisterUpload-এর সাথে একই লিমিট/ফিল্টার —
 // দুই জায়গাতেই আলাদা multer ইনস্ট্যান্স, কিন্তু কনভেনশন এক রাখা হলো।
@@ -32,5 +32,9 @@ router.post('/photo', portalAuth,
 router.get('/security',                  portalAuth, getMySecurityInfo);
 router.post('/password',                 portalAuth, changeMyPassword);
 router.post('/devices/:deviceId/revoke', portalAuth, revokeMyDevice);
+
+// ✅ NEW — অ্যাকাউন্ট ডিলিট, সরাসরি ও এখনই কার্যকর (admin/SR রিভিউ নেই)
+router.get('/deletion-preview', portalAuth, getDeletionPreview);
+router.post('/delete-account',  portalAuth, deleteMyAccount);
 
 module.exports = router;
