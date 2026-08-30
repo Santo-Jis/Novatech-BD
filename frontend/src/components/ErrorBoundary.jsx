@@ -19,7 +19,7 @@ import { Component } from 'react'
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props)
-    this.state = { hasError: false, error: null }
+    this.state = { hasError: false, error: null, componentStack: null }
   }
 
   static getDerivedStateFromError(error) {
@@ -33,6 +33,9 @@ export default class ErrorBoundary extends Component {
     // এখন console-এ log করা হচ্ছে — server logger নয়,
     // কারণ এটা browser-side error।
     console.error('[ErrorBoundary] Component crashed:', error, info.componentStack)
+    // ✅ TEMP DEBUG (৩০ আগস্ট ২০২৬): componentStack state-এ রাখা হচ্ছে
+    // যাতে নিচে ফলব্যাক UI-তে দেখানো যায় — নিচের নোট দেখুন কেন।
+    this.setState({ componentStack: info.componentStack })
   }
 
   handleReset = () => {
@@ -59,11 +62,19 @@ export default class ErrorBoundary extends Component {
           পেজ রিফ্রেশ করুন অথবা হোমে ফিরে যান।
         </p>
 
-        {/* error message — dev-এ দেখাও, prod-এ লুকাও */}
-        {import.meta.env.DEV && this.state.error && (
-          <pre className="text-left text-[10px] bg-gray-100 text-red-600 rounded-xl p-3 mb-4 max-w-full overflow-auto max-h-32">
-            {this.state.error.message}
-          </pre>
+        {/* error message — ✅ TEMP DEBUG (৩০ আগস্ট ২০২৬): production-এও
+            সাময়িকভাবে দেখানো হচ্ছে, কারণ একই crash কয়েকবার ফিক্স করার
+            পরেও ফিরে আসছে আর dev-only গার্ডের কারণে আসল error কখনো
+            দেখাই যায়নি — শুধু browser console-এ চাপা পড়ে থাকত, যেটা
+            ফোন থেকে দেখা যায় না। কারণ ধরা পড়ার পর এই ব্লক আবার
+            import.meta.env.DEV দিয়ে গার্ড করে দেওয়া উচিত। */}
+        {this.state.error && (
+          <div className="text-left bg-gray-100 text-red-600 rounded-xl p-3 mb-4 max-w-full overflow-auto max-h-48 text-[10px] leading-snug">
+            <p className="font-bold mb-1">{this.state.error.name}: {this.state.error.message}</p>
+            {this.state.componentStack && (
+              <pre className="whitespace-pre-wrap opacity-70">{this.state.componentStack}</pre>
+            )}
+          </div>
         )}
 
         <div className="flex gap-3">
