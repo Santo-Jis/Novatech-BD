@@ -21,16 +21,17 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  FiSearch, FiX, FiCheck, FiLink, FiPlus,
+  FiSearch, FiX, FiCheck, FiLink, FiPlus, FiSlash, FiRotateCcw,
 } from 'react-icons/fi'
 import { portalFetch } from '../utils/api'
 import CpCard from './ui/CpCard'
 import CpButton from './ui/CpButton'
 import CpInput from './ui/CpInput'
 
-export default function ConnectionsTab({ portalJWT, switchCompany }) {
+export default function ConnectionsTab({ portalJWT, switchCompany, onConnectionsChanged }) {
   const [companies, setCompanies] = useState([])
   const [pending,   setPending]   = useState([])
+  const [blocked,   setBlocked]   = useState([]) // ✅ NEW (Phase 3 — কোড অডিট)
   const [loading,   setLoading]   = useState(true)
   const [errorMsg,  setErrorMsg]  = useState('')
   const [actionMsg, setActionMsg] = useState('')
@@ -48,16 +49,21 @@ export default function ConnectionsTab({ portalJWT, switchCompany }) {
 
   const authHeader = { Authorization: `Bearer ${portalJWT}` }
 
-  // ── কানেক্টেড কোম্পানি + পেন্ডিং রিকোয়েস্ট লোড ─────────────────
+  // ── কানেক্টেড কোম্পানি + পেন্ডিং রিকোয়েস্ট + ব্লক লিস্ট লোড ─────
   const load = useCallback(async () => {
     setLoading(true); setErrorMsg('')
     try {
-      const [co, pe] = await Promise.all([
+      const [co, pe, bl] = await Promise.all([
         portalFetch('/portal/connections/my-companies', { headers: authHeader }),
         portalFetch('/portal/connections/pending',       { headers: authHeader }),
+        portalFetch('/portal/connections/blocked',       { headers: authHeader }),
       ])
       setCompanies(co.data || [])
       setPending(pe.data || [])
+      setBlocked(bl.data || [])
+      // ✅ NEW (Phase 4): parent (DashboardView)-এর ব্যাজ কাউন্ট সিঙ্কে রাখো —
+      // accept/reject-এর পর load() আবার চলে, তখনও এটা কল হয়ে ব্যাজ সাথে সাথে আপডেট হয়
+      onConnectionsChanged?.((pe.data || []).length)
     } catch {
       setErrorMsg('কোম্পানি তালিকা আনতে সমস্যা হয়েছে।')
     } finally {
@@ -140,6 +146,36 @@ export default function ConnectionsTab({ portalJWT, switchCompany }) {
     }
   }
 
+  // ── ব্লক/আনব্লক ── ✅ NEW (Phase 3 — কোড অডিট)
+  // pending রিকোয়েস্ট থেকে সরাসরি ব্লক করা যায় (আলাদা করে reject করার
+  // দরকার নেই — block নিজেই যেকোনো non-blocked status থেকে কাজ করে)।
+  const blockReq = async (connection_id) => {
+    if (!window.confirm('এই কোম্পানিকে ব্লক করবেন? তারা আর কানেকশন রিকোয়েস্ট পাঠাতে পারবে না।')) return
+    try {
+      await portalFetch(`/portal/connections/${connection_id}/block`, { method: 'POST', headers: authHeader })
+      load()
+    } catch {
+      setActionMsg('ব্লক করতে সমস্যা হয়েছে।')
+    }
+  }
+  const blockCompany = async (connection_id) => {
+    if (!window.confirm('এই কোম্পানিকে ব্লক করবেন? সংযোগ বিচ্ছিন্ন হয়ে যাবে এবং তারা আর নতুন রিকোয়েস্ট পাঠাতে পারবে না, যতক্ষণ না আপনি আনব্লক করেন।')) return
+    try {
+      await portalFetch(`/portal/connections/${connection_id}/block`, { method: 'POST', headers: authHeader })
+      load()
+    } catch {
+      setActionMsg('ব্লক করতে সমস্যা হয়েছে।')
+    }
+  }
+  const unblockCompany = async (connection_id) => {
+    try {
+      await portalFetch(`/portal/connections/${connection_id}/unblock`, { method: 'POST', headers: authHeader })
+      load()
+    } catch {
+      setActionMsg('আনব্লক করতে সমস্যা হয়েছে।')
+    }
+  }
+
   // ✅ নতুন — কোম্পানির কার্ডে ট্যাপ করলে সেই কোম্পানির ড্যাশবোর্ডে প্রবেশ
   // (person-only/company-বিহীন session থেকে প্রথম কোম্পানিতে ঢোকার একমাত্র পথ,
   // এবং একাধিক-কোম্পানি কাস্টমারের জন্যও company switch করার সরাসরি উপায়)
@@ -208,6 +244,9 @@ export default function ConnectionsTab({ portalJWT, switchCompany }) {
                     <button onClick={() => rejectReq(p.connection_id)} className="w-8 h-8 rounded-full bg-cp-bg-alt text-cp-text-muted flex items-center justify-center">
                       <FiX size={14} />
                     </button>
+                    <button onClick={() => blockReq(p.connection_id)} title="ব্লক করুন" className="w-8 h-8 rounded-full bg-cp-error-bg text-cp-error flex items-center justify-center">
+                      <FiSlash size={14} />
+                    </button>
                   </div>
                 </div>
               </CpCard>
@@ -245,9 +284,14 @@ export default function ConnectionsTab({ portalJWT, switchCompany }) {
                   <p className="text-sm font-bold text-cp-text-primary truncate">{companyName(c)}</p>
                   <p className="text-[10px] text-cp-text-muted font-cp-mono">{c.customer_code || ''}</p>
                 </div>
-                <button onClick={() => disconnect(c.connection_id)} className="text-[10px] text-cp-error px-2 py-1 rounded-lg bg-cp-error-bg flex-shrink-0">
-                  সংযোগ বিচ্ছিন্ন
-                </button>
+                <div className="flex flex-col gap-1 flex-shrink-0">
+                  <button onClick={() => disconnect(c.connection_id)} className="text-[10px] text-cp-error px-2 py-1 rounded-lg bg-cp-error-bg whitespace-nowrap">
+                    বিচ্ছিন্ন
+                  </button>
+                  <button onClick={() => blockCompany(c.connection_id)} className="text-[10px] text-cp-text-muted px-2 py-1 rounded-lg bg-cp-bg-alt whitespace-nowrap">
+                    ব্লক
+                  </button>
+                </div>
               </div>
               <div className="flex gap-2 mt-2.5">
                 <div className="flex-1 bg-cp-bg-alt rounded-xl px-3 py-2">
@@ -275,6 +319,39 @@ export default function ConnectionsTab({ portalJWT, switchCompany }) {
           ))}
         </div>
       </div>
+
+      {/* ── ব্লক করা কোম্পানি ── ✅ NEW (Phase 3 — কোড অডিট)
+           নিজে যা ব্লক করেছি শুধু তা-ই এখানে দেখা যায় ও আনব্লক করা যায়
+           (কোম্পানি যা ব্লক করেছে তা এখানে দেখানো হয় না — ইচ্ছাকৃত, দেখুন
+           customerPortalConnection.controller.js: getMyBlockedCompanies) */}
+      {blocked.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-cp-text-secondary mb-1.5 px-1">
+            ব্লক করা কোম্পানি ({blocked.length})
+          </p>
+          <div className="flex flex-col gap-2">
+            {blocked.map(b => (
+              <CpCard key={b.connection_id} padding="sm">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {b.logo_url
+                      ? <img src={b.logo_url} alt="" className="w-9 h-9 rounded-xl object-cover flex-shrink-0 opacity-60" />
+                      : <div className="w-9 h-9 rounded-xl bg-cp-bg-alt flex items-center justify-center text-cp-text-muted font-bold flex-shrink-0">{companyName(b)?.[0]}</div>
+                    }
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-cp-text-muted truncate">{companyName(b)}</p>
+                      <p className="text-[10px] text-cp-text-muted">আপনি ব্লক করেছেন</p>
+                    </div>
+                  </div>
+                  <button onClick={() => unblockCompany(b.connection_id)} className="text-[10px] text-cp-text-secondary px-2 py-1 rounded-lg bg-cp-bg-alt flex items-center gap-1 flex-shrink-0">
+                    <FiRotateCcw size={11} /> আনব্লক
+                  </button>
+                </div>
+              </CpCard>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── QR মোডাল ── */}
       {qrOpen && (

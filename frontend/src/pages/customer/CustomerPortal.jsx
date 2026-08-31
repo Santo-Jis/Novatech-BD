@@ -170,6 +170,9 @@ export default function CustomerPortal({ defaultTab = 'home_feed' }) {
       returnSubmitLoading={auth.returnSubmitLoading}
       loadMyReturnReqs={auth.loadMyReturnReqs}
       submitReturnRequest={auth.submitReturnRequest}
+      // connections badge — ✅ NEW (Phase 4)
+      pendingConnectionsCount={auth.pendingConnectionsCount}
+      refreshPendingConnectionsCount={auth.loadPendingConnectionsCount}
     />
   )
 

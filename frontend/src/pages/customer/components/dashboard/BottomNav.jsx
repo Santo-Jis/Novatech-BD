@@ -31,7 +31,7 @@ export function getActiveSection(activeTab) {
   return NAV_SECTIONS.find(s => s.id === getActiveSectionId(activeTab)) || NAV_SECTIONS[0]
 }
 
-export default function BottomNav({ activeTab, onTabChange }) {
+export default function BottomNav({ activeTab, onTabChange, badges = {} }) {
   const activeSectionId = getActiveSectionId(activeTab)
 
   return (
@@ -42,17 +42,29 @@ export default function BottomNav({ activeTab, onTabChange }) {
       {NAV_SECTIONS.map((section) => {
         const active = section.id === activeSectionId
         const Icon = section.icon
+        // ✅ NEW (Phase 4 — কোড অডিট): badges prop-এ section.id ধরে কাউন্ট
+        // দিলে আইকনের উপর ছোট রেড ব্যাজ দেখাবে। এখন শুধু 'connections'-এর
+        // জন্য DashboardView.jsx থেকে পাঠানো হয় (পেন্ডিং রিকোয়েস্ট কাউন্ট),
+        // কিন্তু এই prop জেনেরিক — ভবিষ্যতে অন্য সেকশনেও ব্যবহার করা যাবে।
+        const badgeCount = badges[section.id] || 0
         return (
           <button
             key={section.id}
             onClick={() => onTabChange(section.tab)}
             className="flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-w-0"
           >
-            <Icon
-              size={22}
-              strokeWidth={active ? 2.4 : 1.8}
-              className={active ? 'text-cp-trust-500' : 'text-cp-text-muted'}
-            />
+            <div className="relative">
+              <Icon
+                size={22}
+                strokeWidth={active ? 2.4 : 1.8}
+                className={active ? 'text-cp-trust-500' : 'text-cp-text-muted'}
+              />
+              {badgeCount > 0 && (
+                <span className="absolute -top-1 -right-1.5 min-w-[15px] h-[15px] px-[3px] rounded-full bg-cp-error text-white text-[9px] font-bold flex items-center justify-center leading-none">
+                  {badgeCount > 9 ? '9+' : badgeCount}
+                </span>
+              )}
+            </div>
             <span
               className={`text-[9.5px] leading-tight font-cp-body truncate max-w-full px-0.5 ${
                 active ? 'text-cp-trust-500 font-semibold' : 'text-cp-text-muted font-medium'

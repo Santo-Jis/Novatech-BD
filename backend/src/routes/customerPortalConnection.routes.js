@@ -9,6 +9,7 @@ const { portalAuth } = require('../middlewares/portalAuthShared');
 
 const {
     getMyQrCode,
+    regenerateMyQrCode,
     getMyCompanies,
     getPendingForMe,
     searchCompanies,
@@ -16,6 +17,9 @@ const {
     acceptCompanyRequest,
     rejectCompanyRequest,
     disconnectCompany,
+    blockCompanyConnection,
+    unblockCompanyConnection,
+    getMyBlockedCompanies,
     getAllCompanyOrders,
     getAllCompanyInvoices,
     getAllCompanyCreditSummary,
@@ -39,13 +43,17 @@ const {
 const { getAllCompanyOrderRequests } = require('../controllers/customerOrderRequest.controller');
 
 router.get('/my-qr',              portalAuth, getMyQrCode);
+router.post('/my-qr/regenerate',  portalAuth, regenerateMyQrCode); // ✅ NEW (Phase 2 — কোড অডিট)
 router.get('/my-companies',       portalAuth, getMyCompanies);
 router.get('/pending',            portalAuth, getPendingForMe);
+router.get('/blocked',            portalAuth, getMyBlockedCompanies); // ✅ NEW (Phase 3 — কোড অডিট)
 router.get('/search-companies',   portalAuth, searchCompanies);
 router.post('/request',           portalAuth, requestConnectionToCompany);
 router.post('/:id/accept',        portalAuth, acceptCompanyRequest);
 router.post('/:id/reject',        portalAuth, rejectCompanyRequest);
 router.post('/:id/disconnect',    portalAuth, disconnectCompany);
+router.post('/:id/block',         portalAuth, blockCompanyConnection);   // ✅ NEW (Phase 3)
+router.post('/:id/unblock',       portalAuth, unblockCompanyConnection); // ✅ NEW (Phase 3)
 router.get('/all-orders',         portalAuth, getAllCompanyOrders);
 router.get('/all-order-requests', portalAuth, getAllCompanyOrderRequests); // ✅ NEW (multi-company অর্ডার ফিক্সের সঙ্গী)
 router.get('/all-invoices',       portalAuth, getAllCompanyInvoices);       // ✅ NEW (Session 13)

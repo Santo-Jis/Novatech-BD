@@ -102,6 +102,7 @@ export default function DashboardView({
   returnFormOpen, setReturnFormOpen, returnInvoice, setReturnInvoice,
   returnType, setReturnType, returnItems, setReturnItems, returnNote, setReturnNote,
   returnSubmitLoading = false, loadMyReturnReqs, submitReturnRequest,
+  pendingConnectionsCount = 0, refreshPendingConnectionsCount, // ✅ NEW (Phase 4)
 }) {
   const { customer, credit_payments = [], returns = [], sales_note = null } = dashboard
   // monthly_summary/total_summary আর এখানে destructure করা হয় না —
@@ -287,7 +288,13 @@ export default function DashboardView({
             {/* ══ নেটওয়ার্ক (কানেক্টেড কোম্পানি) ══ */}
             {/* ✅ NEW: এই ট্যাবই ভবিষ্যতের Social/Discovery ফিডের natural home —
                 এই কার্ড-লিস্ট প্যাটার্নই পরে ফিডে এক্সটেন্ড হবে (IA স্কেলেটন ধাপ ১) */}
-            {activeTab === 'network' && <ConnectionsTab portalJWT={portalJWT} switchCompany={switchCompany} />}
+            {activeTab === 'network' && (
+              <ConnectionsTab
+                portalJWT={portalJWT}
+                switchCompany={switchCompany}
+                onConnectionsChanged={refreshPendingConnectionsCount}
+              />
+            )}
 
             {/* ══ অর্ডার ══ */}
             {activeTab === 'orders' && <OrderRequestTab portalJWT={portalJWT}/>}
@@ -1055,7 +1062,7 @@ export default function DashboardView({
       )}
 
       {/* ═══ BOTTOM NAV — Facebook-স্টাইল ৬-সেকশন নেভিগেশন (ধাপ ১) ═══ */}
-      <BottomNav activeTab={activeTab} onTabChange={onTabChange} />
+      <BottomNav activeTab={activeTab} onTabChange={onTabChange} badges={{ connections: pendingConnectionsCount }} />
     </div>
   )
 }

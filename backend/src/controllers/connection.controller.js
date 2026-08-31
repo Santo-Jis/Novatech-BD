@@ -8,52 +8,73 @@
 
 const { query }   = require('../config/db');
 const logger      = require('../config/logger');
-const { generateCustomerCode } = require('../services/employee.service');
-const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
+const { ensureCustomerForPerson, REJECT_COOLDOWN_HOURS } = require('../services/customerConnection.service');
+const { sendPortalWhatsAppMessage } = require('../services/portalWhatsapp.service');
 
-// ── Helper: একটা connection row থেকে বিদ্যমান/নতুন customer row বানিয়ে/খুঁজে দাও ──
-async function ensureCustomerForPerson(personId, tenantId, createdByUserId) {
-    // এই tenant-এ এই person-এর জন্য customer row আগে থেকেই আছে কিনা
-    const existing = await query(
-        `SELECT id FROM customers WHERE person_id = $1 AND tenant_id = $2 LIMIT 1`,
-        [personId, tenantId]
-    );
-    if (existing.rows.length > 0) return existing.rows[0].id;
+// ✅ REFACTOR (Phase 2): ensureCustomerForPerson ও REJECT_COOLDOWN_HOURS
+// আগে এখানে local ছিল — customerPortalConnection.controller.js একই
+// লজিক ইনলাইন কপি করে রেখেছিল। এখন services/customerConnection.
+// service.js থেকে শেয়ার্ডভাবে import হয়, দুই controller-ই একই সোর্স।
 
-    // ✅ নতুন customer row তৈরি হতে যাচ্ছে (existing reuse না) — তাই এখানেই
-    // ট্রায়াল/প্ল্যান কাস্টমার সীমা চেক করা হচ্ছে
-    await assertCustomerLimitAvailable(tenantId);
+// ============================================================
+// ✅ NEW (Phase 4 — কোড অডিট): WhatsApp নোটিফিকেশন হেলপার
+//
+// ⚠️ সংশোধনী: Phase 0/3-এ আমি ধরে নিয়েছিলাম "sendCustomerNotification"
+// (customerNotification.controller.js) WhatsApp পাঠায় — যাচাই করে
+// দেখলাম সেটা ভুল ছিল। ওটা আসলে in-app bell + FCM push + email fallback
+// (কোনো WhatsApp না)। আসল WhatsApp mechanism হলো portalWhatsapp.
+// service.js (Baileys গেটওয়ে) — cust.whatsapp-এ OTP/security alert
+// পাঠাতে আগে থেকেই ব্যবহৃত হয়। এখানে সেটাই connection event-এর জন্য
+// reuse করা হচ্ছে।
+//
+// শুধু staff-side action-গুলোতে (এই ফাইল) হুক করা হয়েছে, কারণ এই
+// ফাইলের action-গুলোর টার্গেট (person) কে WhatsApp পাঠানো সোজা —
+// persons.phone/whatsapp সরাসরি আছে। customerPortalConnection.
+// controller.js-এর action-গুলোর টার্গেট staff (company side), যেখানে
+// নোটিফিকেশনের সঠিক জায়গা হলো বিদ্যমান staff in-app bell (notification.
+// controller.js), কিন্তু সেই টেবিলের sender_id কলাম NOT NULL FK →
+// users(id) — কোনো "system" sender concept নেই (migration_notification_
+// module.sql দেখুন), তাই এই phase-এ সেটা হুক করা হয়নি (নিচে module.exports-
+// এর ঠিক উপরে বিস্তারিত নোট)। fire-and-forget — WhatsApp পাঠানো ব্যর্থ
+// হলেও কখনো মূল request fail করে না।
+// ============================================================
+async function notifyPersonAboutConnectionEvent(personId, tenantId, messageBuilder) {
+    try {
+        const [personRes, tenantRes] = await Promise.all([
+            query(`SELECT whatsapp, phone FROM persons WHERE id = $1`, [personId]),
+            query(`SELECT company_name, company_name_bn FROM tenants WHERE id = $1`, [tenantId]),
+        ]);
+        const person = personRes.rows[0];
+        const tenant = tenantRes.rows[0];
+        if (!person) return;
 
-    // না থাকলে person-এর তথ্য দিয়ে একটা নতুন customer row বানাও
-    const person = await query(`SELECT * FROM persons WHERE id = $1`, [personId]);
-    if (person.rows.length === 0) throw new Error('Person পাওয়া যায়নি।');
-    const p = person.rows[0];
+        const targetPhone = person.whatsapp || person.phone;
+        if (!targetPhone) return;
 
-    const customerCode = await generateCustomerCode(new Date());
-    const created = await query(
-        `INSERT INTO customers
-            (customer_code, shop_name, owner_name, whatsapp, sms_phone, email,
-             created_by, tenant_id, person_id, registration_source, is_verified)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'connection', true)
-         RETURNING id`,
-        [
-            customerCode,
-            p.full_name || 'নতুন কাস্টমার',
-            p.full_name || 'নতুন কাস্টমার',
-            p.whatsapp || null,
-            p.phone || null,
-            p.email || null,
-            createdByUserId,
-            tenantId,
-            personId,
-        ]
-    );
-    return created.rows[0].id;
+        const companyLabel = (tenant && (tenant.company_name_bn || tenant.company_name)) || 'একটি কোম্পানি';
+        await sendPortalWhatsAppMessage(targetPhone, messageBuilder(companyLabel), 'connection_event');
+    } catch (err) {
+        logger.warn('⚠️ connection WhatsApp notify ব্যর্থ:', err.message);
+    }
 }
 
 // ============================================================
 // GET /api/connections/search-persons?q=...
 // ফোন/হোয়াটসঅ্যাপ/ইমেইল/QR-কোড/নাম দিয়ে গ্লোবাল person সার্চ
+//
+// ✅ FIX (Phase 1 — প্রাইভেসি লিক): আগে discoverable=false হলেও ফোন/
+// হোয়াটসঅ্যাপ/নাম ম্যাচ করলেই ফোন/হোয়াটসঅ্যাপ/ইমেইল সরাসরি ফেরত দিত —
+// discovery.controller.js-এর getDiscoveryShops-এ যে মাস্কিং যত্ন করে করা
+// হয়েছে (contact info hide করা connect না হওয়া পর্যন্ত), এখানে করা
+// ছিল না। এখন discoverable=false ব্যক্তিরা fuzzy (phone/whatsapp/email/
+// name) ম্যাচ থেকে বাদ পড়বে, যদি না ইতিমধ্যে এই tenant-এর সাথে pending/
+// connected সম্পর্ক থাকে। qr_code এক্সাক্ট ম্যাচ discoverable-নির্বিশেষে
+// কাজ করবে — QR স্ট্রিং হাতে থাকা মানে সামনাসামনি সাক্ষাতের সমতুল্য
+// বিশ্বাস (connectViaQrScan-এর একই ট্রাস্ট-লেভেল)।
+//
+// ✅ FIX (Phase 3): blocked সম্পর্ক থাকলে qr_code exact match-সহ সবকিছু
+// override করে সার্চ থেকে বাদ পড়ে — block মানেই সম্পর্ক পুরোপুরি বন্ধ,
+// এমনকি সামনাসামনি QR স্ক্যান করেও আর reconnect করা যাবে না।
 // ============================================================
 const searchPersons = async (req, res) => {
     try {
@@ -68,9 +89,15 @@ const searchPersons = async (req, res) => {
              FROM persons p
              LEFT JOIN customer_company_connections ccc
                     ON ccc.person_id = p.id AND ccc.tenant_id = $2
-                    AND ccc.status IN ('pending','connected')
-             WHERE p.phone ILIKE $1 OR p.whatsapp ILIKE $1
-                OR p.email ILIKE $1 OR p.full_name ILIKE $1 OR p.qr_code = $3
+                    AND ccc.status IN ('pending','connected','blocked')
+             WHERE ccc.status IS DISTINCT FROM 'blocked'
+               AND (
+                     p.qr_code = $3
+                     OR (
+                          (p.phone ILIKE $1 OR p.whatsapp ILIKE $1 OR p.email ILIKE $1 OR p.full_name ILIKE $1)
+                          AND (p.discoverable = true OR ccc.status IN ('pending','connected'))
+                        )
+                   )
              LIMIT 20`,
             [`%${q}%`, req.tenantId, q]
         );
@@ -85,6 +112,14 @@ const searchPersons = async (req, res) => {
 // ============================================================
 // POST /api/connections/request   { person_id }
 // কোম্পানি → কাস্টমার রিকোয়েস্ট (Accept লাগবে)
+//
+// ✅ FIX (Phase 1 — cooldown): আগে reject করার পরও সাথে সাথেই আবার
+// রিকোয়েস্ট পাঠানো যেত (dup-check শুধু pending/connected দেখত, rejected
+// বাদ ছিল)। এখন rejected হওয়ার পর REJECT_COOLDOWN_HOURS সময় নতুন
+// রিকোয়েস্ট ব্লক থাকবে।
+//
+// ✅ FIX (Phase 3 — blocked): blocked সম্পর্ক থাকলে cooldown-এর মতো
+// সময়সীমা নেই — staff নিজে unblock না করা পর্যন্ত স্থায়ীভাবে বন্ধ থাকে।
 // ============================================================
 const sendConnectionRequest = async (req, res) => {
     try {
@@ -94,14 +129,33 @@ const sendConnectionRequest = async (req, res) => {
         }
 
         const dup = await query(
-            `SELECT id, status FROM customer_company_connections
-             WHERE person_id = $1 AND tenant_id = $2 AND status IN ('pending','connected')`,
-            [person_id, req.tenantId]
+            `SELECT id, status, responded_at, created_at FROM customer_company_connections
+             WHERE person_id = $1 AND tenant_id = $2
+               AND (
+                     status IN ('pending','connected','blocked')
+                     OR (status = 'rejected' AND COALESCE(responded_at, created_at) > NOW() - make_interval(hours => $3))
+                   )
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [person_id, req.tenantId, REJECT_COOLDOWN_HOURS]
         );
         if (dup.rows.length > 0) {
+            const existing = dup.rows[0];
+            if (existing.status === 'blocked') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'এই কাস্টমারের সাথে সংযোগ ব্লক করা আছে। রিকোয়েস্ট পাঠানোর আগে unblock করুন।',
+                });
+            }
+            if (existing.status === 'rejected') {
+                return res.status(429).json({
+                    success: false,
+                    message: `এই কাস্টমার সম্প্রতি রিকোয়েস্ট প্রত্যাখ্যান করেছেন। ${REJECT_COOLDOWN_HOURS} ঘণ্টা পর আবার চেষ্টা করুন।`,
+                });
+            }
             return res.status(409).json({
                 success: false,
-                message: dup.rows[0].status === 'connected'
+                message: existing.status === 'connected'
                     ? 'ইতিমধ্যে সংযুক্ত।'
                     : 'রিকোয়েস্ট আগে থেকেই পাঠানো আছে।',
             });
@@ -113,6 +167,11 @@ const sendConnectionRequest = async (req, res) => {
              VALUES ($1, $2, 'pending', 'company_search', $3)
              RETURNING *`,
             [person_id, req.tenantId, req.user.id]
+        );
+
+        // ✅ NEW (Phase 4): fire-and-forget — response block করে না
+        notifyPersonAboutConnectionEvent(person_id, req.tenantId, (companyLabel) =>
+            `🔗 *${companyLabel}* আপনাকে সংযোগের অনুরোধ পাঠিয়েছে।\nপোর্টালে গিয়ে গ্রহণ বা প্রত্যাখ্যান করুন।`
         );
 
         res.status(201).json({ success: true, data: created.rows[0] });
@@ -139,15 +198,21 @@ const connectViaQrScan = async (req, res) => {
         }
         const personId = person.rows[0].id;
 
-        // আগে থেকে connected/pending থাকলে সেটাই ফেরত দাও
+        // আগে থেকে connected/pending/blocked থাকলে সেই অনুযায়ী হ্যান্ডল করো
         const existing = await query(
             `SELECT * FROM customer_company_connections
              WHERE person_id = $1 AND tenant_id = $2
-               AND status IN ('pending','connected')`,
+               AND status IN ('pending','connected','blocked')`,
             [personId, req.tenantId]
         );
         if (existing.rows.length > 0 && existing.rows[0].status === 'connected') {
             return res.json({ success: true, message: 'ইতিমধ্যে সংযুক্ত।', data: existing.rows[0] });
+        }
+        // ✅ FIX (Phase 3): blocked থাকলে QR স্ক্যান দিয়েও reconnect করা
+        // যাবে না — QR-এর "সামনাসামনি সাক্ষাত" ট্রাস্ট block-কে override
+        // করে না, block-ই সবচেয়ে শক্তিশালী স্ট্যাটাস।
+        if (existing.rows.length > 0 && existing.rows[0].status === 'blocked') {
+            return res.status(403).json({ success: false, message: 'এই কাস্টমারের সাথে সংযোগ ব্লক করা আছে।' });
         }
 
         const customerId = await ensureCustomerForPerson(personId, req.tenantId, req.user.id);
@@ -188,8 +253,9 @@ const connectViaQrScan = async (req, res) => {
 };
 
 // ============================================================
-// GET /api/connections?status=pending|connected|rejected|disconnected
-// এই tenant-এর সব connection লিস্ট
+// GET /api/connections?status=pending|connected|rejected|disconnected|blocked
+// এই tenant-এর সব connection লিস্ট (Phase 3: blocked-ও এখন valid ফিল্টার,
+// কোড পরিবর্তন লাগেনি — status জেনেরিকভাবে যেকোনো ভ্যালু accept করে)
 // ============================================================
 const listConnections = async (req, res) => {
     try {
@@ -242,6 +308,11 @@ const acceptConnection = async (req, res) => {
             [id, customerId]
         );
 
+        // ✅ NEW (Phase 4): fire-and-forget
+        notifyPersonAboutConnectionEvent(conn.rows[0].person_id, req.tenantId, (companyLabel) =>
+            `✅ *${companyLabel}* আপনার সংযোগের অনুরোধ গ্রহণ করেছে।\nএখন থেকে আপনি তাদের সাথে লেনদেন করতে পারবেন।`
+        );
+
         res.json({ success: true, data: updated.rows[0] });
     } catch (err) {
         if (err.code === 'CUSTOMER_LIMIT_REACHED') {
@@ -273,6 +344,12 @@ const rejectConnection = async (req, res) => {
         if (updated.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'পেন্ডিং রিকোয়েস্ট পাওয়া যায়নি।' });
         }
+
+        // ✅ NEW (Phase 4): fire-and-forget
+        notifyPersonAboutConnectionEvent(updated.rows[0].person_id, req.tenantId, (companyLabel) =>
+            `আপনার পাঠানো সংযোগের অনুরোধটি *${companyLabel}* গ্রহণ করেনি।`
+        );
+
         res.json({ success: true, data: updated.rows[0] });
     } catch (err) {
         logger.error('❌ rejectConnection error:', err.message);
@@ -303,6 +380,65 @@ const disconnectConnection = async (req, res) => {
     }
 };
 
+// ============================================================
+// POST /api/connections/:id/block
+// ✅ NEW (Phase 3): reject/disconnect-এর পরও কাস্টমার আবার রিকোয়েস্ট
+// পাঠাতে পারে (rejected-এ ২৪ ঘণ্টা cooldown মাত্র, disconnected-এ কোনো
+// বাধাই নেই)। block করলে সেটা স্থায়ীভাবে বন্ধ থাকে যতক্ষণ না company
+// নিজে unblock করে — কোনো cooldown expiry নেই। যেকোনো non-blocked
+// status থেকেই block করা যায় (pending থেকেও — reject না করেই সরাসরি
+// block করা যায়, একটাই একশন)।
+// ============================================================
+const blockConnection = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updated = await query(
+            `UPDATE customer_company_connections
+             SET status = 'blocked', blocked_at = NOW(), blocked_by = 'company'
+             WHERE id = $1 AND tenant_id = $2 AND status != 'blocked'
+             RETURNING *`,
+            [id, req.tenantId]
+        );
+        if (updated.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'সংযোগ পাওয়া যায়নি (অথবা আগে থেকেই ব্লক করা)।' });
+        }
+        res.json({ success: true, data: updated.rows[0] });
+    } catch (err) {
+        logger.error('❌ blockConnection error:', err.message);
+        res.status(500).json({ success: false, message: 'ব্লক করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/connections/:id/unblock
+// ✅ NEW (Phase 3): শুধু company নিজে যা ব্লক করেছে (blocked_by='company')
+// তা-ই unblock করতে পারে — কাস্টমার নিজে পোর্টাল থেকে company-এর করা
+// ব্লক তুলতে পারবে না (এবং উল্টোটাও না, দেখুন customerPortalConnection.
+// controller.js: unblockCompanyConnection)। এই দিক-নির্দিষ্টতা ইচ্ছাকৃত —
+// নইলে একজন block করা কাস্টমার নিজেই নিজেকে unblock করে দিতে পারত।
+// unblock করলে status 'disconnected'-এ ফিরে যায় (নতুন করে রিকোয়েস্ট
+// পাঠানো/গ্রহণ করা সম্ভব, কিন্তু connected অবস্থায় ফিরতে নতুন accept লাগবে)।
+// ============================================================
+const unblockConnection = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const updated = await query(
+            `UPDATE customer_company_connections
+             SET status = 'disconnected', blocked_at = NULL, blocked_by = NULL, disconnected_at = NOW()
+             WHERE id = $1 AND tenant_id = $2 AND status = 'blocked' AND blocked_by = 'company'
+             RETURNING *`,
+            [id, req.tenantId]
+        );
+        if (updated.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'company-এর ব্লক করা সংযোগ পাওয়া যায়নি।' });
+        }
+        res.json({ success: true, data: updated.rows[0] });
+    } catch (err) {
+        logger.error('❌ unblockConnection error:', err.message);
+        res.status(500).json({ success: false, message: 'আনব্লক করতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     searchPersons,
     sendConnectionRequest,
@@ -311,4 +447,6 @@ module.exports = {
     acceptConnection,
     rejectConnection,
     disconnectConnection,
+    blockConnection,
+    unblockConnection,
 };

@@ -16,6 +16,8 @@ const {
     acceptConnection,
     rejectConnection,
     disconnectConnection,
+    blockConnection,
+    unblockConnection,
 } = require('../controllers/connection.controller');
 
 router.get('/search-persons',        auth, searchPersons);
@@ -25,5 +27,7 @@ router.get('/',                      auth, listConnections);
 router.post('/:id/accept',           auth, acceptConnection);
 router.post('/:id/reject',           auth, rejectConnection);
 router.post('/:id/disconnect',       auth, disconnectConnection);
+router.post('/:id/block',            auth, blockConnection);   // ✅ NEW (Phase 3)
+router.post('/:id/unblock',          auth, unblockConnection); // ✅ NEW (Phase 3)
 
 module.exports = router;

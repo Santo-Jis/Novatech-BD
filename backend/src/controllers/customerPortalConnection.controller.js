@@ -9,7 +9,13 @@
 const { query } = require('../config/db');
 const logger    = require('../config/logger');
 const jwt       = require('jsonwebtoken');
-const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
+const crypto    = require('crypto');
+const { ensureCustomerForPerson, REJECT_COOLDOWN_HOURS } = require('../services/customerConnection.service');
+
+// ✅ REFACTOR (Phase 2): REJECT_COOLDOWN_HOURS ও customer-creation লজিক
+// (আগে acceptCompanyRequest-এর ভেতরে ইনলাইন ছিল) এখন services/
+// customerConnection.service.js থেকে শেয়ার্ডভাবে import হয় —
+// connection.controller.js-ও একই সোর্স ব্যবহার করে।
 
 // ── Helper: portal customer_id থেকে person_id বের করো ──
 // ⚠️ FIX: আগে শুধু customerId নিয়ে DB থেকে person_id বের করতো — কিন্তু
@@ -46,6 +52,59 @@ const getMyQrCode = async (req, res) => {
         }
         logger.error('❌ getMyQrCode error:', err.message);
         res.status(500).json({ success: false, message: 'QR কোড আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/portal/connections/my-qr/regenerate
+// নিজের QR কোড রিজেনারেট করো — পুরনো কোড সাথে সাথে অকেজো হয়ে যাবে।
+//
+// ✅ NEW (Phase 2 — কোড অডিট): QR কোড আগে স্ট্যাটিক ছিল, রিজেনারেট করার
+// কোনো উপায় ছিল না — স্ক্রিনশট লিক হলে বা কেউ দেখে ফেললে কোনো প্রতিকার
+// ছিল না, কারণ scan করলেই approval ছাড়া instant connect হয়ে যায়
+// (connection.controller.js: connectViaQrScan)। এই bundle-এ persons.
+// qr_code-এর মূল generation লজিক/migration দেখা যায়নি (সম্ভবত DB-level
+// default), তাই এখানে নিরাপদভাবে crypto.randomUUID() দিয়ে অ্যাপ-লেয়ারে
+// নতুন কোড বানানো হচ্ছে। বিদ্যমান connection-গুলো (customer_company_
+// connections) অক্ষুণ্ণ থাকে — সেগুলো person_id-ভিত্তিক, qr_code-এর
+// সাথে সরাসরি সম্পর্কিত না। শুধু পুরনো QR ছবি দিয়ে ভবিষ্যতে আর স্ক্যান
+// করা যাবে না।
+// ============================================================
+const regenerateMyQrCode = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser);
+
+        // qr_code সম্ভবত unique-constrained (সব জায়গায় WHERE qr_code = $1
+        // এক্সাক্ট লুকআপে ব্যবহৃত হয়) — UUID কলিশনের সম্ভাবনা ব্যবহারিকভাবে
+        // শূন্যের কাছাকাছি হলেও ছোট একটা retry loop রাখা হলো নিরাপত্তার জন্য।
+        const MAX_ATTEMPTS = 3;
+        let lastErr;
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            const newCode = crypto.randomUUID();
+            try {
+                const updated = await query(
+                    `UPDATE persons SET qr_code = $1 WHERE id = $2 RETURNING qr_code, full_name, discoverable`,
+                    [newCode, personId]
+                );
+                return res.json({
+                    success: true,
+                    message: 'নতুন QR কোড তৈরি হয়েছে। আগের QR কোড আর কাজ করবে না।',
+                    data: updated.rows[0],
+                });
+            } catch (dbErr) {
+                lastErr = dbErr;
+                // unique_violation (Postgres code 23505) হলে আবার চেষ্টা করো,
+                // অন্য যেকোনো এরর হলে সাথে সাথে থামো
+                if (dbErr.code !== '23505') throw dbErr;
+            }
+        }
+        throw lastErr;
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ regenerateMyQrCode error:', err.message);
+        res.status(500).json({ success: false, message: 'QR কোড রিজেনারেট করতে সমস্যা হয়েছে।' });
     }
 };
 
@@ -166,6 +225,10 @@ const searchCompanies = async (req, res) => {
 // ============================================================
 // POST /api/portal/connections/request   { tenant_id }
 // রহিম → কোম্পানি রিকোয়েস্ট (কোম্পানির Accept লাগবে)
+//
+// ✅ FIX (Phase 1 — cooldown): connection.controller.js-এর
+// sendConnectionRequest-এর মতোই — reject-এর পর REJECT_COOLDOWN_HOURS
+// সময় নতুন রিকোয়েস্ট ব্লক।
 // ============================================================
 const requestConnectionToCompany = async (req, res) => {
     try {
@@ -176,14 +239,37 @@ const requestConnectionToCompany = async (req, res) => {
         const personId = await getPersonId(req.portalUser);
 
         const dup = await query(
-            `SELECT id, status FROM customer_company_connections
-             WHERE person_id = $1 AND tenant_id = $2 AND status IN ('pending','connected')`,
-            [personId, tenant_id]
+            `SELECT id, status, responded_at, created_at FROM customer_company_connections
+             WHERE person_id = $1 AND tenant_id = $2
+               AND (
+                     status IN ('pending','connected','blocked')
+                     OR (status = 'rejected' AND COALESCE(responded_at, created_at) > NOW() - make_interval(hours => $3))
+                   )
+             ORDER BY created_at DESC
+             LIMIT 1`,
+            [personId, tenant_id, REJECT_COOLDOWN_HOURS]
         );
         if (dup.rows.length > 0) {
+            const existing = dup.rows[0];
+            if (existing.status === 'blocked') {
+                // ইচ্ছাকৃতভাবে নিরপেক্ষ ভাষা — "আপনাকে ব্লক করা হয়েছে" না বলে
+                // যাতে blocked_by='customer' (নিজেই ব্লক করা) কেসেও একই
+                // মেসেজ কাজ করে, আর কোম্পানির ব্লক নিশ্চিত করে escalation
+                // এড়ানো যায়।
+                return res.status(403).json({
+                    success: false,
+                    message: 'এই কোম্পানি বর্তমানে নতুন কানেকশন রিকোয়েস্ট গ্রহণ করছে না।',
+                });
+            }
+            if (existing.status === 'rejected') {
+                return res.status(429).json({
+                    success: false,
+                    message: `এই কোম্পানি সম্প্রতি আপনার রিকোয়েস্ট প্রত্যাখ্যান করেছে। ${REJECT_COOLDOWN_HOURS} ঘণ্টা পর আবার চেষ্টা করুন।`,
+                });
+            }
             return res.status(409).json({
                 success: false,
-                message: dup.rows[0].status === 'connected' ? 'ইতিমধ্যে সংযুক্ত।' : 'রিকোয়েস্ট আগে থেকেই পাঠানো আছে।',
+                message: existing.status === 'connected' ? 'ইতিমধ্যে সংযুক্ত।' : 'রিকোয়েস্ট আগে থেকেই পাঠানো আছে।',
             });
         }
 
@@ -220,34 +306,13 @@ const acceptCompanyRequest = async (req, res) => {
             return res.status(404).json({ success: false, message: 'পেন্ডিং রিকোয়েস্ট পাওয়া যায়নি।' });
         }
 
-        // এই tenant-এ person-এর জন্য customer row থাকলে reuse, না থাকলে বানাও
-        const { generateCustomerCode } = require('../services/employee.service');
-        let customerId;
-        const existingCust = await query(
-            `SELECT id FROM customers WHERE person_id = $1 AND tenant_id = $2 LIMIT 1`,
-            [personId, conn.rows[0].tenant_id]
-        );
-        if (existingCust.rows.length > 0) {
-            customerId = existingCust.rows[0].id;
-        } else {
-            // ✅ নতুন customer row তৈরি হতে যাচ্ছে (existing reuse না) — তাই
-            // এখানেই ট্রায়াল/প্ল্যান কাস্টমার সীমা চেক করা হচ্ছে
-            await assertCustomerLimitAvailable(conn.rows[0].tenant_id);
-
-            const person = await query(`SELECT * FROM persons WHERE id = $1`, [personId]);
-            const p = person.rows[0];
-            const code = await generateCustomerCode(new Date());
-            const created = await query(
-                `INSERT INTO customers
-                    (customer_code, shop_name, owner_name, whatsapp, sms_phone, email,
-                     created_by, tenant_id, person_id, registration_source, is_verified)
-                 VALUES ($1, $2, $3, $4, $5, $6, NULL, $7, $8, 'connection', true)
-                 RETURNING id`,
-                [code, p.full_name || 'নতুন কাস্টমার', p.full_name || 'নতুন কাস্টমার',
-                 p.whatsapp, p.phone, p.email, conn.rows[0].tenant_id, personId]
-            );
-            customerId = created.rows[0].id;
-        }
+        // ✅ REFACTOR (Phase 2): find-or-create customer row logic আগে এখানে
+        // ইনলাইন ছিল (mid-function require সহ) — এখন services/
+        // customerConnection.service.js-এর শেয়ার্ড helper ব্যবহার করে,
+        // connection.controller.js-এর staff-side accept/QR-scan যেটা
+        // ব্যবহার করে ঠিক সেটাই। createdByUserId = null, কারণ এখানে কোনো
+        // staff member জড়িত না (কাস্টমার নিজেই portal থেকে accept করছে)।
+        const customerId = await ensureCustomerForPerson(personId, conn.rows[0].tenant_id, null);
 
         const updated = await query(
             `UPDATE customer_company_connections
@@ -328,8 +393,113 @@ const disconnectCompany = async (req, res) => {
 };
 
 // ============================================================
+// POST /api/portal/connections/:id/block
+// ✅ NEW (Phase 3): connection.controller.js-এর blockConnection-এর
+// customer-side mirror। যেকোনো non-blocked status থেকেই ব্লক করা যায়
+// (pending রিকোয়েস্ট এলেও reject না করে সরাসরি ব্লক করা যায়)।
+// blocked_by='customer' — শুধু কাস্টমার নিজেই এটা unblock করতে পারবে,
+// কোম্পানি staff-side থেকে পারবে না (দেখুন connection.controller.js-এর
+// unblockConnection-এর কমেন্ট)।
+// ============================================================
+const blockCompanyConnection = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const personId = await getPersonId(req.portalUser);
+        const updated = await query(
+            `UPDATE customer_company_connections
+             SET status = 'blocked', blocked_at = NOW(), blocked_by = 'customer'
+             WHERE id = $1 AND person_id = $2 AND status != 'blocked'
+             RETURNING *`,
+            [id, personId]
+        );
+        if (updated.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'সংযোগ পাওয়া যায়নি (অথবা আগে থেকেই ব্লক করা)।' });
+        }
+        res.json({ success: true, data: updated.rows[0] });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ blockCompanyConnection error:', err.message);
+        res.status(500).json({ success: false, message: 'ব্লক করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// POST /api/portal/connections/:id/unblock
+// শুধু কাস্টমার নিজে যা ব্লক করেছে (blocked_by='customer') তা-ই unblock
+// করতে পারে। unblock করলে status 'disconnected'-এ ফিরে যায়।
+// ============================================================
+const unblockCompanyConnection = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const personId = await getPersonId(req.portalUser);
+        const updated = await query(
+            `UPDATE customer_company_connections
+             SET status = 'disconnected', blocked_at = NULL, blocked_by = NULL, disconnected_at = NOW()
+             WHERE id = $1 AND person_id = $2 AND status = 'blocked' AND blocked_by = 'customer'
+             RETURNING *`,
+            [id, personId]
+        );
+        if (updated.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'আপনার ব্লক করা সংযোগ পাওয়া যায়নি।' });
+        }
+        res.json({ success: true, data: updated.rows[0] });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ unblockCompanyConnection error:', err.message);
+        res.status(500).json({ success: false, message: 'আনব্লক করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/connections/blocked
+// ✅ NEW (Phase 3): কাস্টমার নিজে যেসব কোম্পানি ব্লক করেছে তার লিস্ট —
+// unblock করার UI-এর জন্য দরকার (নইলে block একটা one-way door হয়ে
+// যেত, ফিরে আসার কোনো উপায় ছাড়াই)। শুধু blocked_by='customer' দেখায় —
+// কোম্পানি যা ব্লক করেছে তা এখানে দেখানো হয় না (সেটা এমনিতেই invisible
+// থাকা উচিত, দেখুন requestConnectionToCompany-এর নিরপেক্ষ ভাষার নোট)।
+// ============================================================
+const getMyBlockedCompanies = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser);
+        const result = await query(
+            `SELECT ccc.id AS connection_id, ccc.blocked_at,
+                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+             FROM customer_company_connections ccc
+             JOIN tenants t ON t.id = ccc.tenant_id
+             WHERE ccc.person_id = $1 AND ccc.status = 'blocked' AND ccc.blocked_by = 'customer'
+             ORDER BY ccc.blocked_at DESC`,
+            [personId]
+        );
+        res.json({ success: true, data: result.rows });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getMyBlockedCompanies error:', err.message);
+        res.status(500).json({ success: false, message: 'ব্লক তালিকা আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // GET /api/portal/connections/all-orders
 // সব কোম্পানির অর্ডার/সেল হিস্ট্রি — এক লিস্টে, কোম্পানি ট্যাগসহ (aggregated dashboard)
+//
+// ✅ POLICY (Phase 3 — কোড অডিট, disconnect/block-পরবর্তী হিস্ট্রি
+// ভিজিবিলিটি): এই কুয়েরি ইচ্ছাকৃতভাবে customer_company_connections-এর
+// বর্তমান status ফিল্টার করে না — disconnect বা এমনকি block করার পরও
+// পুরনো অর্ডার হিস্ট্রি দেখা যায়। এটা bug না: past invoice/order data
+// কাস্টমারের নিজের ব্যবসায়িক রেকর্ড (হিসাব/ট্যাক্সের জন্য দরকার হতে
+// পারে), সম্পর্ক শেষ হয়ে গেলেও সেই অধিকার হারানো উচিত না। যেটা আসলে
+// বন্ধ হওয়া উচিত (আর হয়ও — block/cooldown দিয়ে) সেটা হলো *নতুন*
+// interaction, পুরনো রেকর্ড দেখা না। তাই hide করার বদলে connection_status
+// যোগ করা হলো, যাতে frontend চাইলে "বিচ্ছিন্ন"/"ব্লকড" ব্যাজ দেখাতে
+// পারে ডেটা লুকানো ছাড়াই। correlated subquery ব্যবহার করা হয়েছে (এই
+// endpoint-এর মূল JOIN customer_company_connections দিয়ে না হয়ে সরাসরি
+// customers দিয়ে, তাই status আলাদাভাবে আনতে হচ্ছে)।
 // ============================================================
 const getAllCompanyOrders = async (req, res) => {
     try {
@@ -337,7 +507,10 @@ const getAllCompanyOrders = async (req, res) => {
         const result = await query(
             `SELECT st.id, st.invoice_number, st.total_amount, st.net_amount,
                     st.payment_method, st.created_at,
-                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+                    t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url,
+                    (SELECT ccc.status FROM customer_company_connections ccc
+                       WHERE ccc.person_id = c.person_id AND ccc.tenant_id = t.id
+                       ORDER BY ccc.created_at DESC LIMIT 1) AS connection_status
              FROM sales_transactions st
              JOIN customers c ON c.id = st.customer_id
              JOIN tenants t   ON t.id = c.tenant_id
@@ -367,6 +540,11 @@ const getAllCompanyOrders = async (req, res) => {
 // 01-Requirements-Spec.md ধারা ৩.১ অনুযায়ী সঠিক প্যাটার্ন: ডাটা merge হয় না,
 // শুধু UI-তে aggregate + company-ট্যাগ দেখানো হয়।
 // query params: page, limit, date_from, date_to, tenant_id
+//
+// ✅ POLICY (Phase 3): getAllCompanyOrders-এর মতোই — disconnect/block
+// করার পরও ইনভয়েস হিস্ট্রি hide হয় না (নিজের রেকর্ডের অধিকার), শুধু
+// connection_status যোগ করা হলো frontend badge-এর জন্য। বিস্তারিত
+// রিজনিং getAllCompanyOrders-এর কমেন্টে।
 // ============================================================
 const getAllCompanyInvoices = async (req, res) => {
     try {
@@ -408,6 +586,9 @@ const getAllCompanyInvoices = async (req, res) => {
                     st.created_at,
                     u.name_bn AS sr_name,
                     t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url,
+                    (SELECT ccc.status FROM customer_company_connections ccc
+                       WHERE ccc.person_id = c.person_id AND ccc.tenant_id = t.id
+                       ORDER BY ccc.created_at DESC LIMIT 1) AS connection_status,
                     COUNT(*) OVER() AS total_count
              FROM sales_transactions st
              JOIN customers c ON c.id = st.customer_id
@@ -543,6 +724,15 @@ const getAllCompanySummary = async (req, res) => {
 // করতো। এখন person_id দিয়ে সব connected কোম্পানির মাসিক লেনদেন যোগ
 // করে একটাই "সব মিলিয়ে" ট্রেন্ড লাইন দেখায় — কোম্পানি সুইচ করার দরকার
 // নেই। query params: months (default 6, max 24)
+//
+// ✅ POLICY (Phase 3): getAllCompanyOrders-এর মতো disconnect/block-পরও
+// ডেটা hide হয় না (একই রিজনিং), কিন্তু এখানে connection_status কলাম
+// যোগ করা হয়নি — এই কুয়েরি মাসভিত্তিক GROUP BY, প্রতিটা row একাধিক
+// কোম্পানির (সম্ভবত ভিন্ন ভিন্ন connection status-এর) লেনদেন একসাথে
+// যোগ করে, তাই একটামাত্র status কলাম দিয়ে সেটা অর্থপূর্ণভাবে প্রকাশ
+// করা যায় না। per-company breakdown দরকার হলে all-orders/all-invoices
+// (যেগুলোতে connection_status আছে) থেকে frontend-এ নিজে গ্রুপ করে
+// নেওয়া যাবে।
 // ============================================================
 const getAllCompanyMonthlyTrend = async (req, res) => {
     try {
@@ -584,6 +774,10 @@ const getAllCompanyMonthlyTrend = async (req, res) => {
 // credit_payments UNION প্যাটার্ন, কিন্তু person_id দিয়ে সব কানেক্টেড
 // কোম্পানি জুড়ে অ্যাগ্রিগেট করা, company ট্যাগসহ।
 // query params: page, limit, type (cash|credit), date_from, date_to, tenant_id
+//
+// ✅ POLICY (Phase 3): getAllCompanyOrders-এর মতোই connection_status
+// যোগ করা হলো (দুই ব্রাঞ্চেই — UNION-এ কলাম সংখ্যা/অবস্থান মিলতে হয়,
+// তাই cashBranch ও creditBranch উভয়েই একই subquery পজিশনে বসানো হলো)।
 // ============================================================
 const getAllCompanyPaymentHistory = async (req, res) => {
     try {
@@ -605,10 +799,15 @@ const getAllCompanyPaymentHistory = async (req, res) => {
         if (date_to)   { params.push(date_to);   extraClause += ` AND created_at < ($${params.length}::date + INTERVAL '1 day')`; }
         if (tenantId)  { params.push(tenantId);  extraClause += ` AND tenant_id = $${params.length}`; }
 
+        const connStatusSubquery = `(SELECT ccc.status FROM customer_company_connections ccc
+             WHERE ccc.person_id = c.person_id AND ccc.tenant_id = t.id
+             ORDER BY ccc.created_at DESC LIMIT 1) AS connection_status`;
+
         const cashBranch = `
             SELECT st.cash_received AS amount, 'cash' AS payment_type, st.invoice_number AS reference,
                    u.name_bn AS collected_by, st.created_at,
-                   t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+                   t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url,
+                   ${connStatusSubquery}
             FROM sales_transactions st
             JOIN customers c ON c.id = st.customer_id
             JOIN tenants t   ON t.id = c.tenant_id
@@ -621,7 +820,8 @@ const getAllCompanyPaymentHistory = async (req, res) => {
         const creditBranch = `
             SELECT cp.amount AS amount, 'credit' AS payment_type, cp.notes AS reference,
                    u.name_bn AS collected_by, cp.created_at,
-                   t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url
+                   t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url,
+                   ${connStatusSubquery}
             FROM credit_payments cp
             JOIN customers c ON c.id = cp.customer_id
             JOIN tenants t   ON t.id = c.tenant_id
@@ -1275,6 +1475,7 @@ const switchCompany = async (req, res) => {
 
 module.exports = {
     getMyQrCode,
+    regenerateMyQrCode,
     getMyCompanies,
     getPendingForMe,
     searchCompanies,
@@ -1282,6 +1483,9 @@ module.exports = {
     acceptCompanyRequest,
     rejectCompanyRequest,
     disconnectCompany,
+    blockCompanyConnection,
+    unblockCompanyConnection,
+    getMyBlockedCompanies,
     getAllCompanyOrders,
     getAllCompanyInvoices,
     getAllCompanyCreditSummary,

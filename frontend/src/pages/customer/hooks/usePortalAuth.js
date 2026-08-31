@@ -146,6 +146,27 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [returnReqFilter,     setReturnReqFilter]     = useState('all')
   const [returnFormOpen,      setReturnFormOpen]      = useState(false)
   const [returnInvoice,       setReturnInvoice]       = useState('')
+
+  // ── পেন্ডিং কানেকশন-রিকোয়েস্ট কাউন্ট ── ✅ NEW (Phase 4 — কোড অডিট)
+  // BottomNav-এর "কানেকশন" আইকনে ব্যাজ দেখানোর জন্য। ConnectionsTab নিজেও
+  // একই ডেটা fetch করে (নিজের UI-এর জন্য), কিন্তু ConnectionsTab শুধু
+  // activeTab === 'network' হলেই mount হয় — ড্যাশবোর্ড খোলার সাথে সাথেই
+  // ব্যাজ দেখাতে এখানে আলাদাভাবে (হালকা) fetch করা হচ্ছে।
+  const [pendingConnectionsCount, setPendingConnectionsCount] = useState(0)
+  const loadPendingConnectionsCount = async (knownCount) => {
+    // ConnectionsTab নিজে load() করার পর ফ্রেশ কাউন্ট সরাসরি জানিয়ে দিতে
+    // পারে — তখন আরেকবার ফেচ করার দরকার নেই, সরাসরি সেট করে দাও।
+    if (typeof knownCount === 'number') {
+      setPendingConnectionsCount(knownCount)
+      return
+    }
+    try {
+      const data = await portalFetch('/portal/connections/pending')
+      setPendingConnectionsCount((data.data || []).length)
+    } catch {
+      // silent — ব্যাজ শুধু একটা ইঙ্গিত, fail হলে ড্যাশবোর্ড ব্লক করার দরকার নেই
+    }
+  }
   const [returnType,          setReturnType]          = useState('return')
   const [returnItems,         setReturnItems]         = useState([{ product_name: '', qty: 1, reason: '' }])
   const [returnNote,          setReturnNote]          = useState('')
@@ -730,6 +751,7 @@ export function usePortalAuth(defaultTab = 'summary') {
           setPhase('no-company')
         } else {
           await loadDashboard()
+          loadPendingConnectionsCount() // fire-and-forget — ব্যাজের জন্য, ড্যাশবোর্ড দেখানো ব্লক করে না
         }
       } catch {
         // Cookie নেই বা মেয়াদোত্তীর্ণ
@@ -798,5 +820,6 @@ export function usePortalAuth(defaultTab = 'summary') {
     returnNote,      setReturnNote,
     returnSubmitLoading,
     loadMyReturnReqs, submitReturnRequest,
+    pendingConnectionsCount, loadPendingConnectionsCount, // ✅ NEW (Phase 4)
   }
 }
