@@ -486,6 +486,9 @@ const verifyLoginOtp = async (req, res) => {
         }
         await query(`UPDATE customer_login_otps SET used = true WHERE id = $1`, [otpResult.rows[0].id]);
 
+        // ✅ সফল লগইন — pending deletion থাকলে বাতিল (৩০ দিন গ্রেস পিরিয়ড)
+        await cancelPendingDeletion(cust.person_id);
+
         if (!process.env.JWT_PORTAL_SECRET) {
             logger.error('❌ JWT_PORTAL_SECRET environment variable সেট নেই!');
             return res.status(500).json({ success: false, message: 'Server configuration error.' });
@@ -723,6 +726,27 @@ const selfRegisterCustomer = async (req, res) => {
 // path 1 → path 2 এর মতোই। JWT payload shape হুবহু এক, তাই dashboard,
 // refresh, logout — সবকিছু কোনো পরিবর্তন ছাড়াই কাজ করবে।
 // ============================================================
+// ============================================================
+// ডিলিট-রিকোয়েস্ট বাতিল — সফল লগইনের পর কল হয় (password/OTP/Google
+// তিনটাতেই)। ৩০ দিনের গ্রেস পিরিয়ডের মূল লজিক: deletion_requested_at
+// সেট থাকলে NULL করে দেয় — মানে "৩০ দিনের মধ্যে লগইন করলে ডিলিট
+// বাতিল হয়ে যাবে" এভাবেই কাজ করে। no-op যদি কিছু pending না থাকে।
+//
+// ✅ ৩০ দিন পার হয়ে গেলে finalize করার job এখন আছে
+// (jobs/accountDeletion.job.js, প্রতিদিন রাত ৩:৩০) — customers-এর
+// জন্য is_active=false করে। person-only অ্যাকাউন্টের জন্য
+// is_active কলাম নেই বলে নিচের persons lookup-এ সরাসরি
+// safety-net চেক করা হচ্ছে (৩০ দিনের বেশি পুরনো হলে login block)।
+// ============================================================
+async function cancelPendingDeletion(personId) {
+    if (!personId) return;
+    await query(
+        `UPDATE persons SET deletion_requested_at = NULL, deletion_reason = NULL
+         WHERE id = $1 AND deletion_requested_at IS NOT NULL`,
+        [personId]
+    );
+}
+
 const passwordLogin = async (req, res) => {
     try {
         const { identifier, password, device_id } = req.body;
@@ -768,19 +792,26 @@ const passwordLogin = async (req, res) => {
             owner     = customerResult.rows[0];
         } else {
             // ── ২. না পেলে persons টেবিলে (company-বিহীন profile) ──
-            // ✅ deletion_requested_at IS NULL — self-deleted person-only
-            // অ্যাকাউন্ট যাতে পাসওয়ার্ড দিয়ে আবার ঢুকতে না পারে (নতুন কোনো
-            // কলাম লাগেনি, deletion-preview/delete-account এন্ডপয়েন্টে
-            // ব্যবহৃত একই কলাম এখানে চেক করা হচ্ছে)
+            // deletion_requested_at থাকলেও গ্রেস পিরিয়ডের মধ্যে লগইন
+            // ব্লক করা হয় না (login = cancel, উপরে cancelPendingDeletion
+            // দ্রষ্টব্য) — কিন্তু ৩০ দিন পার হয়ে গেলে safety-net হিসেবে
+            // ব্লক করা হয় (customers-এর is_active=false-এর সমতুল্য,
+            // persons টেবিলে is_active কলাম নেই বলে সরাসরি এখানে চেক)
             const personResult = isEmail
                 ? await query(
                     `SELECT id, full_name, shop_name, email, whatsapp, password_hash
-                     FROM persons WHERE LOWER(email) = $1 AND deletion_requested_at IS NULL LIMIT 1`,
+                     FROM persons
+                     WHERE LOWER(email) = $1
+                       AND (deletion_requested_at IS NULL OR deletion_requested_at > NOW() - INTERVAL '30 days')
+                     LIMIT 1`,
                     [email]
                   )
                 : await query(
                     `SELECT id, full_name, shop_name, email, whatsapp, password_hash
-                     FROM persons WHERE (whatsapp = ANY($1) OR phone = ANY($1)) AND deletion_requested_at IS NULL LIMIT 1`,
+                     FROM persons
+                     WHERE (whatsapp = ANY($1) OR phone = ANY($1))
+                       AND (deletion_requested_at IS NULL OR deletion_requested_at > NOW() - INTERVAL '30 days')
+                     LIMIT 1`,
                     [phoneCandidates]
                   );
 
@@ -800,6 +831,9 @@ const passwordLogin = async (req, res) => {
         if (!isValid) {
             return res.status(400).json({ success: false, message: 'ইমেইল/মোবাইল নম্বর অথবা পাসওয়ার্ড ভুল।' });
         }
+
+        // ✅ সফল লগইন — pending deletion থাকলে বাতিল (৩০ দিন গ্রেস পিরিয়ড)
+        await cancelPendingDeletion(ownerType === 'customer' ? owner.person_id : owner.id);
 
         if (!process.env.JWT_PORTAL_SECRET) {
             logger.error('❌ JWT_PORTAL_SECRET environment variable সেট নেই!');
@@ -1697,6 +1731,9 @@ const deviceLogin = async (req, res) => {
                 [record.token]
             ),
         ]);
+
+        // ✅ সফল লগইন — pending deletion থাকলে বাতিল (৩০ দিন গ্রেস পিরিয়ড)
+        await cancelPendingDeletion(record.person_id);
 
         if (!process.env.JWT_PORTAL_SECRET) {
             return res.status(500).json({ success: false, message: 'সার্ভার কনফিগারেশন সমস্যা।' });
