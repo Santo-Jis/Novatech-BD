@@ -25,10 +25,20 @@ export function useChatIdentity(chatApi) {
 
     ;(async () => {
       try {
-        if (!auth.currentUser) {
-          const token = await chatApi.getFirebaseToken()
-          await signInWithCustomToken(auth, token)
-        }
+        // ⚠️ ফিক্স: আগে `if (!auth.currentUser)` দিয়ে সাইন-ইন স্কিপ করা হতো —
+        // ধরে নেওয়া হয়েছিল ব্রাউজারে একবারে একটাই identity থাকবে। কিন্তু এই
+        // একই SPA কাস্টমার আর স্টাফ/অ্যাডমিন দুই role-ই সার্ভ করে (একই origin,
+        // তাই একই Firebase Auth persistence শেয়ার হয়)। ফলে কেউ একই ব্রাউজারে
+        // আগে কাস্টমার হিসেবে সাইন-ইন করা থাকলে, পরে স্টাফ প্যানেল খুললে
+        // auth.currentUser আগের কাস্টমার-uid নিয়েই "truthy" থেকে যেত — স্টাফ
+        // হিসেবে নতুন করে সাইন-ইনই হতো না। ফলাফল: স্টাফ-ভিউতে uid আসলে
+        // customer:personId থেকে যেত, তাই m.senderId===uid সব মেসেজের জন্যই
+        // true হয়ে যেত (কে কার মেসেজ বোঝা যেত না, আর স্টাফের পাঠানো মেসেজও
+        // ভুল senderId নিয়ে সেভ হতো)। এখন প্রতিবার এই hook মাউন্ট হলে এই
+        // role-এর নিজস্ব টোকেন দিয়েই ফ্রেশ সাইন-ইন হয়, আগের currentUser যা-ই
+        // থাকুক না কেন — signInWithCustomToken স্বয়ংক্রিয়ভাবে আগেরটা replace করে।
+        const token = await chatApi.getFirebaseToken()
+        await signInWithCustomToken(auth, token)
         if (!cancelled) {
           setUid(auth.currentUser?.uid || null)
           setReady(true)
