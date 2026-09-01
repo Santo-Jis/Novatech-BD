@@ -97,10 +97,17 @@ export default function OrderRequestTab({ portalJWT }) {
   const wishlistIds = useMemo(() => new Set(wishlist.map(p => p.id)), [wishlist])
   // ✅ NEW (ফেজ ৩ — সম্প্রতি দেখা) — শুধু session state, নতুন টেবিল লাগেনি
   const [recentlyViewedIds, setRecentlyViewedIds] = useState([]) // সাম্প্রতিক আগে
-  const recentlyViewed = recentlyViewedIds.map(id => productCache.current[id]).filter(Boolean)
 
   // প্রতিটা fetch/add-এ প্রতিটা প্রোডাক্ট এখানে জমা হয় (id → product)
+  // ✅ FIX (১ সেপ্টেম্বর ২০২৬): এটা নিচে recentlyViewed-এর ব্যবহারের
+  // *আগে* থাকা আবশ্যক — const হওয়ায় TDZ-তে পড়ে "Cannot access
+  // 'productCache' before initialization" ছুঁড়ছিল, কিন্তু শুধু তখনই
+  // যখন recentlyViewedIds খালি না (মানে প্রথম প্রোডাক্ট ক্লিকের পরে,
+  // .map() callback আসলে চালু হলে) — তাই প্রথম রেন্ডারে ধরা পড়েনি,
+  // শুধু প্রোডাক্ট ডিটেইল খোলার সাথে সাথেই পুরো shop view ক্র্যাশ করত।
   const productCache = useRef({})
+
+  const recentlyViewed = recentlyViewedIds.map(id => productCache.current[id]).filter(Boolean)
 
   // ── কার্ট ──────────────────────────────────────────────────
   const [cart,            setCart]            = useState({})  // { [productId]: qty }
