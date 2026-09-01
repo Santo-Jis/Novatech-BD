@@ -28,18 +28,35 @@ const mintChatToken = async (namespacedUid) => {
   return admin.auth().createCustomToken(namespacedUid)
 }
 
-// এই কাস্টমারের current assigned SR + সেই SR-এর route manager (personal থ্রেডের জন্য)
+// এই কাস্টমারের current assigned SR + সেই SR-এর route manager + tenant-এর
+// full-visibility roles (personal থ্রেডের জন্য)
+//
+// ⚠️ ফিক্স: chat.controller.js-এর listThreads()-এ FULL_VISIBILITY_ROLES
+// (admin/superadmin/asm/rsm) সব personal থ্রেডই ইনবক্সে দেখতে পান (আলাদা
+// Postgres query দিয়ে, assignment না থাকলেও)। কিন্তু এই ফাংশন আগে শুধু
+// সুনির্দিষ্টভাবে assigned worker + তার route manager-কে RTDB participant
+// বানাতো — ফলে admin ইনবক্সে থ্রেড দেখতে পেতেন, ক্লিক করে ঢুকতেও পারতেন,
+// কিন্তু মেসেজ লোড/পাঠানো ব্যর্থ হতো (RTDB permission-denied, participants-এ
+// তার uid-ই ছিল না)। এখন এই roles-ও participant হিসেবে যোগ হচ্ছে, যাতে
+// "কে থ্রেড দেখতে পায়" আর "কে RTDB-তে অ্যাক্সেস পায়" সবসময় সিঙ্কে থাকে।
 const resolvePersonalStaffIds = async (tenantId, customerId) => {
-  const { rows } = await query(
-    `SELECT ca.worker_id, r.manager_id
-     FROM customer_assignments ca
-     LEFT JOIN routes r ON r.id = ca.route_id
-     WHERE ca.customer_id = $1 AND ca.tenant_id = $2 AND ca.is_active = true
-     LIMIT 1`,
-    [customerId, tenantId]
-  )
-  if (!rows.length) return []
-  const ids = [rows[0].worker_id, rows[0].manager_id].filter(Boolean)
+  const [{ rows: assignedRows }, { rows: fullVisRows }] = await Promise.all([
+    query(
+      `SELECT ca.worker_id, r.manager_id
+       FROM customer_assignments ca
+       LEFT JOIN routes r ON r.id = ca.route_id
+       WHERE ca.customer_id = $1 AND ca.tenant_id = $2 AND ca.is_active = true
+       LIMIT 1`,
+      [customerId, tenantId]
+    ),
+    query(
+      `SELECT id FROM users
+       WHERE tenant_id = $1 AND role IN ('admin','superadmin','asm','rsm') AND status = 'active'`,
+      [tenantId]
+    ),
+  ])
+  const assignedIds = assignedRows.length ? [assignedRows[0].worker_id, assignedRows[0].manager_id] : []
+  const ids = [...assignedIds, ...fullVisRows.map(r => r.id)].filter(Boolean)
   return [...new Set(ids)]
 }
 
