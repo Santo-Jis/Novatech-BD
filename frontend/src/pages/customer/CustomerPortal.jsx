@@ -16,22 +16,27 @@
 //   components/views/LoadingView.jsx
 //   components/views/WelcomeView.jsx
 //   components/views/OtpLoginView.jsx       → SR-লিংকে (?c=) নতুন OTP-login কনফার্ম স্ক্রিন
+//   components/views/SetPasswordView.jsx    → OTP-লগইনের পর প্রথমবার পাসওয়ার্ড সেট (SECURITY FIX)
 //   components/views/DashboardView.jsx
 //
 // ✅ পুরনো token-link ভিত্তিক 'login'/'invalid' phase ও তাদের ভিউ
 // (LoginView.jsx, InvalidView.jsx) বাদ দেওয়া হয়েছে — সেগুলো কখনো
 // সেট হতো না, dead code ছিল। এখন ফ্লো:
-//   loading → otp-login (SR-লিংকে ?c= থাকলে, WhatsApp OTP দিয়ে সরাসরি)
+//   loading → otp-login (SR-লিংকে ?c= থাকলে, WhatsApp OTP দিয়ে সরাসরি;
+//                        লিংক এখন ১০ দিনে expire হয় — permanent না)
+//           → set-password (password_hash না থাকলে — OTP-লগইনের পর
+//                        বাধ্যতামূলক একবার, নাহলে durable credential থাকে না)
 //           → welcome  (?c= ছাড়া, বা otp-login থেকে "অন্য উপায়ে" চাপলে —
 //                        password ফর্ম + Google বাটন)
 //           → dashboard
 
 import { usePortalAuth } from './hooks/usePortalAuth'
-import LoadingView    from './components/views/LoadingView'
-import WelcomeView    from './components/views/WelcomeView'
-import OtpLoginView   from './components/views/OtpLoginView'
-import DashboardView  from './components/views/DashboardView'
-import NoCompanyView  from './components/views/NoCompanyView'
+import LoadingView      from './components/views/LoadingView'
+import WelcomeView      from './components/views/WelcomeView'
+import OtpLoginView     from './components/views/OtpLoginView'
+import SetPasswordView  from './components/views/SetPasswordView'
+import DashboardView    from './components/views/DashboardView'
+import NoCompanyView    from './components/views/NoCompanyView'
 
 export default function CustomerPortal({ defaultTab = 'home_feed' }) {
   const auth = usePortalAuth(defaultTab)
@@ -53,6 +58,19 @@ export default function CustomerPortal({ defaultTab = 'home_feed' }) {
       onSendOtp={auth.sendCustomerLoginOtp}
       onVerifyOtp={auth.verifyCustomerLoginOtp}
       onUseOtherMethod={auth.useOtherLoginMethod}
+    />
+  )
+
+  // ⚠️ SECURITY FIX: OTP-লগইনের পর password_hash না থাকলে এখানে আটকে
+  // যায় — dashboard-এ যাওয়ার আগে একবার পাসওয়ার্ড সেট করতেই হবে।
+  if (auth.phase === 'set-password') return (
+    <SetPasswordView
+      setupPassword={auth.setupPassword}               setSetupPassword={auth.setSetupPassword}
+      setupPasswordConfirm={auth.setupPasswordConfirm} setSetupPasswordConfirm={auth.setSetupPasswordConfirm}
+      showSetupPassword={auth.showSetupPassword}       setShowSetupPassword={auth.setShowSetupPassword}
+      setupPasswordSaving={auth.setupPasswordSaving}
+      setupPasswordError={auth.setupPasswordError}
+      onSubmit={auth.submitPasswordSetup}
     />
   )
 

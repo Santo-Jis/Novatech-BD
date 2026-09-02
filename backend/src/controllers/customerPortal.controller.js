@@ -143,13 +143,20 @@ const sendPortalLink = async (req, res) => {
             return res.status(400).json({ success: false, message: 'কাস্টমারের customer_code নেই।' });
         }
 
-        // ✅ NEW: Permanent link — customer_code ব্যবহার, কোনো expiry নেই
-        // portal_tokens টেবিলে bound_email সংরক্ষণের জন্য একটি row রাখা হয়
+        // ⚠️ SECURITY FIX: আগে এখানে ১০ বছরের permanent link তৈরি হতো —
+        // ফোন/লিংক যার হাতে পড়তো সে চিরকাল ঢুকতে পারতো। এখন প্রতিটা
+        // পাঠানো/রি-সেন্ড করা লিংক ১০ দিনের জন্য বৈধ। SR আবার এই বাটনে
+        // চাপলে (রিসেন্ড) expires_at আবার ফ্রেশ ১০ দিন হয়ে যায় —
+        // ON CONFLICT...DO UPDATE, তাই কাস্টমার কখনো স্থায়ীভাবে আটকায় না,
+        // শুধু SR-কে মাঝেমধ্যে নতুন করে পাঠাতে হবে। এক্সপায়ারি আসলে
+        // চেক হয় getPublicCustomerByCode ও sendLoginOtp-এ
+        // (isPortalLinkExpired হেল্পার)।
         await query(
             `INSERT INTO customer_portal_tokens
                 (customer_id, token, redirect_id, expires_at, token_version, bound_email, last_login, google_email)
-             VALUES ($1, $2, $3, NOW() + INTERVAL '10 years', 1, NULL, NULL, NULL)
-             ON CONFLICT (customer_id) DO NOTHING`,
+             VALUES ($1, $2, $3, NOW() + INTERVAL '10 days', 1, NULL, NULL, NULL)
+             ON CONFLICT (customer_id) DO UPDATE
+                SET expires_at = NOW() + INTERVAL '10 days'`,
             [customerId, generatePortalToken(), generateRedirectId()]
         );
 
@@ -158,7 +165,7 @@ const sendPortalLink = async (req, res) => {
         // বসালে লিংক ভেঙে যায়। getPublicAppUrl() একটা clean single URL দেয়।
         const frontendUrl = getPublicAppUrl();
 
-        // ✅ NEW: ?c=customer_code — permanent, কখনো expire হয় না
+        // ✅ ?c=customer_code — ১০ দিনের জন্য বৈধ (উপরের UPSERT দেখুন)
         const portalLink = `${frontendUrl}/customer-login?c=${cust.customer_code}`;
 
         const rawPhone = cust.whatsapp.replace(/\D/g, '');
@@ -167,7 +174,7 @@ const sendPortalLink = async (req, res) => {
             `আস্সালামু আলাইকুম ${cust.owner_name} ভাই,\n\n` +
             `আপনার *${cust.shop_name}* এর সকল ক্রয় তথ্য, বাকি ও পেমেন্ট ইতিহাস দেখতে নিচের লিংকে ক্লিক করুন:\n\n` +
             `🔗 ${portalLink}\n\n` +
-            `👆 লিংকে গিয়ে Continue চাপুন — WhatsApp-এ একটা OTP কোড যাবে, সেটা বসিয়ে দিলেই সরাসরি ঢুকে যাবেন!\n\n` +
+            `👆 লিংকে গিয়ে Continue চাপুন — WhatsApp-এ একটা OTP কোড যাবে, সেটা বসিয়ে দিলেই সরাসরি ঢুকে যাবেন! (লিংকটি ১০ দিন পর্যন্ত বৈধ)\n\n` +
             `_ZovoriX_`
         );
 
@@ -177,11 +184,12 @@ const sendPortalLink = async (req, res) => {
             success: true,
             message: 'পোর্টাল লিংক তৈরি হয়েছে।',
             data: {
-                portal_link:   portalLink,
-                whatsapp_url:  whatsappUrl,
-                permanent:     true,
-                customer_name: cust.owner_name,
-                shop_name:     cust.shop_name,
+                portal_link:      portalLink,
+                whatsapp_url:     whatsappUrl,
+                permanent:        false,
+                expires_in_days:  10,
+                customer_name:    cust.owner_name,
+                shop_name:        cust.shop_name,
             }
         });
 
@@ -333,6 +341,23 @@ const verifyEmailToken = async (req, res) => {
 };
 
 // ============================================================
+// ⚠️ SECURITY FIX: আগে permanent link (১০ বছর) ছিল — কেউ ফোন/লিংক
+// হাতে পেলে সেটা চিরকাল বৈধ থাকতো। এখন প্রতিটা পাঠানো লিংকের একটা
+// এক্সপায়ারি থাকে (sendPortalLink-এ NOW() + 10 days সেট হয়)। এই
+// হেল্পার সেই এক্সপায়ারি চেক করে — customer-info ও send-login-otp
+// দুই জায়গাতেই ব্যবহার হয় (defense in depth: কেউ customer-info
+// স্কিপ করে সরাসরি send-login-otp কল করলেও আটকাবে)।
+// ============================================================
+async function isPortalLinkExpired(customerId) {
+    const r = await query(
+        `SELECT expires_at FROM customer_portal_tokens WHERE customer_id = $1`,
+        [customerId]
+    );
+    if (r.rows.length === 0) return true; // কখনো লিংক পাঠানোই হয়নি
+    return new Date(r.rows[0].expires_at) < new Date();
+}
+
+// ============================================================
 // PUBLIC: SR-এর পাঠানো WhatsApp লিংকের customer_code দিয়ে বেসিক
 // তথ্য (দোকানের নাম, মালিকের নাম, ছবি) দেখানো — "এটা কি আপনি?"
 // কনফার্ম-স্ক্রিনের জন্য। এখানে কোনো auth/secret লাগে না — ঠিক
@@ -340,6 +365,8 @@ const verifyEmailToken = async (req, res) => {
 // আগে থেকেই এই কোডটাকে secret না ধরে চেক করে, একই threat model।
 // আসল secret গেট হলো পরের ধাপ: WhatsApp OTP (নম্বরটা কার কাছে
 // আছে সেটাই প্রমাণ করে, শুধু কোড জানা/লিংক থাকাটা যথেষ্ট না)।
+// এখন এর সাথে যোগ হলো লিংক-এক্সপায়ারি — এই দুটো মিলিয়ে "লিংক
+// হাতে পাওয়া = চিরকালের অ্যাক্সেস" ঝুঁকিটা কমে।
 //
 // GET /api/portal/customer-info/:code — Public
 // ============================================================
@@ -351,7 +378,7 @@ const getPublicCustomerByCode = async (req, res) => {
         }
 
         const result = await query(
-            `SELECT shop_name, owner_name, shop_photo, customer_code
+            `SELECT id, shop_name, owner_name, shop_photo, customer_code
              FROM customers
              WHERE customer_code = $1 AND is_active = true
              LIMIT 1`,
@@ -362,7 +389,25 @@ const getPublicCustomerByCode = async (req, res) => {
             return res.status(404).json({ success: false, message: 'লিংকটি সঠিক নয় অথবা প্রোফাইল পাওয়া যায়নি।' });
         }
 
-        return res.status(200).json({ success: true, data: result.rows[0] });
+        const custRow = result.rows[0];
+
+        if (await isPortalLinkExpired(custRow.id)) {
+            return res.status(410).json({
+                success: false,
+                link_expired: true,
+                message: 'এই লিংকের মেয়াদ শেষ হয়ে গেছে। আপনার SR-কে বলুন নতুন লিংক পাঠাতে।',
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                shop_name:     custRow.shop_name,
+                owner_name:    custRow.owner_name,
+                shop_photo:    custRow.shop_photo,
+                customer_code: custRow.customer_code,
+            },
+        });
 
     } catch (error) {
         logger.error('❌ Get Public Customer By Code Error:', error.message);
@@ -409,6 +454,18 @@ const sendLoginOtp = async (req, res) => {
             return res.status(404).json({ success: false, message: 'প্রোফাইল পাওয়া যায়নি।' });
         }
         const cust = result.rows[0];
+
+        // ⚠️ SECURITY FIX: customer-info-এর মতো এখানেও এক্সপায়ারি চেক —
+        // defense in depth, কেউ customer-info স্কিপ করে সরাসরি এখানে
+        // কল করলেও পুরনো/মেয়াদোত্তীর্ণ লিংক দিয়ে OTP পাঠানো আটকাবে।
+        if (await isPortalLinkExpired(cust.id)) {
+            return res.status(410).json({
+                success: false,
+                link_expired: true,
+                message: 'এই লিংকের মেয়াদ শেষ হয়ে গেছে। আপনার SR-কে বলুন নতুন লিংক পাঠাতে।',
+            });
+        }
+
         if (!cust.whatsapp) {
             return res.status(400).json({ success: false, message: 'এই প্রোফাইলে কোনো WhatsApp নম্বর নেই। আপনার SR-এর সাথে যোগাযোগ করুন।' });
         }
@@ -444,11 +501,54 @@ const sendLoginOtp = async (req, res) => {
 };
 
 // ============================================================
-// ধাপ ২: OTP যাচাই → সরাসরি JWT সেশন। directGoogleAuth-এর
-// customer_code path ও passwordLogin-এর customer-path-এর response
-// shape-এর সাথে হুবহু মিল রাখা হয়েছে — frontend একই
-// dashboard-লোড/has_company লজিক পুনঃব্যবহার করতে পারবে, নতুন কোনো
-// শাখা লাগবে না।
+// পূর্ণ কাস্টমার-পোর্টাল সেশন ইস্যু করা (access JWT + refresh cookie
+// + login event লগ) — verifyLoginOtp (password_hash আগে থেকে থাকলে)
+// আর completePasswordSetup (পাসওয়ার্ড সেট করার পরপরই), দুই জায়গায়
+// হুবহু একই কাজ বলে একটাই ফাংশনে রাখা হলো।
+// ============================================================
+const issueFullCustomerSession = async (res, cust, { loginMethod, deviceId, req }) => {
+    const tokenRow     = await query('SELECT token_version FROM customer_portal_tokens WHERE customer_id = $1', [cust.id]);
+    const tokenVersion = tokenRow.rows[0]?.token_version || 1;
+
+    const jwtPayload = {
+        customer_id:   cust.id,
+        customer_code: cust.customer_code,
+        person_id:     cust.person_id || null,
+        email:         cust.email || null,
+        type:          'customer_portal',
+        token_version: tokenVersion,
+    };
+    const accessJWT  = jwt.sign(jwtPayload, process.env.JWT_PORTAL_SECRET, { expiresIn: '15m', algorithm: 'HS256' });
+    const refreshJWT = jwt.sign(
+        { ...jwtPayload, type: 'customer_portal_refresh' },
+        process.env.JWT_PORTAL_SECRET,
+        { expiresIn: '30d', algorithm: 'HS256' }
+    );
+    setRefreshCookie(res, refreshJWT);
+
+    recordLoginEvent({
+        ownerType: 'customer', ownerId: cust.id, loginMethod,
+        deviceFingerprint: deviceId, ipAddress: req.ip, userAgent: req.get('user-agent'),
+        email: cust.email, phone: cust.whatsapp, name: cust.owner_name,
+    });
+
+    return { accessJWT, expires_in: 900 };
+};
+
+// ============================================================
+// ধাপ ২: OTP যাচাই।
+//
+// ⚠️ SECURITY FIX: আগে OTP মিললেই সরাসরি পূর্ণ সেশন (15m access +
+// 30d refresh cookie) ইস্যু হয়ে যেতো, password_hash না থাকলেও —
+// needs_password_setup ফ্ল্যাগ তখন শুধু frontend-কে "কোন স্ক্রিন
+// দেখাও" বলতো, backend আসল অ্যাক্সেস আটকাতো না। এখন: password_hash
+// না থাকলে পূর্ণ সেশন ইস্যুই হয় না — শুধু একটা সীমিত-ক্ষমতার
+// 'customer_portal_setup' টোকেন (১৫ মিনিট, refresh cookie নেই), যেটা
+// portalAuth মিডলওয়্যার এমনিতেই রিজেক্ট করবে (type !== 'customer_portal')
+// — তাই dashboard/profile কোনো protected API এই টোকেন দিয়ে ছোঁয়া
+// যাবে না, শুধু নিচের নতুন complete-password-setup এন্ডপয়েন্টে
+// পাসওয়ার্ড বসানো যাবে। পূর্ণ অ্যাক্সেস ইস্যু হয় তখনই — পাসওয়ার্ড
+// সেট হওয়ার পরে (দেখুন completePasswordSetup নিচে)।
 //
 // POST /api/portal/verify-login-otp — Public
 // body: { customer_code, otp, device_id }
@@ -465,7 +565,7 @@ const verifyLoginOtp = async (req, res) => {
 
         const result = await query(
             `SELECT id, shop_name, owner_name, customer_code, email, whatsapp, person_id,
-                    current_credit, credit_limit, credit_balance
+                    current_credit, credit_limit, credit_balance, password_hash
              FROM customers WHERE customer_code = $1 AND is_active = true LIMIT 1`,
             [cleanCode]
         );
@@ -494,35 +594,29 @@ const verifyLoginOtp = async (req, res) => {
             return res.status(500).json({ success: false, message: 'Server configuration error.' });
         }
 
-        const tokenRow     = await query('SELECT token_version FROM customer_portal_tokens WHERE customer_id = $1', [cust.id]);
-        const tokenVersion = tokenRow.rows[0]?.token_version || 1;
+        // ── password_hash নেই → সীমিত setup-only টোকেন, পূর্ণ সেশন না ──
+        if (!cust.password_hash) {
+            const setupJWT = jwt.sign(
+                { customer_id: cust.id, type: 'customer_portal_setup' },
+                process.env.JWT_PORTAL_SECRET,
+                { expiresIn: '15m', algorithm: 'HS256' }
+            );
+            logger.info(`✅ OTP verified, password setup pending (customer): ${cust.customer_code || cust.id}`);
+            return res.status(200).json({
+                success: true,
+                message: 'OTP মিলেছে — এবার পাসওয়ার্ড সেট করুন।',
+                data: {
+                    portal_jwt:            setupJWT,
+                    expires_in:            900,
+                    needs_password_setup:  true,
+                },
+            });
+        }
 
-        const jwtPayload = {
-            customer_id:   cust.id,
-            customer_code: cust.customer_code,
-            person_id:     cust.person_id || null,
-            email:         cust.email || null,
-            type:          'customer_portal',
-            token_version: tokenVersion,
-        };
-        const accessJWT  = jwt.sign(jwtPayload, process.env.JWT_PORTAL_SECRET, { expiresIn: '15m', algorithm: 'HS256' });
-        const refreshJWT = jwt.sign(
-            { ...jwtPayload, type: 'customer_portal_refresh' },
-            process.env.JWT_PORTAL_SECRET,
-            { expiresIn: '30d', algorithm: 'HS256' }
-        );
-        setRefreshCookie(res, refreshJWT);
-
+        // ── password_hash আছে → স্বাভাবিক পূর্ণ সেশন (আগের মতোই) ──
         logger.info(`✅ Login via WhatsApp OTP (customer): ${cust.customer_code || cust.id}`);
-
-        // fire-and-forget — recordLoginEvent নিজেই সব error ধরে, মূল
-        // লগইন রেসপন্স কখনো এর জন্য আটকাবে না (নিচে সংজ্ঞায়িত, কিন্তু
-        // module load শেষ হওয়ার পরেই এই ফাংশন actually চলে — এই ফাইলে
-        // passwordLogin/googleAuth-ও একই প্যাটার্নে আগে থেকে কল করে)
-        recordLoginEvent({
-            ownerType: 'customer', ownerId: cust.id, loginMethod: 'whatsapp_otp',
-            deviceFingerprint: deviceId, ipAddress: req.ip, userAgent: req.get('user-agent'),
-            email: cust.email, phone: cust.whatsapp, name: cust.owner_name,
+        const { accessJWT, expires_in } = await issueFullCustomerSession(res, cust, {
+            loginMethod: 'whatsapp_otp', deviceId, req,
         });
 
         return res.status(200).json({
@@ -530,8 +624,9 @@ const verifyLoginOtp = async (req, res) => {
             message: 'লগইন সফল!',
             data: {
                 portal_jwt:  accessJWT,
-                expires_in:  900,
+                expires_in,
                 has_company: true,
+                needs_password_setup: false,
                 customer: {
                     id:             cust.id,
                     shop_name:      cust.shop_name,
@@ -547,6 +642,96 @@ const verifyLoginOtp = async (req, res) => {
 
     } catch (error) {
         logger.error('❌ Verify Login OTP Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
+    }
+};
+
+// ============================================================
+// ধাপ ৩ (শুধু password_hash না-থাকা কাস্টমারদের জন্য): OTP-এর পর
+// পাঠানো সীমিত 'customer_portal_setup' টোকেন দিয়ে নতুন পাসওয়ার্ড
+// বসানো, তারপর তবেই পূর্ণ সেশন (issueFullCustomerSession — verifyLoginOtp
+// যে হেল্পার ব্যবহার করে, সেটাই) ইস্যু হয়। portalAuth মিডলওয়্যার দিয়ে
+// যায় না (সেটা type==='customer_portal' চায়) — এখানে টোকেন-টাইপ
+// ম্যানুয়ালি যাচাই করা হচ্ছে, যাতে সীমিত টোকেন দিয়ে সত্যিই শুধু এই
+// একটা কাজই করা যায়।
+//
+// ⚠️ এখানেও cancelPendingDeletion কল করা হয়নি — verifyLoginOtp-এই
+// (OTP ধাপে) ইতিমধ্যে হয়ে গেছে, একই person_id-এর জন্য দ্বিতীয়বার
+// no-op কল করার দরকার নেই।
+//
+// POST /api/portal/complete-password-setup — সীমিত টোকেন লাগবে
+// header: Authorization: Bearer <setup_jwt>
+// body: { new_password, device_id }
+// ============================================================
+const completePasswordSetup = async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        if (!authHeader?.startsWith('Bearer ')) {
+            return res.status(403).json({ success: false, message: 'অবৈধ সেশন — আবার WhatsApp লিংকে ক্লিক করুন।' });
+        }
+        if (!process.env.JWT_PORTAL_SECRET) {
+            return res.status(500).json({ success: false, message: 'Server configuration error.' });
+        }
+
+        let decoded;
+        try {
+            decoded = jwt.verify(authHeader.split(' ')[1], process.env.JWT_PORTAL_SECRET, { algorithms: ['HS256'] });
+        } catch {
+            return res.status(403).json({ success: false, message: 'সেশনের মেয়াদ শেষ — আবার WhatsApp লিংকে ক্লিক করুন।' });
+        }
+        if (decoded.type !== 'customer_portal_setup' || !decoded.customer_id) {
+            return res.status(403).json({ success: false, message: 'অবৈধ টোকেন।' });
+        }
+
+        const new_password = String(req.body.new_password || '');
+        if (new_password.length < 6) {
+            return res.status(400).json({ success: false, message: 'ন্যূনতম ৬ ডিজিট/অক্ষরের পাসওয়ার্ড দিন।' });
+        }
+
+        const result = await query(
+            `SELECT id, shop_name, owner_name, customer_code, email, whatsapp, person_id,
+                    current_credit, credit_limit, credit_balance
+             FROM customers WHERE id = $1 AND is_active = true LIMIT 1`,
+            [decoded.customer_id]
+        );
+        if (result.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল পাওয়া যায়নি।' });
+        }
+        const cust = result.rows[0];
+
+        const newHash = await bcrypt.hash(new_password, 10);
+        await query(`UPDATE customers SET password_hash = $1 WHERE id = $2`, [newHash, cust.id]);
+
+        // ✅ পাসওয়ার্ড সেট হলো — এবারই প্রথম পূর্ণ সেশন (refresh cookie সহ) ইস্যু
+        const { accessJWT, expires_in } = await issueFullCustomerSession(res, cust, {
+            loginMethod: 'whatsapp_otp_password_setup', deviceId: req.body.device_id || null, req,
+        });
+
+        logger.info(`✅ Password set (first-time, post-OTP) + full session issued: ${cust.customer_code || cust.id}`);
+
+        return res.status(200).json({
+            success: true,
+            message: 'পাসওয়ার্ড সেট হয়েছে!',
+            data: {
+                portal_jwt:  accessJWT,
+                expires_in,
+                has_company: true,
+                needs_password_setup: false,
+                customer: {
+                    id:             cust.id,
+                    shop_name:      cust.shop_name,
+                    owner_name:     cust.owner_name,
+                    customer_code:  cust.customer_code,
+                    email:          cust.email,
+                    current_credit: cust.current_credit,
+                    credit_limit:   cust.credit_limit,
+                    credit_balance: cust.credit_balance,
+                }
+            }
+        });
+
+    } catch (error) {
+        logger.error('❌ Complete Password Setup Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
     }
 };
@@ -3474,7 +3659,8 @@ module.exports = {
     sendPortalLink,
     getPublicCustomerByCode, // ✅ NEW: c= কোড দিয়ে shop_name/owner_name/shop_photo — কনফার্ম স্ক্রিনের জন্য
     sendLoginOtp,           // ✅ NEW: WhatsApp OTP লগইন ধাপ ১ (পাঠানো)
-    verifyLoginOtp,         // ✅ NEW: WhatsApp OTP লগইন ধাপ ২ (যাচাই → JWT)
+    verifyLoginOtp,         // ✅ NEW: WhatsApp OTP লগইন ধাপ ২ (যাচাই → সীমিত setup টোকেন অথবা পূর্ণ JWT)
+    completePasswordSetup,  // ✅ NEW: OTP-এর পর পাসওয়ার্ড সেট → পূর্ণ সেশন ইস্যু (SECURITY FIX)
     selfRegisterCustomer,  // ✅ NEW: কাস্টমার নিজে সাইন-আপ
     verifyEmailToken,       // ✅ NEW: রেজিস্ট্রেশন ইমেইল magic-link ভেরিফাই
     sendRegisterOtp,        // ✅ NEW: রেজিস্ট্রেশনে WhatsApp OTP ধাপ ১

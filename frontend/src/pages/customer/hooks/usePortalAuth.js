@@ -67,6 +67,16 @@ export function usePortalAuth(defaultTab = 'summary') {
   const [otpVerifying,    setOtpVerifying]    = useState(false)
   const [otpError,        setOtpError]        = useState('')
 
+  // ── Set Password (WhatsApp OTP-লগইনের পর প্রথমবার — SECURITY FIX:
+  // OTP-লগইনে কোনো durable credential তৈরি হতো না, শুধু লিংক/OTP-এর
+  // উপর নির্ভর করতে হতো। এখন verifyCustomerLoginOtp needs_password_setup
+  // পেলে সরাসরি dashboard-এর বদলে এই ধাপে পাঠায়) ─────────────────
+  const [setupPassword,        setSetupPassword]        = useState('')
+  const [setupPasswordConfirm, setSetupPasswordConfirm] = useState('')
+  const [showSetupPassword,    setShowSetupPassword]    = useState(false)
+  const [setupPasswordSaving,  setSetupPasswordSaving]  = useState(false)
+  const [setupPasswordError,   setSetupPasswordError]   = useState('')
+
   // ── Toast ───────────────────────────────────────────────────
   const [toast, setToast] = useState({ show: false, message: '', type: 'success' })
 
@@ -694,15 +704,64 @@ export function usePortalAuth(defaultTab = 'summary') {
           device_id:     deviceId,
         }),
       })
-      const { portal_jwt, expires_in = 900 } = data.data
+      const { portal_jwt, expires_in = 900, needs_password_setup } = data.data
       portalTokenStore.set(portal_jwt, expires_in)
       portalJWTRef.current = portal_jwt
       setPortalJWT(portal_jwt)
       setOtpValue('')
-      await loadDashboard()
+
+      // ⚠️ SECURITY FIX: needs_password_setup true হলে portal_jwt আসলে
+      // একটা সীমিত 'setup-only' টোকেন (backend: verifyLoginOtp) — এটা
+      // dashboard/profile কোনো protected API-তে কাজ করবে না, শুধু
+      // submitPasswordSetup-এর complete-password-setup কলে কাজ করে। তাই
+      // এখানে dashboard-এ পাঠানো তো দূরের কথা, ওই টোকেন দিয়ে dashboard
+      // কল করলেও ব্যাকএন্ড 403 দেবে — এটা শুধু cosmetic UI-redirect না,
+      // আসল অ্যাক্সেস-গেট।
+      if (needs_password_setup) {
+        setPhase('set-password')
+      } else {
+        await loadDashboard()
+      }
     } catch (err) {
       setOtpError(err.message || 'OTP মিলছে না অথবা মেয়াদ শেষ হয়ে গেছে।')
     } finally { setOtpVerifying(false) }
+  }
+
+  // OTP-লগইনের পর প্রথমবার পাসওয়ার্ড সেট করা — এই মুহূর্তে
+  // portalTokenStore-এ যেটা আছে সেটা সীমিত setup-only টোকেন (dashboard
+  // ছুঁতে পারে না), তাই সাধারণ /portal/profile/password না, ডেডিকেটেড
+  // /portal/complete-password-setup কল করা হয় (portalFetch স্বয়ংক্রিয়ই
+  // Authorization হেডারে এই সীমিত টোকেন পাঠাবে)। ব্যাকএন্ড পাসওয়ার্ড
+  // সেট করার পরে রেসপন্সে একদম নতুন পূর্ণ (dashboard-অ্যাক্সেসযোগ্য)
+  // টোকেন + refresh cookie ইস্যু করে — সেই নতুন টোকেনটা store করাই
+  // এখানে জরুরি ধাপ, নাহলে পরের loadDashboard() কলও 403 খাবে।
+  const submitPasswordSetup = async (e) => {
+    if (e?.preventDefault) e.preventDefault()
+    if (!setupPassword || setupPassword.length < 6) {
+      setSetupPasswordError('ন্যূনতম ৬ ডিজিট/অক্ষরের পাসওয়ার্ড দিন।')
+      return
+    }
+    if (setupPassword !== setupPasswordConfirm) {
+      setSetupPasswordError('দুটো পাসওয়ার্ড মিলছে না।')
+      return
+    }
+    setSetupPasswordSaving(true)
+    setSetupPasswordError('')
+    try {
+      const data = await portalFetch('/portal/complete-password-setup', {
+        method: 'POST',
+        body:   JSON.stringify({ new_password: setupPassword }),
+      })
+      const { portal_jwt, expires_in = 900 } = data.data
+      portalTokenStore.set(portal_jwt, expires_in)
+      portalJWTRef.current = portal_jwt
+      setPortalJWT(portal_jwt)
+      setSetupPassword('')
+      setSetupPasswordConfirm('')
+      await loadDashboard()
+    } catch (err) {
+      setSetupPasswordError(err.message || 'পাসওয়ার্ড সেট করা যায়নি। আবার চেষ্টা করুন।')
+    } finally { setSetupPasswordSaving(false) }
   }
 
   // ফলব্যাক — Google/পাসওয়ার্ড দিয়ে ঢুকতে চাইলে পুরনো welcome ফর্মে যাওয়া
@@ -778,6 +837,11 @@ export function usePortalAuth(defaultTab = 'summary') {
     otpLoginStep, otpLoginInfo, otpLoginInfoErr,
     otpValue, setOtpValue, otpSending, otpVerifying, otpError,
     sendCustomerLoginOtp, verifyCustomerLoginOtp, useOtherLoginMethod,
+    setupPassword,        setSetupPassword,
+    setupPasswordConfirm, setSetupPasswordConfirm,
+    showSetupPassword,    setShowSetupPassword,
+    setupPasswordSaving,  setupPasswordError,
+    submitPasswordSetup,
     toast,
     notifications, unreadCount, showBell, setShowBell,
     unreadBanner, setUnreadBanner, markAllAsRead, markOneRead,

@@ -256,13 +256,22 @@ const getMySecurityInfo = async (req, res) => {
 // truthy হলে customers.password_hash, নাহলে persons.password_hash। JWT
 // payload-এ customer_id/person_id দুটোই থাকে (login handler গুলো দেখুন),
 // একটা সবসময় null — এখান থেকেই dispatch করা যায়, আলাদা DB lookup লাগে না।
+//
+// ⚠️ SECURITY FIX: আগে password_hash না থাকলে এই এন্ডপয়েন্ট সরাসরি
+// "Google লগইন ব্যবহার করুন" বলে আটকে দিতো — WhatsApp OTP দিয়ে ঢোকা
+// কাস্টমার (SR-এর তৈরি করা, যাদের Google bind করা নাও থাকতে পারে)
+// প্রথমবার পাসওয়ার্ড সেটই করতে পারতো না। এখন: password_hash না
+// থাকলে current_password যাচাই স্কিপ হয় (first-time set), থাকলে আগের
+// মতোই current_password verify হয় (change flow, অপরিবর্তিত)। এই
+// একই এন্ডপয়েন্ট এখন post-OTP "পাসওয়ার্ড সেট করুন" পেজেও ব্যবহার হয়
+// (SetPasswordView.jsx → submitPasswordSetup)।
 // ============================================================
 const changeMyPassword = async (req, res) => {
     try {
         const { current_password, new_password } = req.body;
 
-        if (!current_password || !new_password) {
-            return res.status(400).json({ success: false, message: 'বর্তমান ও নতুন পাসওয়ার্ড দিন।' });
+        if (!new_password) {
+            return res.status(400).json({ success: false, message: 'নতুন পাসওয়ার্ড দিন।' });
         }
         if (new_password.length < 6) {
             return res.status(400).json({ success: false, message: 'ন্যূনতম ৬ ডিজিট/অক্ষরের পাসওয়ার্ড দিন।' });
@@ -273,20 +282,29 @@ const changeMyPassword = async (req, res) => {
         const ownerId = isCustomerType ? req.portalUser.customer_id : await getPersonId(req.portalUser);
 
         const owner = await query(`SELECT password_hash FROM ${table} WHERE id = $1`, [ownerId]);
-        if (owner.rows.length === 0 || !owner.rows[0].password_hash) {
-            return res.status(400).json({ success: false, message: 'এই অ্যাকাউন্টে পাসওয়ার্ড সেট করা নেই — Google লগইন ব্যবহার করুন।' });
+        if (owner.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল পাওয়া যায়নি।' });
         }
 
-        const isValid = await bcrypt.compare(current_password, owner.rows[0].password_hash);
-        if (!isValid) {
-            return res.status(400).json({ success: false, message: 'বর্তমান পাসওয়ার্ড ভুল।' });
+        const hasExistingPassword = !!owner.rows[0].password_hash;
+
+        if (hasExistingPassword) {
+            // ── আগের পাসওয়ার্ড আছে → change flow, current_password লাগবেই ──
+            if (!current_password) {
+                return res.status(400).json({ success: false, message: 'বর্তমান পাসওয়ার্ড দিন।' });
+            }
+            const isValid = await bcrypt.compare(current_password, owner.rows[0].password_hash);
+            if (!isValid) {
+                return res.status(400).json({ success: false, message: 'বর্তমান পাসওয়ার্ড ভুল।' });
+            }
         }
+        // ── password_hash না থাকলে → first-time set, current_password লাগবে না ──
 
         const newHash = await bcrypt.hash(new_password, 10);
         await query(`UPDATE ${table} SET password_hash = $1 WHERE id = $2`, [newHash, ownerId]);
 
-        logger.info(`✅ Password changed (self-service, ${table}): ${ownerId}`);
-        res.json({ success: true, message: 'পাসওয়ার্ড পরিবর্তন হয়েছে।' });
+        logger.info(`✅ Password ${hasExistingPassword ? 'changed' : 'set (first-time)'} (self-service, ${table}): ${ownerId}`);
+        res.json({ success: true, message: hasExistingPassword ? 'পাসওয়ার্ড পরিবর্তন হয়েছে।' : 'পাসওয়ার্ড সেট হয়েছে।' });
     } catch (err) {
         if (err.message === 'PERSON_NOT_LINKED') {
             return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
