@@ -21,14 +21,17 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  FiSearch, FiX, FiCheck, FiLink, FiPlus, FiSlash, FiRotateCcw,
+  FiSearch, FiX, FiCheck, FiLink, FiPlus, FiSlash, FiRotateCcw, FiDownload,
 } from 'react-icons/fi'
 import { portalFetch } from '../utils/api'
 import CpCard from './ui/CpCard'
 import CpButton from './ui/CpButton'
 import CpInput from './ui/CpInput'
 
-export default function ConnectionsTab({ portalJWT, switchCompany, onConnectionsChanged }) {
+export default function ConnectionsTab({
+  portalJWT, switchCompany, onConnectionsChanged,
+  downloadConsolidatedStatement, consolidatedStmtLoading, // ✅ NEW (Phase 5)
+}) {
   const [companies, setCompanies] = useState([])
   const [pending,   setPending]   = useState([])
   const [blocked,   setBlocked]   = useState([]) // ✅ NEW (Phase 3 — কোড অডিট)
@@ -257,9 +260,22 @@ export default function ConnectionsTab({ portalJWT, switchCompany, onConnections
 
       {/* ── কানেক্টেড কোম্পানি ── */}
       <div>
-        <p className="text-xs font-semibold text-cp-text-secondary mb-1.5 px-1">
-          কানেক্টেড কোম্পানি {companies.length > 0 && `(${companies.length})`}
-        </p>
+        <div className="flex items-center justify-between mb-1.5 px-1">
+          <p className="text-xs font-semibold text-cp-text-secondary">
+            কানেক্টেড কোম্পানি {companies.length > 0 && `(${companies.length})`}
+          </p>
+          {/* ✅ NEW (Phase 5 — কোড অডিট): সব কোম্পানির বকেয়া এক PDF-এ */}
+          {companies.length > 0 && downloadConsolidatedStatement && (
+            <button
+              onClick={downloadConsolidatedStatement}
+              disabled={consolidatedStmtLoading}
+              className="text-[10px] font-semibold text-cp-trust-600 flex items-center gap-1 disabled:opacity-50"
+            >
+              <FiDownload size={11} />
+              {consolidatedStmtLoading ? 'তৈরি হচ্ছে...' : 'স্টেটমেন্ট PDF'}
+            </button>
+          )}
+        </div>
 
         {loading && (
           <CpCard padding="md"><p className="text-xs text-cp-text-muted text-center">লোড হচ্ছে...</p></CpCard>

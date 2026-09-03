@@ -9,6 +9,7 @@
 const { query }   = require('../config/db');
 const logger      = require('../config/logger');
 const { ensureCustomerForPerson, REJECT_COOLDOWN_HOURS } = require('../services/customerConnection.service');
+const { computePaymentReliabilityScore } = require('../services/paymentReliability.service'); // ✅ NEW (Phase 5)
 const { sendPortalWhatsAppMessage } = require('../services/portalWhatsapp.service');
 
 // ✅ REFACTOR (Phase 2): ensureCustomerForPerson ও REJECT_COOLDOWN_HOURS
@@ -253,6 +254,33 @@ const connectViaQrScan = async (req, res) => {
 };
 
 // ============================================================
+// GET /api/connections/persons/:personId/reliability-score
+// ✅ NEW (Phase 5 — কোড অডিট): "পেমেন্ট রিলায়েবিলিটি স্কোর" — staff একটা
+// pending রিকোয়েস্ট accept করার আগে, বা যেকোনো person-এর ইতিহাস দেখতে
+// চাইলে, এই এন্ডপয়েন্ট থেকে খুঁজে দেখতে পারে (formula/সীমাবদ্ধতা:
+// services/paymentReliability.service.js-এর হেডার কমেন্টে বিস্তারিত)।
+// tenant-নির্বিশেষে (person-এর সব কানেক্টেড সম্পর্ক জুড়ে) — এটাই এর
+// আসল ভ্যালু: "এই কাস্টমার অন্য কোম্পানিগুলোর সাথে কেমন করেছে" এখনো
+// কানেক্ট না হওয়া কোম্পানিও দেখতে পারবে, নতুন রিকোয়েস্ট বিবেচনা করার সময়।
+// ============================================================
+const getPersonReliabilityScore = async (req, res) => {
+    try {
+        const { personId } = req.params;
+        const result = await computePaymentReliabilityScore(personId);
+        if (result === null) {
+            return res.json({
+                success: true,
+                data: { score: null, message: 'পর্যাপ্ত ডেটা নেই (কোনো connected সম্পর্ক পাওয়া যায়নি)।' },
+            });
+        }
+        res.json({ success: true, data: result });
+    } catch (err) {
+        logger.error('❌ getPersonReliabilityScore error:', err.message);
+        res.status(500).json({ success: false, message: 'স্কোর হিসাব করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // GET /api/connections?status=pending|connected|rejected|disconnected|blocked
 // এই tenant-এর সব connection লিস্ট (Phase 3: blocked-ও এখন valid ফিল্টার,
 // কোড পরিবর্তন লাগেনি — status জেনেরিকভাবে যেকোনো ভ্যালু accept করে)
@@ -444,6 +472,7 @@ module.exports = {
     sendConnectionRequest,
     connectViaQrScan,
     listConnections,
+    getPersonReliabilityScore,
     acceptConnection,
     rejectConnection,
     disconnectConnection,

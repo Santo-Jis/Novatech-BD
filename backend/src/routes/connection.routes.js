@@ -13,6 +13,7 @@ const {
     sendConnectionRequest,
     connectViaQrScan,
     listConnections,
+    getPersonReliabilityScore,
     acceptConnection,
     rejectConnection,
     disconnectConnection,
@@ -23,6 +24,7 @@ const {
 router.get('/search-persons',        auth, searchPersons);
 router.post('/request',              auth, sendConnectionRequest);
 router.post('/qr-scan',              auth, connectViaQrScan);
+router.get('/persons/:personId/reliability-score', auth, getPersonReliabilityScore); // ✅ NEW (Phase 5)
 router.get('/',                      auth, listConnections);
 router.post('/:id/accept',           auth, acceptConnection);
 router.post('/:id/reject',           auth, rejectConnection);

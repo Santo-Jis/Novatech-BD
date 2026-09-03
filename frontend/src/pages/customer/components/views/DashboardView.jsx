@@ -93,6 +93,7 @@ export default function DashboardView({
   cmpDesc, setCmpDesc, cmpLoading, myComplaints, complaintsLoaded, complaintsLoading,
   loadMyComplaints, submitComplaint,
   stmtOpen, setStmtOpen, stmtFrom, setStmtFrom, stmtTo, setStmtTo, stmtLoading, downloadStatement,
+  consolidatedStmtLoading, downloadConsolidatedStatement, // ✅ NEW (Phase 5)
   paymentHistory = [], paymentPage, paymentTotalPages, paymentTotal, paymentLoading, paymentSummary,
   paymentTypeFilter, setPaymentTypeFilter, paymentDateFrom, setPaymentDateFrom,
   paymentDateTo, setPaymentDateTo, paymentFilterOpen, setPaymentFilterOpen,
@@ -293,6 +294,8 @@ export default function DashboardView({
                 portalJWT={portalJWT}
                 switchCompany={switchCompany}
                 onConnectionsChanged={refreshPendingConnectionsCount}
+                downloadConsolidatedStatement={downloadConsolidatedStatement}
+                consolidatedStmtLoading={consolidatedStmtLoading}
               />
             )}
 

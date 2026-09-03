@@ -41,6 +41,11 @@ function _itemLabel(item) {
       return 'অর্ডার'
     case 'ATTENDANCE':
       return 'হাজিরা'
+    // ✅ NEW (Phase 5): connection-সংক্রান্ত queue আইটেমের লেবেল
+    case 'QR_CONNECT':
+      return 'কাস্টমার সংযোগ (QR)'
+    case 'CONNECTION_REQUEST':
+      return name ? `সংযোগ অনুরোধ — ${name}` : 'সংযোগ অনুরোধ'
     default:
       return item?.type || 'ডেটা'
   }
@@ -137,6 +142,17 @@ async function syncItem(item) {
       await api.post('/collections', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
+
+    // ✅ NEW (Phase 5 — কোড অডিট): QR স্ক্যান/connection-request offline-queue
+    // connectViaQrScan/sendConnectionRequest ব্যাকএন্ডে ইতিমধ্যেই idempotency-সদৃশ
+    // dup-check আছে (status IN pending/connected/blocked) — তাই sync দেরি হয়ে
+    // ততক্ষণে অন্য কোনোভাবে (staff অন্য উপায়ে, বা customer নিজে request পাঠিয়ে)
+    // সংযোগ হয়ে গেলেও, এই sync ব্যর্থ হবে ঠিকই কিন্তু ডুপ্লিকেট/করাপ্ট ডেটা তৈরি করবে না।
+    } else if (item.type === 'QR_CONNECT') {
+      await api.post('/connections/qr-scan', item.payload)
+
+    } else if (item.type === 'CONNECTION_REQUEST') {
+      await api.post('/connections/request', item.payload)
     }
 
     await removeQueueItem(item.id)

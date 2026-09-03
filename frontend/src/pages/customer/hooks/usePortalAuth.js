@@ -422,6 +422,50 @@ export function usePortalAuth(defaultTab = 'summary') {
     finally { setStmtLoading(false) }
   }
 
+  // ── Consolidated Statement (সব কানেক্টেড কোম্পানি) ── ✅ NEW (Phase 5)
+  // downloadStatement-এর ঠিক একই auth-retry প্যাটার্ন — শুধু single-company
+  // date-filter নেই (এটা সবসময় "বর্তমান স্ন্যাপশট", পুরো হিস্ট্রি না)।
+  const [consolidatedStmtLoading, setConsolidatedStmtLoading] = useState(false)
+  const downloadConsolidatedStatement = async () => {
+    setConsolidatedStmtLoading(true)
+    try {
+      const doFetch = (token) =>
+        fetch(`${BACKEND}/portal/connections/consolidated-statement`, {
+          credentials: 'include',
+          headers: { Authorization: `Bearer ${token}` },
+        })
+
+      let res = await doFetch(portalTokenStore.get())
+
+      if (res.status === 401) {
+        const rr = await fetch(`${BACKEND}/portal/refresh`, {
+          method: 'POST', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        })
+        if (!rr.ok) throw new Error('Session শেষ হয়েছে। পুনরায় লগইন করুন।')
+        const rd = await rr.json()
+        portalTokenStore.set(rd.data.portal_jwt, rd.data.expires_in || 900)
+        res = await doFetch(portalTokenStore.get())
+      }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.message || 'Download failed')
+      }
+
+      const blob = await res.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `consolidated_statement_${new Date().toISOString().slice(0, 10)}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch (e) { showToast('কনসোলিডেটেড স্টেটমেন্ট ডাউনলোড ব্যর্থ: ' + e.message, 'error') }
+    finally { setConsolidatedStmtLoading(false) }
+  }
+
   // ── Payment History ──────────────────────────────────────────
   const loadPaymentHistory = async (page = 1, filters = {}) => {
     setPaymentLoading(true)
@@ -867,6 +911,7 @@ export function usePortalAuth(defaultTab = 'summary') {
     stmtFrom, setStmtFrom,
     stmtTo, setStmtTo,
     stmtLoading, downloadStatement,
+    consolidatedStmtLoading, downloadConsolidatedStatement, // ✅ NEW (Phase 5)
     paymentHistory, paymentPage, paymentTotalPages, paymentTotal, paymentLoading,
     paymentSummary,
     paymentTypeFilter, setPaymentTypeFilter,

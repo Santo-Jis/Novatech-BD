@@ -10,6 +10,7 @@ const { query } = require('../config/db');
 const logger    = require('../config/logger');
 const jwt       = require('jsonwebtoken');
 const crypto    = require('crypto');
+const PDFDocument = require('pdfkit'); // ✅ NEW (Phase 5 — consolidated statement)
 const { ensureCustomerForPerson, REJECT_COOLDOWN_HOURS } = require('../services/customerConnection.service');
 
 // ✅ REFACTOR (Phase 2): REJECT_COOLDOWN_HOURS ও customer-creation লজিক
@@ -645,6 +646,171 @@ const getAllCompanyCreditSummary = async (req, res) => {
         }
         logger.error('❌ getAllCompanyCreditSummary error:', err.message);
         res.status(500).json({ success: false, message: 'ক্রেডিট সারাংশ আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/connections/consolidated-statement
+// ✅ NEW (Phase 5 — কোড অডিট): সব কানেক্টেড কোম্পানির বকেয়া এক PDF-এ।
+//
+// customerPortal.controller.js-এর getCustomerStatement (single-company,
+// পূর্ণ transaction history) থেকে ইচ্ছাকৃতভাবে আলাদা স্কোপ — এটা একটা
+// ওভারভিউ/সামারি (company-wise credit limit/due/available), প্রতিটা
+// কোম্পানির বিস্তারিত লেনদেন তালিকা না (সেটার জন্য single-company
+// statement আলাদাভাবে ডাউনলোড করতে হবে, company switch করে)।
+//
+// ⚠️ ভাষা নোট: এই ফাইলে বা customerPortal.controller.js কোথাও Bengali-
+// সক্ষম কোনো TTF/OTF ফন্ট registerFont() দিয়ে রেজিস্টার করা নেই, আর
+// প্রজেক্টে কোনো .ttf/.otf ফাইলও বান্ডল করা নেই — মানে PDFKit-এর ডিফল্ট
+// Helvetica দিয়ে Bengali ইউনিকোড glyph সঠিকভাবে রেন্ডার হওয়ার কথা না
+// (getCustomerStatement-এও 'তারিখ' ইত্যাদি Bengali লেবেল আছে, সম্ভবত
+// এটা একটা বিদ্যমান latent bug — এই phase-এর স্কোপের বাইরে বলে সেটা
+// এখানে ছোঁয়া হয়নি)। তাই এই নতুন PDF-টা ইচ্ছাকৃতভাবে সম্পূর্ণ ইংরেজিতে
+// লেখা হলো, যাতে নিশ্চিতভাবে সঠিক রেন্ডার হয়।
+// ============================================================
+const downloadConsolidatedStatement = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser);
+
+        const personRes = await query(`SELECT full_name, phone, whatsapp FROM persons WHERE id = $1`, [personId]);
+        if (personRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল পাওয়া যায়নি।' });
+        }
+        const person = personRes.rows[0];
+
+        const companiesRes = await query(
+            `SELECT c.id AS customer_id, c.customer_code, c.credit_limit, c.current_credit,
+                    t.id AS tenant_id, t.company_name, t.company_name_bn,
+                    ccc.created_at AS connected_since
+             FROM customer_company_connections ccc
+             JOIN customers c ON c.id = ccc.customer_id
+             JOIN tenants t   ON t.id = ccc.tenant_id
+             WHERE ccc.person_id = $1 AND ccc.status = 'connected'
+             ORDER BY t.company_name ASC`,
+            [personId]
+        );
+        const companies = companiesRes.rows;
+
+        const doc    = new PDFDocument({ margin: 40, size: 'A4' });
+        const chunks = [];
+        doc.on('data', c => chunks.push(c));
+        doc.on('end', () => {
+            const buffer = Buffer.concat(chunks);
+            // filename sanitization — path traversal/header-injection এড়াতে
+            // alphanumeric-only রাখা হলো (getCustomerStatement-এর একই কারণ)
+            const safeName = String(person.full_name || 'customer').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40) || 'customer';
+            const filename = `consolidated_statement_${safeName}_${new Date().toISOString().slice(0, 10)}.pdf`;
+            res.set({
+                'Content-Type':        'application/pdf',
+                'Content-Disposition': `attachment; filename="${filename}"`,
+                'Content-Length':      buffer.length,
+            });
+            res.send(buffer);
+        });
+
+        const fmt     = (n) => parseFloat(n || 0).toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-BD', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
+
+        // ── Header ──────────────────────────────────────────
+        doc.fontSize(18).font('Helvetica-Bold').text('ZovoriX (Ltd.)', { align: 'center' });
+        doc.fontSize(9).font('Helvetica').fillColor('#555')
+           .text('Janaki Singha Road, Barisal - 1200 | inf.novatechbd@gmail.com', { align: 'center' });
+        doc.moveDown(0.5);
+        doc.fontSize(13).font('Helvetica-Bold').fillColor('#1e40af')
+           .text('CONSOLIDATED STATEMENT - ALL CONNECTED COMPANIES', { align: 'center' });
+        doc.moveDown(0.5);
+        doc.moveTo(40, doc.y).lineTo(555, doc.y).lineWidth(1.5).strokeColor('#1e40af').stroke();
+        doc.moveDown(0.5);
+
+        // ── Customer Info ────────────────────────────────────
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Customer Information');
+        doc.moveDown(0.3);
+        const infoY = doc.y;
+        doc.fontSize(9).font('Helvetica').fillColor('#333')
+           .text(`Name: ${person.full_name || '-'}`,             40,  infoY)
+           .text(`Phone: ${person.phone || person.whatsapp || '-'}`, 40,  infoY + 15)
+           .text(`Connected Companies: ${companies.length}`,     300, infoY)
+           .text(`Generated: ${new Date().toLocaleDateString('en-BD')}`, 300, infoY + 15);
+        doc.y = infoY + 40;
+        doc.moveDown(0.5);
+        doc.moveTo(40, doc.y).lineTo(555, doc.y).lineWidth(0.5).strokeColor('#ccc').stroke();
+        doc.moveDown(0.5);
+
+        if (companies.length === 0) {
+            doc.fontSize(11).font('Helvetica').fillColor('#666')
+               .text('No connected companies found.', { align: 'center' });
+            doc.end();
+            return;
+        }
+
+        // ── Grand Totals ─────────────────────────────────────
+        const totalLimit = companies.reduce((s, c) => s + parseFloat(c.credit_limit || 0), 0);
+        const totalDue   = companies.reduce((s, c) => s + parseFloat(c.current_credit || 0), 0);
+        const totalAvail = totalLimit - totalDue;
+
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Summary - All Companies');
+        doc.moveDown(0.3);
+        const sumY = doc.y;
+        doc.rect(40, sumY, 515, 56).fillColor('#f0f4ff').fill();
+        doc.fillColor('#1e3a8a').fontSize(9).font('Helvetica-Bold')
+           .text(`Total Credit Limit: TK ${fmt(totalLimit)}`,     50,  sumY + 8)
+           .text(`Total Current Due: TK ${fmt(totalDue)}`,        50,  sumY + 24)
+           .text(`Total Available Credit: TK ${fmt(totalAvail)}`, 50,  sumY + 40)
+           .text(`Companies: ${companies.length}`,                320, sumY + 8);
+        doc.y = sumY + 64;
+        doc.moveDown(0.5);
+
+        // ── Per-company table ────────────────────────────────
+        doc.fontSize(10).font('Helvetica-Bold').fillColor('#000').text('Company-wise Breakdown');
+        doc.moveDown(0.3);
+
+        const col  = { company: 40, code: 220, limit: 300, due: 390, avail: 470 };
+        const rowH = 20;
+        let   y    = doc.y;
+
+        doc.rect(40, y, 515, rowH).fillColor('#1e40af').fill();
+        doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold')
+           .text('Company',     col.company, y + 6, { width: 175 })
+           .text('Code',        col.code,    y + 6, { width: 75 })
+           .text('Limit TK',    col.limit,   y + 6, { width: 85, align: 'right' })
+           .text('Due TK',      col.due,     y + 6, { width: 75, align: 'right' })
+           .text('Available TK',col.avail,   y + 6, { width: 80, align: 'right' });
+        y += rowH;
+
+        let rowIdx = 0;
+        for (const c of companies) {
+            if (y > 720) { doc.addPage(); y = 40; }
+            const avail = parseFloat(c.credit_limit || 0) - parseFloat(c.current_credit || 0);
+            const bg = rowIdx % 2 === 0 ? '#f9f9ff' : '#fff';
+            doc.rect(40, y, 515, rowH).fillColor(bg).fill();
+            // company_name (English) ব্যবহার করা হচ্ছে, company_name_bn না —
+            // এই PDF সম্পূর্ণ ইংরেজি রাখার সিদ্ধান্তের সাথে সামঞ্জস্যপূর্ণ
+            doc.fillColor('#333').fontSize(8).font('Helvetica')
+               .text(c.company_name || '-',   col.company, y + 6, { width: 175 })
+               .text(c.customer_code || '-',  col.code,    y + 6, { width: 75 })
+               .text(fmt(c.credit_limit),      col.limit,   y + 6, { width: 85, align: 'right' })
+               .text(fmt(c.current_credit),    col.due,     y + 6, { width: 75, align: 'right' })
+               .text(fmt(avail),               col.avail,   y + 6, { width: 80, align: 'right' });
+            y += rowH;
+            rowIdx++;
+        }
+
+        // ── Footer ───────────────────────────────────────────
+        doc.y = y + 20;
+        doc.moveTo(40, doc.y).lineTo(555, doc.y).lineWidth(0.5).strokeColor('#ccc').stroke();
+        doc.moveDown(0.3);
+        doc.fontSize(8).font('Helvetica').fillColor('#999')
+           .text('This is a system-generated overview. For detailed transaction history of a specific company, download that company\'s individual statement.', { align: 'center', width: 515 })
+           .text('ZovoriX (Ltd.) - Barisal, Bangladesh', { align: 'center' });
+
+        doc.end();
+
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ downloadConsolidatedStatement error:', err.message);
+        res.status(500).json({ success: false, message: 'কনসোলিডেটেড স্টেটমেন্ট তৈরি করতে সমস্যা হয়েছে।' });
     }
 };
 
@@ -1489,6 +1655,7 @@ module.exports = {
     getAllCompanyOrders,
     getAllCompanyInvoices,
     getAllCompanyCreditSummary,
+    downloadConsolidatedStatement,
     getAllCompanySummary,
     getAllCompanyMonthlyTrend,
     getAllCompanyPaymentHistory,

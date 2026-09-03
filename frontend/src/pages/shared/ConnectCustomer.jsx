@@ -18,6 +18,7 @@ import api from '../../api/axios'
 import toast from 'react-hot-toast'
 import { FiCamera, FiSearch, FiCheck, FiUserPlus, FiRefreshCw } from 'react-icons/fi'
 import QrScanner from '../../components/QrScanner'
+import { enqueue } from '../../api/offlineQueue'
 
 export default function ConnectCustomer() {
   const [scannerOpen, setScannerOpen] = useState(false)
@@ -28,12 +29,31 @@ export default function ConnectCustomer() {
   const [searchResults, setSearchResults] = useState([])
   const [searching, setSearching] = useState(false)
   const [requestingId, setRequestingId] = useState(null)
+  const [scores, setScores] = useState({}) // ✅ NEW (Phase 5): { [personId]: { score, connectionCount } }
 
   // ── QR স্ক্যান হ্যান্ডলার ──────────────────────────────────
+  // ✅ NEW (Phase 5 — কোড অডিট): মার্কেট/বাজার এলাকায় নেট প্রায়ই দুর্বল
+  // থাকে — SR সামনে দাঁড়িয়ে স্ক্যান করলেও রিকোয়েস্ট পাঠাতে ব্যর্থ হতো।
+  // এখন OrderForm.jsx/SalesForm.jsx-এর ঠিক একই প্যাটার্নে: অফলাইন হলে
+  // queue করা হয়, নেটওয়ার্ক ফিরলে syncService.js নিজে থেকে পাঠায়।
+  // ⚠️ অফলাইনে "সংযুক্ত হয়েছে" নিশ্চিতভাবে বলা যায় না (সার্ভার রেসপন্স
+  // ছাড়া confirm করা অসম্ভব) — তাই বার্তাটা ইচ্ছাকৃতভাবে ভিন্ন ও honest।
   const handleScan = async (qr_code) => {
     setScannerOpen(false)
-    setConnecting(true)
     setResult(null)
+
+    if (!navigator.onLine) {
+      try {
+        await enqueue({ type: 'QR_CONNECT', payload: { qr_code } })
+        setResult({ ok: true, message: 'নেট নেই — QR স্ক্যান সংরক্ষিত হয়েছে, নেটওয়ার্ক ফিরলে সংযুক্ত হবে।' })
+        toast.success('📶 অফলাইনে সংরক্ষিত হয়েছে — নেট ফিরলে sync হবে', { duration: 5000 })
+      } catch {
+        toast.error('অফলাইনে সংরক্ষণ করতে সমস্যা হয়েছে।')
+      }
+      return
+    }
+
+    setConnecting(true)
     try {
       const res = await api.post('/connections/qr-scan', { qr_code })
       setResult({ ok: true, message: res.data.message || 'সংযুক্ত হয়েছে!' })
@@ -53,7 +73,17 @@ export default function ConnectCustomer() {
     setSearching(true)
     try {
       const res = await api.get('/connections/search-persons', { params: { q: searchQ.trim() } })
-      setSearchResults(res.data.data || [])
+      const results = res.data.data || []
+      setSearchResults(results)
+      // ✅ NEW (Phase 5 — কোড অডিট): reliability score — অন্য কোম্পানির
+      // সাথে এই person-এর ইতিহাস কেমন, connect করার সিদ্ধান্তে সহায়ক প্রসঙ্গ।
+      // ফলাফল ছোট (LIMIT 20) বলে প্রতিটার জন্য আলাদা fire-and-forget কল —
+      // ধীরে ধীরে ব্যাজ দেখা যাবে, প্রধান সার্চ রেজাল্ট আটকাবে না।
+      results.forEach(p => {
+        api.get(`/connections/persons/${p.id}/reliability-score`)
+          .then(r => setScores(prev => ({ ...prev, [p.id]: r.data.data })))
+          .catch(() => {})
+      })
     } catch {
       setSearchResults([])
     } finally {
@@ -61,7 +91,21 @@ export default function ConnectCustomer() {
     }
   }
 
+  // ✅ NEW (Phase 5): search-ভিত্তিক রিকোয়েস্টও অফলাইন-queue সাপোর্ট করে —
+  // person_id ইতিমধ্যে সার্চ রেজাল্ট থেকে জানা আছে (আগেই অনলাইনে সার্চ
+  // করা হয়েছিল), তাই request পাঠানোর সময় নেট চলে গেলেও queue করা যায়।
   const sendRequest = async (person_id) => {
+    if (!navigator.onLine) {
+      try {
+        await enqueue({ type: 'CONNECTION_REQUEST', payload: { person_id } })
+        toast.success('📶 অফলাইনে সংরক্ষিত — নেট ফিরলে রিকোয়েস্ট পাঠানো হবে', { duration: 5000 })
+        setSearchResults(prev => prev.map(p => p.id === person_id ? { ...p, existing_status: 'pending' } : p))
+      } catch {
+        toast.error('অফলাইনে সংরক্ষণ করতে সমস্যা হয়েছে।')
+      }
+      return
+    }
+
     setRequestingId(person_id)
     try {
       await api.post('/connections/request', { person_id })
@@ -140,6 +184,17 @@ export default function ConnectCustomer() {
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-gray-800 truncate">{p.full_name}</p>
                   <p className="text-[11px] text-gray-400">{p.phone || p.whatsapp || p.email}</p>
+                  {/* ✅ NEW (Phase 5): অন্য কোম্পানির সাথে এই person-এর
+                      পেমেন্ট-ইতিহাস heuristic — শুধু একটা প্রসঙ্গ, চূড়ান্ত
+                      সিদ্ধান্ত না (দেখুন paymentReliability.service.js) */}
+                  {scores[p.id]?.score != null && (
+                    <p className={`text-[10px] font-semibold mt-0.5 ${
+                      scores[p.id].score >= 70 ? 'text-emerald-600' :
+                      scores[p.id].score >= 40 ? 'text-amber-600' : 'text-red-500'
+                    }`}>
+                      রিলায়েবিলিটি {scores[p.id].score}/100 ({scores[p.id].connectionCount} কোম্পানি)
+                    </p>
+                  )}
                 </div>
                 {p.existing_status === 'connected' && (
                   <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-100 rounded-full px-3 py-1.5 flex-shrink-0">সংযুক্ত</span>

@@ -15,7 +15,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { useState, useEffect } from 'react'
-import { FiFileText, FiVolume2, FiTag, FiUsers, FiExternalLink } from 'react-icons/fi'
+import { FiFileText, FiVolume2, FiTag, FiUsers, FiExternalLink, FiSend, FiTrash2 } from 'react-icons/fi'
 import { portalFetch } from '../../utils/api'
 import { fmtDate } from '../../utils/helpers'
 import InvoiceCard from '../InvoiceCard'
@@ -66,6 +66,55 @@ export default function HomeFeed({ portalJWT }) {
   const [posts,        setPosts]        = useState([])
   const [postsLoading, setPostsLoading] = useState(true)
 
+  // ✅ NEW (Phase 5 — কোড অডিট): কাস্টমার পোস্ট — আগে placeholder ছিল
+  const [custPosts,        setCustPosts]        = useState([])
+  const [custPostsLoading, setCustPostsLoading] = useState(true)
+  const [composerText,     setComposerText]     = useState('')
+  const [posting,          setPosting]          = useState(false)
+
+  const loadCustomerPosts = () => {
+    setCustPostsLoading(true)
+    return portalFetch('/portal/customer-posts?limit=15', {
+      headers: { Authorization: `Bearer ${portalJWT}` }
+    })
+      .then(res => setCustPosts(res.data || []))
+      .catch(() => setCustPosts([]))
+      .finally(() => setCustPostsLoading(false))
+  }
+
+  const submitPost = async () => {
+    const body = composerText.trim()
+    if (!body) return
+    setPosting(true)
+    try {
+      await portalFetch('/portal/customer-posts', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${portalJWT}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body }),
+      })
+      setComposerText('')
+      await loadCustomerPosts() // নতুন পোস্টসহ ফিড রিফ্রেশ
+    } catch {
+      // চুপচাপ — নিচের কম্পোজার নিজেই থেকে যাবে, ব্যবহারকারী আবার চেষ্টা করতে পারবে
+    } finally {
+      setPosting(false)
+    }
+  }
+
+  const deletePost = async (id) => {
+    // ✅ optimistic — সাথে সাথে সরিয়ে দাও, ব্যর্থ হলে ফিরিয়ে আনো
+    const prev = custPosts
+    setCustPosts(p => p.filter(x => x.id !== id))
+    try {
+      await portalFetch(`/portal/customer-posts/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${portalJWT}` },
+      })
+    } catch {
+      setCustPosts(prev) // ব্যর্থ হলে ফিরিয়ে আনো
+    }
+  }
+
   useEffect(() => {
     let cancelled = false
     setOffersLoading(true)
@@ -89,6 +138,12 @@ export default function HomeFeed({ portalJWT }) {
       .catch(() => { if (!cancelled) setPosts([]) })
       .finally(() => { if (!cancelled) setPostsLoading(false) })
     return () => { cancelled = true }
+  }, [portalJWT])
+
+  // ✅ NEW (Phase 5): কাস্টমার পোস্ট ফিড
+  useEffect(() => {
+    loadCustomerPosts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [portalJWT])
 
   useEffect(() => {
@@ -233,10 +288,71 @@ export default function HomeFeed({ portalJWT }) {
         )}
       </div>
 
-      {/* ── কাস্টমার পোস্ট (placeholder) ── */}
+      {/* ── কাস্টমার পোস্ট (✅ Phase 5 — এখন real data) ── */}
       <div>
         <SectionLabel label="কাস্টমার পোস্ট" tone="trust" />
-        <ComingSoonCard icon={FiUsers} title="কাস্টমারদের পোস্ট এখানে দেখা যাবে" desc="আপনার নেটওয়ার্কের অন্য কাস্টমাররা কিছু শেয়ার করলে এখানে দেখতে পাবেন।" />
+
+        {/* কম্পোজার */}
+        <div className="rounded-2xl bg-cp-bg-surface border border-cp-border p-3 mb-3">
+          <textarea
+            value={composerText}
+            onChange={e => setComposerText(e.target.value)}
+            placeholder="আপনার নেটওয়ার্কে কিছু শেয়ার করুন..."
+            rows={2}
+            maxLength={1000}
+            className="w-full text-[12.5px] text-cp-text-primary placeholder:text-cp-text-muted resize-none bg-transparent outline-none"
+          />
+          <div className="flex items-center justify-end mt-1.5">
+            <button
+              onClick={submitPost}
+              disabled={posting || !composerText.trim()}
+              className="inline-flex items-center gap-1.5 text-[11.5px] font-bold text-white bg-cp-trust-500 rounded-full px-3.5 py-1.5 disabled:opacity-40"
+            >
+              <FiSend size={11} /> {posting ? 'পোস্ট হচ্ছে...' : 'পোস্ট করুন'}
+            </button>
+          </div>
+        </div>
+
+        {custPostsLoading && (
+          <div className="rounded-2xl bg-cp-bg-alt animate-pulse" style={{ height: 76 }} />
+        )}
+
+        {!custPostsLoading && custPosts.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-cp-border-strong bg-cp-bg-alt/60 px-4 py-5 flex flex-col items-center text-center gap-1.5">
+            <div className="w-11 h-11 rounded-full bg-cp-trust-100 text-cp-trust-500 flex items-center justify-center">
+              <FiUsers size={19} />
+            </div>
+            <p className="text-[12.5px] font-bold text-cp-text-primary font-cp-head">এখনো কোনো পোস্ট নেই</p>
+            <p className="text-[11px] text-cp-text-muted leading-relaxed max-w-[240px]">
+              আপনার নেটওয়ার্কের কাস্টমাররা (যাদের সাথে অন্তত একটা কোম্পানি কমন) কিছু শেয়ার করলে এখানে দেখা যাবে — অথবা উপরে নিজেই প্রথম পোস্ট লিখুন।
+            </p>
+          </div>
+        )}
+
+        {!custPostsLoading && custPosts.length > 0 && (
+          <div className="flex flex-col gap-3">
+            {custPosts.map(post => (
+              <div key={post.id} className="rounded-2xl bg-cp-bg-surface border border-cp-border overflow-hidden">
+                <div className="flex items-center justify-between">
+                  <PostHeader
+                    icon={FiUsers}
+                    tone="trust"
+                    title={post.author_name || 'কাস্টমার'}
+                    subtitle={fmtDate(post.created_at)}
+                  />
+                  {post.is_mine && (
+                    <button onClick={() => deletePost(post.id)} className="text-cp-text-muted p-1.5 mr-3 flex-shrink-0">
+                      <FiTrash2 size={13} />
+                    </button>
+                  )}
+                </div>
+                <div className="px-4 pb-3.5">
+                  <p className="text-[12.5px] text-cp-text-primary leading-relaxed whitespace-pre-wrap">{post.body}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

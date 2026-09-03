@@ -23,6 +23,7 @@ const {
     getAllCompanyOrders,
     getAllCompanyInvoices,
     getAllCompanyCreditSummary,
+    downloadConsolidatedStatement,
     getAllCompanySummary,
     getAllCompanyMonthlyTrend,
     getAllCompanyPaymentHistory,
@@ -58,6 +59,7 @@ router.get('/all-orders',         portalAuth, getAllCompanyOrders);
 router.get('/all-order-requests', portalAuth, getAllCompanyOrderRequests); // ✅ NEW (multi-company অর্ডার ফিক্সের সঙ্গী)
 router.get('/all-invoices',       portalAuth, getAllCompanyInvoices);       // ✅ NEW (Session 13)
 router.get('/all-credit-summary', portalAuth, getAllCompanyCreditSummary); // ✅ NEW (Session 13)
+router.get('/consolidated-statement', portalAuth, downloadConsolidatedStatement); // ✅ NEW (Phase 5)
 router.get('/all-summary',        portalAuth, getAllCompanySummary);       // ✅ NEW (আর্কিটেকচার ফিক্স, পার্ট ১)
 router.get('/all-monthly-trend',  portalAuth, getAllCompanyMonthlyTrend);  // ✅ NEW (আর্কিটেকচার ফিক্স, পার্ট ১)
 router.get('/all-payment-history', portalAuth, getAllCompanyPaymentHistory); // ✅ NEW (Session 15)

@@ -159,6 +159,8 @@ export default function CustomerPortal({ defaultTab = 'home_feed' }) {
       stmtTo={auth.stmtTo}         setStmtTo={auth.setStmtTo}
       stmtLoading={auth.stmtLoading}
       downloadStatement={auth.downloadStatement}
+      consolidatedStmtLoading={auth.consolidatedStmtLoading}
+      downloadConsolidatedStatement={auth.downloadConsolidatedStatement}
       // payment history
       paymentHistory={auth.paymentHistory}
       paymentPage={auth.paymentPage}

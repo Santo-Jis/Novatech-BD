@@ -29,7 +29,6 @@ const {
     getPublicCustomerByCode, // ✅ NEW: c= কোড দিয়ে shop_name/owner_name/shop_photo
     sendLoginOtp,            // ✅ NEW: WhatsApp OTP লগইন ধাপ ১
     verifyLoginOtp,          // ✅ NEW: WhatsApp OTP লগইন ধাপ ২
-    completePasswordSetup,   // ✅ NEW: OTP-এর পর পাসওয়ার্ড সেট → পূর্ণ সেশন (SECURITY FIX)
     selfRegisterCustomer,
     sendRegisterOtp,         // ✅ NEW: রেজিস্ট্রেশন WhatsApp OTP ধাপ ১
     verifyRegisterOtp,       // ✅ NEW: রেজিস্ট্রেশন WhatsApp OTP ধাপ ২
@@ -88,6 +87,9 @@ const {
 
 // ✅ NEW (ফেজ ১ — কোম্পানির পোস্ট)
 const { getPortalCompanyPosts } = require('../controllers/companyPost.controller');
+
+// ✅ NEW (Phase 5 — কোড অডিট — কাস্টমার পোস্ট, HomeFeed.jsx-এর বাকি থাকা placeholder সম্পূর্ণ)
+const { getNetworkFeed, createPost: createCustomerPost, deleteMyPost: deleteCustomerPost } = require('../controllers/customerPost.controller');
 
 // ✅ NEW (ফেজ ৩ — উইশলিস্ট)
 const { getWishlist, addToWishlist, removeFromWishlist } = require('../controllers/wishlist.controller');
@@ -251,18 +253,6 @@ const loginOtpVerifyLimiter = rateLimit({
     message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
 });
 
-// ✅ NEW (SECURITY FIX): OTP-লগইনের পর প্রথমবার পাসওয়ার্ড সেট করার
-// এন্ডপয়েন্ট — টোকেন দিয়েই identity যাচাই হয় বলে customer_code body-তে
-// থাকে না, তাই IP-ভিত্তিক rate-limit
-const passwordSetupLimiter = rateLimit({
-    windowMs:     15 * 60 * 1000,
-    max:          10,
-    store:        makeRedisStore(),
-    standardHeaders: true,
-    legacyHeaders:   false,
-    message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
-});
-
 // ============================================================
 // AUTH ROUTES
 // ============================================================
@@ -281,13 +271,6 @@ router.get('/customer-info/:code', customerInfoLimiter, getPublicCustomerByCode)
 // ✅ NEW: WhatsApp OTP দিয়ে সরাসরি লগইন (password/Google ছাড়াই) — ধাপ ১+২
 router.post('/send-login-otp',   loginOtpSendLimiter,   sendLoginOtp);
 router.post('/verify-login-otp', loginOtpVerifyLimiter, verifyLoginOtp);
-
-// ✅ NEW (SECURITY FIX): password_hash না থাকা কাস্টমারদের জন্য —
-// verify-login-otp-এর সীমিত setup টোকেন দিয়ে পাসওয়ার্ড বসিয়ে তবেই
-// পূর্ণ সেশন পাওয়া যায়। auth মিডলওয়্যার এখানে বসানো হয়নি ইচ্ছাকৃতভাবে —
-// completePasswordSetup নিজেই setup-টোকেন ম্যানুয়ালি যাচাই করে (দেখুন
-// controller কমেন্ট), সাধারণ portalAuth এই টোকেন-টাইপ গ্রহণই করবে না।
-router.post('/complete-password-setup', passwordSetupLimiter, completePasswordSetup);
 
 // ✅ NEW: রেজিস্ট্রেশনের আগে WhatsApp নম্বর OTP verification (বাধ্যতামূলক)
 router.post('/send-register-otp',   registerOtpLimiter, sendRegisterOtp);
@@ -351,6 +334,13 @@ router.get('/product-sellers',             portalAuth, getProductSellers); // �
 router.get('/promotions/active',           portalAuth, getPortalActivePromotions); // ← Promotions Phase ৫
 router.post('/promotions/calculate',       portalAuth, calculatePortalPromotions); // ✅ NEW (ফেজ ০)
 router.get('/company-posts',               portalAuth, getPortalCompanyPosts); // ✅ NEW (ফেজ ১)
+
+// ✅ NEW (Phase 5 — কোড অডিট): কাস্টমার পোস্ট — HomeFeed.jsx-এর বাকি থাকা
+// "কাস্টমার পোস্ট" placeholder সম্পূর্ণ করা। নেটওয়ার্ক-স্কোপড ভিজিবিলিটি
+// (দেখুন customerPost.controller.js-এর getNetworkFeed কমেন্ট)।
+router.get('/customer-posts',              portalAuth, getNetworkFeed);
+router.post('/customer-posts',             portalAuth, createCustomerPost);
+router.delete('/customer-posts/:id',       portalAuth, deleteCustomerPost);
 router.get('/wishlist',                    portalAuth, getWishlist);          // ✅ NEW (ফেজ ৩)
 router.post('/wishlist',                   portalAuth, addToWishlist);        // ✅ NEW (ফেজ ৩)
 router.delete('/wishlist/:productId',      portalAuth, removeFromWishlist);   // ✅ NEW (ফেজ ৩)
