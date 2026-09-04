@@ -15,43 +15,50 @@ export default {
         // 'cp-' প্রিফিক্স দিয়ে সম্পূর্ণ আলাদা রাখা হয়েছে যাতে admin/worker/manager
         // পোর্টালের বিদ্যমান primary/secondary/accent/danger একদমই স্পর্শ না হয়।
         // ============================================================
+        // ✅ FIX — আগে এখানে flat hex ছিল, তাই tailwind.config.js-এর
+        // darkMode:'class' সেট করা থাকলেও কার্যত কিছুই বদলাতো না (টগল
+        // চাপলে UI-তে কোনো visual change হতো না)। এখন var(--cp-*)
+        // রেফার করে, আসল মান index.css-এর :root (light) / .dark (dark)
+        // ব্লকে — dark class যেকোনো ancestor-এ (এখানে CustomerLayout-এর
+        // <main>) থাকলেই পুরো subtree সঠিক রঙ পাবে, প্রতিটা কম্পোনেন্টে
+        // আলাদা dark: variant লিখতে হবে না।
         'cp-bg': {
-          base:    '#F5F9FD',
-          surface: '#FFFFFF',
-          alt:     '#EAF2FA',
-          sunken:  '#DEEAF6',
+          base:    'var(--cp-bg-base)',
+          surface: 'var(--cp-bg-surface)',
+          alt:     'var(--cp-bg-alt)',
+          sunken:  'var(--cp-bg-sunken)',
         },
         'cp-trust': {
-          900: '#0A2E5C',
-          700: '#124A8C',
-          500: '#2E7BD6',
-          300: '#8FBCEE',
-          100: '#E1EEFC',
+          900: 'var(--cp-trust-900)',
+          700: 'var(--cp-trust-700)',
+          500: 'var(--cp-trust-500)',
+          300: 'var(--cp-trust-300)',
+          100: 'var(--cp-trust-100)',
         },
         'cp-confidence': {
-          600: '#0E9B6C',
-          300: '#7FD3AE',
-          100: '#DCF6EA',
+          600: 'var(--cp-confidence-600)',
+          300: 'var(--cp-confidence-300)',
+          100: 'var(--cp-confidence-100)',
         },
         'cp-warmth': {
-          600: '#F07B22',
-          300: '#F7B88A',
-          100: '#FDEBDB',
+          600: 'var(--cp-warmth-600)',
+          300: 'var(--cp-warmth-300)',
+          100: 'var(--cp-warmth-100)',
         },
         'cp-text': {
-          primary:   '#152A43',
-          secondary: '#54697F',
-          muted:     '#8CA0B3',
+          primary:   'var(--cp-text-primary)',
+          secondary: 'var(--cp-text-secondary)',
+          muted:     'var(--cp-text-muted)',
         },
         'cp-border': {
-          DEFAULT: '#D9E4EF',
-          strong:  '#C0D2E3',
-          focus:   '#2E7BD6',
+          DEFAULT: 'var(--cp-border)',
+          strong:  'var(--cp-border-strong)',
+          focus:   'var(--cp-border-focus)',
         },
-        'cp-success': { DEFAULT: '#0E9B6C', bg: '#DCF6EA' },
-        'cp-warning': { DEFAULT: '#F07B22', bg: '#FDEBDB' },
-        'cp-error':   { DEFAULT: '#D64545', bg: '#FBE4E4' },
-        'cp-info':    { DEFAULT: '#2E7BD6', bg: '#E1EEFC' },
+        'cp-success': { DEFAULT: 'var(--cp-success)', bg: 'var(--cp-success-bg)' },
+        'cp-warning': { DEFAULT: 'var(--cp-warning)', bg: 'var(--cp-warning-bg)' },
+        'cp-error':   { DEFAULT: 'var(--cp-error)',   bg: 'var(--cp-error-bg)' },
+        'cp-info':    { DEFAULT: 'var(--cp-info)',    bg: 'var(--cp-info-bg)' },
 
         // ============================================================
         // ⬇️ নতুন — Platform Panel Design System (design.html — Business

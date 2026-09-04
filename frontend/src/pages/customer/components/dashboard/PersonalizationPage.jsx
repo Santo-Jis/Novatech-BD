@@ -1,78 +1,111 @@
 // components/dashboard/PersonalizationPage.jsx
 // AccountMenu → "পারসোনালাইজেশন" — fixed full-screen (z-50)।
-// ডার্ক মোড টগল: localStorage 'cp_darkMode', document.documentElement.classList।
-// (ইনফ্রা রেডি; cp-* কম্পোনেন্টে dark: ভ্যারিয়েন্ট পরে যোগ করতে হবে)
+//
+// ✅ FIX — থিম এখন usePreferencesStore দিয়ে backend-এ persist হয়
+// (GET/PUT /portal/profile/preferences)। আগে শুধু localStorage('cp_darkMode')
+// ছিল, তাই নতুন ডিভাইসে লগইন করলেই সেটিং হারিয়ে যেত। dark ক্লাস প্রয়োগের
+// দায়িত্ব এখন এই কম্পোনেন্টের না — CustomerLayout.jsx-এ, resolvedTheme
+// অনুযায়ী <main>-এ scoped (কেন, দেখুন preferencesStore.js-এর কমেন্ট)।
+// Light/Dark boolean টগলের বদলে Light/Dark/System — তিন-অপশন, ইনফ্রা
+// এখন cp-* CSS ভ্যারিয়েবল দিয়ে সত্যিই কাজ করে (index.css দেখুন)।
 
-import { useState, useEffect } from 'react'
-import { FiMoon, FiSun, FiGlobe } from 'react-icons/fi'
+import { FiMoon, FiSun, FiMonitor, FiGlobe } from 'react-icons/fi'
 import MenuPageHeader from './MenuPageHeader'
 import CpCard from '../ui/CpCard'
+import { usePreferencesStore } from '../../../../store/preferencesStore'
 
-function getInitialDark() {
-  try {
-    const saved = window.localStorage.getItem('cp_darkMode')
-    if (saved !== null) return saved === 'true'
-    return window.matchMedia?.('(prefers-color-scheme: dark)')?.matches ?? false
-  } catch { return false }
-}
+const THEME_OPTIONS = [
+  { value: 'system', label: 'সিস্টেম', icon: FiMonitor },
+  { value: 'light',  label: 'লাইট',    icon: FiSun     },
+  { value: 'dark',   label: 'ডার্ক',    icon: FiMoon    },
+]
 
 export default function PersonalizationPage({ onBack }) {
-  const [dark, setDark] = useState(getInitialDark)
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', dark)
-    try { window.localStorage.setItem('cp_darkMode', String(dark)) } catch { /* ignore */ }
-  }, [dark])
+  const theme        = usePreferencesStore(s => s.theme)
+  const resolvedDark = usePreferencesStore(s => s.resolvedTheme === 'dark')
+  const language     = usePreferencesStore(s => s.language)
+  const setTheme     = usePreferencesStore(s => s.setTheme)
+  const setLanguage  = usePreferencesStore(s => s.setLanguage)
 
   return (
     <div className="fixed inset-0 z-50 bg-cp-bg-base flex flex-col">
       <MenuPageHeader title="পারসোনালাইজেশন" onBack={onBack} />
 
       <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3">
-        {/* ডার্ক মোড */}
+        {/* থিম — Light / Dark / System */}
         <CpCard padding="md">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-full bg-cp-trust-100 text-cp-trust-500 flex items-center justify-center flex-shrink-0">
-              {dark ? <FiMoon size={18} /> : <FiSun size={18} />}
+              {resolvedDark ? <FiMoon size={18} /> : <FiSun size={18} />}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-cp-text-primary">ডার্ক মোড</p>
-              <p className="text-[11px] text-cp-text-muted leading-snug">কম আলোতে চোখের আরামের জন্য গাঢ় থিম</p>
+              <p className="text-sm font-semibold text-cp-text-primary">থিম</p>
+              <p className="text-[11px] text-cp-text-muted leading-snug">কম আলোতে চোখের আরামের জন্য গাঢ় থিম বেছে নাও</p>
             </div>
-            {/* ProfileTab-এর discoverable টগলের মতো একই pill-switch প্যাটার্ন */}
-            <button
-              onClick={() => setDark(v => !v)}
-              aria-label="ডার্ক মোড টগল"
-              className="flex-shrink-0 w-12 h-7 rounded-full relative transition-colors"
-              style={{ background: dark ? '#2E7BD6' : '#CBD5E1' }}
-            >
-              <span
-                className="absolute top-0.5 w-6 h-6 rounded-full bg-white shadow transition-all duration-200"
-                style={{ left: dark ? 22 : 2 }}
-              />
-            </button>
+          </div>
+
+          <div className="flex gap-2">
+            {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
+              const active = theme === value
+              return (
+                <button
+                  key={value}
+                  onClick={() => setTheme(value)}
+                  aria-pressed={active}
+                  className="flex-1 flex flex-col items-center gap-1 py-2.5 rounded-xl border transition-colors"
+                  style={active
+                    ? { background: 'var(--cp-trust-500)', borderColor: 'var(--cp-trust-500)', color: '#fff' }
+                    : { background: 'var(--cp-bg-alt)', borderColor: 'var(--cp-border)', color: 'var(--cp-text-secondary)' }}
+                >
+                  <Icon size={16} />
+                  <span className="text-[11px] font-semibold">{label}</span>
+                </button>
+              )
+            })}
           </div>
         </CpCard>
 
-        {/* ভাষা — শীঘ্রই আসছে */}
-        <div>
-          <p className="text-[11px] font-bold text-cp-text-muted uppercase tracking-wide mb-2 px-1">ভাষা</p>
-          <div
-            className="rounded-2xl px-4 py-5 flex flex-col items-center text-center gap-1.5"
-            style={{ border: '1px dashed #C0D2E3', background: '#EAF2FA99' }}
-          >
-            <div className="w-11 h-11 rounded-full bg-cp-trust-100 text-cp-trust-500 flex items-center justify-center">
-              <FiGlobe size={19} />
+        {/* ভাষা — পছন্দ এখন সেভ হয়, পুরো অ্যাপ ট্রান্সলেশন এখনো শীঘ্রই আসছে */}
+        <CpCard padding="md">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 rounded-full bg-cp-trust-100 text-cp-trust-500 flex items-center justify-center flex-shrink-0">
+              <FiGlobe size={18} />
             </div>
-            <p className="text-[12.5px] font-bold text-cp-text-primary">বাংলা / English</p>
-            <p className="text-[11px] text-cp-text-muted leading-relaxed max-w-[240px]">
-              পুরো পোর্টাল ইংরেজিতেও ব্যবহারের অপশন — খুব শীঘ্রই আসছে।
-            </p>
-            <span className="mt-1 text-[9.5px] font-bold text-cp-warmth-600 bg-cp-warmth-100 px-2.5 py-1 rounded-full">
-              শীঘ্রই আসছে
-            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-cp-text-primary">ভাষা</p>
+              <p className="text-[11px] text-cp-text-muted leading-snug">তোমার পছন্দ সেভ থাকবে</p>
+            </div>
           </div>
-        </div>
+
+          <div className="flex gap-2">
+            {[
+              { value: 'bn', label: 'বাংলা' },
+              { value: 'en', label: 'English' },
+            ].map(({ value, label }) => {
+              const active = language === value
+              return (
+                <button
+                  key={value}
+                  onClick={() => setLanguage(value)}
+                  aria-pressed={active}
+                  className="flex-1 py-2.5 rounded-xl border text-[12.5px] font-semibold transition-colors"
+                  style={active
+                    ? { background: 'var(--cp-trust-500)', borderColor: 'var(--cp-trust-500)', color: '#fff' }
+                    : { background: 'var(--cp-bg-alt)', borderColor: 'var(--cp-border)', color: 'var(--cp-text-secondary)' }}
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
+          {language === 'en' && (
+            <p className="text-[11px] text-cp-warmth-600 bg-cp-warmth-100 rounded-lg px-3 py-2 mt-2.5 leading-relaxed">
+              পছন্দ সেভ হয়ে গেছে। পুরো পোর্টাল ইংরেজিতে দেখানোর ফিচার এখনো তৈরি হচ্ছে —
+              এই মুহূর্তে বাকি সব লেখা বাংলাতেই থাকবে।
+            </p>
+          )}
+        </CpCard>
 
         <p className="text-center text-[11px] text-cp-text-muted mt-1">
           আরও কাস্টমাইজেশন অপশন ধীরে ধীরে যোগ হবে ✨

@@ -25,6 +25,37 @@ async function getPersonId(portalUser) {
     return r.rows[0].person_id;
 }
 
+// ✅ NEW — person_preferences-এর ডিফল্ট, row না থাকলে GET-এ এবং
+// partial PUT-এ merge base হিসেবে ব্যবহৃত হয়
+const DEFAULT_NOTIFICATION_PREFS = {
+    order:    { push: true, sms: true,  email: true  },
+    invoice:  { push: true, sms: true,  email: true  },
+    promo:    { push: true, sms: false, email: false },
+    chat:     { push: true, sms: false, email: false },
+    security: { push: true, sms: true,  email: true  },
+};
+
+// ✅ NEW — কাস্টমার পোর্টাল সেলফ-সার্ভিস সিকিউরিটি অ্যাকশনের audit trail।
+// staff-side audit_logs থেকে ইচ্ছাকৃতভাবে আলাদা টেবিলে লেখে (দেখুন
+// migration_customer_portal_security_events.sql-এর কমেন্ট) — audit_logs.user_id
+// শুধু tenant staff রেফার করে, portal identity ভিন্ন namespace। লগ ব্যর্থ
+// হলেও মূল অ্যাকশন যেন আটকে না যায়, তাই caller-রা সবসময় .catch(()=>{})
+// দিয়ে defensively কল করবে (adminDevice.controller.js-এর মতোই)।
+async function logPortalSecurityEvent(req, personId, action, opts = {}) {
+    const { customerId = null, tableName = null, recordId = null, oldValue = null, newValue = null } = opts;
+    await query(
+        `INSERT INTO customer_portal_security_events
+            (person_id, customer_id, action, table_name, record_id, old_value, new_value, ip_address, user_agent)
+         VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8, $9)`,
+        [
+            personId, customerId, action, tableName, recordId,
+            oldValue !== null ? JSON.stringify(oldValue) : null,
+            newValue !== null ? JSON.stringify(newValue) : null,
+            req.ip || null, req.get('user-agent') || null,
+        ]
+    );
+}
+
 // ============================================================
 // GET /api/portal/profile/area-field
 // ============================================================
@@ -304,6 +335,17 @@ const changeMyPassword = async (req, res) => {
         await query(`UPDATE ${table} SET password_hash = $1 WHERE id = $2`, [newHash, ownerId]);
 
         logger.info(`✅ Password ${hasExistingPassword ? 'changed' : 'set (first-time)'} (self-service, ${table}): ${ownerId}`);
+
+        // ✅ NEW — audit trail, best-effort: getPersonId() এখানে আলাদা করে
+        // resolve করা হচ্ছে কারণ isCustomerType===true পথে ownerId person_id
+        // না, customer_id — লগে সবসময় person_id লাগবে (টেবিল FK)। ব্যর্থ
+        // হলেও পাসওয়ার্ড-পরিবর্তনের মূল রেসপন্স কখনো block হবে না।
+        await getPersonId(req.portalUser)
+            .then(pid => logPortalSecurityEvent(req, pid, hasExistingPassword ? 'PASSWORD_CHANGED' : 'PASSWORD_SET', {
+                customerId: req.portalUser?.customer_id || null, tableName: table, recordId: ownerId,
+            }))
+            .catch(() => {});
+
         res.json({ success: true, message: hasExistingPassword ? 'পাসওয়ার্ড পরিবর্তন হয়েছে।' : 'পাসওয়ার্ড সেট হয়েছে।' });
     } catch (err) {
         if (err.message === 'PERSON_NOT_LINKED') {
@@ -342,6 +384,14 @@ const revokeMyDevice = async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'ডিভাইস পাওয়া যায়নি।' });
         }
+
+        // ✅ NEW — audit trail, best-effort
+        await getPersonId(req.portalUser)
+            .then(pid => logPortalSecurityEvent(req, pid, 'DEVICE_REVOKED', {
+                customerId, tableName: 'customer_portal_devices', recordId: deviceId,
+                newValue: { device_label: result.rows[0].device_label },
+            }))
+            .catch(() => {});
 
         res.json({ success: true, message: `"${result.rows[0].device_label}" মুছে ফেলা হয়েছে।` });
     } catch (err) {
@@ -410,6 +460,12 @@ const deleteMyAccount = async (req, res) => {
 
         logger.info(`🗑️ Account self-deleted: person ${personId} (${custRows.rows.length}টা connection deactivated)`);
 
+        // ✅ NEW — audit trail, best-effort (personId এখানে আগে থেকেই resolve করা)
+        await logPortalSecurityEvent(req, personId, 'ACCOUNT_DELETE_REQUESTED', {
+            tableName: 'persons', recordId: personId,
+            newValue: { reason: reason || null, connections_deactivated: custRows.rows.length },
+        }).catch(() => {});
+
         res.json({ success: true, message: 'আপনার অ্যাকাউন্ট ডিলিট করা হয়েছে।' });
     } catch (err) {
         if (err.message === 'PERSON_NOT_LINKED') {
@@ -420,9 +476,106 @@ const deleteMyAccount = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET /api/portal/profile/preferences
+// থিম / ভাষা / নোটিফিকেশন পছন্দ। row না থাকলে (person তৈরির সময়
+// আলাদা করে বসানো হয় না) ডিফল্ট রিটার্ন করে — প্রথম PUT-এই row তৈরি হয়।
+// ============================================================
+const getMyPreferences = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser);
+
+        const p = await query(
+            `SELECT theme, language, notification_prefs, updated_at
+             FROM person_preferences WHERE person_id = $1`,
+            [personId]
+        );
+
+        if (p.rows.length === 0) {
+            return res.json({
+                success: true,
+                data: { theme: 'system', language: 'bn', notification_prefs: DEFAULT_NOTIFICATION_PREFS, updated_at: null },
+            });
+        }
+
+        res.json({ success: true, data: p.rows[0] });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ getMyPreferences error:', err.message);
+        res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// PUT /api/portal/profile/preferences
+// { theme?, language?, notification_prefs? } — সব ফিল্ড optional।
+// notification_prefs আংশিক পাঠানো যায় (শুধু যে ক্যাটাগরি বদলাচ্ছে) —
+// বাকিটা আগের/ডিফল্ট মান থেকে merge হয়, ফ্রন্টএন্ডকে পুরো object
+// পাঠাতে হয় না। security ক্যাটাগরি পুরোপুরি বন্ধ করা যায় না (নিচে দেখুন)।
+// ============================================================
+const updateMyPreferences = async (req, res) => {
+    try {
+        const personId = await getPersonId(req.portalUser);
+        const { theme, language, notification_prefs } = req.body;
+
+        if (theme && !['light', 'dark', 'system'].includes(theme)) {
+            return res.status(400).json({ success: false, message: 'থিম মান সঠিক না।' });
+        }
+        if (language && !['bn', 'en'].includes(language)) {
+            return res.status(400).json({ success: false, message: 'ভাষা মান সঠিক না।' });
+        }
+
+        const existing = await query(
+            `SELECT theme, language, notification_prefs FROM person_preferences WHERE person_id = $1`,
+            [personId]
+        );
+        const current = existing.rows[0] || {};
+
+        const nextTheme    = theme    || current.theme    || 'system';
+        const nextLanguage = language || current.language || 'bn';
+
+        let nextPrefs = current.notification_prefs || DEFAULT_NOTIFICATION_PREFS;
+        if (notification_prefs && typeof notification_prefs === 'object') {
+            nextPrefs = { ...nextPrefs, ...notification_prefs };
+
+            // ⚠️ security ক্যাটাগরি পুরোপুরি বন্ধ করতে দেওয়া হয় না — পাসওয়ার্ড
+            // পরিবর্তন/নতুন ডিভাইস লগইনের সতর্কতা কাস্টমারের নিজের সুরক্ষার
+            // জন্যই, তাই কমপক্ষে একটা চ্যানেল (push) সবসময় true থাকবে।
+            const sec = nextPrefs.security || {};
+            if (!sec.push && !sec.sms && !sec.email) {
+                nextPrefs.security = { ...sec, push: true };
+            }
+        }
+
+        await query(
+            `INSERT INTO person_preferences (person_id, theme, language, notification_prefs, updated_at)
+             VALUES ($1, $2, $3, $4::jsonb, NOW())
+             ON CONFLICT (person_id) DO UPDATE SET
+                theme = $2, language = $3, notification_prefs = $4::jsonb, updated_at = NOW()`,
+            [personId, nextTheme, nextLanguage, JSON.stringify(nextPrefs)]
+        );
+
+        res.json({
+            success: true,
+            message: 'পছন্দ সংরক্ষণ হয়েছে।',
+            data: { theme: nextTheme, language: nextLanguage, notification_prefs: nextPrefs },
+        });
+    } catch (err) {
+        if (err.message === 'PERSON_NOT_LINKED') {
+            return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
+        }
+        logger.error('❌ updateMyPreferences error:', err.message);
+        res.status(500).json({ success: false, message: 'পছন্দ সংরক্ষণ করতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getMyAreaAndField, updateMyAreaAndField, updateMyPhoto,
     getMySecurityInfo, changeMyPassword, revokeMyDevice,
-    // ✅ NEW — immediate self-service, admin/SR রিভিউ নেই
+    // ✅ immediate self-service, admin/SR রিভিউ নেই
     getDeletionPreview, deleteMyAccount,
+    // ✅ NEW — থিম/ভাষা/নোটিফিকেশন পছন্দ, person-level, backend-এ persist হয়
+    getMyPreferences, updateMyPreferences,
 };

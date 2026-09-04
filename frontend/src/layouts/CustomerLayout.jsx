@@ -4,6 +4,10 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom'
 import ErrorBoundary from '../components/ErrorBoundary'
+// ✅ NEW — থিম/ভাষা পছন্দ, backend-এ persist হয় (আগে PersonalizationPage.jsx
+// এককভাবে document.documentElement টগল করতো, স্টাফ-সাইড app.store.js-এর
+// সাথে একই root element শেয়ার করে বলে সংঘাতের ঝুঁকি ছিল)
+import { usePreferencesStore } from '../store/preferencesStore'
 import {
   FiHome, FiShoppingCart, FiFileText, FiCreditCard,
   FiBell, FiX, FiUser, FiMenu, FiCpu, FiLogOut,
@@ -56,6 +60,13 @@ export default function CustomerLayout() {
   const location  = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+
+  // ✅ NEW — থিম লোড করা হয় এখানে, layout mount-এ একবার (পুরো customer
+  // পোর্টালের জন্য একটাই জায়গা থেকে) — resolvedTheme 'dark' হলে নিচে
+  // <main>-এ 'dark' ক্লাস বসবে, cp-* CSS ভ্যারিয়েবল index.css থেকে বদলে যাবে
+  const resolvedTheme  = usePreferencesStore(s => s.resolvedTheme)
+  const loadPreference = usePreferencesStore(s => s.load)
+  useEffect(() => { loadPreference() }, [loadPreference])
 
   // JWT decode
   const portalKey = Object.keys(localStorage).find(k => k.startsWith('portal_jwt_'))
@@ -437,6 +448,7 @@ export default function CustomerLayout() {
       {/* ── Main Content ────────────────────────────────────── */}
       <main
         id="cl-main"
+        className={resolvedTheme === 'dark' ? 'dark' : ''}
         style={{ flex: 1, overflowY: 'auto', paddingBottom: 76 }}
       >
         <ErrorBoundary>

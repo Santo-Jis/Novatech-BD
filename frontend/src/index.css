@@ -9,6 +9,94 @@
   --secondary: #065f46;
   --accent:    #d97706;
   --danger:    #991b1b;
+
+  /* ============================================================
+     ✅ NEW — Customer Portal (cp-*) থিম ভ্যারিয়েবল, লাইট মোড।
+     মানগুলো আগের tailwind.config.js-এর hex-এর সাথে হুবহু মিলিয়ে রাখা
+     হয়েছে, তাই বিদ্যমান কোনো স্ক্রিনের লুক এতটুকু বদলায়নি।
+     ============================================================ */
+  --cp-bg-base:    #F5F9FD;
+  --cp-bg-surface: #FFFFFF;
+  --cp-bg-alt:     #EAF2FA;
+  --cp-bg-sunken:  #DEEAF6;
+
+  --cp-trust-900: #0A2E5C;
+  --cp-trust-700: #124A8C;
+  --cp-trust-500: #2E7BD6;
+  --cp-trust-300: #8FBCEE;
+  --cp-trust-100: #E1EEFC;
+
+  --cp-confidence-600: #0E9B6C;
+  --cp-confidence-300: #7FD3AE;
+  --cp-confidence-100: #DCF6EA;
+
+  --cp-warmth-600: #F07B22;
+  --cp-warmth-300: #F7B88A;
+  --cp-warmth-100: #FDEBDB;
+
+  --cp-text-primary:   #152A43;
+  --cp-text-secondary: #54697F;
+  --cp-text-muted:     #8CA0B3;
+
+  --cp-border:        #D9E4EF;
+  --cp-border-strong: #C0D2E3;
+  --cp-border-focus:  #2E7BD6;
+
+  --cp-success:    #0E9B6C;
+  --cp-success-bg: #DCF6EA;
+  --cp-warning:    #F07B22;
+  --cp-warning-bg: #FDEBDB;
+  --cp-error:      #D64545;
+  --cp-error-bg:   #FBE4E4;
+  --cp-info:       #2E7BD6;
+  --cp-info-bg:    #E1EEFC;
+}
+
+/* ============================================================
+   ✅ NEW — Customer Portal ডার্ক মোড। এই ক্লাস document.documentElement-এ
+   বসে না (স্টাফ-সাইড app.store.js ইতিমধ্যেই ওই root-level 'dark' ক্লাস
+   ব্যবহার করে, ভিন্ন state থেকে) — বরং CustomerLayout.jsx-এর <main
+   id="cl-main">-এ scoped, personalizationStore.js-এর theme অনুযায়ী।
+   তাই দুই dark-mode সিস্টেম একে অপরকে প্রভাবিত করে না। রঙগুলো একই hue
+   পরিবারে রাখা হয়েছে (jenerик gray না) যাতে ব্র্যান্ডের 'trust blue'
+   পরিচয় বজায় থাকে — ফার্স্ট পাস, শিপ করার আগে একবার visual QA ভালো।
+   ============================================================ */
+.dark {
+  --cp-bg-base:    #0A1420;
+  --cp-bg-surface: #10192A;
+  --cp-bg-alt:     #16202F;
+  --cp-bg-sunken:  #060B12;
+
+  --cp-trust-900: #A9CCF2;
+  --cp-trust-700: #6FA3E0;
+  --cp-trust-500: #3E86DD;
+  --cp-trust-300: #1E4A7C;
+  --cp-trust-100: #12294A;
+
+  --cp-confidence-600: #4FD9A3;
+  --cp-confidence-300: #1F6B4C;
+  --cp-confidence-100: #123527;
+
+  --cp-warmth-600: #FFA254;
+  --cp-warmth-300: #8A4F1E;
+  --cp-warmth-100: #3A2611;
+
+  --cp-text-primary:   #EAF1FA;
+  --cp-text-secondary: #A9BBCC;
+  --cp-text-muted:     #71879C;
+
+  --cp-border:        #223349;
+  --cp-border-strong: #304763;
+  --cp-border-focus:  #3E86DD;
+
+  --cp-success:    #4FD9A3;
+  --cp-success-bg: #123527;
+  --cp-warning:    #FFA254;
+  --cp-warning-bg: #3A2611;
+  --cp-error:      #E8706A;
+  --cp-error-bg:   #3A1616;
+  --cp-info:       #3E86DD;
+  --cp-info-bg:    #12294A;
 }
 
 * {
