@@ -93,6 +93,19 @@ export default defineConfig({
           ) return 'vendor-ui'
 
           // ── Shared app core ──────────────────────────────────────
+          // ✅ FIX (crash: "Cannot access 'X' before initialization"):
+          // store/preferencesStore.js (app-core) imports portalFetch from
+          // pages/customer/utils/api.js — which the rule below would've
+          // put in 'role-customer'. Meanwhile CustomerLayout.jsx
+          // (role-customer) imports usePreferencesStore from app-core.
+          // That's a circular chunk dependency (app-core ⇄ role-customer),
+          // which makes Rollup emit one chunk's top-level const being read
+          // before the other chunk finishes initializing → TDZ crash in
+          // production only (dev server doesn't chunk-split this way).
+          // Pinning utils/api.js to app-core makes the dependency
+          // one-directional (role-customer → app-core) and breaks the cycle.
+          if (id.includes('/src/pages/customer/utils/api.js')) return 'app-core'
+
           if (
             id.includes('/src/store/') ||
             id.includes('/src/api/') ||
