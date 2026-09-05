@@ -97,6 +97,7 @@ const SuperAdminStaffList   = IS_LIMITED_APP ? null : lazy(() => import('./pages
 const SuperAdminPlanBookings = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/PlanBookings'))
 const SuperAdminAuditLog    = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/AuditLog'))
 const SuperAdminPlatformSettings = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/PlatformSettings'))
+const SuperAdminConnectionAnalytics = IS_LIMITED_APP ? null : lazy(() => import('./pages/superadmin/ConnectionAnalytics')) // ✅ NEW (Phase 6)
 
 // Shared — Customer APK-এ নেই
 const AIChat      = IS_LIMITED_APP ? null : lazy(() => import('./pages/shared/AIChat'))
@@ -532,6 +533,7 @@ function AppWithPermissions() {
                 <Route path="plan-bookings" element={<SuperAdminPlanBookings />} />
                 <Route path="audit-log"    element={<SuperAdminAuditLog />} />
                 <Route path="platform-settings" element={<SuperAdminPlatformSettings />} />
+                <Route path="connection-analytics" element={<SuperAdminConnectionAnalytics />} /> {/* ✅ NEW (Phase 6) */}
               </Route>
 
               {/* ── ADMIN ROUTES ── */}

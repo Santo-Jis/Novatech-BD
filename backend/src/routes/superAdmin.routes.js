@@ -77,6 +77,7 @@ router.delete('/tenants/:tenantId',        ctrl.deleteTenant);
 
 // ✅ Phase 4: Dashboard aggregate stats (স্কেল-নিরপেক্ষ, একটামাত্র query)
 router.get   ('/dashboard-stats',          ctrl.getDashboardStats);
+router.get   ('/connection-analytics',     ctrl.getConnectionAnalytics); // ✅ NEW (Phase 6)
 
 // ✅ Phase 4: প্ল্যাটফর্ম-ওয়াইড Audit Log viewer
 router.get   ('/audit-log',                ctrl.getAuditLog);

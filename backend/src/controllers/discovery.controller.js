@@ -99,6 +99,10 @@ const setBusinessFields = async (req, res) => {
 // তেনন্টের সার্ভিস এরিয়া + বিজনেস ফিল্ড ম্যাচ করা সব discoverable শপ।
 // Connect না হওয়া পর্যন্ত owner name/phone/whatsapp/email হাইড থাকবে —
 // শুধু shop_name + address + এরিয়া দেখাবে।
+//
+// ✅ NEW (Phase 6 — কোড অডিট): এখন থেকে shown_person_ids লগ হয়
+// discovery_views-এ, যাতে ভবিষ্যতে view→connect funnel মাপা যায়। fire-
+// and-forget — logging ব্যর্থ হলেও শপ লিস্ট রেসপন্স কখনো আটকাবে না।
 // ============================================================
 const getDiscoveryShops = async (req, res) => {
     try {
@@ -143,6 +147,15 @@ const getDiscoveryShops = async (req, res) => {
                 email:      unlocked ? r.email     : null,
             };
         });
+
+        // ✅ NEW (Phase 6): view logging, fire-and-forget
+        if (shops.length > 0) {
+            query(
+                `INSERT INTO discovery_views (tenant_id, viewed_by_user_id, shown_person_ids, shown_count)
+                 VALUES ($1, $2, $3, $4)`,
+                [req.tenantId, req.user?.id || null, shops.map(s => s.person_id), shops.length]
+            ).catch(err => logger.warn('⚠️ discovery_views log ব্যর্থ:', err.message));
+        }
 
         res.json({ success: true, data: shops });
     } catch (err) {

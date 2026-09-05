@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { FiHome, FiBriefcase, FiPlusCircle, FiMenu, FiX, FiLogOut, FiKey, FiUsers, FiFileText, FiSettings, FiShoppingCart } from 'react-icons/fi'
+import { FiHome, FiBriefcase, FiPlusCircle, FiMenu, FiX, FiLogOut, FiKey, FiUsers, FiFileText, FiSettings, FiShoppingCart, FiTrendingUp } from 'react-icons/fi'
 import { useSuperAdminAuthStore } from '../store/superAdminAuth.store'
 import ErrorBoundary from '../../../components/ErrorBoundary'
 
@@ -11,6 +11,8 @@ const navItems = [
   { path: '/superadmin/plan-bookings', icon: <FiShoppingCart />, label: 'প্ল্যান বুকিং' },
   { path: '/superadmin/staff', icon: <FiUsers />, label: 'Platform Staff' },
   { path: '/superadmin/audit-log', icon: <FiFileText />, label: 'Audit Log' },
+  // ✅ NEW (Phase 6)
+  { path: '/superadmin/connection-analytics', icon: <FiTrendingUp />, label: 'কানেকশন অ্যানালিটিক্স' },
   { path: '/superadmin/platform-settings', icon: <FiSettings />, label: 'প্ল্যাটফর্ম সেটিংস' },
 ]
 

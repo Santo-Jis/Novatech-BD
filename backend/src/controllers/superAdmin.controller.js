@@ -504,6 +504,111 @@ const getDashboardStats = async (req, res) => {
 };
 
 // ============================================================
+// ✅ NEW (Phase 6 — কোড অডিট): প্ল্যাটফর্ম-ওয়াইড connection analytics।
+// getDashboardStats-এর মতোই flat Promise.all প্যাটার্ন।
+//
+// ⚠️ সততার নোট — "conversion rate": status IN ('connected','disconnected')
+// ধরা হয়েছে "কখনো connect হয়েছিল" হিসেবে (disconnect শুধু connected থেকেই
+// সম্ভব, connection.controller.js-এর disconnectConnection দেখুন)। 'blocked'
+// রো-গুলো ইচ্ছাকৃতভাবে বাদ — ওগুলো pending বা connected যেকোনো state থেকেই
+// block হতে পারত (Phase 3), তাই নিশ্চিতভাবে বলা যায় না ওরা কখনো connect
+// হয়েছিল কিনা। ফলে conversion rate কিছুটা কম দেখাতে পারে বাস্তবের চেয়ে
+// (undercounting), কখনো বেশি না (overcounting এড়ানো ইচ্ছাকৃত পছন্দ)।
+//
+// ⚠️ "discovery→connection funnel" পুরোপুরি এখনো সম্ভব না — discovery_views
+// logging Phase 6-এই শুরু হয়েছে (migration_discovery_views.sql), তাই
+// এই এন্ডপয়েন্ট শুধু view-count/tenant-engagement দেখায়, view-থেকে-connect
+// conversion না (পুরনো ডেটা নেই বলে)। কয়েক সপ্তাহ ডেটা জমার পর এই ফাংশন
+// এক্সটেন্ড করে আসল funnel যোগ করা যাবে (discovery_views.shown_person_ids
+// GIN ইনডেক্স ঠিক এই ভবিষ্যৎ ব্যবহারের জন্যই রাখা হয়েছে)।
+// ============================================================
+const getConnectionAnalytics = async (req, res) => {
+  try {
+    const [statusBreakdown, channelBreakdown, monthlyTrend, responseTime, tenantLeaderboard, discoveryEngagement] = await Promise.all([
+      // ১. স্ট্যাটাস ব্রেকডাউন (প্ল্যাটফর্ম-ওয়াইড)
+      query(`
+        SELECT status, COUNT(*) AS count
+        FROM customer_company_connections
+        GROUP BY status
+      `),
+
+      // ২. চ্যানেল-ভিত্তিক ব্রেকডাউন + conversion rate
+      query(`
+        SELECT
+          initiated_by,
+          COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE status IN ('connected','disconnected')) AS converted
+        FROM customer_company_connections
+        GROUP BY initiated_by
+        ORDER BY total DESC
+      `),
+
+      // ৩. মাসিক ট্রেন্ড (গত ১২ মাস, নতুন connection request তৈরির হার)
+      query(`
+        SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS month,
+               COUNT(*) AS total_requests,
+               COUNT(*) FILTER (WHERE status IN ('connected','disconnected')) AS converted
+        FROM customer_company_connections
+        WHERE created_at > NOW() - INTERVAL '12 months'
+        GROUP BY 1
+        ORDER BY 1 ASC
+      `),
+
+      // ৪. রেসপন্স টাইম (created_at → responded_at, ঘণ্টায়) — accept/reject দুটোই
+      query(`
+        SELECT
+          ROUND(AVG(EXTRACT(EPOCH FROM (responded_at - created_at)) / 3600)::numeric, 1) AS avg_hours,
+          ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY EXTRACT(EPOCH FROM (responded_at - created_at)))::numeric / 3600, 1) AS median_hours,
+          COUNT(*) AS responded_count
+        FROM customer_company_connections
+        WHERE responded_at IS NOT NULL
+      `),
+
+      // ৫. Per-tenant লিডারবোর্ড — সবচেয়ে সক্রিয়/দ্রুত-রেসপন্স কোম্পানি
+      query(`
+        SELECT
+          t.id AS tenant_id, t.company_name, t.company_name_bn,
+          COUNT(*) FILTER (WHERE ccc.status = 'connected')  AS connected_count,
+          COUNT(*) FILTER (WHERE ccc.status = 'pending')    AS pending_count,
+          ROUND(AVG(EXTRACT(EPOCH FROM (ccc.responded_at - ccc.created_at)) / 3600)
+                FILTER (WHERE ccc.responded_at IS NOT NULL)::numeric, 1) AS avg_response_hours
+        FROM customer_company_connections ccc
+        JOIN tenants t ON t.id = ccc.tenant_id
+        GROUP BY t.id, t.company_name, t.company_name_bn
+        HAVING COUNT(*) > 0
+        ORDER BY connected_count DESC
+        LIMIT 20
+      `),
+
+      // ৬. Discovery engagement (Phase 6-এ শুরু হওয়া logging থেকে)
+      query(`
+        SELECT
+          COUNT(*) AS total_views,
+          COUNT(DISTINCT tenant_id) AS tenants_engaged,
+          COALESCE(SUM(shown_count), 0) AS total_shop_impressions
+        FROM discovery_views
+        WHERE created_at > NOW() - INTERVAL '30 days'
+      `),
+    ]);
+
+    return res.json({
+      success: true,
+      data: {
+        status_breakdown:  statusBreakdown.rows,
+        channel_breakdown: channelBreakdown.rows,
+        monthly_trend:     monthlyTrend.rows,
+        response_time:     responseTime.rows[0] || { avg_hours: null, median_hours: null, responded_count: 0 },
+        tenant_leaderboard: tenantLeaderboard.rows,
+        discovery_engagement_30d: discoveryEngagement.rows[0] || { total_views: 0, tenants_engaged: 0, total_shop_impressions: 0 },
+      },
+    });
+  } catch (err) {
+    console.error('[superAdmin.getConnectionAnalytics]', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// ============================================================
 // ✅ Phase 4: প্ল্যাটফর্ম-ওয়াইড Audit Log viewer
 // platform_audit_log-এ platform_staff (Support Panel) আর super-admin
 // (staff_email='super-admin-key') দুই ধরনের action-ই একসাথে থাকে —
@@ -1193,6 +1298,7 @@ module.exports = {
   resetTenantAdminPassword,
   verifyPlanPayment,
   getDashboardStats,
+  getConnectionAnalytics, // ✅ NEW (Phase 6)
   getAuditLog,
   getAllStaff,
   createStaff,
