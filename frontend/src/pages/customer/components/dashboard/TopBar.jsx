@@ -40,7 +40,7 @@ export default function TopBar({ onMenuClick, onTabChange, unreadCount = 0, page
       >
         <FiMenu size={21} />
         {unreadCount > 0 && (
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-cp-error border border-white" />
+          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-cp-error border border-cp-bg-surface" />
         )}
       </button>
 

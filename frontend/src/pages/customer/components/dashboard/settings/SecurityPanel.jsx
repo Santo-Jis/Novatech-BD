@@ -199,7 +199,7 @@ export default function SecurityPanel({ portalJWT }) {
           onClick={() => { setPwOpen(false); setPwError('') }}
         >
           <div
-            className="bg-white w-full max-w-[480px] rounded-t-3xl p-5 flex flex-col gap-3"
+            className="bg-cp-bg-surface w-full max-w-[480px] rounded-t-3xl p-5 flex flex-col gap-3"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-1">

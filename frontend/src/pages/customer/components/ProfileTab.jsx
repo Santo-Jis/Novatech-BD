@@ -235,7 +235,7 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
         <div className="px-4 pb-4">
           {/* অ্যাভাটার — কভারের উপর overlap, negative margin দিয়ে */}
           <div className="relative -mt-10 mb-2 inline-block">
-            <div className="w-20 h-20 rounded-full overflow-hidden bg-cp-bg-alt border-4 border-white flex items-center justify-center">
+            <div className="w-20 h-20 rounded-full overflow-hidden bg-cp-bg-alt border-4 border-cp-bg-base flex items-center justify-center">
               {person.profile_photo
                 ? <img src={person.profile_photo} alt="প্রোফাইল ছবি" className="w-full h-full object-cover" />
                 : <FiUser className="text-cp-text-muted" size={30} />
@@ -244,7 +244,7 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
             <button
               onClick={() => profilePhotoInputRef.current?.click()}
               disabled={uploadingAvatar}
-              className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-cp-trust-500 border-2 border-white flex items-center justify-center disabled:opacity-60"
+              className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-cp-trust-500 border-2 border-cp-bg-base flex items-center justify-center disabled:opacity-60"
             >
               <FiCamera className="text-white" size={13} />
             </button>
@@ -295,7 +295,7 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
             onChange={e => setForm(f => ({ ...f, bio: e.target.value.slice(0, 280) }))}
             placeholder="নিজের বা শপের সম্পর্কে কিছু লিখুন..."
             rows={2}
-            className="mt-3 w-full resize-none rounded-xl border border-cp-border bg-white px-3 py-2 text-sm text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500"
+            className="mt-3 w-full resize-none rounded-xl border border-cp-border bg-cp-bg-surface px-3 py-2 text-sm text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500"
           />
           <p className="mt-1 text-right text-[10px] text-cp-text-muted">{form.bio.length}/280</p>
         </div>
@@ -384,7 +384,7 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
           <select
             value={form.division_id}
             onChange={e => onDivisionChange(e.target.value)}
-            className="w-full h-12 rounded-xl border border-cp-border bg-white px-4 font-cp-body text-cp-text-primary focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500"
+            className="w-full h-12 rounded-xl border border-cp-border bg-cp-bg-surface px-4 font-cp-body text-cp-text-primary focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500"
           >
             <option value="">বেছে নিন</option>
             {divisions.map(d => (
@@ -398,7 +398,7 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
             value={form.district_id}
             onChange={e => setForm(f => ({ ...f, district_id: e.target.value }))}
             disabled={!form.division_id}
-            className="w-full h-12 rounded-xl border border-cp-border bg-white px-4 font-cp-body text-cp-text-primary disabled:bg-cp-bg-alt disabled:text-cp-text-muted focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500"
+            className="w-full h-12 rounded-xl border border-cp-border bg-cp-bg-surface px-4 font-cp-body text-cp-text-primary disabled:bg-cp-bg-alt disabled:text-cp-text-muted focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500"
           >
             <option value="">বেছে নিন</option>
             {districts.map(d => (
@@ -555,7 +555,7 @@ export default function ProfileTab({ portalJWT, onTabChange = () => {} }) {
       {/* ── QR মোডাল ── */}
       {qrOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" onClick={() => setQrOpen(false)}>
-          <div className="bg-white w-full max-w-[480px] rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
+          <div className="bg-cp-bg-surface w-full max-w-[480px] rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <p className="text-base font-bold text-cp-text-primary">আমার QR কোড</p>
               <button onClick={() => setQrOpen(false)}><FiX size={20} className="text-cp-text-muted" /></button>

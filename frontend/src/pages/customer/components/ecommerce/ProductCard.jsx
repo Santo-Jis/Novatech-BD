@@ -46,7 +46,7 @@ export default function ProductCard({
     <div
       onClick={() => onOpen(product)}
       className={clsx(
-        'bg-white rounded-2xl border overflow-hidden cursor-pointer transition-colors',
+        'bg-cp-bg-surface rounded-2xl border overflow-hidden cursor-pointer transition-colors',
         inCart ? 'border-cp-trust-500 border-2' : 'border-cp-border'
       )}
     >

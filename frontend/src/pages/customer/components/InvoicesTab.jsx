@@ -116,7 +116,7 @@ export default function InvoicesTab({ portalJWT }) {
                 <button
                   onClick={() => setTenantId('')}
                   className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-colors ${
-                    tenantId === '' ? 'bg-cp-trust-500 text-white border-cp-trust-500' : 'bg-white text-cp-text-secondary border-cp-border'
+                    tenantId === '' ? 'bg-cp-trust-500 text-white border-cp-trust-500' : 'bg-cp-bg-surface text-cp-text-secondary border-cp-border'
                   }`}
                 >
                   সব কোম্পানি
@@ -126,7 +126,7 @@ export default function InvoicesTab({ portalJWT }) {
                     key={co.connection_id}
                     onClick={() => setTenantId(String(co.tenant_id))}
                     className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-colors truncate max-w-[140px] ${
-                      tenantId === String(co.tenant_id) ? 'bg-cp-trust-500 text-white border-cp-trust-500' : 'bg-white text-cp-text-secondary border-cp-border'
+                      tenantId === String(co.tenant_id) ? 'bg-cp-trust-500 text-white border-cp-trust-500' : 'bg-cp-bg-surface text-cp-text-secondary border-cp-border'
                     }`}
                   >
                     {companyName(co)}
@@ -163,7 +163,7 @@ export default function InvoicesTab({ portalJWT }) {
       {/* ── লিস্ট ── */}
       {loading && invoices.length === 0 ? (
         [...Array(3)].map((_, i) => (
-          <div key={i} className="h-20 bg-white rounded-2xl border border-cp-border animate-pulse" />
+          <div key={i} className="h-20 bg-cp-bg-surface rounded-2xl border border-cp-border animate-pulse" />
         ))
       ) : invoices.length === 0 ? (
         <div className="text-center py-8">

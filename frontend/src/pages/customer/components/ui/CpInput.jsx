@@ -33,7 +33,7 @@ const CpInput = forwardRef(function CpInput(
         <input
           ref={ref}
           className={clsx(
-            'w-full h-12 rounded-xl border bg-white font-cp-body text-cp-text-primary',
+            'w-full h-12 rounded-xl border bg-cp-bg-surface font-cp-body text-cp-text-primary',
             'placeholder:text-cp-text-muted transition-colors',
             'focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500',
             Icon ? 'pl-11' : 'pl-4',

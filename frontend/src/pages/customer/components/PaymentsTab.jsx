@@ -111,7 +111,7 @@ export default function PaymentsTab({ portalJWT }) {
                   key={val}
                   onClick={() => setTypeFilter(val)}
                   className={`px-3.5 py-1.5 rounded-full text-[11px] font-bold border transition-colors ${
-                    typeFilter === val ? 'bg-cp-trust-500 text-white border-cp-trust-500' : 'bg-white text-cp-text-secondary border-cp-border'
+                    typeFilter === val ? 'bg-cp-trust-500 text-white border-cp-trust-500' : 'bg-cp-bg-surface text-cp-text-secondary border-cp-border'
                   }`}
                 >
                   {label}
@@ -127,7 +127,7 @@ export default function PaymentsTab({ portalJWT }) {
                 <button
                   onClick={() => setTenantId('')}
                   className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-colors ${
-                    tenantId === '' ? 'bg-cp-trust-500 text-white border-cp-trust-500' : 'bg-white text-cp-text-secondary border-cp-border'
+                    tenantId === '' ? 'bg-cp-trust-500 text-white border-cp-trust-500' : 'bg-cp-bg-surface text-cp-text-secondary border-cp-border'
                   }`}
                 >
                   সব কোম্পানি
@@ -137,7 +137,7 @@ export default function PaymentsTab({ portalJWT }) {
                     key={co.connection_id}
                     onClick={() => setTenantId(String(co.tenant_id))}
                     className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-colors truncate max-w-[140px] ${
-                      tenantId === String(co.tenant_id) ? 'bg-cp-trust-500 text-white border-cp-trust-500' : 'bg-white text-cp-text-secondary border-cp-border'
+                      tenantId === String(co.tenant_id) ? 'bg-cp-trust-500 text-white border-cp-trust-500' : 'bg-cp-bg-surface text-cp-text-secondary border-cp-border'
                     }`}
                   >
                     {companyName(co)}
@@ -185,7 +185,7 @@ export default function PaymentsTab({ portalJWT }) {
       {/* ── লিস্ট ── */}
       {loading && payments.length === 0 ? (
         [...Array(3)].map((_, i) => (
-          <div key={i} className="h-16 bg-white rounded-2xl border border-cp-border animate-pulse" />
+          <div key={i} className="h-16 bg-cp-bg-surface rounded-2xl border border-cp-border animate-pulse" />
         ))
       ) : payments.length === 0 ? (
         <div className="text-center py-8">
@@ -195,7 +195,7 @@ export default function PaymentsTab({ portalJWT }) {
       ) : (
         <>
           {payments.map((p, i) => (
-            <div key={i} className="bg-white rounded-2xl border border-cp-border px-4 py-3 flex items-center gap-3">
+            <div key={i} className="bg-cp-bg-surface rounded-2xl border border-cp-border px-4 py-3 flex items-center gap-3">
               <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-[17px] flex-shrink-0 ${
                 p.payment_type === 'cash' ? 'bg-cp-success/10' : 'bg-cp-trust-500/10'
               }`}>

@@ -402,9 +402,10 @@ const revokeMyDevice = async (req, res) => {
 
 // ============================================================
 // GET /api/portal/profile/deletion-preview
-// ডিলিট করার আগে — connected কোম্পানিগুলোতে বকেয়া ক্রেডিট থাকলে
-// দেখায় (transparency-এর জন্য, block করে না — কাস্টমার নিজেই সিদ্ধান্ত
-// নেবে)।
+// ডিলিট করার আগে — ১. connected কোম্পানিগুলোতে বকেয়া ক্রেডিট থাকলে
+// দেখায় (transparency, block করে না), ২. পাসওয়ার্ড সেট করা আছে
+// কিনা (frontend এটা দিয়ে ঠিক করে confirm মোডালে পাসওয়ার্ড ফিল্ড
+// দেখাবে কিনা — changeMyPassword-এর same hasExistingPassword প্যাটার্ন)।
 // ============================================================
 const getDeletionPreview = async (req, res) => {
     try {
@@ -418,7 +419,19 @@ const getDeletionPreview = async (req, res) => {
             [personId]
         );
 
-        res.json({ success: true, data: { outstanding_balances: balances.rows } });
+        const isCustomerType = !!req.portalUser?.customer_id;
+        const table   = isCustomerType ? 'customers' : 'persons';
+        const ownerId = isCustomerType ? req.portalUser.customer_id : personId;
+        const pw = await query(`SELECT password_hash FROM ${table} WHERE id = $1`, [ownerId]);
+        const hasPassword = !!pw.rows[0]?.password_hash;
+
+        res.json({
+            success: true,
+            data: {
+                outstanding_balances: balances.rows,
+                has_password: hasPassword,
+            },
+        });
     } catch (err) {
         if (err.message === 'PERSON_NOT_LINKED') {
             return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
@@ -430,43 +443,62 @@ const getDeletionPreview = async (req, res) => {
 
 // ============================================================
 // POST /api/portal/profile/delete-account
-// { reason? }
+// { current_password?, reason? }
 //
-// ✅ সরাসরি এখনই কার্যকর — কোনো admin/SR রিভিউ/অপেক্ষা নেই। এটা
-// কাস্টমারের নিজের স্বাধীন অ্যাকাউন্ট, নিজের সিদ্ধান্ত।
-//
-// লগইন আটকাতে নতুন কোনো মেকানিজম বানাতে হয়নি — is_active=false
-// ইতিমধ্যে passwordLogin/verifyLoginOtp/deviceLogin সব জায়গায়
-// WHERE-ক্লজে চেক করা হয় (existing, বহু জায়গায় ব্যবহৃত)। person-only
-// সেশনের জন্য passwordLogin-এর persons lookup-এ এখন
-// deletion_requested_at IS NULL চেক যোগ করা হয়েছে।
+// ✅ MERGED (২০২৬-০৯-০৭) — nova68-merged-delivery.zip-এর grace-period
+// ফিক্স Novatech-BD-main-এর ওপর restore করা হলো, কারণ main-এ এখনো
+// পুরনো/দুর্বল ভার্সন ছিল (password ছাড়া + সাথে সাথে customers.is_active
+// = false)। দুটো সেফটি লেয়ার ফিরিয়ে আনা হয়েছে:
+//   ১. পাসওয়ার্ড সেট করা থাকলে current_password ভেরিফাই বাধ্যতামূলক
+//      (changeMyPassword-এর same hasExistingPassword প্যাটার্ন)।
+//      Google/OTP-only (পাসওয়ার্ড নেই) অ্যাকাউন্টে এই ধাপ স্কিপ হয়।
+//   ২. সাথে সাথে is_active=false করা হয় না — শুধু deletion_requested_at
+//      সেট হয় (soft flag)। ৩০ দিনের মধ্যে যেকোনো সফল লগইনে
+//      (customerPortal.controller.js-এর cancelPendingDeletion()) এটা
+//      automatically বাতিল হয়ে যায়। কোনো admin/SR রিভিউ লাগে না।
+// audit trail (logPortalSecurityEvent) রাখা হয়েছে — main-এর অন্য সব
+// security action-এর প্যাটার্নের সাথে সামঞ্জস্য রেখে।
+// ⚠️ main-এর আগের ভার্সনে থাকা customers.is_active=false তাৎক্ষণিক
+// deactivation ইচ্ছাকৃতভাবে বাদ দেওয়া হয়েছে — grace period-এর মূল
+// উদ্দেশ্যই ছিল এই তাৎক্ষণিক deactivation এড়ানো। যদি সংযুক্ত কোম্পানি
+// connection-গুলো আলাদাভাবে সাথে সাথে বন্ধ করাটা ইচ্ছাকৃত ব্যবসায়িক
+// প্রয়োজন হয়, সেটা আলাদা আলোচনা/ফিচার হিসেবে যোগ করা উচিত।
 // ============================================================
 const deleteMyAccount = async (req, res) => {
     try {
         const personId = await getPersonId(req.portalUser);
-        const { reason } = req.body;
+        const { reason, current_password } = req.body;
 
-        const custRows = await query(
-            `SELECT id FROM customers WHERE person_id = $1 AND is_active = true`,
-            [personId]
-        );
+        // ── পাসওয়ার্ড ভেরিফিকেশন (সেট করা থাকলে বাধ্যতামূলক) ──
+        const isCustomerType = !!req.portalUser?.customer_id;
+        const table   = isCustomerType ? 'customers' : 'persons';
+        const ownerId = isCustomerType ? req.portalUser.customer_id : personId;
 
-        await query(`UPDATE customers SET is_active = false WHERE person_id = $1 AND is_active = true`, [personId]);
+        const owner = await query(`SELECT password_hash FROM ${table} WHERE id = $1`, [ownerId]);
+        const storedHash = owner.rows[0]?.password_hash;
+
+        if (storedHash) {
+            if (!current_password) {
+                return res.status(400).json({ success: false, message: 'নিশ্চিত করতে আপনার পাসওয়ার্ড দিন।' });
+            }
+            const isValid = await bcrypt.compare(current_password, storedHash);
+            if (!isValid) {
+                return res.status(401).json({ success: false, message: 'পাসওয়ার্ড সঠিক নয়।' });
+            }
+        }
+        // storedHash না থাকলে (Google/OTP-only) — পাসওয়ার্ড ধাপ স্কিপ
+
         await query(`UPDATE persons SET deletion_requested_at = NOW(), deletion_reason = $2 WHERE id = $1`, [personId, reason || null]);
 
-        for (const row of custRows.rows) {
-            await invalidatePortalAuthCache(row.id);
-        }
+        logger.info(`🗑️ Account deletion requested (30-day grace period): person ${personId}`);
 
-        logger.info(`🗑️ Account self-deleted: person ${personId} (${custRows.rows.length}টা connection deactivated)`);
-
-        // ✅ NEW — audit trail, best-effort (personId এখানে আগে থেকেই resolve করা)
+        // ✅ audit trail, best-effort
         await logPortalSecurityEvent(req, personId, 'ACCOUNT_DELETE_REQUESTED', {
-            tableName: 'persons', recordId: personId,
-            newValue: { reason: reason || null, connections_deactivated: custRows.rows.length },
+            customerId: req.portalUser?.customer_id || null, tableName: 'persons', recordId: personId,
+            newValue: { reason: reason || null, grace_period_days: 30 },
         }).catch(() => {});
 
-        res.json({ success: true, message: 'আপনার অ্যাকাউন্ট ডিলিট করা হয়েছে।' });
+        res.json({ success: true, message: 'ডিলিট রিকোয়েস্ট জমা হয়েছে। ৩০ দিনের মধ্যে লগইন করলে এটা বাতিল হয়ে যাবে।' });
     } catch (err) {
         if (err.message === 'PERSON_NOT_LINKED') {
             return res.status(404).json({ success: false, message: 'প্রোফাইল লিংক পাওয়া যায়নি।' });
@@ -574,7 +606,7 @@ const updateMyPreferences = async (req, res) => {
 module.exports = {
     getMyAreaAndField, updateMyAreaAndField, updateMyPhoto,
     getMySecurityInfo, changeMyPassword, revokeMyDevice,
-    // ✅ immediate self-service, admin/SR রিভিউ নেই
+    // ✅ grace-period self-service (৩০ দিন, লগইনে বাতিল), admin/SR রিভিউ নেই
     getDeletionPreview, deleteMyAccount,
     // ✅ NEW — থিম/ভাষা/নোটিফিকেশন পছন্দ, person-level, backend-এ persist হয়
     getMyPreferences, updateMyPreferences,

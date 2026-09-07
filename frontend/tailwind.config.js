@@ -14,51 +14,50 @@ export default {
         // ⬇️ নতুন — Customer Portal Design System (customer-design-system.html)
         // 'cp-' প্রিফিক্স দিয়ে সম্পূর্ণ আলাদা রাখা হয়েছে যাতে admin/worker/manager
         // পোর্টালের বিদ্যমান primary/secondary/accent/danger একদমই স্পর্শ না হয়।
+        //
+        // ✅ dark mode: হেক্স ভ্যালুর বদলে CSS variable রেফারেন্স — আসল মান
+        // index.css-এর :root/.dark ব্লকে। ফলে bg-cp-*/text-cp-* ব্যবহারকারী
+        // প্রতিটা existing কম্পোনেন্ট কোনো পরিবর্তন ছাড়াই automatically
+        // dark-aware — rgb(var(--x) / <alpha-value>) প্যাটার্নে opacity
+        // মডিফায়ারও (bg-cp-x/60) কাজ করে।
         // ============================================================
-        // ✅ FIX — আগে এখানে flat hex ছিল, তাই tailwind.config.js-এর
-        // darkMode:'class' সেট করা থাকলেও কার্যত কিছুই বদলাতো না (টগল
-        // চাপলে UI-তে কোনো visual change হতো না)। এখন var(--cp-*)
-        // রেফার করে, আসল মান index.css-এর :root (light) / .dark (dark)
-        // ব্লকে — dark class যেকোনো ancestor-এ (এখানে CustomerLayout-এর
-        // <main>) থাকলেই পুরো subtree সঠিক রঙ পাবে, প্রতিটা কম্পোনেন্টে
-        // আলাদা dark: variant লিখতে হবে না।
         'cp-bg': {
-          base:    'var(--cp-bg-base)',
-          surface: 'var(--cp-bg-surface)',
-          alt:     'var(--cp-bg-alt)',
-          sunken:  'var(--cp-bg-sunken)',
+          base:    'rgb(var(--cp-bg-base) / <alpha-value>)',
+          surface: 'rgb(var(--cp-bg-surface) / <alpha-value>)',
+          alt:     'rgb(var(--cp-bg-alt) / <alpha-value>)',
+          sunken:  'rgb(var(--cp-bg-sunken) / <alpha-value>)',
         },
         'cp-trust': {
-          900: 'var(--cp-trust-900)',
-          700: 'var(--cp-trust-700)',
-          500: 'var(--cp-trust-500)',
-          300: 'var(--cp-trust-300)',
-          100: 'var(--cp-trust-100)',
+          900: 'rgb(var(--cp-trust-900) / <alpha-value>)',
+          700: 'rgb(var(--cp-trust-700) / <alpha-value>)',
+          500: 'rgb(var(--cp-trust-500) / <alpha-value>)',
+          300: 'rgb(var(--cp-trust-300) / <alpha-value>)',
+          100: 'rgb(var(--cp-trust-100) / <alpha-value>)',
         },
         'cp-confidence': {
-          600: 'var(--cp-confidence-600)',
-          300: 'var(--cp-confidence-300)',
-          100: 'var(--cp-confidence-100)',
+          600: 'rgb(var(--cp-confidence-600) / <alpha-value>)',
+          300: 'rgb(var(--cp-confidence-300) / <alpha-value>)',
+          100: 'rgb(var(--cp-confidence-100) / <alpha-value>)',
         },
         'cp-warmth': {
-          600: 'var(--cp-warmth-600)',
-          300: 'var(--cp-warmth-300)',
-          100: 'var(--cp-warmth-100)',
+          600: 'rgb(var(--cp-warmth-600) / <alpha-value>)',
+          300: 'rgb(var(--cp-warmth-300) / <alpha-value>)',
+          100: 'rgb(var(--cp-warmth-100) / <alpha-value>)',
         },
         'cp-text': {
-          primary:   'var(--cp-text-primary)',
-          secondary: 'var(--cp-text-secondary)',
-          muted:     'var(--cp-text-muted)',
+          primary:   'rgb(var(--cp-text-primary) / <alpha-value>)',
+          secondary: 'rgb(var(--cp-text-secondary) / <alpha-value>)',
+          muted:     'rgb(var(--cp-text-muted) / <alpha-value>)',
         },
         'cp-border': {
-          DEFAULT: 'var(--cp-border)',
-          strong:  'var(--cp-border-strong)',
-          focus:   'var(--cp-border-focus)',
+          DEFAULT: 'rgb(var(--cp-border) / <alpha-value>)',
+          strong:  'rgb(var(--cp-border-strong) / <alpha-value>)',
+          focus:   'rgb(var(--cp-border-focus) / <alpha-value>)',
         },
-        'cp-success': { DEFAULT: 'var(--cp-success)', bg: 'var(--cp-success-bg)' },
-        'cp-warning': { DEFAULT: 'var(--cp-warning)', bg: 'var(--cp-warning-bg)' },
-        'cp-error':   { DEFAULT: 'var(--cp-error)',   bg: 'var(--cp-error-bg)' },
-        'cp-info':    { DEFAULT: 'var(--cp-info)',    bg: 'var(--cp-info-bg)' },
+        'cp-success': { DEFAULT: 'rgb(var(--cp-success) / <alpha-value>)', bg: 'rgb(var(--cp-success-bg) / <alpha-value>)' },
+        'cp-warning': { DEFAULT: 'rgb(var(--cp-warning) / <alpha-value>)', bg: 'rgb(var(--cp-warning-bg) / <alpha-value>)' },
+        'cp-error':   { DEFAULT: 'rgb(var(--cp-error) / <alpha-value>)',   bg: 'rgb(var(--cp-error-bg) / <alpha-value>)' },
+        'cp-info':    { DEFAULT: 'rgb(var(--cp-info) / <alpha-value>)',    bg: 'rgb(var(--cp-info-bg) / <alpha-value>)' },
 
         // ============================================================
         // ⬇️ নতুন — Platform Panel Design System (design.html — Business

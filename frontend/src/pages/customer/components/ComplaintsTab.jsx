@@ -138,7 +138,7 @@ export default function ComplaintsTab({ portalJWT }) {
         <button
           type="button"
           onClick={() => { setFormOpen(true); setSubmitSuccess('') }}
-          className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-cp-error/30 bg-white py-3.5 text-[13px] font-bold text-cp-error"
+          className="w-full flex items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-cp-error/30 bg-cp-bg-surface py-3.5 text-[13px] font-bold text-cp-error"
         >
           <FiPlus className="w-4 h-4" /> নতুন অভিযোগ / ফিডব্যাক দিন
         </button>
@@ -163,7 +163,7 @@ export default function ComplaintsTab({ portalJWT }) {
                     className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-colors truncate max-w-[140px] ${
                       selectedConnectionId === String(co.connection_id)
                         ? 'bg-cp-trust-500 text-white border-cp-trust-500'
-                        : 'bg-white text-cp-text-secondary border-cp-border'
+                        : 'bg-cp-bg-surface text-cp-text-secondary border-cp-border'
                     }`}
                   >
                     {companyName(co)}
@@ -185,7 +185,7 @@ export default function ComplaintsTab({ portalJWT }) {
                     className={`px-2.5 py-1.5 rounded-full text-[11px] font-semibold border transition-colors ${
                       type === t.v
                         ? 'bg-cp-error/10 text-cp-error border-cp-error/40'
-                        : 'bg-white text-cp-text-secondary border-cp-border'
+                        : 'bg-cp-bg-surface text-cp-text-secondary border-cp-border'
                     }`}
                   >
                     {t.l}
@@ -211,7 +211,7 @@ export default function ComplaintsTab({ portalJWT }) {
                 maxLength={2000}
                 rows={4}
                 placeholder="সমস্যাটি বিস্তারিত লিখুন..."
-                className="w-full rounded-xl border border-cp-border bg-white px-3 py-2 text-[13px] text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500 resize-none"
+                className="w-full rounded-xl border border-cp-border bg-cp-bg-surface px-3 py-2 text-[13px] text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500 resize-none"
               />
             </div>
 
@@ -249,7 +249,7 @@ export default function ComplaintsTab({ portalJWT }) {
 
         {listLoading ? (
           [...Array(2)].map((_, i) => (
-            <div key={i} className="h-24 bg-white rounded-2xl border border-cp-border animate-pulse" />
+            <div key={i} className="h-24 bg-cp-bg-surface rounded-2xl border border-cp-border animate-pulse" />
           ))
         ) : complaints.length === 0 ? (
           <div className="text-center py-8">
@@ -261,7 +261,7 @@ export default function ComplaintsTab({ portalJWT }) {
             const status = STATUS_LABEL[c.status] || STATUS_LABEL.open
             const t = TYPE_OPTS.find((o) => o.v === c.type)
             return (
-              <div key={c.id} className="bg-white rounded-2xl border border-cp-border px-4 py-3 flex flex-col gap-1.5">
+              <div key={c.id} className="bg-cp-bg-surface rounded-2xl border border-cp-border px-4 py-3 flex flex-col gap-1.5">
                 <div className="flex justify-between items-start gap-2">
                   <div className="min-w-0 flex-1">
                     {companies.length > 1 && (

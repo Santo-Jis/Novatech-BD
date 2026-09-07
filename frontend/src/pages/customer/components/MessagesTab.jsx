@@ -33,7 +33,7 @@ function Avatar({ name, logoUrl, colorKey, size = 12 }) {
       src={logoUrl}
       alt=""
       onError={() => setImgError(true)}
-      className={clsx(dim, 'rounded-full object-cover bg-white border border-cp-border flex-shrink-0')}
+      className={clsx(dim, 'rounded-full object-cover bg-cp-bg-surface border border-cp-border flex-shrink-0')}
     />
   ) : (
     <span className={clsx(dim, 'rounded-full flex items-center justify-center text-white font-cp-head font-semibold flex-shrink-0', c.dot)}>
@@ -190,7 +190,7 @@ export default function MessagesTab() {
   return (
     <div className="h-full lg:grid lg:grid-cols-[340px_1fr]">
       {/* ── ইনবক্স — মোবাইলে openItem থাকলে হাইড, lg-তে সবসময় দৃশ্যমান ── */}
-      <div className={clsx('h-full overflow-y-auto border-r border-cp-border bg-white', openItem && 'hidden lg:block')}>
+      <div className={clsx('h-full overflow-y-auto border-r border-cp-border bg-cp-bg-surface', openItem && 'hidden lg:block')}>
         <div className="px-4 py-4 border-b border-cp-border">
           <h2 className="font-cp-head font-bold text-[17px] text-cp-text-primary">মেসেজ</h2>
         </div>

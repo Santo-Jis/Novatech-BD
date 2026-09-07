@@ -55,7 +55,7 @@ export default function QtyStepper({
         type="button"
         onClick={onDec}
         disabled={disabled}
-        className={`${s.btn} rounded-md bg-white text-cp-trust-700 flex items-center justify-center active:bg-cp-trust-100 disabled:opacity-40 disabled:pointer-events-none`}
+        className={`${s.btn} rounded-md bg-cp-bg-surface text-cp-trust-700 flex items-center justify-center active:bg-cp-trust-100 disabled:opacity-40 disabled:pointer-events-none`}
       >
         <FiMinus className={s.icon} />
       </button>
@@ -77,7 +77,7 @@ export default function QtyStepper({
         type="button"
         onClick={onInc}
         disabled={disabled || qty >= stock}
-        className={`${s.btn} rounded-md bg-white text-cp-trust-700 flex items-center justify-center active:bg-cp-trust-100 disabled:opacity-40 disabled:pointer-events-none`}
+        className={`${s.btn} rounded-md bg-cp-bg-surface text-cp-trust-700 flex items-center justify-center active:bg-cp-trust-100 disabled:opacity-40 disabled:pointer-events-none`}
       >
         <FiPlus className={s.icon} />
       </button>

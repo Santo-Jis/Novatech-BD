@@ -372,7 +372,7 @@ export default function ConnectionsTab({
       {/* ── QR মোডাল ── */}
       {qrOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" onClick={() => setQrOpen(false)}>
-          <div className="bg-white w-full max-w-[480px] rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
+          <div className="bg-cp-bg-surface w-full max-w-[480px] rounded-t-3xl p-5" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-4">
               <p className="text-base font-bold text-cp-text-primary">আমার QR কোড</p>
               <button onClick={() => setQrOpen(false)}><FiX size={20} className="text-cp-text-muted" /></button>
@@ -403,7 +403,7 @@ export default function ConnectionsTab({
       {/* ── সার্চ/কানেক্ট মোডাল ── */}
       {searchOpen && (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50" onClick={() => setSearchOpen(false)}>
-          <div className="bg-white w-full max-w-[480px] rounded-t-3xl p-5 max-h-[75vh] flex flex-col" onClick={e => e.stopPropagation()}>
+          <div className="bg-cp-bg-surface w-full max-w-[480px] rounded-t-3xl p-5 max-h-[75vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex justify-between items-center mb-3">
               <p className="text-base font-bold text-cp-text-primary">কোম্পানি খুঁজুন</p>
               <button onClick={() => setSearchOpen(false)}><FiX size={20} className="text-cp-text-muted" /></button>

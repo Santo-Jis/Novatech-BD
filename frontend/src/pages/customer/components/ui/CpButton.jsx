@@ -22,7 +22,7 @@ const VARIANT_CLASSES = {
   primary:
     'bg-cp-trust-500 text-white hover:bg-cp-trust-700 active:bg-cp-trust-900 disabled:bg-cp-trust-300',
   secondary:
-    'bg-white text-cp-trust-500 border-2 border-cp-trust-500 hover:bg-cp-trust-100 disabled:text-cp-trust-300 disabled:border-cp-trust-300',
+    'bg-cp-bg-surface text-cp-trust-500 border-2 border-cp-trust-500 hover:bg-cp-trust-100 disabled:text-cp-trust-300 disabled:border-cp-trust-300',
   action:
     'bg-cp-warmth-600 text-white hover:brightness-95 active:brightness-90 disabled:bg-cp-warmth-300 shadow-sm shadow-cp-warmth-600/30',
   confirm:

@@ -136,7 +136,7 @@ export default function CreditTab({ portalJWT }) {
       <div className="flex flex-col gap-3">
         {summaryLoading ? (
           [...Array(2)].map((_, i) => (
-            <div key={i} className="h-24 bg-white rounded-2xl border border-cp-border animate-pulse" />
+            <div key={i} className="h-24 bg-cp-bg-surface rounded-2xl border border-cp-border animate-pulse" />
           ))
         ) : creditSummary.length === 0 ? (
           <div className="text-center py-8">
@@ -196,7 +196,7 @@ export default function CreditTab({ portalJWT }) {
                   className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-colors truncate max-w-[140px] ${
                     selectedConnectionId === String(co.connection_id)
                       ? 'bg-cp-trust-500 text-white border-cp-trust-500'
-                      : 'bg-white text-cp-text-secondary border-cp-border'
+                      : 'bg-cp-bg-surface text-cp-text-secondary border-cp-border'
                   }`}
                 >
                   {companyName(co)}
@@ -224,7 +224,7 @@ export default function CreditTab({ portalJWT }) {
               maxLength={500}
               rows={3}
               placeholder="কেন সীমা বাড়ানো দরকার, সংক্ষেপে লিখুন…"
-              className="w-full rounded-xl border border-cp-border bg-white px-3 py-2 text-[13px] text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500 resize-none"
+              className="w-full rounded-xl border border-cp-border bg-cp-bg-surface px-3 py-2 text-[13px] text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500 resize-none"
             />
           </div>
 
@@ -245,7 +245,7 @@ export default function CreditTab({ portalJWT }) {
 
         {requestsLoading ? (
           [...Array(2)].map((_, i) => (
-            <div key={i} className="h-16 bg-white rounded-2xl border border-cp-border animate-pulse" />
+            <div key={i} className="h-16 bg-cp-bg-surface rounded-2xl border border-cp-border animate-pulse" />
           ))
         ) : requests.length === 0 ? (
           <p className="text-cp-text-muted text-[13px] text-center py-4">এখনো কোনো আবেদন করা হয়নি।</p>
@@ -253,7 +253,7 @@ export default function CreditTab({ portalJWT }) {
           requests.map((r) => {
             const status = STATUS_LABEL[r.status] || STATUS_LABEL.pending
             return (
-              <div key={r.id} className="bg-white rounded-2xl border border-cp-border px-4 py-3 flex flex-col gap-1.5">
+              <div key={r.id} className="bg-cp-bg-surface rounded-2xl border border-cp-border px-4 py-3 flex flex-col gap-1.5">
                 <div className="flex justify-between items-start gap-2">
                   <div className="min-w-0">
                     {companies.length > 1 && (

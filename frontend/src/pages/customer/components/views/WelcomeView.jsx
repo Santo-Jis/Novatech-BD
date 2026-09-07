@@ -134,7 +134,7 @@ export default function WelcomeView({
           <button
             onClick={onLogin}
             disabled={loggingIn}
-            className="w-full h-14 rounded-xl bg-white border border-cp-border text-cp-trust-700 text-[15px] font-semibold
+            className="w-full h-14 rounded-xl bg-cp-bg-surface border border-cp-border text-cp-trust-700 text-[15px] font-semibold
                        flex items-center justify-center gap-2.5 shadow-sm transition-all active:scale-[0.98]
                        disabled:opacity-70 disabled:cursor-not-allowed disabled:bg-cp-bg-alt"
           >

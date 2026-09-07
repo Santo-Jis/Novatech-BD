@@ -27,7 +27,7 @@ export default function CartBar({ cartCount = 0, itemCount = 0, totalAmount = 0,
       >
         <div className="relative w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center flex-shrink-0">
           <FiShoppingCart className="w-[18px] h-[18px] text-white" />
-          <span className="absolute -top-1.5 -right-1.5 bg-white text-cp-warmth-700 text-[10px] font-cp-head font-extrabold min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">
+          <span className="absolute -top-1.5 -right-1.5 bg-cp-bg-surface text-cp-warmth-700 text-[10px] font-cp-head font-extrabold min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center">
             {itemCount}
           </span>
         </div>

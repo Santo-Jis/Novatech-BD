@@ -214,7 +214,7 @@ export default function CheckoutSheet({
                       onClick={() => onPaymentMethodChange('cod')}
                       className={paymentMethod === 'cod'
                         ? 'rounded-xl border-2 border-cp-trust-500 bg-cp-trust-100 p-2.5 text-left'
-                        : 'rounded-xl border-2 border-cp-border bg-white p-2.5 text-left'}
+                        : 'rounded-xl border-2 border-cp-border bg-cp-bg-surface p-2.5 text-left'}
                     >
                       <p className="text-[12.5px] font-bold text-cp-text-primary font-cp-head">🚚 ক্যাশ অন ডেলিভারি</p>
                       <p className="text-[10px] text-cp-text-muted mt-0.5 font-cp-body">ডেলিভারিতে নগদ পরিশোধ</p>
@@ -224,7 +224,7 @@ export default function CheckoutSheet({
                         onClick={() => onPaymentMethodChange(bkashAvailable ? 'bkash_manual' : 'nagad_manual')}
                         className={isMobileBanking
                           ? 'rounded-xl border-2 border-cp-trust-500 bg-cp-trust-100 p-2.5 text-left'
-                          : 'rounded-xl border-2 border-cp-border bg-white p-2.5 text-left'}
+                          : 'rounded-xl border-2 border-cp-border bg-cp-bg-surface p-2.5 text-left'}
                       >
                         <p className="text-[12.5px] font-bold text-cp-text-primary font-cp-head">📱 মোবাইল ব্যাংকিং</p>
                         <p className="text-[10px] text-cp-text-muted mt-0.5 font-cp-body">এখনই bKash/Nagad-এ পে করুন</p>
@@ -276,13 +276,13 @@ export default function CheckoutSheet({
                               value={trx.trx_id}
                               onChange={e => onTrxInputChange(group.tenantId, 'trx_id', e.target.value.toUpperCase())}
                               placeholder="Transaction ID (TrxID)"
-                              className="w-full h-9 px-3 rounded-lg border border-cp-border bg-white text-[12px] font-cp-body focus:outline-none focus:border-cp-trust-500"
+                              className="w-full h-9 px-3 rounded-lg border border-cp-border bg-cp-bg-surface text-[12px] font-cp-body focus:outline-none focus:border-cp-trust-500"
                             />
                             <input
                               value={trx.sender_number}
                               onChange={e => onTrxInputChange(group.tenantId, 'sender_number', e.target.value)}
                               placeholder="যে নম্বর থেকে পাঠিয়েছেন (সম্পূর্ণ বা শেষ ৫ সংখ্যা)"
-                              className="w-full h-9 px-3 rounded-lg border border-cp-border bg-white text-[12px] font-cp-body focus:outline-none focus:border-cp-trust-500"
+                              className="w-full h-9 px-3 rounded-lg border border-cp-border bg-cp-bg-surface text-[12px] font-cp-body focus:outline-none focus:border-cp-trust-500"
                             />
                           </div>
                         )
@@ -301,7 +301,7 @@ export default function CheckoutSheet({
                       onChange={e => setCodeInput(e.target.value.toUpperCase())}
                       onKeyDown={e => { if (e.key === 'Enter' && codeInput) onApplyPromoCode(codeInput) }}
                       placeholder="প্রোমো কোড থাকলে দিন (ঐচ্ছিক)"
-                      className="w-full h-10 pl-8 pr-3 rounded-xl border border-cp-border bg-white text-[12.5px] font-cp-body text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:border-cp-trust-500"
+                      className="w-full h-10 pl-8 pr-3 rounded-xl border border-cp-border bg-cp-bg-surface text-[12.5px] font-cp-body text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:border-cp-trust-500"
                     />
                   </div>
                   <button

@@ -612,7 +612,7 @@ export default function OrderRequestTab({ portalJWT }) {
           onClick={() => setSubTab('shop')}
           className={
             subTab === 'shop'
-              ? 'flex-1 h-9 rounded-lg bg-white shadow-sm text-cp-trust-700 text-[13px] font-cp-head font-bold flex items-center justify-center gap-1.5 transition-colors'
+              ? 'flex-1 h-9 rounded-lg bg-cp-bg-surface shadow-sm text-cp-trust-700 text-[13px] font-cp-head font-bold flex items-center justify-center gap-1.5 transition-colors'
               : 'flex-1 h-9 rounded-lg text-cp-text-secondary text-[13px] font-cp-head font-semibold flex items-center justify-center gap-1.5 transition-colors'
           }
         >
@@ -622,7 +622,7 @@ export default function OrderRequestTab({ portalJWT }) {
           onClick={() => setSubTab('history')}
           className={
             subTab === 'history'
-              ? 'flex-1 h-9 rounded-lg bg-white shadow-sm text-cp-trust-700 text-[13px] font-cp-head font-bold flex items-center justify-center gap-1.5 transition-colors'
+              ? 'flex-1 h-9 rounded-lg bg-cp-bg-surface shadow-sm text-cp-trust-700 text-[13px] font-cp-head font-bold flex items-center justify-center gap-1.5 transition-colors'
               : 'flex-1 h-9 rounded-lg text-cp-text-secondary text-[13px] font-cp-head font-semibold flex items-center justify-center gap-1.5 transition-colors'
           }
         >
@@ -637,7 +637,7 @@ export default function OrderRequestTab({ portalJWT }) {
           onClick={() => setSubTab('saved')}
           className={
             subTab === 'saved'
-              ? 'flex-1 h-9 rounded-lg bg-white shadow-sm text-cp-trust-700 text-[13px] font-cp-head font-bold flex items-center justify-center gap-1.5 transition-colors'
+              ? 'flex-1 h-9 rounded-lg bg-cp-bg-surface shadow-sm text-cp-trust-700 text-[13px] font-cp-head font-bold flex items-center justify-center gap-1.5 transition-colors'
               : 'flex-1 h-9 rounded-lg text-cp-text-secondary text-[13px] font-cp-head font-semibold flex items-center justify-center gap-1.5 transition-colors'
           }
         >

@@ -185,7 +185,7 @@ export default function ReturnsTab({ portalJWT }) {
               type="button"
               onClick={() => setSubTab(st.id)}
               className={`flex-1 py-1.5 rounded-xl text-[11px] font-bold transition-colors ${
-                subTab === st.id ? 'bg-white text-cp-trust-700 shadow-sm' : 'text-cp-text-muted'
+                subTab === st.id ? 'bg-cp-bg-surface text-cp-trust-700 shadow-sm' : 'text-cp-text-muted'
               }`}
             >
               {st.l}
@@ -232,7 +232,7 @@ export default function ReturnsTab({ portalJWT }) {
                         className={`px-3 py-1.5 rounded-full text-[11px] font-semibold border transition-colors truncate max-w-[140px] ${
                           selectedConnectionId === String(co.connection_id)
                             ? 'bg-cp-trust-500 text-white border-cp-trust-500'
-                            : 'bg-white text-cp-text-secondary border-cp-border'
+                            : 'bg-cp-bg-surface text-cp-text-secondary border-cp-border'
                         }`}
                       >
                         {companyName(co)}
@@ -262,7 +262,7 @@ export default function ReturnsTab({ portalJWT }) {
                         className={`flex-1 py-2 rounded-xl text-[12px] font-bold border-2 transition-colors ${
                           type === t.v
                             ? 'bg-cp-trust-500/10 text-cp-trust-700 border-cp-trust-500'
-                            : 'bg-white text-cp-text-secondary border-cp-border'
+                            : 'bg-cp-bg-surface text-cp-text-secondary border-cp-border'
                         }`}
                       >
                         {t.l}
@@ -284,7 +284,7 @@ export default function ReturnsTab({ portalJWT }) {
                   </div>
                   <div className="flex flex-col gap-2.5">
                     {items.map((item, idx) => (
-                      <div key={idx} className="bg-white border border-cp-border rounded-xl p-3 flex flex-col gap-2">
+                      <div key={idx} className="bg-cp-bg-surface border border-cp-border rounded-xl p-3 flex flex-col gap-2">
                         <div className="flex items-center justify-between">
                           <p className="text-[10px] font-bold text-cp-text-muted">পণ্য #{idx + 1}</p>
                           {items.length > 1 && (
@@ -331,7 +331,7 @@ export default function ReturnsTab({ portalJWT }) {
                     onChange={(e) => setNote(e.target.value)}
                     rows={2}
                     placeholder="বিস্তারিত লিখুন..."
-                    className="w-full rounded-xl border border-cp-border bg-white px-3 py-2 text-[13px] text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500 resize-none"
+                    className="w-full rounded-xl border border-cp-border bg-cp-bg-surface px-3 py-2 text-[13px] text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:ring-2 focus:ring-cp-trust-500/40 focus:border-cp-trust-500 resize-none"
                   />
                 </div>
 
@@ -368,7 +368,7 @@ export default function ReturnsTab({ portalJWT }) {
           <div className="flex flex-col gap-2">
             {reqLoading ? (
               [...Array(2)].map((_, i) => (
-                <div key={i} className="h-28 bg-white rounded-2xl border border-cp-border animate-pulse" />
+                <div key={i} className="h-28 bg-cp-bg-surface rounded-2xl border border-cp-border animate-pulse" />
               ))
             ) : requests.length === 0 ? (
               <div className="text-center py-8">
@@ -381,7 +381,7 @@ export default function ReturnsTab({ portalJWT }) {
                 let pi = []
                 try { pi = Array.isArray(r.items) ? r.items : JSON.parse(r.items || '[]') } catch { /* noop */ }
                 return (
-                  <div key={r.id} className="bg-white rounded-2xl border border-cp-border overflow-hidden">
+                  <div key={r.id} className="bg-cp-bg-surface rounded-2xl border border-cp-border overflow-hidden">
                     <div className="bg-cp-bg-alt px-4 py-2.5 border-b border-cp-border flex justify-between items-start gap-2">
                       <div className="min-w-0">
                         {companies.length > 1 && (
@@ -427,7 +427,7 @@ export default function ReturnsTab({ portalJWT }) {
         <div className="flex flex-col gap-2">
           {srLoading ? (
             [...Array(2)].map((_, i) => (
-              <div key={i} className="h-24 bg-white rounded-2xl border border-cp-border animate-pulse" />
+              <div key={i} className="h-24 bg-cp-bg-surface rounded-2xl border border-cp-border animate-pulse" />
             ))
           ) : srRecords.length === 0 ? (
             <div className="text-center py-8">
@@ -445,7 +445,7 @@ export default function ReturnsTab({ portalJWT }) {
               {srRecords.map((r, i) => {
                 const srItems = Array.isArray(r.replacement_items) ? r.replacement_items : []
                 return (
-                  <div key={i} className="bg-white rounded-2xl border border-cp-border overflow-hidden">
+                  <div key={i} className="bg-cp-bg-surface rounded-2xl border border-cp-border overflow-hidden">
                     <div className="bg-cp-warning/5 px-4 py-2.5 border-b border-cp-warning/10 flex justify-between items-center">
                       <div className="min-w-0">
                         {companies.length > 1 && (

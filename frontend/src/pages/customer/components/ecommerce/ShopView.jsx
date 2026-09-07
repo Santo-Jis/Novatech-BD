@@ -61,7 +61,7 @@ function HorizontalProductRow({
 
 function ProductCardSkeleton() {
   return (
-    <div className="bg-white rounded-2xl border border-cp-border overflow-hidden animate-pulse">
+    <div className="bg-cp-bg-surface rounded-2xl border border-cp-border overflow-hidden animate-pulse">
       <div className="aspect-square bg-cp-bg-alt" />
       <div className="p-2.5 flex flex-col gap-2">
         <div className="h-3 bg-cp-bg-alt rounded w-full" />
@@ -118,7 +118,7 @@ export default function ShopView({
             onChange={e => onSearchChange(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') onSearchSubmit() }}
             placeholder="পণ্য খুঁজুন..."
-            className="w-full h-12 pl-9 pr-8 rounded-xl border border-cp-border bg-white text-[13px] font-cp-body text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:border-cp-trust-500"
+            className="w-full h-12 pl-9 pr-8 rounded-xl border border-cp-border bg-cp-bg-surface text-[13px] font-cp-body text-cp-text-primary placeholder:text-cp-text-muted focus:outline-none focus:border-cp-trust-500"
           />
           {search && (
             <button

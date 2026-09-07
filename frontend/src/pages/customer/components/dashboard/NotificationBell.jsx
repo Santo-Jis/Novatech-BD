@@ -31,8 +31,8 @@ export default function NotificationBell({
       </button>
 
       {showBell && (
-        <div className="absolute right-0 top-12 w-[290px] max-h-[380px] bg-white rounded-2xl shadow-2xl overflow-y-auto z-[100]">
-          <div className="px-4 py-3 border-b border-cp-border flex justify-between items-center sticky top-0 bg-white">
+        <div className="absolute right-0 top-12 w-[290px] max-h-[380px] bg-cp-bg-surface rounded-2xl shadow-2xl overflow-y-auto z-[100]">
+          <div className="px-4 py-3 border-b border-cp-border flex justify-between items-center sticky top-0 bg-cp-bg-surface">
             <span className="text-cp-text-primary font-bold text-sm">🔔 Notification</span>
             <button onClick={() => setShowBell(false)} className="text-cp-text-muted">
               <FiX size={16} />
@@ -48,7 +48,7 @@ export default function NotificationBell({
                 <div
                   key={n.id}
                   onClick={() => { if (!n.is_read) markOneRead(n.id); setShowBell(false); if (cfg.tab) onTabChange(cfg.tab) }}
-                  className={`px-4 py-3 border-b border-cp-bg-alt flex gap-2.5 items-start ${n.is_read ? 'bg-white' : 'bg-cp-trust-100'} ${cfg.tab ? 'cursor-pointer' : ''}`}
+                  className={`px-4 py-3 border-b border-cp-bg-alt flex gap-2.5 items-start ${n.is_read ? 'bg-cp-bg-surface' : 'bg-cp-trust-100'} ${cfg.tab ? 'cursor-pointer' : ''}`}
                 >
                   <span className="text-xl mt-0.5">{cfg.icon}</span>
                   <div className="flex-1 min-w-0">

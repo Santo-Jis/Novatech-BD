@@ -106,7 +106,7 @@ export default function ProductDetailSheet({
                   {images.map((_, i) => (
                     <span
                       key={i}
-                      className={`w-1.5 h-1.5 rounded-full transition-colors ${i === activeImg ? 'bg-white' : 'bg-white/45'}`}
+                      className={`w-1.5 h-1.5 rounded-full transition-colors ${i === activeImg ? 'bg-cp-bg-surface' : 'bg-white/45'}`}
                     />
                   ))}
                 </div>

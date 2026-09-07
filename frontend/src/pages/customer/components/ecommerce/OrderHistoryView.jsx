@@ -126,7 +126,7 @@ export default function OrderHistoryView({
             const subtotal = items.reduce((s, it) => s + (Number(it.unit_price) || 0) * (Number(it.qty) || 0), 0)
 
             return (
-              <div key={req.id} className="bg-white rounded-2xl border border-cp-border overflow-hidden">
+              <div key={req.id} className="bg-cp-bg-surface rounded-2xl border border-cp-border overflow-hidden">
                 <div className="px-4 py-3">
                   <div className="flex justify-between items-start mb-2.5">
                     <div>
@@ -230,7 +230,7 @@ export default function OrderHistoryView({
                     ) : (
                       <button
                         onClick={() => setConfirmingId(req.id)}
-                        className="mt-2.5 w-full py-2 bg-white border border-cp-border text-cp-text-secondary rounded-xl text-[12px] font-semibold font-cp-body transition-colors flex items-center justify-center gap-1.5"
+                        className="mt-2.5 w-full py-2 bg-cp-bg-surface border border-cp-border text-cp-text-secondary rounded-xl text-[12px] font-semibold font-cp-body transition-colors flex items-center justify-center gap-1.5"
                       >
                         <FiX className="w-3.5 h-3.5" /> অর্ডার বাতিল করুন
                       </button>

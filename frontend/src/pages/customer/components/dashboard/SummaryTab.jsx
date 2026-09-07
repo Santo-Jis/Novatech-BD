@@ -76,13 +76,13 @@ export default function SummaryTab({ portalJWT }) {
   if (loading && companies.length === 0) {
     return (
       <div className="flex flex-col gap-5">
-        <div className="h-20 bg-white rounded-2xl border border-cp-border animate-pulse" />
+        <div className="h-20 bg-cp-bg-surface rounded-2xl border border-cp-border animate-pulse" />
         <div className="grid grid-cols-2 gap-2">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="h-20 bg-white rounded-2xl border border-cp-border animate-pulse" />
+            <div key={i} className="h-20 bg-cp-bg-surface rounded-2xl border border-cp-border animate-pulse" />
           ))}
         </div>
-        <div className="h-40 bg-white rounded-2xl border border-cp-border animate-pulse" />
+        <div className="h-40 bg-cp-bg-surface rounded-2xl border border-cp-border animate-pulse" />
       </div>
     )
   }

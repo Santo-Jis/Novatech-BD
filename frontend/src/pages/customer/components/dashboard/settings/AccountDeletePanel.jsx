@@ -2,32 +2,37 @@
 // ═══════════════════════════════════════════════════════════════
 // SettingsPage → "অ্যাকাউন্ট ডিলিট করুন"
 //
-// সরাসরি, এখনই কার্যকর। কোনো admin/SR রিভিউ/অপেক্ষা নেই — এটা
-// কাস্টমারের নিজের স্বাধীন অ্যাকাউন্ট, নিজের সিদ্ধান্ত।
-//
-// কনফার্ম করলেই:
-//   ১. ব্যাকএন্ডে সব connected company deactivate হয় (is_active=false)
-//      + person-only হলে deletion_requested_at সেট হয়
-//   ২. সাথে সাথে onLogout() কল হয় — লগইন স্ক্রিনে ফিরে যায়
+// ✅ দুটো নিরাপত্তা লেয়ার:
+//   ১. পাসওয়ার্ড সেট করা থাকলে (has_password) কনফার্ম করার আগে
+//      current_password চাওয়া হয় — Google/OTP-only অ্যাকাউন্টে এই
+//      ফিল্ড দেখানোই হয় না (has_password=false)।
+//   ২. ৩০ দিনের গ্রেস পিরিয়ড — কনফার্ম করলে সাথে সাথে account
+//      নিষ্ক্রিয় হয় না, শুধু flag হয়। এই ৩০ দিনের মধ্যে যেকোনো
+//      সফল লগইনে (password/OTP/Google) automatically বাতিল হয়ে
+//      যায়। কোনো admin/SR রিভিউ লাগে না — পুরোটাই কাস্টমারের
+//      নিজের নিয়ন্ত্রণে (লগইন = বাতিল, বা কিছু না করলে মেয়াদ শেষে
+//      finalize — jobs/accountDeletion.job.js)।
 //
 // endpoint:
-//   GET  /portal/profile/deletion-preview → বকেয়া ক্রেডিট থাকলে দেখায়
-//                                            (শুধু তথ্য, block করে না)
-//   POST /portal/profile/delete-account   { reason? } → সরাসরি কার্যকর
+//   GET  /portal/profile/deletion-preview → বকেয়া ক্রেডিট + has_password
+//   POST /portal/profile/delete-account   { current_password?, reason? }
 // ═══════════════════════════════════════════════════════════════
 
 import { useState, useEffect } from 'react'
-import { FiTrash2, FiX, FiAlertTriangle } from 'react-icons/fi'
+import { FiTrash2, FiX, FiAlertTriangle, FiClock, FiLock, FiEye, FiEyeOff } from 'react-icons/fi'
 import { portalFetch } from '../../../utils/api'
 import CpCard from '../../ui/CpCard'
 import CpButton from '../../ui/CpButton'
+import CpInput from '../../ui/CpInput'
 
 export default function AccountDeletePanel({ portalJWT, onLogout }) {
   const authHeader = { Authorization: `Bearer ${portalJWT}` }
 
-  const [preview,     setPreview]     = useState(null) // { outstanding_balances }
+  const [preview,     setPreview]     = useState(null) // { outstanding_balances, has_password }
   const [loadError,   setLoadError]   = useState(false)
   const [confirmOpen, setConfirmOpen] = useState(false)
+  const [password,    setPassword]    = useState('')
+  const [showPw,      setShowPw]      = useState(false)
   const [reason,      setReason]      = useState('')
   const [busy,        setBusy]        = useState(false)
   const [err,         setErr]         = useState('')
@@ -39,14 +44,19 @@ export default function AccountDeletePanel({ portalJWT, onLogout }) {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const confirmDelete = async () => {
-    setBusy(true); setErr('')
+    setErr('')
+    if (preview.has_password && !password) {
+      setErr('নিশ্চিত করতে আপনার পাসওয়ার্ড দিন।')
+      return
+    }
+    setBusy(true)
     try {
       await portalFetch('/portal/profile/delete-account', {
         method: 'POST',
         headers: authHeader,
-        body: JSON.stringify({ reason: reason || undefined }),
+        body: JSON.stringify({ current_password: password || undefined, reason: reason || undefined }),
       })
-      // ✅ সরাসরি কার্যকর — অপেক্ষা করার কিছু নেই, তাৎক্ষণিক লগআউট
+      // ✅ রিকোয়েস্ট জমা — এখনই সব শেষ না, ৩০ দিনের গ্রেস পিরিয়ড শুরু, লগআউট
       onLogout()
     } catch (e) {
       setErr(e?.message || 'ডিলিট করতে সমস্যা হয়েছে, আবার চেষ্টা করুন।')
@@ -72,13 +82,23 @@ export default function AccountDeletePanel({ portalJWT, onLogout }) {
 
   return (
     <div className="flex flex-col gap-3">
+      {/* গ্রেস পিরিয়ড ব্যাখ্যা */}
+      <CpCard variant="sunken" padding="sm">
+        <div className="flex gap-2.5 items-start">
+          <FiClock className="text-cp-trust-500 flex-shrink-0 mt-0.5" size={14} />
+          <p className="text-[11.5px] text-cp-text-secondary leading-relaxed">
+            রিকোয়েস্ট করার পর <b>৩০ দিন</b> সময় থাকবে — এর মধ্যে যেকোনো সময় লগইন করলেই ডিলিট স্বয়ংক্রিয়ভাবে বাতিল হয়ে যাবে।
+          </p>
+        </div>
+      </CpCard>
+
       <CpCard padding="md">
         <div className="flex items-center gap-2 mb-2">
           <FiTrash2 className="text-cp-error flex-shrink-0" size={16} />
           <p className="text-xs font-semibold text-cp-text-secondary">অ্যাকাউন্ট ডিলিট করুন</p>
         </div>
         <p className="text-[11.5px] text-cp-text-muted leading-relaxed mb-3">
-          এটি আপনার নিজের স্বাধীন অ্যাকাউন্ট — কনফার্ম করলে সাথে সাথেই কার্যকর হবে, কারো অনুমোদনের অপেক্ষা করতে হবে না।
+          এটি আপনার নিজের স্বাধীন অ্যাকাউন্ট — কারো অনুমোদনের অপেক্ষা করতে হবে না।
         </p>
 
         {preview.outstanding_balances?.length > 0 && (
@@ -91,7 +111,7 @@ export default function AccountDeletePanel({ portalJWT, onLogout }) {
                   {b.company_name} — ৳{Number(b.credit_balance).toLocaleString('bn-BD')}
                 </p>
               ))}
-              <p className="text-[10.5px] text-cp-text-muted mt-1">শুধু তথ্যের জন্য দেখানো হচ্ছে — এটা ডিলিট আটকাচ্ছে না, সিদ্ধান্ত সম্পূর্ণ আপনার।</p>
+              <p className="text-[10.5px] text-cp-text-muted mt-1">শুধু তথ্যের জন্য দেখানো হচ্ছে — এটা ডিলিট আটকাচ্ছে না।</p>
             </div>
           </div>
         )}
@@ -101,7 +121,7 @@ export default function AccountDeletePanel({ portalJWT, onLogout }) {
         </CpButton>
       </CpCard>
 
-      {err && (
+      {err && !confirmOpen && (
         <CpCard variant="sunken" padding="sm">
           <span className="text-xs text-cp-error">{err}</span>
         </CpCard>
@@ -114,11 +134,11 @@ export default function AccountDeletePanel({ portalJWT, onLogout }) {
           onClick={() => !busy && setConfirmOpen(false)}
         >
           <div
-            className="bg-white w-full max-w-[480px] rounded-t-3xl p-5 flex flex-col gap-3"
+            className="bg-cp-bg-surface w-full max-w-[480px] rounded-t-3xl p-5 flex flex-col gap-3"
             onClick={e => e.stopPropagation()}
           >
             <div className="flex justify-between items-center mb-1">
-              <p className="text-base font-bold text-cp-error">নিশ্চিত করুন — এটি স্থায়ী</p>
+              <p className="text-base font-bold text-cp-error">নিশ্চিত করুন</p>
               {!busy && (
                 <button onClick={() => setConfirmOpen(false)}>
                   <FiX size={20} className="text-cp-text-muted" />
@@ -127,8 +147,23 @@ export default function AccountDeletePanel({ portalJWT, onLogout }) {
             </div>
 
             <p className="text-[12.5px] text-cp-text-secondary leading-relaxed">
-              কনফার্ম করলে সাথে সাথে আপনার অ্যাকাউন্ট নিষ্ক্রিয় হয়ে যাবে এবং আপনি লগআউট হয়ে যাবেন। এটা ফিরিয়ে আনতে সাপোর্টের সাথে যোগাযোগ করতে হবে।
+              কনফার্ম করলে আপনি লগআউট হয়ে যাবেন। <b>৩০ দিনের মধ্যে লগইন করলে</b> ডিলিট বাতিল হয়ে যাবে — নাহলে মেয়াদ শেষে চূড়ান্ত হবে।
             </p>
+
+            {preview.has_password && (
+              <CpInput
+                label="পাসওয়ার্ড দিয়ে নিশ্চিত করুন"
+                type={showPw ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                rightElement={
+                  <button type="button" onClick={() => setShowPw(v => !v)} className="text-cp-text-muted">
+                    {showPw ? <FiEyeOff size={17} /> : <FiEye size={17} />}
+                  </button>
+                }
+              />
+            )}
 
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-cp-text-secondary">কারণ (ঐচ্ছিক)</label>
@@ -141,8 +176,12 @@ export default function AccountDeletePanel({ portalJWT, onLogout }) {
               />
             </div>
 
+            {err && (
+              <p className="text-xs text-cp-error bg-cp-error-bg rounded-xl px-3 py-2">{err}</p>
+            )}
+
             <CpButton variant="danger" fullWidth loading={busy} onClick={confirmDelete} className="mt-1 mb-2">
-              হ্যাঁ, এখনই ডিলিট করুন
+              নিশ্চিত করুন
             </CpButton>
           </div>
         </div>

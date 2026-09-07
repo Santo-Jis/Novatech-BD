@@ -34,7 +34,7 @@ export default function CompanyTag({ name, logoUrl, colorKey }) {
           src={logoUrl}
           alt=""
           onError={() => setImgError(true)}
-          className="w-3.5 h-3.5 rounded-full object-cover flex-shrink-0 bg-white"
+          className="w-3.5 h-3.5 rounded-full object-cover flex-shrink-0 bg-cp-bg-surface"
         />
       ) : (
         <span

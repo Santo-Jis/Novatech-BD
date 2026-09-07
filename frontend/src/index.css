@@ -10,93 +10,94 @@
   --accent:    #d97706;
   --danger:    #991b1b;
 
-  /* ============================================================
-     ✅ NEW — Customer Portal (cp-*) থিম ভ্যারিয়েবল, লাইট মোড।
-     মানগুলো আগের tailwind.config.js-এর hex-এর সাথে হুবহু মিলিয়ে রাখা
-     হয়েছে, তাই বিদ্যমান কোনো স্ক্রিনের লুক এতটুকু বদলায়নি।
-     ============================================================ */
-  --cp-bg-base:    #F5F9FD;
-  --cp-bg-surface: #FFFFFF;
-  --cp-bg-alt:     #EAF2FA;
-  --cp-bg-sunken:  #DEEAF6;
+  /* ═══════════════════════════════════════════════════════════
+     কাস্টমার পোর্টাল (cp-*) কালার সিস্টেম — CSS variable হিসেবে।
+     RGB triplet ফরম্যাটে (কমা ছাড়া) যাতে Tailwind-এর opacity
+     মডিফায়ার (bg-cp-border/60 ইত্যাদি) কাজ করে — rgb(var(--x) / <alpha-value>)
+     প্যাটার্ন। tailwind.config.js-এ এই ভ্যারিয়েবলগুলো রেফারেন্স করা।
 
-  --cp-trust-900: #0A2E5C;
-  --cp-trust-700: #124A8C;
-  --cp-trust-500: #2E7BD6;
-  --cp-trust-300: #8FBCEE;
-  --cp-trust-100: #E1EEFC;
+     এখানে মান বদলালে পুরো কাস্টমার পোর্টালের সব cp-bg-*/cp-text-*/
+     cp-trust-* ইত্যাদি ক্লাস-ব্যবহারকারী কম্পোনেন্ট automatically
+     আপডেট হয়ে যায় — কোনো individual ফাইল ছোঁয়া লাগে না।
+     ═══════════════════════════════════════════════════════════ */
+  --cp-bg-base:    245 249 253;   /* #F5F9FD */
+  --cp-bg-surface: 255 255 255;   /* #FFFFFF */
+  --cp-bg-alt:     234 242 250;   /* #EAF2FA */
+  --cp-bg-sunken:  222 234 246;   /* #DEEAF6 */
 
-  --cp-confidence-600: #0E9B6C;
-  --cp-confidence-300: #7FD3AE;
-  --cp-confidence-100: #DCF6EA;
+  --cp-trust-900: 10 46 92;     /* #0A2E5C */
+  --cp-trust-700: 18 74 140;    /* #124A8C */
+  --cp-trust-500: 46 123 214;   /* #2E7BD6 */
+  --cp-trust-300: 143 188 238;  /* #8FBCEE */
+  --cp-trust-100: 225 238 252;  /* #E1EEFC */
 
-  --cp-warmth-600: #F07B22;
-  --cp-warmth-300: #F7B88A;
-  --cp-warmth-100: #FDEBDB;
+  --cp-confidence-600: 14 155 108;   /* #0E9B6C */
+  --cp-confidence-300: 127 211 174;  /* #7FD3AE */
+  --cp-confidence-100: 220 246 234;  /* #DCF6EA */
 
-  --cp-text-primary:   #152A43;
-  --cp-text-secondary: #54697F;
-  --cp-text-muted:     #8CA0B3;
+  --cp-warmth-600: 240 123 34;   /* #F07B22 */
+  --cp-warmth-300: 247 184 138;  /* #F7B88A */
+  --cp-warmth-100: 253 235 219;  /* #FDEBDB */
 
-  --cp-border:        #D9E4EF;
-  --cp-border-strong: #C0D2E3;
-  --cp-border-focus:  #2E7BD6;
+  --cp-text-primary:   21 42 67;     /* #152A43 */
+  --cp-text-secondary: 84 105 127;   /* #54697F */
+  --cp-text-muted:     140 160 179;  /* #8CA0B3 */
 
-  --cp-success:    #0E9B6C;
-  --cp-success-bg: #DCF6EA;
-  --cp-warning:    #F07B22;
-  --cp-warning-bg: #FDEBDB;
-  --cp-error:      #D64545;
-  --cp-error-bg:   #FBE4E4;
-  --cp-info:       #2E7BD6;
-  --cp-info-bg:    #E1EEFC;
+  --cp-border:        217 228 239;  /* #D9E4EF */
+  --cp-border-strong: 192 210 227;  /* #C0D2E3 */
+  --cp-border-focus:  46 123 214;   /* #2E7BD6 */
+
+  --cp-success:    14 155 108;   /* #0E9B6C */
+  --cp-success-bg: 220 246 234;  /* #DCF6EA */
+  --cp-warning:    240 123 34;   /* #F07B22 */
+  --cp-warning-bg: 253 235 219;  /* #FDEBDB */
+  --cp-error:      214 69 69;    /* #D64545 */
+  --cp-error-bg:   251 228 228;  /* #FBE4E4 */
+  --cp-info:       46 123 214;   /* #2E7BD6 */
+  --cp-info-bg:    225 238 252;  /* #E1EEFC */
 }
 
-/* ============================================================
-   ✅ NEW — Customer Portal ডার্ক মোড। এই ক্লাস document.documentElement-এ
-   বসে না (স্টাফ-সাইড app.store.js ইতিমধ্যেই ওই root-level 'dark' ক্লাস
-   ব্যবহার করে, ভিন্ন state থেকে) — বরং CustomerLayout.jsx-এর <main
-   id="cl-main">-এ scoped, personalizationStore.js-এর theme অনুযায়ী।
-   তাই দুই dark-mode সিস্টেম একে অপরকে প্রভাবিত করে না। রঙগুলো একই hue
-   পরিবারে রাখা হয়েছে (jenerик gray না) যাতে ব্র্যান্ডের 'trust blue'
-   পরিচয় বজায় থাকে — ফার্স্ট পাস, শিপ করার আগে একবার visual QA ভালো।
-   ============================================================ */
+/* ═══════════════════════════════════════════════════════════════
+   ডার্ক মোড — PersonalizationPage-এর টগল দিয়ে <html> এলিমেন্টে
+   .dark ক্লাস যোগ/সরানো হয় (useCustomerTheme হুক)। এখানে শুধু
+   ভ্যারিয়েবলগুলো override হচ্ছে, ক্লাস স্ট্রাকচার একই থাকছে।
+   ═══════════════════════════════════════════════════════════════ */
 .dark {
-  --cp-bg-base:    #0A1420;
-  --cp-bg-surface: #10192A;
-  --cp-bg-alt:     #16202F;
-  --cp-bg-sunken:  #060B12;
+  --cp-bg-base:    11 20 32;    /* #0B1420 */
+  --cp-bg-surface: 20 31 46;    /* #141F2E */
+  --cp-bg-alt:     27 40 56;    /* #1B2838 */
+  --cp-bg-sunken:  15 24 38;    /* #0F1826 */
 
-  --cp-trust-900: #A9CCF2;
-  --cp-trust-700: #6FA3E0;
-  --cp-trust-500: #3E86DD;
-  --cp-trust-300: #1E4A7C;
-  --cp-trust-100: #12294A;
+  --cp-trust-900: 10 46 92;     /* #0A2E5C — হিরো গ্রেডিয়েন্টে যথেষ্ট গাঢ়, অপরিবর্তিত */
+  --cp-trust-700: 46 123 214;   /* #2E7BD6 */
+  --cp-trust-500: 76 147 230;   /* #4C93E6 */
+  --cp-trust-300: 143 188 238;  /* #8FBCEE */
+  --cp-trust-100: 27 58 92;     /* #1B3A5C */
 
-  --cp-confidence-600: #4FD9A3;
-  --cp-confidence-300: #1F6B4C;
-  --cp-confidence-100: #123527;
+  --cp-confidence-600: 40 201 140;  /* #28C98C */
+  --cp-confidence-300: 127 211 174; /* #7FD3AE */
+  --cp-confidence-100: 18 53 39;    /* #123527 */
 
-  --cp-warmth-600: #FFA254;
-  --cp-warmth-300: #8A4F1E;
-  --cp-warmth-100: #3A2611;
+  --cp-warmth-600: 255 150 72;  /* #FF9648 */
+  --cp-warmth-300: 247 184 138; /* #F7B88A */
+  --cp-warmth-100: 58 39 18;    /* #3A2712 */
 
-  --cp-text-primary:   #EAF1FA;
-  --cp-text-secondary: #A9BBCC;
-  --cp-text-muted:     #71879C;
+  --cp-text-primary:   234 242 250; /* #EAF2FA */
+  --cp-text-secondary: 169 187 206; /* #A9BBCE */
+  --cp-text-muted:     110 130 153; /* #6E8299 */
 
-  --cp-border:        #223349;
-  --cp-border-strong: #304763;
-  --cp-border-focus:  #3E86DD;
+  --cp-border:        38 55 75;   /* #26374B */
+  --cp-border-strong: 50 74 99;   /* #324A63 */
+  --cp-border-focus:  76 147 230; /* #4C93E6 */
 
-  --cp-success:    #4FD9A3;
-  --cp-success-bg: #123527;
-  --cp-warning:    #FFA254;
-  --cp-warning-bg: #3A2611;
-  --cp-error:      #E8706A;
-  --cp-error-bg:   #3A1616;
-  --cp-info:       #3E86DD;
-  --cp-info-bg:    #12294A;
+  --cp-success:    40 201 140;  /* #28C98C */
+  --cp-success-bg: 18 53 39;    /* #123527 */
+  --cp-warning:    255 150 72;  /* #FF9648 */
+  --cp-warning-bg: 58 39 18;    /* #3A2712 */
+  --cp-error:      240 120 123; /* #F0787B */
+  --cp-error-bg:   58 26 28;    /* #3A1A1C */
+  --cp-info:       76 147 230;  /* #4C93E6 */
+  --cp-info-bg:    27 58 92;    /* #1B3A5C */
 }
 
 * {
@@ -109,7 +110,7 @@ body {
   font-family: 'Hind Siliguri', 'Arial', sans-serif;
   color:       #1a202c;
   min-height:  100vh;
-  transition:  color 0.2s;
+  transition:  color 0.2s, background-color 0.2s;
 }
 
 .dark body {

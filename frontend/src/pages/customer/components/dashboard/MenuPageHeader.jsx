@@ -7,8 +7,7 @@ import { FiArrowLeft } from 'react-icons/fi'
 export default function MenuPageHeader({ title, onBack }) {
   return (
     <div
-      className="sticky top-0 z-10 bg-cp-bg-surface px-2 h-14 flex items-center gap-1 flex-shrink-0"
-      style={{ borderBottom: '1px solid var(--cp-border, #D9E4EF)' }}
+      className="sticky top-0 z-10 bg-cp-bg-surface border-b border-cp-border px-2 h-14 flex items-center gap-1 flex-shrink-0"
     >
       <button
         onClick={onBack}
