@@ -11,6 +11,7 @@ const { sendEmail }  = require('../services/email.service');
 const { sendPushToMany } = require('../services/fcm.service');
 const { sendCustomerNotification } = require('./customerNotification.controller');
 const { getPublicAppUrl } = require('../config/publicAppUrl');
+const { notificationQueue, isQueueAvailable } = require('../config/queue');
 
 const sendCreditReminder = async (req, res) => {
     try {
@@ -141,41 +142,66 @@ const sendCreditReminder = async (req, res) => {
 </body>
 </html>`;
 
-        const emailResult = await sendEmail(
-            customer.email, subject, html,
-            `ZovoriX — বাকি Reminder\nদোকান: ${customer.shop_name}\nবাকি: ৳${credit}`,
-            { type: 'credit_reminder', tenant_id: req.tenantId }
-        );
-
-        // ── Push to SR's Manager ─────────────────────────────
-        if (customer.manager_id) {
-            await sendPushToMany([customer.manager_id], {
-                title: `💳 Reminder পাঠানো — ${customer.shop_name}`,
-                body:  `${req.user.name_bn || 'SR'} ${customer.owner_name}-কে বাকি reminder পাঠিয়েছে। বাকি: ৳${credit}`,
-                type:  'credit_reminder_sent',
-                data:  {
-                    customer_id:   String(customer.id),
-                    credit_amount: String(customer.current_credit),
-                }
-            }).catch(() => {}); // push fail হলেও response দাও
-        }
-
-        // ── In-App Notification to Customer ──────────────────
-        await sendCustomerNotification(customer.id, {
+        const emailSubject = subject;
+        const emailText = `ZovoriX — বাকি Reminder\nদোকান: ${customer.shop_name}\nবাকি: ৳${credit}`;
+        const emailMeta = { type: 'credit_reminder', tenant_id: req.tenantId };
+        const managerPushPayload = customer.manager_id ? {
+            title: `💳 Reminder পাঠানো — ${customer.shop_name}`,
+            body:  `${req.user.name_bn || 'SR'} ${customer.owner_name}-কে বাকি reminder পাঠিয়েছে। বাকি: ৳${credit}`,
+            type:  'credit_reminder_sent',
+            data:  {
+                customer_id:   String(customer.id),
+                credit_amount: String(customer.current_credit),
+            }
+        } : null;
+        const customerNotifyPayload = {
             title: `⚠️ বাকি পরিশোধের অনুরোধ`,
             body:  `আপনার ${customer.shop_name} দোকানে ৳${credit} বাকি রয়েছে। অনুগ্রহ করে দ্রুত পরিশোধ করুন।`,
             type:  'credit_reminder',
-        }).catch(() => {});
+        };
 
-        // ✅ Log reminder — throttle check পাস করার পরেই insert
+        // ✅ Phase 1: sendEmail আগে এখানেই সরাসরি await হতো (request-কে block
+        // করতো, retry ছিল না)। এখন queue থাকলে queue করি -- 3 attempt,
+        // exponential backoff। Redis না থাকলে (isQueueAvailable() === false)
+        // আগের সরাসরি-send আচরণেই fallback করি, যাতে Redis ছাড়া environment-এ
+        // (যেমন local dev) ফিচারটা ভেঙে না যায়।
+        let queued = false;
+        let emailResult = { success: true }; // direct-send path-এ override হবে
+
+        if (isQueueAvailable()) {
+            await notificationQueue.add('credit-reminder-email', {
+                to: customer.email, subject: emailSubject, html, text: emailText, meta: emailMeta,
+                customerId: customer.id, managerId: customer.manager_id,
+                managerPushPayload, customerNotifyPayload,
+            }, {
+                attempts: 3,
+                backoff: { type: 'exponential', delay: 5000 },
+                removeOnComplete: { age: 86400 }, // ১ দিন পর কমপ্লিটেড job cleanup
+                removeOnFail: { age: 604800 },     // ৭ দিন পর ফেইলড job cleanup (debug-এর জন্য রাখা)
+            });
+            queued = true;
+        } else {
+            emailResult = await sendEmail(customer.email, emailSubject, html, emailText, emailMeta);
+            if (customer.manager_id) {
+                await sendPushToMany([customer.manager_id], managerPushPayload).catch(() => {});
+            }
+            await sendCustomerNotification(customer.id, customerNotifyPayload).catch(() => {});
+        }
+
+        // ✅ Log reminder — throttle check পাস করার পরেই insert (আগের মতোই,
+        // queue করা মাত্রই লগ হয় — actual delivery-র জন্য অপেক্ষা করে না,
+        // থ্রটল সিমান্টিক্স অপরিবর্তিত থাকে)
         await query(`
             INSERT INTO credit_reminder_logs (customer_id, sr_id, method, sent_at, tenant_id) VALUES ($1, $2, 'email', NOW(), $3)
         `, [customer.id, srId, req.tenantId]);
 
         return res.json({
             success: true,
-            message: `✅ ${customer.owner_name}-কে Email reminder পাঠানো হয়েছে।`,
+            message: queued
+                ? `✅ ${customer.owner_name}-কে reminder পাঠানোর জন্য queue করা হয়েছে।`
+                : `✅ ${customer.owner_name}-কে Email reminder পাঠানো হয়েছে।`,
             data: {
+                queued,
                 email_sent: emailResult.success,
                 customer:   customer.shop_name,
                 credit:     customer.current_credit,

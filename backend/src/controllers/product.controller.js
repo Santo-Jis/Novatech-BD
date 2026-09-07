@@ -2,6 +2,7 @@ const logger = require('../config/logger');
 const { query } = require('../config/db');
 const { adjustDefaultWarehouseStock } = require('../services/warehouseStock.utils'); // ← per-warehouse স্টক ধাপ ৪
 const { uploadToCloudinary } = require('../services/employee.service'); // ✅ FIX: base64 ছবি Cloudinary-তে সরানোর জন্য
+const { withCache, cacheDel } = require('../config/cache'); // ← Phase 1: product listing cache
 
 // ============================================================
 // ✅ FIX (২৬ আগস্ট ২০২৬): image_url raw base64 (data:image/...;base64,...)
@@ -48,7 +49,7 @@ const resolveImageUrl = async (rawUrl, folder, filenameHint) => {
 
 const getProducts = async (req, res) => {
     try {
-        const { search, is_active = true, warehouse_id } = req.query; // ✅ warehouse_id: per-warehouse স্টক
+        const { search, is_active = true, warehouse_id, category_id } = req.query; // ✅ warehouse_id: per-warehouse স্টক; category_id: Phase 2 facet filter
 
         let conditions = [`p.is_active = $1`, `p.tenant_id = $2`];
         let params     = [is_active, req.tenantId];
@@ -58,6 +59,12 @@ const getProducts = async (req, res) => {
             paramCount++;
             conditions.push(`(p.name ILIKE $${paramCount} OR p.sku ILIKE $${paramCount})`);
             params.push(`%${search}%`);
+        }
+
+        if (category_id) {
+            paramCount++;
+            conditions.push(`p.category_id = $${paramCount}`);
+            params.push(category_id);
         }
 
         let warehouseJoin = '';
@@ -70,7 +77,7 @@ const getProducts = async (req, res) => {
             params.push(warehouse_id);
         }
 
-        const result = await query(
+        const runQuery = () => query(
             `SELECT p.id, p.name, p.sku, p.price, p.stock, p.reserved_stock, p.return_stock, p.defective_stock,
                     (p.stock - COALESCE((
                         SELECT SUM((item->>'quantity')::int)
@@ -99,13 +106,31 @@ const getProducts = async (req, res) => {
             params
         );
 
-        // cost_price শুধু admin/manager দেখতে পারবে — worker/অন্য রোলের রেসপন্স থেকে বাদ
-        const canSeeCost = ['admin', 'manager'].includes(req.user?.role);
-        const rows = canSeeCost
-            ? result.rows
-            : result.rows.map(({ cost_price, ...rest }) => rest);
+        // ✅ Phase 1: শুধু default listing (filter/search/warehouse ছাড়া, active-only)
+        // 30s cache হয় — cache-key space ছোট রাখতে, invalidation সহজ রাখতে।
+        // ⚠️ available_stock live-computed (pending/approved/processing অর্ডার থেকে) —
+        // ছোট TTL দিয়ে staleness bound করা, কিন্তু actual order-commit path
+        // সবসময় live DB পড়বে, এই cache সেটার জন্য না, শুধু browsing-এর জন্য।
+        const isCacheable = !search && !warehouse_id && !category_id && is_active === true;
+        const cacheKey = `products:list:${req.tenantId}`;
 
-        return res.status(200).json({ success: true, data: rows });
+        let rows;
+        if (isCacheable) {
+            const { data } = await withCache(cacheKey, 30, async () => (await runQuery()).rows);
+            rows = data;
+        } else {
+            rows = (await runQuery()).rows;
+        }
+
+        // cost_price শুধু admin/manager দেখতে পারবে — worker/অন্য রোলের রেসপন্স থেকে বাদ
+        // (cache-এ cost_price সহই থাকে, filter সবসময় request-time-এ হয় — role-blind
+        // cache, role-aware response, এভাবে cached ডেটা ভুল role-এ leak হয় না)
+        const canSeeCost = ['admin', 'manager'].includes(req.user?.role);
+        const responseRows = canSeeCost
+            ? rows
+            : rows.map(({ cost_price, ...rest }) => rest);
+
+        return res.status(200).json({ success: true, data: responseRows });
 
     } catch (error) {
         logger.error('❌ Get Products Error:', error.message);
@@ -222,6 +247,8 @@ const createProduct = async (req, res) => {
             });
         }
 
+        await cacheDel(`products:list:${req.tenantId}`); // ← Phase 1: নতুন পণ্য এলে cached listing পুরনো হয়ে যায়
+
         return res.status(201).json({
             success: true,
             message: 'পণ্য তৈরি সফল।',
@@ -304,6 +331,8 @@ const updateProduct = async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'পণ্য পাওয়া যায়নি।' });
         }
+
+        await cacheDel(`products:list:${req.tenantId}`); // ← Phase 1: category/price/is_active বদলালে cached listing পুরনো হয়ে যায়
 
         return res.status(200).json({
             success: true,
@@ -490,6 +519,40 @@ const deleteProductImage = async (req, res) => {
     }
 };
 
+// ============================================================
+// AUTOCOMPLETE — GET /api/products/autocomplete?q=...
+// ============================================================
+// getProducts()-এর ILIKE '%x%' শুধু "আছে কিনা" বলে, ranking করে না —
+// typo/আংশিক শব্দে ফলাফল random লাগে। এটা pg_trgm-এর similarity()
+// দিয়ে rank করে, existing idx_products_name_trgm GIN index-ই ব্যবহার
+// করে (নতুন index লাগে না)। ✅ Phase 2
+
+const getProductAutocomplete = async (req, res) => {
+    try {
+        const { q } = req.query;
+        if (!q || q.trim().length < 2) {
+            return res.json({ success: true, data: [] }); // ২ ক্যারেক্টারের কমে suggest করার মানে নেই
+        }
+
+        const result = await query(
+            `SELECT id, name, sku, price, image_url,
+                    similarity(name, $1) AS score
+             FROM products
+             WHERE tenant_id = $2
+               AND is_active = true
+               AND (name % $1 OR sku ILIKE $3)
+             ORDER BY score DESC, name ASC
+             LIMIT 8`,
+            [q.trim(), req.tenantId, `%${q.trim()}%`]
+        );
+
+        res.json({ success: true, data: result.rows });
+    } catch (error) {
+        logger.error('❌ getProductAutocomplete Error:', error.message);
+        res.status(500).json({ success: false, message: 'Search-এ সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getProducts,
     getProduct,
@@ -500,4 +563,5 @@ module.exports = {
     getProductImages,     // ✅ NEW (ফেজ ২)
     addProductImage,      // ✅ NEW (ফেজ ২)
     deleteProductImage,   // ✅ NEW (ফেজ ২)
+    getProductAutocomplete, // ✅ NEW (ফেজ ২, commerce UX)
 };

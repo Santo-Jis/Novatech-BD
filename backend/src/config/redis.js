@@ -22,16 +22,22 @@ const memoryBlocklist = new Map();
 const memoryFallback = {
     async set(key, value, options) {
         const ttlMs = (options?.EX ?? 900) * 1000;
-        memoryBlocklist.set(key, Date.now() + ttlMs);
+        // ✅ Phase 1 ফিক্স: আগে শুধু expiry timestamp রাখা হতো, value না --
+        // get() তাই hardcoded '1' রিটার্ন করতো। blocklist-এর জন্য এতদিন
+        // সমস্যা হয়নি (blockUserTokens সবসময় '1'-ই সেট করে, শুধু presence
+        // চেক হয়), কিন্তু cache.js-এর মতো generic ব্যবহারে এটা ভুল ডেটা
+        // রিটার্ন করতো। এখন real value-ও রাখা হচ্ছে -- blocklist আচরণ
+        // অপরিবর্তিত থাকে, শুধু generic cache use-case-এ এখন সঠিক কাজ করে।
+        memoryBlocklist.set(key, { value, expiresAt: Date.now() + ttlMs });
     },
     async get(key) {
-        const expiresAt = memoryBlocklist.get(key);
-        if (!expiresAt) return null;
-        if (Date.now() > expiresAt) {
+        const entry = memoryBlocklist.get(key);
+        if (!entry) return null;
+        if (Date.now() > entry.expiresAt) {
             memoryBlocklist.delete(key);
             return null;
         }
-        return '1';
+        return entry.value;
     },
     async del(key) {
         memoryBlocklist.delete(key);

@@ -14,6 +14,7 @@ const {
     getProductImages,     // ✅ NEW (ফেজ ২)
     addProductImage,      // ✅ NEW (ফেজ ২)
     deleteProductImage,   // ✅ NEW (ফেজ ২)
+    getProductAutocomplete, // ✅ NEW (ফেজ ২, commerce UX)
 } = require('../controllers/product.controller');
 
 const {
@@ -58,6 +59,10 @@ router.post('/import/commit',  auth, allowRoles('admin'), commitImport);
 
 // পণ্য তালিকা (সব রোল দেখতে পারবে)
 router.get('/',     auth, getProducts);
+
+// ✅ NEW (ফেজ ২ — search autocomplete)। ⚠️ '/:id'-এর আগে থাকতে হবে,
+// নাহলে Express 'autocomplete'-কে :id হিসেবে ধরে নেবে।
+router.get('/autocomplete', auth, getProductAutocomplete);
 
 // একটি পণ্যের বিস্তারিত
 router.get('/:id',  auth, getProduct);

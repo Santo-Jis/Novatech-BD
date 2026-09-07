@@ -23,6 +23,7 @@ const { generateCustomerCode, uploadToCloudinary } = require('../services/employ
 const { getPublicAppUrl } = require('../config/publicAppUrl');
 const { generateOTP } = require('../config/encryption');
 const { getLocationFromIP } = require('../services/geoip.service');
+const { getDB } = require('../config/firebase'); // ✅ NEW (ফেজ ২ — delivery tracking, liveLocations read)
 // (DEFAULT_TENANT_ID import সরানো হলো — এখন এই ফাইলে আর দরকার নেই,
 // selfRegisterCustomer এখন tenant-agnostic persons row তৈরি করে)
 
@@ -2421,6 +2422,125 @@ const getCustomerDashboard = async (req, res) => {
 };
 
 // ============================================================
+// DELIVERY TRACKING — GET /api/portal/deliveries/:deliveryId/tracking
+// ✅ NEW (ফেজ ২ — commerce UX, live rider position)
+// ============================================================
+// liveLocations/{workerId}-এর ঠিক একই শেপ যেটা location.controller.js
+// আগে থেকেই পড়ে (manager-এর trail ভিউয়ের জন্য) — এখানে শুধু নতুন
+// consumer, নতুন write path না। Authorization-ই মূল অংশ: deliveryId
+// দিলেই যথেষ্ট না, customer_id মিলতে হবে।
+
+const toRad = (deg) => (deg * Math.PI) / 180;
+const haversineKm = (lat1, lon1, lat2, lon2) => {
+    const R = 6371;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+// রক্ষণশীল শহুরে delivery bike/van গড় গতির অনুমান — real routed ETA না,
+// straight-line distance-ভিত্তিক মোটা-দাগের ধারণা
+const ASSUMED_SPEED_KMH = 18;
+
+const getDeliveryTracking = async (req, res) => {
+    try {
+        const { deliveryId } = req.params;
+        const customerId = req.portalUser.customer_id;
+        const tenantId = req.tenantId;
+
+        const delivery = await query(
+            `SELECT d.id, d.status, d.assigned_to, d.order_id,
+                    u.name_bn AS rider_name, u.employee_code AS rider_code
+             FROM deliveries d
+             JOIN users u ON u.id = d.assigned_to
+             WHERE d.id = $1 AND d.customer_id = $2 AND d.tenant_id = $3`,
+            [deliveryId, customerId, tenantId]
+        );
+
+        if (delivery.rows.length === 0) {
+            // ইচ্ছাকৃতভাবে generic 404 — "নেই" বনাম "তোমার না" আলাদা করলে
+            // ID enumerate করে অন্যের delivery আছে কিনা যাচাই করা যাবে
+            return res.status(404).json({ success: false, message: 'ডেলিভারি পাওয়া যায়নি।' });
+        }
+
+        const d = delivery.rows[0];
+
+        if (!['in_transit', 'arrived'].includes(d.status)) {
+            return res.json({
+                success: true,
+                trackable: false,
+                status: d.status,
+                message: d.status === 'pending'
+                    ? 'রাইডার এখনো রওনা হননি।'
+                    : 'এই ডেলিভারি সম্পন্ন হয়ে গেছে।',
+            });
+        }
+
+        const db = getDB();
+        if (!db) {
+            // Firebase misconfigured/not-initialized — getDB() null রিটার্ন করে
+            // (firebase.js-এর নিজস্ব guard) — crash না করে honest response
+            return res.json({
+                success: true,
+                trackable: false,
+                status: d.status,
+                message: 'ট্র্যাকিং সাময়িকভাবে অনুপলব্ধ।',
+            });
+        }
+
+        const snap = await db.ref(`liveLocations/${d.assigned_to}`).once('value');
+        const riderLoc = snap.val();
+
+        if (!riderLoc) {
+            return res.json({
+                success: true,
+                trackable: false,
+                status: d.status,
+                message: 'রাইডারের বর্তমান লোকেশন এই মুহূর্তে পাওয়া যাচ্ছে না।',
+            });
+        }
+
+        const custLoc = await query(
+            `SELECT ST_Y(location::geometry) AS latitude, ST_X(location::geometry) AS longitude
+             FROM customers WHERE id = $1 AND tenant_id = $2`,
+            [customerId, tenantId]
+        );
+        const dest = custLoc.rows[0];
+        const hasDest = dest && dest.latitude != null && dest.longitude != null;
+
+        let distanceKm = null;
+        let etaMinutes = null;
+        if (hasDest) {
+            distanceKm = haversineKm(riderLoc.latitude, riderLoc.longitude, dest.latitude, dest.longitude);
+            etaMinutes = Math.round((distanceKm / ASSUMED_SPEED_KMH) * 60);
+        }
+
+        const updatedAgoSec = riderLoc.updatedAt ? Math.round((Date.now() - riderLoc.updatedAt) / 1000) : null;
+
+        return res.json({
+            success: true,
+            trackable: true,
+            status: d.status,
+            rider: {
+                name: d.rider_name,
+                code: d.rider_code,
+                latitude: riderLoc.latitude,
+                longitude: riderLoc.longitude,
+                updated_seconds_ago: updatedAgoSec,
+            },
+            destination: hasDest ? { latitude: dest.latitude, longitude: dest.longitude } : null,
+            distance_km: distanceKm !== null ? Number(distanceKm.toFixed(2)) : null,
+            eta_minutes_estimate: etaMinutes, // ⚠️ straight-line + assumed speed, রাস্তা/ট্রাফিক ধরে না
+        });
+    } catch (error) {
+        logger.error('❌ getDeliveryTracking Error:', error.message);
+        res.status(500).json({ success: false, message: 'ট্র্যাকিং তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // 9. INVOICE LIST (paginated, filtered)
 // GET /api/portal/invoices
 // ============================================================
@@ -3680,6 +3800,7 @@ module.exports = {
     revokeDevice,
     revokeAllDevices,
     getCustomerDashboard,
+    getDeliveryTracking, // ✅ NEW (ফেজ ২)
     getCustomerInvoices,
     getPaymentHistory,
     getMonthlySummary,

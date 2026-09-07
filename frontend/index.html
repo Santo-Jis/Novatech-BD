@@ -198,24 +198,46 @@
       </div>
     </div>
 
-    <!-- Eruda debugger -->
-    <script src="https://cdn.jsdelivr.net/npm/eruda" async></script>
+    <!-- Eruda debugger
+         ✅ Phase 2 FIX: আগে এই script tag সবসময় থাকতো (async হলেও fetch
+         হতো) — প্রতিটা visitor-এর জন্য ~200-300KB third-party debug
+         console লোড হতো, লগইন করা থাকুক বা না থাকুক। auth.store.js-এর
+         __showEruda()/__hideEruda() call ঠিক আগের মতোই কাজ করে (ওই
+         ফাইলে কোনো পরিবর্তন লাগবে না) — শুধু script-টা এখন lazy-load হয়:
+         প্রথমবার দরকার হলেই (আগে থেকে লগইন করা থাকলে load-এই, নতুন
+         লগইন করলে __showEruda()-এর সময়) fetch হয়, নাহলে কখনোই না। -->
     <script>
+      var __erudaLoaded = false;
+      function __loadEruda(onReady) {
+        if (__erudaLoaded) { onReady && onReady(); return; }
+        __erudaLoaded = true;
+        var s = document.createElement('script');
+        s.src = 'https://cdn.jsdelivr.net/npm/eruda';
+        s.onload = function () { onReady && onReady(); };
+        document.head.appendChild(s);
+      }
+
       window.addEventListener('load', function() {
         // ✅ FIX: main.jsx আগেই __STEP__=3 সেট করে।
         // load event সেটা overwrite না করুক — শুধু 3-এর নিচে থাকলে 2 সেট করো।
         if (window.__STEP__ < 3) window.__STEP__ = 2;
         try {
-          if (typeof eruda !== 'undefined') {
-            eruda.init();
-            if (localStorage.getItem('user')) {
+          if (localStorage.getItem('user')) {
+            __loadEruda(function () {
+              eruda.init();
               document.getElementById('eruda').style.display = 'block';
-            }
+            });
           }
         } catch(e) {}
       });
       window.__showEruda = function() {
-        try { var el = document.getElementById('eruda'); if (el) el.style.display = 'block'; } catch(e) {}
+        try {
+          __loadEruda(function () {
+            eruda.init();
+            var el = document.getElementById('eruda');
+            if (el) el.style.display = 'block';
+          });
+        } catch(e) {}
       };
       window.__hideEruda = function() {
         try { var el = document.getElementById('eruda'); if (el) el.style.display = 'none'; } catch(e) {}

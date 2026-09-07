@@ -57,6 +57,7 @@ const {
     getMyLimitRequests,
     submitComplaint,
     getMyComplaints,
+    getDeliveryTracking, // ✅ NEW (ফেজ ২, commerce UX — live rider tracking)
 } = require('../controllers/customerPortal.controller');
 
 const { sendCreditReminder } = require('../controllers/creditReminder.controller');
@@ -309,6 +310,7 @@ router.delete('/devices/:customerId/:deviceId', auth, revokeDevice);
 // ============================================================
 
 router.get('/dashboard',       portalAuth, getCustomerDashboard);
+router.get('/deliveries/:deliveryId/tracking', portalAuth, getDeliveryTracking); // ✅ NEW (ফেজ ২)
 router.get('/invoices',        portalAuth, getCustomerInvoices);
 router.get('/payment-history', portalAuth, getPaymentHistory);
 router.get('/monthly-summary', portalAuth, getMonthlySummary);
