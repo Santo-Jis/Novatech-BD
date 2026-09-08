@@ -7,8 +7,8 @@ const IS_CUSTOMER_APP = import.meta.env.VITE_APP_MODE === 'customer'
 const IS_WORKER_APP = import.meta.env.VITE_APP_MODE === 'worker'
 
 // ✅ GitHub Actions automatically এই numbers আপডেট করবে
-const CURRENT_VERSION_CODE = 292          // Main APK — build-apk.yml আপডেট করে
-const CURRENT_CUSTOMER_VERSION_CODE = 378   // Customer APK — build-customer-apk.yml আপডেট করে
+const CURRENT_VERSION_CODE = 293          // Main APK — build-apk.yml আপডেট করে
+const CURRENT_CUSTOMER_VERSION_CODE = 379   // Customer APK — build-customer-apk.yml আপডেট করে
 const CURRENT_SR_VERSION_CODE = 8           // SR APK — build-sr-apk.yml আপডেট করে (প্রথম রিলিজের আগে 0)
 
 export function useAppUpdate() {
