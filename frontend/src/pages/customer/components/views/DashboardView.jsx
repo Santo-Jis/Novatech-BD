@@ -39,6 +39,7 @@ import PersonalizationPage from '../dashboard/PersonalizationPage'
 import PrivacyTermsPage from '../dashboard/PrivacyTermsPage'
 import { NOTIF_CONFIG } from '../dashboard/NotificationBell'
 import BottomNav, { getActiveSectionId, getActiveSection } from '../dashboard/BottomNav'
+import ActiveDeliveryBanner from '../ActiveDeliveryBanner' // ✅ NEW — architecture-gap ফিক্স
 
 // ── এখনো-অরিডিজাইন করা ট্যাবগুলোর জন্য পুরনো Design Tokens (আপাতত রাখা হলো) ──
 // ⚠️ এগুলো মুছবেন না — নিচের Invoices/Payments/Credit/Complaints/Returns/AI ট্যাব
@@ -219,6 +220,11 @@ export default function DashboardView({
           এখন px বাদ দিয়ে Tab Card নিজেই স্ক্রিনের পুরো প্রস্থ জুড়ে বসবে
           (Facebook-এর মতো)। */}
       <div className="pb-24 pt-3">
+
+        {/* ✅ NEW — architecture-gap ফিক্স: কাস্টমারের কোনো active
+            ডেলিভারি থাকলে সেটা এখানেই দেখাবে (উৎস যাই হোক)। শুধু
+            home tab-এ — প্রতিটা ট্যাবে না, বারবার দেখানোর দরকার নেই। */}
+        {activeSectionId === 'home' && <ActiveDeliveryBanner />}
 
         {/* Unread Banner */}
         {unreadBanner && (() => {

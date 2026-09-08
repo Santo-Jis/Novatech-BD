@@ -2541,6 +2541,45 @@ const getDeliveryTracking = async (req, res) => {
 };
 
 // ============================================================
+// ACTIVE DELIVERIES — GET /api/portal/deliveries/active
+// ✅ NEW — architecture-gap ফিক্স
+// ============================================================
+// প্রেক্ষাপট: customer_order_requests (self-service request) আর
+// deliveries (আসল, GPS-trackable ডেলিভারি)-এর মধ্যে DB-তে কোনো link
+// নেই — SR request দেখে গিয়ে আলাদাভাবে normal sale/order এন্ট্রি করে,
+// যেটা তখন deliveries row তৈরি করে (confirmed, কথোপকথনে)। তাই
+// deliveryId আগে থেকে জানার উপায় নেই কাস্টমারের।
+//
+// সমাধান: request-নির্দিষ্ট link জোর করে বানানোর বদলে (সেটা SR-এর order
+// flow-এ নতুন required field যোগ করা লাগতো, ঝুঁকিপূর্ণ বড় পরিবর্তন) —
+// deliveries টেবিলে already থাকা customer_id দিয়ে সরাসরি "আমার এখন কোনো
+// active ডেলিভারি আছে কিনা" জিজ্ঞেস করি। উৎস যাই হোক (portal request/
+// direct SR sale/hoনotel walk-in), কাস্টমার নিজের যেকোনো in-transit
+// ডেলিভারি দেখতে পাবে।
+
+const getActiveDeliveries = async (req, res) => {
+    try {
+        const customerId = req.portalUser.customer_id;
+        const tenantId = req.tenantId;
+
+        const result = await query(
+            `SELECT d.id, d.status, d.created_at, u.name_bn AS rider_name
+             FROM deliveries d
+             JOIN users u ON u.id = d.assigned_to
+             WHERE d.customer_id = $1 AND d.tenant_id = $2
+               AND d.status IN ('in_transit', 'arrived')
+             ORDER BY d.created_at DESC`,
+            [customerId, tenantId]
+        );
+
+        res.json({ success: true, data: result.rows });
+    } catch (error) {
+        logger.error('❌ getActiveDeliveries Error:', error.message);
+        res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // 9. INVOICE LIST (paginated, filtered)
 // GET /api/portal/invoices
 // ============================================================
@@ -3801,6 +3840,7 @@ module.exports = {
     revokeAllDevices,
     getCustomerDashboard,
     getDeliveryTracking, // ✅ NEW (ফেজ ২)
+    getActiveDeliveries, // ✅ NEW (architecture-gap ফিক্স)
     getCustomerInvoices,
     getPaymentHistory,
     getMonthlySummary,

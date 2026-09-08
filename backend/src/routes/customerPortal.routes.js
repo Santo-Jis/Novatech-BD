@@ -58,6 +58,7 @@ const {
     submitComplaint,
     getMyComplaints,
     getDeliveryTracking, // ✅ NEW (ফেজ ২, commerce UX — live rider tracking)
+    getActiveDeliveries, // ✅ NEW (architecture-gap ফিক্স)
 } = require('../controllers/customerPortal.controller');
 
 const { sendCreditReminder } = require('../controllers/creditReminder.controller');
@@ -311,6 +312,7 @@ router.delete('/devices/:customerId/:deviceId', auth, revokeDevice);
 
 router.get('/dashboard',       portalAuth, getCustomerDashboard);
 router.get('/deliveries/:deliveryId/tracking', portalAuth, getDeliveryTracking); // ✅ NEW (ফেজ ২)
+router.get('/deliveries/active', portalAuth, getActiveDeliveries); // ✅ NEW (architecture-gap ফিক্স)
 router.get('/invoices',        portalAuth, getCustomerInvoices);
 router.get('/payment-history', portalAuth, getPaymentHistory);
 router.get('/monthly-summary', portalAuth, getMonthlySummary);
