@@ -120,6 +120,7 @@ const AdminSettings          = IS_LIMITED_APP ? null : lazy(() => import('./page
 const AdminProducts          = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Products'))
 const AdminSuppliers         = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Suppliers'))
 const AdminPurchaseOrders    = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/PurchaseOrders'))
+const AdminDeliveryAssign    = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/DeliveryAssign')) // ✅ NEW
 const AdminBatches           = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Batches'))
 const AdminWarehouses        = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Warehouses'))
 const AdminPriceLists        = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/PriceLists'))
@@ -562,6 +563,7 @@ function AppWithPermissions() {
                 <Route path="products"          element={<AdminProducts />} />
                 <Route path="suppliers"         element={<AdminSuppliers />} />
                 <Route path="purchase-orders"   element={<AdminPurchaseOrders />} />
+                <Route path="deliveries"        element={<AdminDeliveryAssign />} /> {/* ✅ NEW */}
                 <Route path="batches"           element={<AdminBatches />} />
                 <Route path="warehouses"        element={<AdminWarehouses />} />
                 <Route path="price-lists"       element={<AdminPriceLists />} />
@@ -615,6 +617,7 @@ function AppWithPermissions() {
                 <Route path="reports"                    element={<ManagerReports />} />
                 <Route path="salary-sheet"               element={<ManagerSalarySheet />} />
                 <Route path="portal-returns"             element={<ManagerPortalReturns />} />
+                <Route path="deliveries"                 element={<AdminDeliveryAssign />} /> {/* ✅ NEW — backend allows manager+admin, component reused (same pattern as network-discovery) */}
                 <Route path="coverage"                   element={<ManagerCoverage />} />
                 <Route path="promotions"                 element={<ManagerPromotions />} /> {/* ← Promotions Phase ৩ */}
                 <Route path="chat"                       element={<ChatInbox />} />

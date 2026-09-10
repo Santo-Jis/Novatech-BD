@@ -38,6 +38,7 @@ const navGroups = [
       { path: '/admin/products',   icon: <FiPackage />, label: 'পণ্য' },
       { path: '/admin/suppliers',       icon: <FiTruck />,     label: 'সাপ্লায়ার' },
       { path: '/admin/purchase-orders', icon: <FiClipboard />, label: 'ক্রয় অর্ডার' },
+      { path: '/admin/deliveries', icon: <FiSend />, label: 'ডেলিভারি বরাদ্দ' }, // ✅ NEW
       { path: '/admin/warehouses', icon: <FiBox />,      label: 'গুদাম' },
       { path: '/admin/batches',    icon: <FiArchive />,  label: 'ব্যাচ ও মেয়াদ' },
       { path: '/admin/price-lists', icon: <FiTag />,     label: 'মূল্য তালিকা' },

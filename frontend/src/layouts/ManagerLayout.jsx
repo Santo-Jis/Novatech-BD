@@ -69,6 +69,7 @@ const navGroups = [
     items: [
       { path: '/manager/returns',        icon: <FiRefreshCw />, label: 'রিটার্ন অনুমোদন' },
       { path: '/manager/portal-returns', icon: <FiRefreshCw />, label: 'পোর্টাল রিটার্ন' },
+      { path: '/manager/deliveries', icon: <FiPackage />, label: 'ডেলিভারি বরাদ্দ' }, // ✅ NEW
       { path: '/manager/return-receiving', icon: <FiPackage />, label: 'সেটেলমেন্ট ফেরত গ্রহণ' },
     ],
   },
