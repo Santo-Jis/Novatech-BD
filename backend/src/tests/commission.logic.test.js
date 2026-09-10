@@ -16,7 +16,7 @@ jest.mock('../config/db', () => ({
 }));
 
 const { query } = require('../config/db');
-const { calculateCommission, calculateCommissionRate } = require('../services/commission.service');
+const { calculateCommission, calculateCommissionRate, getDailyCommissionableSales } = require('../services/commission.service');
 
 // ─── calculateCommissionRate ──────────────────────────────────
 
@@ -91,9 +91,12 @@ describe('calculateCommission — rate ও amount হিসাব', () => {
 
 // ─── Credit বাকি থাকলে Commission গণনা হবে না ───────────────
 // বিজনেস নিয়ম: বাকি আদায় না হওয়া পর্যন্ত সেই অংশের commission নেই
-// এই লজিক commission.job.js এ আছে, তাই pure logic টেস্ট করি
+// আসল implementation: commission.service.js::getDailyCommissionableSales
+// (নিচের প্রথম describe ব্লক শুধু arithmetic-টা isolation-এ দেখায়;
+//  দ্বিতীয় ব্লকটা আসল ফাংশন DB mock দিয়ে টেস্ট করে — এইটা মিসিং ছিল
+//  বলেই আগে rule-টা টেস্ট-এ ছিল কিন্তু বাস্তবে wire হয়নি)
 
-describe('Credit বাকির উপর commission বিজনেস নিয়ম', () => {
+describe('Credit বাকির উপর commission বিজনেস নিয়ম (arithmetic concept)', () => {
 
     /**
      * কমিশনযোগ্য বিক্রয় হিসাব
@@ -132,6 +135,88 @@ describe('Credit বাকির উপর commission বিজনেস নি�
 
         const commissionable = calcCommissionableSales(50000, remainingCredit);
         expect(commissionable).toBe(45000); // 50000 - 5000 বাকি
+    });
+});
+
+// ─── getDailyCommissionableSales — আসল ফাংশন, DB mock দিয়ে ────
+// এখানে query() দুইবার call হয় (sales_transactions + collections),
+// Promise.all ব্যবহার হয় বলে mockResolvedValueOnce-এর অর্ডার হবে
+// query() কল হওয়ার অর্ডার অনুযায়ী: প্রথমে sales, তারপর collections।
+
+describe('getDailyCommissionableSales — আসল implementation (DB mocked)', () => {
+
+    beforeEach(() => {
+        query.mockReset();
+    });
+
+    test('শুধু নগদ বিক্রয় — পুরো amount commissionable, credit query 0', async () => {
+        query
+            .mockResolvedValueOnce({ rows: [{ cash_sales: '50000' }] })  // sales_transactions
+            .mockResolvedValueOnce({ rows: [{ collected:  '0'     }] }); // collections
+
+        const result = await getDailyCommissionableSales('worker-1', '2026-09-08');
+        expect(result).toBe(50000);
+    });
+
+    test('credit বিক্রয় বাদ যায় — FILTER (WHERE payment_method != \'credit\') ধরে নিয়ে cash_sales-ই কম আসে', async () => {
+        // ৫০,০০০ মোট বিক্রয়ের মধ্যে ১৫,০০০ credit — DB query নিজেই ৩৫,০০০ ফেরত দেবে
+        // (FILTER ক্লজ credit বাদ দেয়), তাই cash_sales = 35000 আসাটাই আসল প্যাটার্ন
+        query
+            .mockResolvedValueOnce({ rows: [{ cash_sales: '35000' }] })
+            .mockResolvedValueOnce({ rows: [{ collected:  '0'     }] });
+
+        const result = await getDailyCommissionableSales('worker-1', '2026-09-08');
+        expect(result).toBe(35000);
+    });
+
+    test('আজ verified হওয়া collection যোগ হয় cash sales-এর সাথে', async () => {
+        query
+            .mockResolvedValueOnce({ rows: [{ cash_sales: '20000' }] })
+            .mockResolvedValueOnce({ rows: [{ collected:  '15000' }] }); // আজ verify হওয়া বাকি আদায়
+
+        const result = await getDailyCommissionableSales('worker-1', '2026-09-08');
+        expect(result).toBe(35000); // 20000 + 15000
+    });
+
+    test('sales বা collection কোনোটাই না থাকলে 0', async () => {
+        query
+            .mockResolvedValueOnce({ rows: [{ cash_sales: '0' }] })
+            .mockResolvedValueOnce({ rows: [{ collected:  '0' }] });
+
+        const result = await getDailyCommissionableSales('worker-1', '2026-09-08');
+        expect(result).toBe(0);
+    });
+
+    test('row না পাওয়া গেলেও (undefined) crash না করে 0 ধরবে', async () => {
+        query
+            .mockResolvedValueOnce({ rows: [] })
+            .mockResolvedValueOnce({ rows: [] });
+
+        const result = await getDailyCommissionableSales('worker-1', '2026-09-08');
+        expect(result).toBe(0);
+    });
+
+    test('collections query worker_id ও status=verified দিয়ে ফিল্টার করে', async () => {
+        query
+            .mockResolvedValueOnce({ rows: [{ cash_sales: '0' }] })
+            .mockResolvedValueOnce({ rows: [{ collected:  '0' }] });
+
+        await getDailyCommissionableSales('worker-1', '2026-09-08');
+
+        const collectionsCallArgs = query.mock.calls[1];
+        expect(collectionsCallArgs[0]).toEqual(expect.stringContaining("status = 'verified'"));
+        expect(collectionsCallArgs[1]).toEqual(['worker-1', '2026-09-08']);
+    });
+
+    test('sales query credit বাদ দিতে payment_method != \'credit\' ব্যবহার করে', async () => {
+        query
+            .mockResolvedValueOnce({ rows: [{ cash_sales: '0' }] })
+            .mockResolvedValueOnce({ rows: [{ collected:  '0' }] });
+
+        await getDailyCommissionableSales('worker-1', '2026-09-08');
+
+        const salesCallArgs = query.mock.calls[0];
+        expect(salesCallArgs[0]).toEqual(expect.stringContaining("payment_method != 'credit'"));
     });
 });
 

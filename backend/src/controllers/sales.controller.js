@@ -22,7 +22,7 @@ const { sendCustomerNotification } = require('./customerNotification.controller'
 const { firebaseNotify } = require('../services/firebase.notify');
 
 // ✅ Real-time commission
-const { updateCommissionRealtime } = require('../services/commission.service');
+const { updateCommissionRealtime, getDailyCommissionableSales } = require('../services/commission.service');
 
 // WhatsApp Invoice Image
 const { sendInvoiceWhatsApp } = require('../services/invoiceWhatsapp.service');
@@ -515,16 +515,23 @@ const createSale = async (req, res) => {
 
             const result = await client.query(
                 `INSERT INTO sales_transactions (worker_id, customer_id, visit_id, order_id,
+                  date,
                   items, total_amount, discount_amount, net_amount,
                   payment_method, cash_received, credit_used,
                   replacement_items, replacement_value,
                   credit_balance_used, credit_balance_added,
                   invoice_number, otp_code, otp_expires_at,
                   verify_token,
-                  idempotency_key, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20, $21)
+                  idempotency_key, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
                  RETURNING *`,
                 [
                     req.user.id, customer_id, visit_id || null, lockedOrderId,
+                    // ✅ FIX: আগে date কলাম বাদ ছিল বলে DB-এর CURRENT_DATE default ব্যবহার
+                    // হতো, যেটা UTC session timezone-এ চলে — রাত ১২টা-ভোর ৬টা BD সময়ে
+                    // sale ভুল (আগের) দিনে জমা হতো (production data-তেই এর প্রমাণ পাওয়া
+                    // গেছে)। এখন উপরে গণনা করা BD-local `today` explicitly পাঠানো হচ্ছে,
+                    // settlement/commission-এর getBDToday()-এর সাথে সবসময় মিলবে।
+                    today,
                     JSON.stringify(processedItems),
                     totalAmount, discountAmount, netAmount,
                     payment_method, cashReceived, creditUsed,
@@ -1247,7 +1254,7 @@ const getDashboardSummary = async (req, res) => {
 
         const [
             salesRes, visitRes, custRes, ordersRes, orderCountRes, attRes,
-            progressRes, commRes, saleCountRes, slabRes,
+            progressRes, commRes, commissionableSales, slabRes,
             teamRankRes, stockRes, promoRes, noticeRes
         ] = await Promise.all([
             query(
@@ -1294,11 +1301,10 @@ const getDashboardSummary = async (req, res) => {
                  FROM commission WHERE user_id=$1 AND date=$2 AND type='daily'`,
                 [workerId, today]
             ),
-            query(
-                `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount),0) AS total
-                 FROM sales_transactions WHERE worker_id=$1 AND date=$2 AND tenant_id=$3`,
-                [workerId, today, tenantId]
-            ),
+            // ✅ FIX: raw SUM(total_amount) না নিয়ে commissionable sales (বাকি বাদে,
+            // আজ verified হওয়া collection যোগে) — commission টেবিলে যা storeহয়
+            // তার সাথে slab progress যেন মিলে থাকে
+            getDailyCommissionableSales(workerId, today),
             query(
                 `SELECT slab_min, slab_max, rate FROM commission_settings
                  WHERE is_active=true AND tenant_id=$1 ORDER BY slab_min ASC`,
@@ -1354,7 +1360,7 @@ const getDashboardSummary = async (req, res) => {
         const remainingSlots = Math.max(0, 3 - usedCount);
 
         const commission  = commRes.rows[0] || null;
-        const todaySales   = parseFloat(saleCountRes.rows[0]?.total || 0);
+        const todaySales   = commissionableSales || 0;
         const currentRate  = parseFloat(commission?.rate || 0);
         const earnedAmount = parseFloat(commission?.amount || 0);
         const currentSlab  = slabRes.rows.find(s => todaySales >= parseFloat(s.slab_min) && (s.slab_max === null || todaySales <= parseFloat(s.slab_max)));

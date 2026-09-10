@@ -1,12 +1,15 @@
 const cron          = require('node-cron');
 const logger = require('../config/logger');
 const { query }     = require('../config/db');
-const { calculateCommission } = require('../services/commission.service');
+const { calculateCommission, getDailyCommissionableSales } = require('../services/commission.service');
 
 // ============================================================
 // Commission Background Job
 // প্রতিদিন রাত ১২টায় চলবে
 // সব active SR এর দৈনিক কমিশন হিসাব করবে
+// ✅ FIX: বাকি (credit) বিক্রয়ের অংশ বাদ দিয়ে, আর সেদিন verified হওয়া
+//         collection যোগ করে commissionable sales বের করা হয় — দেখো
+//         commission.service.js::getDailyCommissionableSales
 // ============================================================
 
 const runDailyCommissionJob = async (targetDate = null) => {
@@ -35,17 +38,10 @@ const runDailyCommissionJob = async (targetDate = null) => {
 
         for (const worker of workers.rows) {
             try {
-                // সেদিনের মোট বিক্রয়
-                const salesResult = await query(
-                    `SELECT COALESCE(SUM(total_amount), 0) AS total_sales
-                     FROM sales_transactions
-                     WHERE worker_id = $1 AND date = $2`,
-                    [worker.id, date]
-                );
+                // সেদিনের commissionable বিক্রয় (বাকি বাদে + আজ আদায়-verified যোগে)
+                const totalSales = await getDailyCommissionableSales(worker.id, date);
 
-                const totalSales = parseFloat(salesResult.rows[0].total_sales);
-
-                // বিক্রয় না থাকলে skip
+                // বিক্রয়/আদায় কিছুই না থাকলে skip
                 if (totalSales <= 0) {
                     skipped++;
                     continue;

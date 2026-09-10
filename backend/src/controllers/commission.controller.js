@@ -1,12 +1,12 @@
 const logger = require('../config/logger');
-const { query } = require('../config/db');
+const { query, withTransaction } = require('../config/db');
 
 // ============================================================
 // Commission হিসাব Helper
 // বিক্রয় অনুযায়ী কমিশন রেট বের করা
 // ============================================================
 
-const { calculateCommission, calculateCommissionRate } = require('../services/commission.service');
+const { calculateCommission, calculateCommissionRate, getDailyCommissionableSales } = require('../services/commission.service');
 
 // ============================================================
 // GET MY COMMISSION
@@ -256,22 +256,36 @@ const updateSettings = async (req, res) => {
             });
         }
 
-        // পুরনো স্ল্যাব নিষ্ক্রিয় করো
-        await query('UPDATE commission_settings SET is_active = false');
-
-        // নতুন স্ল্যাব যোগ করো
-        for (const slab of slabs) {
-            await query(
-                `INSERT INTO commission_settings (slab_min, slab_max, rate, effective_from, is_active, tenant_id) VALUES ($1, $2, $3, CURRENT_DATE, true, $4)`,
-                [slab.slab_min, slab.slab_max || null, slab.rate, req.tenantId]
+        // ✅ FIX: আগে এই দুইটা ধাপ আলাদা query() call ছিল (transaction ছাড়া), আর
+        // deactivate-এ tenant_id filter ছিল না। ফলাফল:
+        //  (ক) মাঝপথে fail করলে (network/validation) সব slab inactive হয়ে
+        //      পড়ে থাকতো, কোনো নতুন active batch ছাড়াই — production data-তেই
+        //      ঠিক এই অবস্থা পাওয়া গেছে (২২টা slab, একটাও active না, মানে
+        //      commission_rate সবার জন্য ০ resolve করছিল)।
+        //  (খ) tenant_id ছাড়া UPDATE হওয়ায় এক tenant slab বাঁচালে অন্য সব
+        //      tenant-এর active slab-ও নিষ্ক্রিয় হয়ে যেত (cross-tenant bug)।
+        // এখন পুরো ব্যাপারটা একটা transaction-এ, শুধু নিজের tenant scope-এ।
+        await withTransaction(async (client) => {
+            // পুরনো স্ল্যাব নিষ্ক্রিয় করো — শুধু নিজের tenant-এর
+            await client.query(
+                'UPDATE commission_settings SET is_active = false WHERE tenant_id = $1',
+                [req.tenantId]
             );
-        }
 
-        // Audit log
-        await query(
-            `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'UPDATE_COMMISSION_SETTINGS', 'commission_settings', $2, $3)`,
-            [req.user.id, JSON.stringify(slabs), req.tenantId]
-        );
+            // নতুন স্ল্যাব যোগ করো
+            for (const slab of slabs) {
+                await client.query(
+                    `INSERT INTO commission_settings (slab_min, slab_max, rate, effective_from, is_active, tenant_id) VALUES ($1, $2, $3, CURRENT_DATE, true, $4)`,
+                    [slab.slab_min, slab.slab_max || null, slab.rate, req.tenantId]
+                );
+            }
+
+            // Audit log — একই transaction-এ, যাতে partial state না থাকে
+            await client.query(
+                `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id) VALUES ($1, 'UPDATE_COMMISSION_SETTINGS', 'commission_settings', $2, $3)`,
+                [req.user.id, JSON.stringify(slabs), req.tenantId]
+            );
+        });
 
         return res.status(200).json({
             success: true,
@@ -484,9 +498,9 @@ const getLiveCommission = async (req, res) => {
             [workerId, today]
         );
 
-        // আজকের বিক্রয় সংখ্যা
+        // আজকের বিক্রয় সংখ্যা (invoice count — payment method নির্বিশেষে)
         const saleCountRes = await query(
-            `SELECT COUNT(*) AS count, COALESCE(SUM(total_amount), 0) AS total
+            `SELECT COUNT(*) AS count
              FROM sales_transactions
              WHERE worker_id = $1 AND date = $2
              AND tenant_id = $3`,
@@ -505,7 +519,10 @@ const getLiveCommission = async (req, res) => {
 
         const commission   = commRes.rows[0] || null;
         const sales        = saleCountRes.rows[0];
-        const totalSales   = parseFloat(sales.total) || 0;
+        // ✅ FIX: raw SUM(total_amount) না নিয়ে commissionable sales (বাকি বাদে,
+        // আজ verified হওয়া collection যোগে) — commission টেবিলে যা আসলে জমা
+        // হয়েছে সেটার সাথে slab progress যেন মিলে থাকে
+        const totalSales   = await getDailyCommissionableSales(workerId, today);
         const currentRate  = parseFloat(commission?.rate   || 0);
         const earnedAmount = parseFloat(commission?.amount || 0);
 

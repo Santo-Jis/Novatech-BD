@@ -8,17 +8,31 @@
 //   Settlement submit হলে auto: submitted
 //       ↓
 //   Admin verify করলে: verified  ← এখানে customer.current_credit কমে
+//                                   + SR-এর commission-এ যোগ হয় (✅ FIX)
 //
 // কেন verified-এ current_credit কমে?
 //   SR ভুল এন্ট্রি বা fraud ঠেকাতে admin-verify ছাড়া customer balance
 //   পরিবর্তন হওয়া উচিত নয়।
 //   Frontend-এ "optimistic" কমানো হয় শুধু local display-এর জন্য।
+//
+// ✅ FIX: বাকি বিক্রয়ের commission বিক্রির দিন হয় না (দেখো commission.service.js
+//   ::getDailyCommissionableSales) — verify এখানেই সেই "আদায়" মুহূর্ত, তাই
+//   verify হওয়ার সাথে সাথেই আজকের commission recompute করে সেই টাকা যোগ করা হয়।
 // ─────────────────────────────────────────────────────────────
 
-const { query, withTransaction } = require('../config/db');
-const multer                     = require('multer');
-const sharp                      = require('sharp');
-const { uploadToStorage }        = require('../config/firebase'); // existing upload helper
+const { query, withTransaction }   = require('../config/db');
+const multer                       = require('multer');
+const sharp                        = require('sharp');
+const { uploadToStorage }          = require('../config/firebase'); // existing upload helper
+const { updateCommissionRealtime } = require('../services/commission.service');
+const { firebaseNotify }           = require('../services/firebase.notify');
+
+// ✅ FIX: UTC নয়, BD local date — commission.service.js/sales.controller.js-এর
+// getBDToday()-এর সাথে মিলবে (রাত ১২টা-ভোর ৬টা BD সময়ে UTC date এক দিন পিছিয়ে থাকে)
+const getBDToday = () => {
+    const bdOffset = 6 * 60 * 60 * 1000;
+    return new Date(Date.now() + bdOffset).toISOString().split('T')[0];
+};
 
 // ── Multer (memory) ───────────────────────────────────────────
 const upload = multer({
@@ -277,6 +291,23 @@ const verifyCollection = async (req, res) => {
              AND tenant_id = $3`,
                 [parseFloat(col.amount), col.customer_id, req.tenantId]
             );
+        });
+
+        // ✅ FIX: বাকি আদায় হলো — এই টাকা এখন commission-যোগ্য।
+        // Main response-কে block করবে না (fail করলেও verify সফলই থাকবে,
+        // রাত ১২টার commission.job.js reconciliation করে দেবে) — sales.controller.js-এর
+        // post-sale commission update-এর মতোই non-blocking pattern।
+        setImmediate(async () => {
+            try {
+                const bdToday = getBDToday();
+                const { rate, amount, totalSales } = await updateCommissionRealtime(col.sr_id, bdToday);
+                await firebaseNotify(`live/commission/${col.sr_id}`, {
+                    date: bdToday, totalSales, rate, amount,
+                    reason: 'collection_verified',
+                });
+            } catch (commErr) {
+                console.error('verifyCollection → commission update failed:', commErr.message);
+            }
         });
 
         return res.json({ message: `৳${parseFloat(col.amount).toLocaleString()} বাকি verified এবং কাস্টমারের খাতা থেকে বাদ হয়েছে` });

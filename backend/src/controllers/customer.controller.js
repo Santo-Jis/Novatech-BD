@@ -5,6 +5,15 @@ const { sendWelcomeEmail, sendOTPEmail } = require('../services/email.service');
 const { generateOTP } = require('../config/encryption');
 const { sendCustomerNotification } = require('./customerNotification.controller');
 const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
+const { updateCommissionRealtime } = require('../services/commission.service');
+const { firebaseNotify } = require('../services/firebase.notify');
+
+// ✅ FIX: UTC নয়, BD local date — commission.service.js/sales.controller.js-এর
+// getBDToday()-এর সাথে মিলবে (রাত ১২টা-ভোর ৬টা BD সময়ে UTC date এক দিন পিছিয়ে থাকে)
+const getBDToday = () => {
+    const bdOffset = 6 * 60 * 60 * 1000;
+    return new Date(Date.now() + bdOffset).toISOString().split('T')[0];
+};
 
 // ============================================================
 // GET CUSTOMERS
@@ -775,6 +784,27 @@ const collectCredit = async (req, res) => {
 
             remainingCredit = Math.max(0, currentCredit - parseFloat(amount));
         });
+
+        // ✅ FIX: বাকি আদায় হলো (এই পথেও) — commission-যোগ্য।
+        // শুধু worker (SR) নিজে collect করলে commission পাবে — admin/manager/
+        // supervisor এই একই endpoint দিয়ে collect করলে SR commission পাবে না,
+        // যেহেতু তারা field-এ বিক্রি/আদায়ের জন্য কমিশনভুক্ত নয়।
+        // Non-blocking — fail করলেও collection সফলই থাকবে, রাতের
+        // commission.job.js reconciliation করে দেবে।
+        if (req.user.role === 'worker') {
+            setImmediate(async () => {
+                try {
+                    const bdToday = getBDToday();
+                    const { rate, amount: commAmount, totalSales } = await updateCommissionRealtime(req.user.id, bdToday);
+                    await firebaseNotify(`live/commission/${req.user.id}`, {
+                        date: bdToday, totalSales, rate, amount: commAmount,
+                        reason: 'credit_payment_collected',
+                    });
+                } catch (commErr) {
+                    logger.error('collectCredit → commission update failed:', commErr.message);
+                }
+            });
+        }
 
         // ✅ কাস্টমারকে payment confirmation notification দাও (transaction-এর বাইরে)
         sendCustomerNotification(customerId, {
