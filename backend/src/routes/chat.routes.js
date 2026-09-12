@@ -3,6 +3,7 @@ const router = express.Router()
 const multer = require('multer')
 const { auth } = require('../middlewares/auth')
 const { allowRoles, isManagement } = require('../middlewares/roleCheck')
+const { chatSendRateLimit } = require('../middlewares/chatRateLimit')
 
 const voiceUpload = multer({
   storage: multer.memoryStorage(),
@@ -34,12 +35,19 @@ const {
   summarizeThread,
   checkRisk,
   uploadVoiceNote,
+  blockThread,
+  unblockThread,
+  reportThread,
+  listCannedResponses,
+  createCannedResponse,
+  deleteCannedResponse,
+  searchMessages,
 } = require('../controllers/chat.controller')
 
 router.get('/firebase-token',       auth, getFirebaseToken)
 router.get('/threads',              auth, listThreads)
 router.patch('/threads/:id/read',   auth, markRead)
-router.post('/threads/:id/notify',  auth, notifyNewMessage)
+router.post('/threads/:id/notify',  auth, chatSendRateLimit, notifyNewMessage)
 
 // Phase 2 — বিজনেস কার্ড (Session 1: বাকি/ক্রেডিট)
 router.get('/cards/due/:customerId', auth, getCustomerDueCard)
@@ -69,7 +77,24 @@ router.post('/ai/summarize',        auth, summarizeThread)
 router.post('/ai/risk-check',       auth, checkRisk)
 
 // Phase 1 (দেরিতে) — ভয়েস নোট আপলোড
-router.post('/threads/:id/voice',   auth, voiceUpload.single('audio'), uploadVoiceNote)
+router.post('/threads/:id/voice',   auth, chatSendRateLimit, voiceUpload.single('audio'), uploadVoiceNote)
+
+// ধাপ ২ (Foundation) — Block/Report। block: যেকোনো staff (main send-এর মতোই
+// খোলা), unblock: ইচ্ছাকৃতভাবে isManagement-only (যে ব্লক করল সে নিজে একতরফা
+// আনব্লক করতে পারবে না, দেখুন controller-এর কমেন্ট)। report: যেকোনো staff।
+router.post('/threads/:id/block',   auth, blockThread)
+router.delete('/threads/:id/block', auth, isManagement, unblockThread)
+router.post('/threads/:id/report',  auth, reportThread)
+
+// ধাপ ২ (Foundation) — Canned Responses। list: যেকোনো staff, create/delete:
+// isManagement-only (block/unblock-এর ঠিক একই যুক্তি)।
+router.get('/canned-responses',     auth, listCannedResponses)
+router.post('/canned-responses',    auth, isManagement, createCannedResponse)
+router.delete('/canned-responses/:id', auth, isManagement, deleteCannedResponse)
+
+// ধাপ ২ (Foundation) — Message Search। threadId optional query param দিলে
+// শুধু সেই থ্রেডে, নাহলে পুরো tenant-এর সব থ্রেড জুড়ে।
+router.get('/search', auth, searchMessages)
 
 // শুধু Admin — support থ্রেডে কার access থাকবে
 router.get('/support-agents',            auth, allowRoles('admin'), listSupportAgents)

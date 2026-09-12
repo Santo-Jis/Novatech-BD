@@ -18,4 +18,5 @@ CREATE TABLE IF NOT EXISTS chat_broadcasts (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_broadcasts_tenant ON chat_broadcasts(tenant_id, created_at);
 
--- ALTER TABLE chat_broadcasts ENABLE ROW LEVEL SECURITY; -- (একই recurring gap, দেখুন CHAT_PHASE1_README.md)
+-- ✅ ২০২৬-০৯-০২: RLS enable করা হয়েছে, লাইভেও apply + verify করা (দেখুন CHAT_REDESIGN_ROADMAP.md)
+ALTER TABLE chat_broadcasts ENABLE ROW LEVEL SECURITY;

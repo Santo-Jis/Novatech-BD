@@ -48,10 +48,47 @@ function buildRiskCheckPrompt(recentMessages, customerName) {
     `নিচে একটা ডিস্ট্রিবিউটর আর তাদের রিটেইল কাস্টমার "${customerName || 'কাস্টমার'}"-এর মধ্যে ` +
     `হওয়া চ্যাটের সাম্প্রতিক অংশ:\n\n${history}\n\n` +
     `কাস্টমারের মেসেজগুলোতে পেমেন্ট না করতে পারা/দেরি হওয়ার ইঙ্গিত (credit risk), অথবা কোনো অভিযোগ/অসন্তুষ্টি ` +
-    `(complaint) আছে কিনা বিশ্লেষণ করুন।\n\n` +
-    `শুধু এই JSON ফরম্যাটে উত্তর দিন, অন্য কিছু না:\n` +
-    `{"detected": true/false, "flagType": "credit_risk"|"complaint"|null, "reason": "<এক লাইনে কারণ, বাংলায়>"}`
+    `(complaint) আছে কিনা বিশ্লেষণ করুন। report_risk_assessment টুল দিয়ে ফলাফল রিপোর্ট করুন।`
   )
+}
+
+// ✅ ২০২৬-০৯-০৩: ai.service.js-এ native tool-calling already বসানো ছিল
+// ("ধাপ ১"), কিন্তু risk-check এতদিন সেটা ব্যবহার করেনি — শুধু প্রম্পটে "এই
+// JSON ফরম্যাটে উত্তর দিন" লিখে আশা করা হতো মডেল ঠিকমতো মানবে, তারপর regex
+// দিয়ে টেক্সট থেকে JSON বের করার চেষ্টা হতো (parseRiskCheckResponse — brittle,
+// মডেল JSON-এর আগে/পরে অতিরিক্ত কিছু লিখলে বা ফরম্যাট সামান্য ভুল করলেই ব্যর্থ)।
+//
+// ⚠️ পুরোপুরি regex সরিয়ে দেওয়া হয়নি — OpenRouter-এর ফ্রি মডেলগুলোর (এই
+// অ্যাপের ডিফল্ট, দেখুন ai.service.js-এর getDefaultModel) tool-calling সাপোর্ট
+// অসামঞ্জস্যপূর্ণ (কোড নিজেই এটা জানে: callAI()-এ tools দিলে ৪০০ স্ট্যাটাসকেও
+// retryable ধরা হয়, কারণ অনেক ফ্রি মডেল tool না বুঝে সরাসরি bad-request দেয়)।
+// তাই: tool_calls এলে সেটাই ব্যবহার (নির্ভরযোগ্য, structured), fallback করে
+// model শুধু text ফেরত দিলে (tool ignore করলে) তখনই regex parser কাজে লাগে —
+// একটাকে আরেকটা দিয়ে replace না করে, দুই স্তরের সুরক্ষা।
+const RISK_CHECK_TOOL = {
+  name: 'report_risk_assessment',
+  description: 'কাস্টমারের সাম্প্রতিক মেসেজ বিশ্লেষণ করে credit risk বা complaint সনাক্ত হলে রিপোর্ট করুন',
+  parameters: {
+    type: 'object',
+    properties: {
+      detected: { type: 'boolean', description: 'credit risk বা complaint সনাক্ত হয়েছে কিনা' },
+      flagType: { type: 'string', enum: ['credit_risk', 'complaint'], description: 'detected true হলে বাধ্যতামূলক, নাহলে বাদ দিন' },
+      reason: { type: 'string', description: 'এক লাইনে কারণ, বাংলায়, সর্বোচ্চ ৩০০ ক্যারেক্টার' },
+    },
+    required: ['detected'],
+  },
+}
+
+function parseRiskCheckToolCall(toolCalls) {
+  const call = toolCalls?.find((tc) => tc.name === 'report_risk_assessment')
+  if (!call) return null
+  try {
+    const parsed = JSON.parse(call.arguments || '{}')
+    if (!['credit_risk', 'complaint'].includes(parsed.flagType)) parsed.flagType = null
+    return { detected: Boolean(parsed.detected && parsed.flagType), flagType: parsed.flagType, reason: String(parsed.reason || '').slice(0, 300) }
+  } catch {
+    return null // parse ব্যর্থ হলে null — caller তখন টেক্সট-fallback-এ যাবে
+  }
 }
 
 function parseRiskCheckResponse(text) {
@@ -66,4 +103,7 @@ function parseRiskCheckResponse(text) {
   }
 }
 
-module.exports = { buildDraftReplyPrompt, buildSummaryPrompt, buildRiskCheckPrompt, parseRiskCheckResponse }
+module.exports = {
+  buildDraftReplyPrompt, buildSummaryPrompt, buildRiskCheckPrompt,
+  parseRiskCheckResponse, RISK_CHECK_TOOL, parseRiskCheckToolCall,
+}

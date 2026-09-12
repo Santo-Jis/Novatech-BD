@@ -40,6 +40,6 @@ CREATE TABLE IF NOT EXISTS chat_flagged_messages (
 );
 CREATE INDEX IF NOT EXISTS idx_chat_flagged_messages_tenant ON chat_flagged_messages(tenant_id, created_at);
 
--- ⚠️ এই দুটোতেও RLS enable করা হয়নি — একই recurring gap (দেখুন CHAT_PHASE1_README.md)
--- ALTER TABLE chat_response_events  ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE chat_flagged_messages ENABLE ROW LEVEL SECURITY;
+-- ✅ ২০২৬-০৯-০২: দুটোতেই RLS enable করা হয়েছে, লাইভেও apply + verify করা (দেখুন CHAT_REDESIGN_ROADMAP.md)
+ALTER TABLE chat_response_events  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE chat_flagged_messages ENABLE ROW LEVEL SECURITY;

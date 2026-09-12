@@ -278,16 +278,19 @@ const failDelivery = async (req, res) => {
 const getCustomerDeliveries = async (req, res) => {
     try {
         const { customer_id } = req.params;
+        // ✅ ২০২৬-০৯-০৩: tenant_id চেক যোগ — এই ফাইলের বাকি সব ফাংশনই req.tenantId
+        // দিয়ে স্কোপ করে, এটাই একমাত্র বাদ ছিল (অন্য tenant-এর customer_id আন্দাজ
+        // করলে তাদের ডেলিভারি হিস্ট্রি/total_amount পড়া সম্ভব ছিল)।
         const result = await query(
             `SELECT d.id, d.status, d.items, d.total_amount,
                     d.started_at, d.arrived_at, d.delivered_at,
                     u.name_bn AS delivery_person
              FROM deliveries d
              LEFT JOIN users u ON u.id = d.assigned_to
-             WHERE d.customer_id = $1
+             WHERE d.customer_id = $1 AND d.tenant_id = $2
              ORDER BY d.created_at DESC
              LIMIT 10`,
-            [customer_id]
+            [customer_id, req.tenantId]
         );
         return res.json({ success: true, data: result.rows });
 

@@ -13,10 +13,12 @@ import { ref, update } from 'firebase/database'
 import { useChatEngine } from '../hooks/useChatEngine'
 import { useOthersOnline } from '../hooks/usePresence'
 import ThreadHeader from './ThreadHeader'
+import ThreadOptionsMenu from './ThreadOptionsMenu'
 import MessageBubble from './MessageBubble'
 import TypingDots from './TypingDots'
 import Composer from './Composer'
 import AttachMenu from './AttachMenu'
+import CannedResponsePicker from './CannedResponsePicker'
 import AICopilotMenu from '../ai/AICopilotMenu'
 import AIResultModal from '../ai/AIResultModal'
 import { useVoiceRecorder } from '../voice/useVoiceRecorder'
@@ -55,7 +57,7 @@ export default function ConversationPane({
   }, [engine.messages.length, engine.typingOthers])
 
   const handleSend = () => {
-    if (!composerValue.trim()) return
+    if (!composerValue.trim() || engine.blocked) return
     // ✅ ফিক্স: আগে send()-এর রেজাল্ট না দেখেই composer খালি করা হতো — তাই
     // send() ব্যর্থ হলেও (থ্রেড এখনো রেডি না) মনে হতো মেসেজ "পাঠানো হয়ে গেছে"।
     // এখন সত্যিই কিউ হলে তবেই বক্স খালি হয়।
@@ -69,10 +71,17 @@ export default function ConversationPane({
   const [aiModal, setAiModal] = useState(null) // { mode, summary, risk, error, flagMsg } | null
   const [flagging, setFlagging] = useState(false)
 
+  // ✅ ২০২৬-০৯-০৩: id/clientId যোগ করা হলো। আগে এই দুটো বাদ পড়ত বলে
+  // AICopilotMenu.jsx-এর lastCustomerMsg-এ কোনো id থাকত না — handleAIFlag()
+  // তখন chatApi.flagMessage(threadId, undefined, ...) কল করত, ব্যাকএন্ড
+  // "অসম্পূর্ণ তথ্য" ৪০০ দিয়ে প্রত্যাখ্যান করত (দেখুন CHAT_REDESIGN_ROADMAP.md
+  // ধাপ ১-এর ফাইন্ডিং)। chatAI.service.js-এর formatHistory() শুধু
+  // senderType/senderName/text পড়ে, তাই এই এক্সট্রা ফিল্ড prompt-এ ঢুকবে না —
+  // যাচাই করে নেওয়া হয়েছে।
   const getRecentMessages = () =>
     engine.messages
       .filter((m) => !m.kind && !m._localStatus)
-      .map((m) => ({ senderType: m.senderType, senderName: m.senderName, text: m.text }))
+      .map((m) => ({ id: m.id, clientId: m.clientId, senderType: m.senderType, senderName: m.senderName, text: m.text }))
 
   const handleAIFlag = async () => {
     if (!aiModal?.risk?.detected || !aiModal.flagMsg) return
@@ -134,7 +143,25 @@ export default function ConversationPane({
         othersOnline={anyOnline}
         typingOthers={engine.typingOthers}
         tabs={tabs}
+        menu={
+          threadId && (
+            <ThreadOptionsMenu
+              chatApi={chatApi}
+              threadId={threadId}
+              blocked={engine.blocked}
+              accent={accent}
+              myName={senderName}
+            />
+          )
+        }
       />
+
+      {engine.blocked && (
+        <div className="flex-shrink-0 flex items-center justify-center gap-1.5 bg-cp-error/10 text-cp-error text-[11.5px] font-medium py-1.5 px-3 text-center">
+          এই কথোপকথন ব্লক করা আছে{engine.blocked.byName ? ` — ${engine.blocked.byName}` : ''}
+          {engine.blocked.reason ? ` (${engine.blocked.reason})` : ''}
+        </div>
+      )}
 
       {engine.isOffline && (
         <div className="flex-shrink-0 flex items-center justify-center gap-1.5 bg-cp-warning-bg text-cp-warning text-[11.5px] font-medium py-1.5 px-3">
@@ -217,13 +244,15 @@ export default function ConversationPane({
           onTypingChange={engine.notifyTyping}
           sending={engine.sending}
           accent={accent}
-          placeholder={composerPlaceholder}
+          placeholder={engine.blocked ? 'ব্লক করা থ্রেডে মেসেজ পাঠানো যাবে না' : composerPlaceholder}
+          disabled={!!engine.blocked}
           leadingAction={
             <>
-              <MicButton onStart={voiceRec.start} disabled={engine.isOffline || voiceUploading} accent={accent} />
-              {customerId && (
+              <MicButton onStart={voiceRec.start} disabled={engine.isOffline || voiceUploading || !!engine.blocked} accent={accent} />
+              {customerId && !engine.blocked && (
                 <>
                   <AttachMenu chatApi={chatApi} customerId={customerId} onAttach={engine.sendCard} accent={accent} />
+                  <CannedResponsePicker chatApi={chatApi} onInsert={(text) => onComposerChange(text)} accent={accent} />
                   <AICopilotMenu
                     chatApi={chatApi}
                     getRecentMessages={getRecentMessages}

@@ -17,13 +17,14 @@
 
 import { useState, useEffect } from 'react'
 import clsx from 'clsx'
-import { FiMessageCircle, FiHeadphones, FiInbox, FiFileText, FiRadio } from 'react-icons/fi'
+import { FiMessageCircle, FiHeadphones, FiInbox, FiFileText, FiRadio, FiSearch } from 'react-icons/fi'
 import { createChatApi } from '../../chat/api/chatApi'
 import { useChatIdentity } from '../../chat/hooks/useChatIdentity'
 import { timeAgo } from '../../chat/utils/time'
 import ConversationPane from '../../chat/components/ConversationPane'
 import NotesPanel from '../../chat/notes/NotesPanel'
 import BroadcastPanel from '../../chat/broadcast/BroadcastPanel'
+import SearchPanel from '../../chat/components/SearchPanel'
 
 // ── থ্রেড-লিস্ট hook — staff-নির্দিষ্ট শেপ (flat personal[]/support[]), তাই
 // shared engine-এর অংশ না (দেখুন chatApi.js-এর টপ কমেন্ট) ──
@@ -110,6 +111,7 @@ export default function ChatInbox() {
   const [composerValue, setComposerValue] = useState('')
   const [notesOpen, setNotesOpen] = useState(false)
   const [broadcastOpen, setBroadcastOpen] = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
 
   const list = threads[tab] || []
   const activeItem = list.find((t) => t.id === openId)
@@ -122,6 +124,13 @@ export default function ChatInbox() {
 
   const handleOpen = (item) => setOpenId(item.id)
   const handleBack = () => setOpenId(null)
+  // ✅ সার্চ-রেজাল্ট অন্য tab-এর (personal/support) থ্রেড থেকেও আসতে পারে —
+  // শুধু openId বদলালে activeItem খুঁজে পাওয়া যেত না যদি সেটা বর্তমান tab-এ
+  // না থাকে, তাই দুটো state একসাথে বদলানো হচ্ছে।
+  const handleSearchNavigate = (threadId, threadType) => {
+    setTab(threadType === 'support' ? 'support' : 'personal')
+    setOpenId(threadId)
+  }
 
   // h-full কাজ করবে যদি প্রতিটা layout-এর <main> flex-col শেলের ভেতর flex-1
   // হিসেবে বসানো থাকে (এই কোডবেসের standard প্যাটার্ন)। min-height সেফটি-নেট।
@@ -132,13 +141,23 @@ export default function ChatInbox() {
         <div className="px-4 py-3 border-b border-cp-border">
           <div className="flex items-center justify-between mb-2">
             <h2 className="font-cp-head font-bold text-[17px] text-cp-text-primary">মেসেজ</h2>
-            <button
-              onClick={() => setBroadcastOpen(true)}
-              type="button"
-              className="flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-full bg-cp-trust-50 text-cp-trust-700 text-[11.5px] font-semibold hover:bg-cp-trust-100 transition-colors"
-            >
-              <FiRadio size={12} /> ব্রডকাস্ট
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setSearchOpen(true)}
+                type="button"
+                aria-label="সার্চ"
+                className="w-8 h-8 flex items-center justify-center rounded-full text-cp-text-secondary hover:bg-cp-bg-alt transition-colors"
+              >
+                <FiSearch size={15} />
+              </button>
+              <button
+                onClick={() => setBroadcastOpen(true)}
+                type="button"
+                className="flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-full bg-cp-trust-50 text-cp-trust-700 text-[11.5px] font-semibold hover:bg-cp-trust-100 transition-colors"
+              >
+                <FiRadio size={12} /> ব্রডকাস্ট
+              </button>
+            </div>
           </div>
           <div className="relative flex bg-cp-bg-sunken rounded-full p-1 h-10">
             <span
@@ -243,6 +262,10 @@ export default function ChatInbox() {
 
       {broadcastOpen && (
         <BroadcastPanel chatApi={chatApi} db={db} uid={uid} ready={ready} senderName="স্টাফ" onClose={() => setBroadcastOpen(false)} />
+      )}
+
+      {searchOpen && (
+        <SearchPanel chatApi={chatApi} onNavigate={handleSearchNavigate} onClose={() => setSearchOpen(false)} />
       )}
     </div>
   )

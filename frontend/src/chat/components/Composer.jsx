@@ -7,11 +7,11 @@ import { useRef } from 'react'
 import clsx from 'clsx'
 import { FiSend } from 'react-icons/fi'
 
-export default function Composer({ value, onChange, onSend, onTypingChange, sending, accent, placeholder, leadingAction }) {
+export default function Composer({ value, onChange, onSend, onTypingChange, sending, accent, placeholder, leadingAction, disabled = false }) {
   const taRef = useRef(null)
 
   const handleSend = () => {
-    if (!value.trim()) return
+    if (!value.trim() || disabled) return
     onSend()
     if (taRef.current) taRef.current.style.height = 'auto'
   }
@@ -31,6 +31,7 @@ export default function Composer({ value, onChange, onSend, onTypingChange, send
         <textarea
           ref={taRef}
           value={value}
+          disabled={disabled}
           onChange={(e) => {
             onChange(e.target.value)
             onTypingChange?.(e.target.value.length > 0)
@@ -43,15 +44,15 @@ export default function Composer({ value, onChange, onSend, onTypingChange, send
           }}
           rows={1}
           placeholder={placeholder}
-          className="flex-1 resize-none bg-transparent outline-none text-[14px] font-cp-body text-cp-text-primary placeholder:text-cp-text-muted leading-relaxed py-1 max-h-24"
+          className="flex-1 resize-none bg-transparent outline-none text-[14px] font-cp-body text-cp-text-primary placeholder:text-cp-text-muted leading-relaxed py-1 max-h-24 disabled:cursor-not-allowed disabled:text-cp-text-muted"
         />
         <button
           onClick={handleSend}
-          disabled={!value.trim()}
+          disabled={!value.trim() || disabled}
           type="button"
           className={clsx(
             'flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all duration-150 active:scale-90',
-            value.trim()
+            value.trim() && !disabled
               ? accent === 'warmth'
                 ? 'bg-cp-warmth-600 text-white shadow-sm'
                 : 'bg-cp-trust-500 text-white shadow-sm'

@@ -15,7 +15,7 @@
 const { query } = require('../config/db')
 const logger = require('../config/logger')
 const { sendPushToMany } = require('../services/fcm.service')
-const { mintChatToken, syncThreadParticipants, resolveSupportStaffIds, resolvePersonalStaffIds } = require('../services/chatFirebase.service')
+const { mintChatToken, syncThreadParticipants, resolveSupportStaffIds, resolvePersonalStaffIds, setThreadBlockMeta } = require('../services/chatFirebase.service')
 const { uploadAudioToCloudinary } = require('../services/chatMedia.service')
 
 // GET /api/portal/chat/firebase-token — person_id-ভিত্তিক, সব কোম্পানিতে একই identity
@@ -139,10 +139,16 @@ const markRead = async (req, res) => {
 }
 
 // POST /api/portal/chat/threads/:id/notify — RTDB-তে মেসেজ লেখার পর কল হয়
-// body: { preview: string }
+// body: { preview, clientId?, senderName?, text?, kind? }
 const notifyNewMessage = async (req, res) => {
-  const { preview } = req.body
+  const { preview, clientId, senderName, text, kind } = req.body
   try {
+    // Block/report ধাপ — chat.controller.js-এর ঠিক একই চেক, একই সীমাবদ্ধতার কমেন্ট প্রযোজ্য
+    const { rows: blockRows } = await query('SELECT 1 FROM chat_blocks WHERE thread_id = $1', [req.params.id])
+    if (blockRows.length) {
+      return res.status(403).json({ success: false, message: 'এই কথোপকথন ব্লক করা আছে', blocked: true })
+    }
+
     const { rows } = await query(
       `UPDATE chat_threads
        SET last_message_at = NOW(), last_message_preview = $1, last_sender_type = 'customer'
@@ -152,6 +158,17 @@ const notifyNewMessage = async (req, res) => {
     )
     if (!rows.length) return res.status(404).json({ success: false, message: 'থ্রেড পাওয়া যায়নি' })
     const thread = rows[0]
+
+    // Phase 2 (Foundation) — dual-write, staff-সাইড notifyNewMessage-এর ঠিক
+    // একই প্যাটার্ন (দেখুন chat.controller.js) — best-effort, ব্যাকওয়ার্ড-কম্প্যাটিবল
+    if (clientId) {
+      query(
+        `INSERT INTO chat_messages (thread_id, tenant_id, client_id, sender_type, sender_id, sender_name, kind, text)
+         VALUES ($1, $2, $3, 'customer', $4, $5, $6, $7)
+         ON CONFLICT (thread_id, client_id) DO NOTHING`,
+        [thread.id, thread.tenant_id, clientId, String(req.portalUser.person_id), senderName || 'কাস্টমার', kind || 'text', text != null ? String(text).slice(0, 4000) : null]
+      ).catch((e) => logger.error('[chat] message dual-write failed (delivery unaffected):', e.message))
+    }
 
     await syncThreadParticipants({
       threadId: thread.id, threadType: thread.thread_type,
@@ -199,4 +216,57 @@ const uploadVoiceNote = async (req, res) => {
   }
 }
 
-module.exports = { getFirebaseToken, ensureThreads, listAllThreads, markRead, notifyNewMessage, uploadVoiceNote }
+// ── Block / Report (ধাপ ২, Foundation) — chat.controller.js-এর স্টাফ-সাইড
+// সংস্করণের সমতুল্য। ⚠️ unblock এখানে ইচ্ছাকৃতভাবে নেই — শুধু staff/management
+// (chat.routes.js) আনব্লক করতে পারবে, কাস্টমার নিজে ব্লক করে নিজে তুলতে পারবে না।
+const blockThread = async (req, res) => {
+  // ⚠️ req.portalUser (JWT payload) থেকে গ্যারান্টিড নাম ফিল্ড আছে কিনা যাচাই
+  // করিনি (customerPortal.controller.js-এ jwt.sign() একাধিক জায়গায়, payload
+  // শেপ ভিন্ন হতে পারে) — তাই senderName-এর মতোই ফ্রন্টএন্ড থেকে পাঠানো নাম
+  // নেওয়া হচ্ছে (portal সেশনেই এই তথ্য থাকে), অনুমান করা হয়নি।
+  const { reason, name } = req.body
+  try {
+    const { rows } = await query('SELECT id, tenant_id FROM chat_threads WHERE id = $1 AND person_id = $2', [req.params.id, req.portalUser.person_id])
+    if (!rows.length) return res.status(404).json({ success: false, message: 'থ্রেড পাওয়া যায়নি' })
+    const thread = rows[0]
+
+    await query(
+      `INSERT INTO chat_blocks (thread_id, tenant_id, blocked_by_type, blocked_by_id, blocked_by_name, reason)
+       VALUES ($1, $2, 'customer', $3, $4, $5)
+       ON CONFLICT (thread_id) DO NOTHING`,
+      [thread.id, thread.tenant_id, req.portalUser.person_id, name || 'কাস্টমার', reason || null]
+    )
+    await setThreadBlockMeta(thread.id, { by: 'customer', byName: name || 'কাস্টমার', reason: reason || null, at: Date.now() })
+
+    res.json({ success: true })
+  } catch (e) {
+    logger.error('[chat] blockThread (portal) error:', e.message)
+    res.status(500).json({ success: false, message: 'ব্লক করা যায়নি' })
+  }
+}
+
+const REPORT_CATEGORIES = ['abusive', 'spam', 'harassment', 'other']
+
+const reportThread = async (req, res) => {
+  const { category, note, messageClientId, name } = req.body
+  if (!REPORT_CATEGORIES.includes(category)) {
+    return res.status(400).json({ success: false, message: 'সঠিক ক্যাটাগরি দরকার' })
+  }
+  try {
+    const { rows } = await query('SELECT id, tenant_id FROM chat_threads WHERE id = $1 AND person_id = $2', [req.params.id, req.portalUser.person_id])
+    if (!rows.length) return res.status(404).json({ success: false, message: 'থ্রেড পাওয়া যায়নি' })
+    const thread = rows[0]
+
+    await query(
+      `INSERT INTO chat_reports (thread_id, tenant_id, message_client_id, reporter_type, reporter_id, reporter_name, category, note)
+       VALUES ($1, $2, $3, 'customer', $4, $5, $6, $7)`,
+      [thread.id, thread.tenant_id, messageClientId || null, req.portalUser.person_id, name || 'কাস্টমার', category, note || null]
+    )
+    res.json({ success: true })
+  } catch (e) {
+    logger.error('[chat] reportThread (portal) error:', e.message)
+    res.status(500).json({ success: false, message: 'রিপোর্ট পাঠানো যায়নি' })
+  }
+}
+
+module.exports = { getFirebaseToken, ensureThreads, listAllThreads, markRead, notifyNewMessage, uploadVoiceNote, blockThread, reportThread }

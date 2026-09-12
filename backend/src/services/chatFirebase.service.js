@@ -100,9 +100,27 @@ const syncThreadParticipants = async ({ threadId, threadType, tenantId, customer
   }
 }
 
+// Block/report ধাপ — participants-এর ঠিক পাশেই chats/{threadId}/meta/blocked
+// রাখা হচ্ছে, একই কারণে (Admin SDK দিয়ে লেখা, client কখনো নিজে এই পাথে লিখতে
+// পারে না)। এটা শুধু ফ্রন্টএন্ডকে তাৎক্ষণিক UI-সিগন্যাল দেয় (ব্যানার/কম্পোজার
+// ডিজেবল) — আসল এনফোর্সমেন্ট notifyNewMessage()-এ Postgres chat_blocks
+// টেবিল চেক করেই হয়, RTDB মেটা শুধু একটা mirror।
+//
+// ⚠️ সীমাবদ্ধতা (rate-limit মিডলওয়্যারের কমেন্টেও একই কথা লেখা আছে): এটা RTDB-তে
+// সরাসরি ম্যালিশাস ক্লায়েন্ট লেখা ঠেকাতে পারে না, সেটার জন্য Firebase Security
+// Rules লাগবে যেটা এই মেটা পড়ে লেখা আটকাবে — সেই স্তরে আমার অ্যাক্সেস নেই।
+const setThreadBlockMeta = async (threadId, meta) => {
+  try {
+    await getDB().ref(`chats/${threadId}/meta/blocked`).set(meta) // meta: {by, byName, reason, at} অথবা null (আনব্লক)
+  } catch (e) {
+    logger.error('[chatFirebase] setThreadBlockMeta error:', e.message)
+  }
+}
+
 module.exports = {
   mintChatToken,
   resolvePersonalStaffIds,
   resolveSupportStaffIds,
   syncThreadParticipants,
+  setThreadBlockMeta,
 }

@@ -15,10 +15,13 @@ const { query } = require('../config/db')
 const logger = require('../config/logger')
 const { sendPushToMany } = require('../services/fcm.service')
 const { sendCustomerPush } = require('../services/fcm.service')
-const { mintChatToken, syncThreadParticipants } = require('../services/chatFirebase.service')
+const { mintChatToken, syncThreadParticipants, setThreadBlockMeta } = require('../services/chatFirebase.service')
 const { callAI } = require('../services/ai.service')
 const { AIAccessBlockedError } = require('../services/tenantAI.service')
-const { buildDraftReplyPrompt, buildSummaryPrompt, buildRiskCheckPrompt, parseRiskCheckResponse } = require('../services/chatAI.service')
+const {
+  buildDraftReplyPrompt, buildSummaryPrompt, buildRiskCheckPrompt,
+  parseRiskCheckResponse, RISK_CHECK_TOOL, parseRiskCheckToolCall,
+} = require('../services/chatAI.service')
 const { uploadAudioToCloudinary } = require('../services/chatMedia.service')
 
 const FULL_VISIBILITY_ROLES = ['admin', 'superadmin', 'asm', 'rsm']
@@ -111,10 +114,19 @@ const markRead = async (req, res) => {
   }
 }
 
-// POST /api/chat/threads/:id/notify — body: { preview }
+// POST /api/chat/threads/:id/notify — body: { preview, clientId?, senderName?, text?, kind? }
 const notifyNewMessage = async (req, res) => {
-  const { preview } = req.body
+  const { preview, clientId, senderName, text, kind } = req.body
   try {
+    // Block/report ধাপ — RTDB write ততক্ষণে হয়ে গেছে (client-side, ব্যাকএন্ডকে
+    // বাইপাস করে), তাই এই চেক আসল ডেলিভারি আটকায় না — কিন্তু notify() এর পরের
+    // সব side-effect (SLA event, dual-write, push notification) আটকে দেয়, আর
+    // ফ্রন্টএন্ডকে জানিয়ে দেয় থ্রেড ব্লকড যাতে পরের বার কম্পোজ বক্সই দেখা না যায়।
+    const { rows: blockRows } = await query('SELECT 1 FROM chat_blocks WHERE thread_id = $1', [req.params.id])
+    if (blockRows.length) {
+      return res.status(403).json({ success: false, message: 'এই কথোপকথন ব্লক করা আছে', blocked: true })
+    }
+
     // Phase 3 SLA — আপডেট করার আগে আগের state পড়ে নেওয়া, যাতে বোঝা যায়
     // এটা "কাস্টমারের অপেক্ষারত মেসেজের প্রথম রিপ্লাই" কিনা
     const { rows: beforeRows } = await query(
@@ -141,6 +153,19 @@ const notifyNewMessage = async (req, res) => {
          VALUES ($1, $2, $3, NOW(), $4, $5)`,
         [thread.id, thread.tenant_id, before.last_message_at, responseSeconds, req.user.id]
       ).catch((e) => logger.error('[chat] SLA event log failed (reply itself unaffected):', e.message))
+    }
+
+    // Phase 2 (Foundation) — dual-write: RTDB-ই এখনো আসল ডেলিভারি, এটা শুধু
+    // search/audit/AI-grounding-এর জন্য Postgres-এ একটা কপি রাখা। best-effort +
+    // ব্যাকওয়ার্ড-কম্প্যাটিবল: clientId না থাকলে (পুরোনো ফ্রন্টএন্ড বান্ডেল থেকে কল
+    // হলে) নিঃশব্দে স্কিপ হয়। ON CONFLICT দিয়ে notify() রিট্রাই হলেও ডুপ্লিকেট হবে না।
+    if (clientId) {
+      query(
+        `INSERT INTO chat_messages (thread_id, tenant_id, client_id, sender_type, sender_id, sender_name, kind, text)
+         VALUES ($1, $2, $3, 'staff', $4, $5, $6, $7)
+         ON CONFLICT (thread_id, client_id) DO NOTHING`,
+        [thread.id, thread.tenant_id, clientId, String(req.user.id), senderName || req.user.name_bn || 'স্টাফ', kind || 'text', text != null ? String(text).slice(0, 4000) : null]
+      ).catch((e) => logger.error('[chat] message dual-write failed (delivery unaffected):', e.message))
     }
 
     // ⚠️ person_id বাদ পড়লে syncThreadParticipants "customer:undefined" লিখে RTDB-এর
@@ -173,14 +198,10 @@ const notifyNewMessage = async (req, res) => {
 
 // GET /api/chat/cards/due/:customerId
 //
-// ⚠️ নিরাপত্তা নোট: creditReminder.controller.js-এর sendCreditReminder() আর
-// delivery.controller.js-এর getCustomerDeliveries() — এই দুটোতেই customer_id
-// লুকআপে tenant_id চেক নেই (শুধু id = $1) — মানে অন্য tenant-এর customer_id
-// আন্দাজ/জানা থাকলে সেই কাস্টমারের বাকি/ডেলিভারি তথ্য পড়া সম্ভব। এখানে সেই
-// প্যাটার্ন কপি না করে tenant_id = $2 এক্সপ্লিসিট রাখা হলো (chat.controller.js-এর
-// বাকি সব ফাংশনের established pattern অনুযায়ী)। sendCreditReminder/
-// getCustomerDeliveries-এ একই ফিক্স করা এই সেশনের স্কোপের বাইরে, কিন্তু
-// README-তে ফ্ল্যাগ করা আছে।
+// ✅ ২০২৬-০৯-০৩ আপডেট: এই কমেন্টে flagged দুটো ফাংশনই (creditReminder.controller.js-এর
+// sendCreditReminder(), delivery.controller.js-এর getCustomerDeliveries()) এখন
+// tenant_id = req.tenantId চেক করে ফিক্সড — এই ফাংশনের established pattern-ই
+// ওখানে অ্যাপ্লাই করা হয়েছে। বিস্তারিত সেই দুই ফাইলের নিজ নিজ কমেন্টে।
 const getCustomerDueCard = async (req, res) => {
   try {
     const { customerId } = req.params
@@ -351,7 +372,12 @@ const flagMessage = async (req, res) => {
     const { clientId, flagType, text } = req.body
     const { id: userId, tenantId, name_bn: staffName } = req.user
 
-    if (!['price_quote', 'payment_promise'].includes(flagType)) {
+    // ✅ ২০২৬-০৯-০৩: credit_risk/complaint যোগ — chat_ai_flags migration-এ DB
+    // constraint আগেই আপডেট হয়েছিল, কিন্তু এই validation list পুরনোই থেকে
+    // গিয়েছিল। ফলে AICopilotMenu-এর risk-check থেকে "flag করুন" চাপলে DB-তে
+    // পৌঁছানোর আগেই এখানে ৪০০ দিয়ে আটকে যেত — AI-detected flag কখনো audit
+    // টেবিলে জমা হতো না (দেখুন CHAT_REDESIGN_ROADMAP.md ধাপ ১-এর ফাইন্ডিং)।
+    if (!['price_quote', 'payment_promise', 'credit_risk', 'complaint'].includes(flagType)) {
       return res.status(400).json({ success: false, message: 'অজানা ফ্ল্যাগ টাইপ' })
     }
     if (!clientId || !text) return res.status(400).json({ success: false, message: 'অসম্পূর্ণ তথ্য' })
@@ -510,8 +536,16 @@ const checkRisk = async (req, res) => {
       return res.status(400).json({ success: false, message: 'কথোপকথনের ইতিহাস দিন' })
     }
     const prompt = buildRiskCheckPrompt(recentMessages, customerName)
-    const result = await callAI(prompt, 'daily', null, [], { tenantId: req.user.tenantId, userId: req.user.id, source: 'chat_risk_check' })
-    res.json({ success: true, data: parseRiskCheckResponse(result.text) })
+    const result = await callAI(prompt, 'daily', null, [], {
+      tenantId: req.user.tenantId, userId: req.user.id, source: 'chat_risk_check',
+      tools: [RISK_CHECK_TOOL], // ✅ ২০২৬-০৯-০৩: structured tool-call প্রাইমারি পাথ
+    })
+    // মডেল tool ব্যবহার করলে সেটাই নির্ভরযোগ্য উৎস; না করলে (কিছু ফ্রি মডেল
+    // tool ignore করে শুধু টেক্সট লেখে) regex-ভিত্তিক পুরনো পার্সার fallback —
+    // দেখুন chatAI.service.js-এর কমেন্ট।
+    const parsed = (result.type === 'tool_calls' && parseRiskCheckToolCall(result.toolCalls))
+      || parseRiskCheckResponse(result.text)
+    res.json({ success: true, data: parsed })
   } catch (e) {
     handleAIError(e, res, 'checkRisk')
   }
@@ -546,6 +580,178 @@ const uploadVoiceNote = async (req, res) => {
   } catch (e) {
     logger.error('[chat] uploadVoiceNote error:', e.message)
     res.status(500).json({ success: false, message: 'ভয়েস নোট আপলোড করতে সমস্যা হয়েছে' })
+  }
+}
+
+// ── Block / Report (ধাপ ২, Foundation) ──────────────────────────────────
+//
+// block: যেকোনো authenticated staff তৈরি করতে পারে (route-এ শুধু `auth`),
+// কিন্তু unblock ইচ্ছাকৃতভাবে management-only (route-এ `isManagement` দিয়ে
+// গার্ড করা) — যে ব্লক করল সে নিজেই একতরফা আনব্লক করতে পারবে না।
+//
+// ⚠️ এনফোর্সমেন্ট শুধু notify()-তে (Postgres chat_blocks চেক করে) আর RTDB
+// meta-তে (ফ্রন্টএন্ড UI গেট) — আসল RTDB write client-side সরাসরি হয় বলে,
+// ম্যালিশাস ক্লায়েন্ট এই দুটোই বাইপাস করতে পারে যদি না Firebase Security
+// Rules-এও একই চেক থাকে (সেটা এই টুলসেট দিয়ে কনফিগার করা সম্ভব না)।
+const blockThread = async (req, res) => {
+  const { reason } = req.body
+  try {
+    const { rows } = await query(
+      'SELECT id, tenant_id FROM chat_threads WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, req.user.tenantId]
+    )
+    if (!rows.length) return res.status(404).json({ success: false, message: 'থ্রেড পাওয়া যায়নি' })
+    const thread = rows[0]
+
+    await query(
+      `INSERT INTO chat_blocks (thread_id, tenant_id, blocked_by_type, blocked_by_id, blocked_by_name, reason)
+       VALUES ($1, $2, 'staff', $3, $4, $5)
+       ON CONFLICT (thread_id) DO NOTHING`,
+      [thread.id, thread.tenant_id, req.user.id, req.user.name_bn || 'স্টাফ', reason || null]
+    )
+    await setThreadBlockMeta(thread.id, { by: 'staff', byName: req.user.name_bn || 'স্টাফ', reason: reason || null, at: Date.now() })
+
+    res.json({ success: true })
+  } catch (e) {
+    logger.error('[chat] blockThread error:', e.message)
+    res.status(500).json({ success: false, message: 'ব্লক করা যায়নি' })
+  }
+}
+
+const unblockThread = async (req, res) => {
+  try {
+    const { rows } = await query(
+      'DELETE FROM chat_blocks WHERE thread_id = $1 AND tenant_id = $2 RETURNING id',
+      [req.params.id, req.user.tenantId]
+    )
+    if (!rows.length) return res.status(404).json({ success: false, message: 'এই থ্রেড ব্লকড নেই' })
+    await setThreadBlockMeta(req.params.id, null)
+    res.json({ success: true })
+  } catch (e) {
+    logger.error('[chat] unblockThread error:', e.message)
+    res.status(500).json({ success: false, message: 'আনব্লক করা যায়নি' })
+  }
+}
+
+const REPORT_CATEGORIES = ['abusive', 'spam', 'harassment', 'other']
+
+const reportThread = async (req, res) => {
+  const { category, note, messageClientId } = req.body
+  if (!REPORT_CATEGORIES.includes(category)) {
+    return res.status(400).json({ success: false, message: 'সঠিক ক্যাটাগরি দরকার' })
+  }
+  try {
+    const { rows } = await query(
+      'SELECT id, tenant_id FROM chat_threads WHERE id = $1 AND tenant_id = $2',
+      [req.params.id, req.user.tenantId]
+    )
+    if (!rows.length) return res.status(404).json({ success: false, message: 'থ্রেড পাওয়া যায়নি' })
+    const thread = rows[0]
+
+    await query(
+      `INSERT INTO chat_reports (thread_id, tenant_id, message_client_id, reporter_type, reporter_id, reporter_name, category, note)
+       VALUES ($1, $2, $3, 'staff', $4, $5, $6, $7)`,
+      [thread.id, thread.tenant_id, messageClientId || null, req.user.id, req.user.name_bn || 'স্টাফ', category, note || null]
+    )
+    res.json({ success: true })
+  } catch (e) {
+    logger.error('[chat] reportThread error:', e.message)
+    res.status(500).json({ success: false, message: 'রিপোর্ট পাঠানো যায়নি' })
+  }
+}
+
+// ── Canned Responses (ধাপ ২, Foundation) ──────────────────────────────
+//
+// ⚠️ এটা platformSupport.controller.js-এর support_canned_responses থেকে
+// ইচ্ছাকৃতভাবে আলাদা টেবিল/ফিচার — ওটা Novatech-BD-এর platform_staff টিমের
+// জন্য (tenant ব্যবসাকে সাপোর্ট), এটা tenant-এর নিজের staff-এর জন্য (retail
+// কাস্টমারকে চ্যাটে দ্রুত রিপ্লাই)। দুটো ভিন্ন ডোমেইন, conflate করা হয়নি।
+//
+// list: যেকোনো staff। create/delete: isManagement-only (route-level) —
+// unblock-এর মতোই একই যুক্তি, টেমপ্লেট লিস্ট এলোমেলো না হয়ে যাক।
+const listCannedResponses = async (req, res) => {
+  try {
+    const { rows } = await query(
+      'SELECT id, title, body FROM chat_canned_responses WHERE tenant_id = $1 ORDER BY title ASC',
+      [req.user.tenantId]
+    )
+    res.json({ success: true, data: rows })
+  } catch (e) {
+    logger.error('[chat] listCannedResponses error:', e.message)
+    res.status(500).json({ success: false, message: 'লোড করা যায়নি' })
+  }
+}
+
+const createCannedResponse = async (req, res) => {
+  const { title, body } = req.body
+  if (!title?.trim() || !body?.trim()) {
+    return res.status(400).json({ success: false, message: 'title ও body দুটোই দিতে হবে' })
+  }
+  try {
+    const { rows } = await query(
+      `INSERT INTO chat_canned_responses (tenant_id, title, body, created_by)
+       VALUES ($1, $2, $3, $4) RETURNING id, title, body`,
+      [req.user.tenantId, title.trim(), body.trim(), req.user.id]
+    )
+    res.status(201).json({ success: true, data: rows[0] })
+  } catch (e) {
+    logger.error('[chat] createCannedResponse error:', e.message)
+    res.status(500).json({ success: false, message: 'তৈরি করা যায়নি' })
+  }
+}
+
+const deleteCannedResponse = async (req, res) => {
+  try {
+    const { rows } = await query(
+      'DELETE FROM chat_canned_responses WHERE id = $1 AND tenant_id = $2 RETURNING id',
+      [req.params.id, req.user.tenantId]
+    )
+    if (!rows.length) return res.status(404).json({ success: false, message: 'পাওয়া যায়নি' })
+    res.json({ success: true })
+  } catch (e) {
+    logger.error('[chat] deleteCannedResponse error:', e.message)
+    res.status(500).json({ success: false, message: 'মুছে ফেলা যায়নি' })
+  }
+}
+
+// ── Message Search (ধাপ ২, Foundation) ──────────────────────────────────
+//
+// chat_messages-এর dual-write-এর উপর নির্ভরশীল — dual-write ডিপ্লয়ের আগের
+// মেসেজগুলো এখানে থাকবে না (RTDB-তে আছে, কিন্তু Postgres-এ কপি হয়নি)। নতুন
+// মেসেজ থেকে ধীরে ধীরে সার্চেবল হয়ে উঠবে।
+//
+// ILIKE (substring, স্বজ্ঞাত) আর pg_trgm-এর % অপারেটর (টাইপো-সহনশীল fuzzy
+// match) — দুটোই OR করা, দুটোই chat_messages-এর GIN trgm ইনডেক্স ব্যবহার
+// করে (সিকোয়েনশিয়াল স্ক্যান হয় না)। similarity() দিয়ে র‍্যাঙ্ক করা, recency
+// টাইব্রেকার।
+const searchMessages = async (req, res) => {
+  const q = String(req.query.q || '').trim()
+  const { threadId } = req.query
+  if (q.length < 2) return res.status(400).json({ success: false, message: 'অন্তত ২ অক্ষর লিখুন' })
+
+  try {
+    const params = [q, req.user.tenantId]
+    let threadFilter = ''
+    if (threadId) {
+      params.push(threadId)
+      threadFilter = `AND cm.thread_id = $${params.length}`
+    }
+
+    const { rows } = await query(
+      `SELECT cm.id, cm.thread_id, cm.sender_type, cm.sender_name, cm.text, cm.created_at,
+              ct.thread_type, c.shop_name, c.owner_name
+       FROM chat_messages cm
+       JOIN chat_threads ct ON ct.id = cm.thread_id
+       LEFT JOIN customers c ON c.id = ct.customer_id
+       WHERE cm.tenant_id = $2 AND (cm.text ILIKE '%' || $1 || '%' OR cm.text % $1) ${threadFilter}
+       ORDER BY similarity(cm.text, $1) DESC, cm.created_at DESC
+       LIMIT 30`,
+      params
+    )
+    res.json({ success: true, data: rows })
+  } catch (e) {
+    logger.error('[chat] searchMessages error:', e.message)
+    res.status(500).json({ success: false, message: 'সার্চ করা যায়নি' })
   }
 }
 
@@ -601,4 +807,7 @@ module.exports = {
   resolveBroadcastRecipients, logBroadcast,
   draftReply, summarizeThread, checkRisk,
   uploadVoiceNote,
+  blockThread, unblockThread, reportThread,
+  listCannedResponses, createCannedResponse, deleteCannedResponse,
+  searchMessages,
 }

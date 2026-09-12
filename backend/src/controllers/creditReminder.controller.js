@@ -35,20 +35,37 @@ const sendCreditReminder = async (req, res) => {
             });
         }
 
-        // কাস্টমার তথ্য
+        // ✅ tenant_id চেক যোগ করা হলো — আগে শুধু c.id দিয়ে লুকআপ হতো, মানে অন্য
+        // tenant-এর customerId আন্দাজ/জানা থাকলেও তাদের বাকি/email/হোয়াটসঅ্যাপ আর
+        // পোর্টাল-রিডাইরেক্ট আইডি পড়া (এবং তাদের নামে reminder ইমেইল পাঠানো) সম্ভব ছিল।
+        //
+        // এছাড়া আগে `LEFT JOIN users u ON u.id = $2 (srId)` ছিল — মানে sr_name/
+        // manager_id সবসময় *কলকারীর নিজের* তথ্য দেখাত, কাস্টমারের প্রকৃত assigned
+        // SR-এর নয়। এখন resolvePersonalStaffIds (chatFirebase.service.js)-এর
+        // মতোই customer_assignments + routes থেকে আসল assigned SR + route-manager
+        // টানা হচ্ছে (LATERAL + LIMIT 1, একাধিক active assignment থাকলেও রো
+        // ফ্যান-আউট না হওয়ার জন্য)। srId নিচে credit_reminder_logs-এ "কে
+        // পাঠালো" হিসেবে অক্ষত আছে (audit-এর জন্য এটাই ঠিক, assigned SR থেকে আলাদা)।
         const { rows } = await query(`
             SELECT
                 c.id, c.shop_name, c.owner_name, c.customer_code,
                 c.email, c.current_credit, c.whatsapp,
-                u.name_bn  AS sr_name,
-                u.manager_id,
+                sr.name_bn AS sr_name,
+                COALESCE(assign.manager_id, sr.manager_id) AS manager_id,
                 cpt.redirect_id  AS portal_redirect_id
             FROM customers c
-            LEFT JOIN users u ON u.id = $2
+            LEFT JOIN LATERAL (
+                SELECT ca.worker_id, rt.manager_id
+                FROM customer_assignments ca
+                LEFT JOIN routes rt ON rt.id = ca.route_id
+                WHERE ca.customer_id = c.id AND ca.tenant_id = c.tenant_id AND ca.is_active = true
+                LIMIT 1
+            ) assign ON true
+            LEFT JOIN users sr ON sr.id = assign.worker_id
             LEFT JOIN customer_portal_tokens cpt ON c.id = cpt.customer_id
                 AND cpt.expires_at > NOW()
-            WHERE c.id = $1 AND c.is_active = true
-        `, [customerId, srId]);
+            WHERE c.id = $1 AND c.tenant_id = $2 AND c.is_active = true
+        `, [customerId, req.tenantId]);
 
         if (!rows.length) {
             return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });

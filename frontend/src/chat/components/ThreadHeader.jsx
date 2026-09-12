@@ -3,7 +3,7 @@
 import clsx from 'clsx'
 import { FiArrowLeft } from 'react-icons/fi'
 
-export default function ThreadHeader({ avatar, title, subtitle, accent, onBack, othersOnline, typingOthers, tabs }) {
+export default function ThreadHeader({ avatar, title, subtitle, accent, onBack, othersOnline, typingOthers, tabs, menu }) {
   const subtitleColor = accent === 'warmth' ? 'text-cp-warmth-600' : 'text-cp-trust-500'
 
   return (
@@ -26,6 +26,8 @@ export default function ThreadHeader({ avatar, title, subtitle, accent, onBack, 
             {typingOthers ? 'টাইপ করছে...' : subtitle}
           </p>
         </div>
+
+        {menu}
       </div>
 
       {tabs && <div className="px-3 pb-2.5">{tabs}</div>}

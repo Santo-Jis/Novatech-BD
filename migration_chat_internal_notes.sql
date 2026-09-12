@@ -29,7 +29,8 @@ CREATE INDEX IF NOT EXISTS idx_chat_internal_notes_thread   ON chat_internal_not
 CREATE INDEX IF NOT EXISTS idx_chat_internal_notes_tenant   ON chat_internal_notes(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_chat_internal_notes_mentions ON chat_internal_notes USING GIN(mentioned_user_ids);
 
--- ⚠️ এই সেশনে অন্য নতুন টেবিলের মতোই এখানেও RLS enable করা হয়নি (দেখুন
--- CHAT_PHASE1_README.md-এর RLS ডিসক্লোজার — এটা সেই একই, বারবার ফিরে আসা
--- ফাঁক, প্যাটার্ন হিসেবে ফ্ল্যাগ করা থাকল)।
--- ALTER TABLE chat_internal_notes ENABLE ROW LEVEL SECURITY;
+-- ✅ ২০২৬-০৯-০২: RLS enable করা হয়েছে, লাইভেও apply করে pg_class দিয়ে verify
+-- করা (দেখুন CHAT_REDESIGN_ROADMAP.md)। policy এখনো জিরো — ব্যাকএন্ড postgres
+-- role দিয়ে বাইপাস করে চলে, frontend কখনো supabase-js ইউজ করে না বলে এই
+-- প্যাটার্ন বাকি স্কিমার মতোই সেফ।
+ALTER TABLE chat_internal_notes ENABLE ROW LEVEL SECURITY;

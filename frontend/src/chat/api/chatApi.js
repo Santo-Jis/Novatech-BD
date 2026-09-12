@@ -36,8 +36,8 @@ function createStaffChatApi() {
       await api.patch(`/chat/threads/${threadId}/read`)
     },
 
-    async notify(threadId, preview) {
-      await api.post(`/chat/threads/${threadId}/notify`, { preview })
+    async notify(threadId, preview, meta = {}) {
+      await api.post(`/chat/threads/${threadId}/notify`, { preview, ...meta })
     },
 
     // ── Phase 2: বিজনেস কার্ড (staff-only এই সেশনে) ──
@@ -111,6 +111,38 @@ function createStaffChatApi() {
       return res.data.data
     },
 
+    // ── ধাপ ২ (Foundation): Message Search (staff-only) ──
+    async searchMessages(q, threadId) {
+      const params = new URLSearchParams({ q })
+      if (threadId) params.set('threadId', threadId)
+      const { data } = await api.get(`/chat/search?${params.toString()}`)
+      return data.data
+    },
+
+    // ── ধাপ ২ (Foundation): Canned Responses (staff-only, customer পোর্টালে নেই) ──
+    async listCannedResponses() {
+      const { data } = await api.get('/chat/canned-responses')
+      return data.data
+    },
+    async createCannedResponse(title, body) {
+      const { data } = await api.post('/chat/canned-responses', { title, body })
+      return data.data
+    },
+    async deleteCannedResponse(id) {
+      await api.delete(`/chat/canned-responses/${id}`)
+    },
+
+    // ── ধাপ ২ (Foundation): Block/Report ──
+    async blockThread(threadId, reason) {
+      await api.post(`/chat/threads/${threadId}/block`, { reason })
+    },
+    async unblockThread(threadId) {
+      await api.delete(`/chat/threads/${threadId}/block`)
+    },
+    async reportThread(threadId, category, note, messageClientId) {
+      await api.post(`/chat/threads/${threadId}/report`, { category, note, messageClientId })
+    },
+
     // ── Phase 1 (দেরিতে): ভয়েস নোট ──
     async uploadVoice(threadId, blob, durationSeconds) {
       const formData = new FormData()
@@ -150,10 +182,25 @@ function createCustomerChatApi() {
       await portalFetch(`/portal/chat/threads/${threadId}/read`, { method: 'PATCH' })
     },
 
-    async notify(threadId, preview) {
+    async notify(threadId, preview, meta = {}) {
       await portalFetch(`/portal/chat/threads/${threadId}/notify`, {
         method: 'POST',
-        body: JSON.stringify({ preview }),
+        body: JSON.stringify({ preview, ...meta }),
+      })
+    },
+
+    // ── ধাপ ২ (Foundation): Block/Report — unblock নেই ইচ্ছাকৃতভাবে (দেখুন
+    // customerPortalChat.controller.js-এর কমেন্ট, শুধু staff/management তুলতে পারবে) ──
+    async blockThread(threadId, reason, name) {
+      await portalFetch(`/portal/chat/threads/${threadId}/block`, {
+        method: 'POST',
+        body: JSON.stringify({ reason, name }),
+      })
+    },
+    async reportThread(threadId, category, note, messageClientId, name) {
+      await portalFetch(`/portal/chat/threads/${threadId}/report`, {
+        method: 'POST',
+        body: JSON.stringify({ category, note, messageClientId, name }),
       })
     },
 

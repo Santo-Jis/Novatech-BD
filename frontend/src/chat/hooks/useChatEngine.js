@@ -35,11 +35,17 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
   const [queueSnapshot, setQueueSnapshot] = useState([])
   const [typingOthers, setTypingOthers] = useState(false)
   const [readsMap, setReadsMap] = useState({})
+  // ধাপ ২ (Foundation) — Block/Report। null = ব্লকড না; {by, byName, reason, at} =
+  // ব্লকড। এনফোর্সমেন্ট আসলে notify()-তে (backend, Postgres chat_blocks) হয়, এটা
+  // শুধু UI-সিগন্যাল (ব্যানার + কম্পোজার ডিজেবল) — দেখুন chatFirebase.service.js-এর
+  // setThreadBlockMeta কমেন্ট।
+  const [blocked, setBlocked] = useState(null)
   const [isOffline, setIsOffline] = useState(typeof navigator !== 'undefined' ? !navigator.onLine : false)
 
   const messagesListenerRef = useRef(null)
   const typingListenerRef = useRef(null)
   const readsListenerRef = useRef(null)
+  const blockedListenerRef = useRef(null)
   const rtdbMessagesRef = useRef([]) // flush-এর সময় stale closure এড়াতে
   const flushingRef = useRef(new Set())
   const typingStopTimeoutRef = useRef(null)
@@ -71,6 +77,7 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
   useEffect(() => {
     if (!ready || !db || !threadId) {
       setRtdbMessages([])
+      setBlocked(null)
       return
     }
     setMessagesLoading(true)
@@ -125,10 +132,19 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
     )
     readsListenerRef.current = readsNode
 
+    const blockedNode = ref(db, `chats/${threadId}/meta/blocked`)
+    onValue(
+      blockedNode,
+      (snap) => setBlocked(snap.val() || null),
+      (err) => console.error('[chat] blocked onValue ব্যর্থ:', err.message)
+    )
+    blockedListenerRef.current = blockedNode
+
     return () => {
       if (messagesListenerRef.current) off(messagesListenerRef.current)
       if (typingListenerRef.current) off(typingListenerRef.current)
       if (readsListenerRef.current) off(readsListenerRef.current)
+      if (blockedListenerRef.current) off(blockedListenerRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, db, threadId])
@@ -169,9 +185,16 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
           })
         }
         // ⚠️ notify() শুধু push-notification-এর জন্য — মেসেজটা ততক্ষণে RTDB-তে
-        // পৌঁছে গেছে (আসল ডেলিভারি), তাই এটা ব্যর্থ হলেও গোটা আইটেম retry করা হচ্ছে না
+        // পৌঁছে গেছে (আসল ডেলিভারি), তাই এটা ব্যর্থ হলেও গোটা আইটেম retry করা হচ্ছে না।
+        // preview ছাড়াও পুরো item পাঠানো হচ্ছে (Postgres dual-write, Phase 2 Foundation) —
+        // ব্যাকএন্ড এটা best-effort ধরে, notify নিজে ব্যর্থ হলেও কিছু আটকায় না।
         try {
-          await chatApi.notify(item.threadId, item.text.slice(0, 150))
+          await chatApi.notify(item.threadId, item.text.slice(0, 150), {
+            clientId: item.clientId,
+            senderName: item.senderName,
+            text: item.text,
+            kind: item.kind || 'text',
+          })
         } catch (notifyErr) {
           console.warn('[chat] notify ব্যর্থ (মেসেজ তবু ডেলিভার হয়েছে):', notifyErr.message)
         }
@@ -345,5 +368,6 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
     isOffline,
     retryFailed: retryMessage,
     discardFailed: discardMessage,
+    blocked, // ধাপ ২ (Foundation) — null বা {by, byName, reason, at}
   }
 }
