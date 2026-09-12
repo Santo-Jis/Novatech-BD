@@ -120,6 +120,57 @@ jobs:
           retention-days: 7
 
 # ──────────────────────────────────────────────────────────────
+# Job: RLS Check (ধাপ ২, Foundation)
+# CHAT_REDESIGN_ROADMAP.md-এ ম্যানুয়ালি চালানো pg_class/pg_namespace
+# চেক এখন এখানে automated — public স্কিমার কোনো টেবিলে RLS বন্ধ পেলে
+# এই জব fail করবে, নতুন migration merge হওয়ার আগেই ধরা পড়বে।
+#
+# ⚠️ integration-tests-এর ঠিক পরে (একই TEST_DB_* secrets রিইউজ করে,
+# নতুন কোনো secret লাগে না DB কানেকশনের জন্য) — সিকোয়েনশিয়ালি, প্যারালাল
+# না, কারণ integration-tests-এর নিজের কমেন্টেই লেখা আছে Supabase free
+# tier-এ concurrent connection বেশি হলে "max clients reached" এরর আসে।
+#
+# ⚠️ DB_SSL_CA: db.js এখন এই env variable ছাড়া বুট-ই হয় না (হার্ড exit,
+# দেখুন db.js-এর কমেন্ট) — কিন্তু integration-tests জবেও এটা env-এ নেই।
+# মানে হয় GitHub-এ এই নামে secret আগে থেকেই আছে (তাহলে এই লাইন কাজ করবে),
+# নাহলে integration-tests জবও আজ এই একই কারণে fail করার কথা — সেটা এই
+# সেশনের বাইরে, কিন্তু ফ্ল্যাগ করে রাখা হলো।
+# ──────────────────────────────────────────────────────────────
+  rls-check:
+    name: 🔒 RLS Check
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    if: >
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: backend/package.json
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm install
+
+      - name: Run RLS check
+        working-directory: backend
+        env:
+          DB_HOST: ${{ secrets.TEST_DB_HOST }}
+          DB_USER: ${{ secrets.TEST_DB_USER }}
+          DB_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
+          DB_NAME: ${{ secrets.TEST_DB_NAME }}
+          DB_PORT: 5432
+          DB_SSL_CA: ${{ secrets.DB_SSL_CA }}
+        run: npm run check:rls
+
+# ──────────────────────────────────────────────────────────────
 # Job 3: Load Test (manual trigger only)
 # production URL-এ load test — Actions tab থেকে হাতে চালাতে হবে
 # ──────────────────────────────────────────────────────────────
