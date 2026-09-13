@@ -31,6 +31,14 @@ function pctColor(pct) {
     return              { bar: 'bg-emerald-400', badge: 'bg-emerald-100 text-emerald-700', text: 'text-emerald-600' }
 }
 
+// ── Risk tier রঙ — ✅ NEW (Phase 3, credit-risk assessment) ──
+function riskColor(tier) {
+    if (tier === 'high')             return { badge: 'bg-red-100 text-red-700',       label: '🔴 উচ্চ ঝুঁকি' }
+    if (tier === 'medium')           return { badge: 'bg-amber-100 text-amber-700',   label: '🟡 মাঝারি ঝুঁকি' }
+    if (tier === 'low')              return { badge: 'bg-emerald-100 text-emerald-700', label: '🟢 নিম্ন ঝুঁকি' }
+    return                                 { badge: 'bg-gray-100 text-gray-500',       label: 'ℹ️ তথ্য অপ্রতুল' }
+}
+
 // ── Approval Card ────────────────────────────────────────
 function ApprovalCard({ item, onApprove, onReject }) {
     const [expanded,   setExpanded]   = useState(false)
@@ -107,6 +115,18 @@ function ApprovalCard({ item, onApprove, onReject }) {
                         )}
                     </div>
                 </div>
+
+                {/* ✅ NEW — Credit risk assessment (Phase 3) */}
+                {item.risk && (
+                    <div className="bg-gray-50 rounded-xl p-2.5 space-y-1">
+                        <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${riskColor(item.risk.tier).badge}`}>
+                            {riskColor(item.risk.tier).label}
+                        </span>
+                        {item.risk.factors.map((f, i) => (
+                            <p key={i} className="text-[10px] text-gray-500 leading-snug">• {f}</p>
+                        ))}
+                    </div>
+                )}
 
                 {/* SR note (collapsible) */}
                 {item.note && (

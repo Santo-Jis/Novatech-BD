@@ -558,6 +558,25 @@ export default function PendingApprovals() {
                   {c.note && (
                     <p className="text-xs text-gray-400 mt-1 italic">"{c.note}"</p>
                   )}
+                  {/* ✅ NEW — Credit risk assessment (Phase 3) */}
+                  {c.risk && (
+                    <div className="mt-2 bg-gray-50 rounded-lg p-2 space-y-0.5">
+                      <span className={`inline-block text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        c.risk.tier === 'high' ? 'bg-red-100 text-red-700'
+                        : c.risk.tier === 'medium' ? 'bg-amber-100 text-amber-700'
+                        : c.risk.tier === 'low' ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-gray-200 text-gray-500'
+                      }`}>
+                        {c.risk.tier === 'high' ? '🔴 উচ্চ ঝুঁকি'
+                          : c.risk.tier === 'medium' ? '🟡 মাঝারি ঝুঁকি'
+                          : c.risk.tier === 'low' ? '🟢 নিম্ন ঝুঁকি'
+                          : 'ℹ️ তথ্য অপ্রতুল'}
+                      </span>
+                      {c.risk.factors.map((f, i) => (
+                        <p key={i} className="text-[10px] text-gray-500 leading-snug">• {f}</p>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
                   <button onClick={() => rejectCredit(c.id)}

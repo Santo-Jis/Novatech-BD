@@ -187,7 +187,18 @@ const getPendingApprovals = async (req, res) => {
         }
 
         const result = await query(
-            `SELECT
+            `WITH customer_history AS (
+                SELECT
+                    c.id AS customer_id,
+                    COUNT(DISTINCT crl.id) AS reminder_count,
+                    COUNT(DISTINCT cp.id)  AS payment_count,
+                    MAX(cp.payment_date)   AS last_payment_date
+                FROM customers c
+                LEFT JOIN credit_reminder_logs crl ON crl.customer_id = c.id
+                LEFT JOIN credit_payments cp        ON cp.customer_id = c.id
+                GROUP BY c.id
+             )
+             SELECT
                 car.id,
                 car.created_at,
                 car.expires_at,
@@ -202,20 +213,32 @@ const getPendingApprovals = async (req, res) => {
                 w.id            AS worker_id,
                 w.name_bn       AS sr_name,
                 m.name_bn       AS manager_name,
-                ROUND((c.current_credit::numeric / NULLIF(c.credit_limit::numeric, 0)) * 100) AS credit_used_pct
+                ROUND((c.current_credit::numeric / NULLIF(c.credit_limit::numeric, 0)) * 100) AS credit_used_pct,
+                ch.reminder_count,
+                ch.payment_count,
+                CASE WHEN ch.last_payment_date IS NULL THEN NULL
+                     ELSE (CURRENT_DATE - ch.last_payment_date) END AS last_payment_days_ago
              FROM credit_approval_requests car
              JOIN customers c ON car.customer_id = c.id
              JOIN users     w ON car.worker_id   = w.id
              LEFT JOIN users m ON car.manager_id = m.id
+             LEFT JOIN customer_history ch ON ch.customer_id = c.id
              WHERE ${whereClause}
              ORDER BY car.created_at DESC`,
             params
         );
 
+        // ✅ Phase 3: প্রতিটা request-এ credit-risk assessment যোগ করা —
+        // ব্যাখ্যাযোগ্য rule-based tier + কারণ, black-box score না
+        const enrichedRows = result.rows.map(row => ({
+            ...row,
+            risk: assessCreditRisk(row),
+        }));
+
         return res.status(200).json({
             success: true,
-            count:   result.rows.length,
-            data:    result.rows
+            count:   enrichedRows.length,
+            data:    enrichedRows
         });
 
     } catch (error) {
@@ -224,7 +247,65 @@ const getPendingApprovals = async (req, res) => {
     }
 };
 
-// PUT /api/credit-approvals/:id/approve  (Manager/Admin)
+// ============================================================
+// CREDIT RISK ASSESSMENT — Phase 3
+// ============================================================
+// ইচ্ছাকৃতভাবে rule-based/statistical, LLM call না -- credit decision
+// explainable হওয়া দরকার ("কেন risky" বলা যায়), black-box score না।
+// Claude API-র খরচ/latency-ও লাগে না প্রতিটা approval-এ।
+//
+// ⚠️ সততার সাথে বলা দরকার: যাচাই করে দেখা গেছে, এই মুহূর্তে সিস্টেমে
+// মাত্র ২টা credit_payments row (১ কাস্টমারের) আর ১টা reminder log
+// আছে সব মিলিয়ে। মানে ২৬ জনের ২৪ জনের জন্যই এই স্কোর "insufficient_data"
+// দেখাবে -- এটা bug না, honest reflection। লঞ্চের পর real ব্যবহার শুরু
+// হলে এই একই কোড automatically অর্থবহ হয়ে উঠবে, তখন কিছু বদলাতে হবে না।
+
+function assessCreditRisk(row) {
+    const utilizationPct = Number(row.credit_used_pct) || 0;
+    const reminderCount  = parseInt(row.reminder_count, 10)  || 0;
+    const paymentCount   = parseInt(row.payment_count, 10)   || 0;
+    const lastPaymentDaysAgo = row.last_payment_days_ago !== null ? parseInt(row.last_payment_days_ago, 10) : null;
+    const hasHistory = reminderCount > 0 || paymentCount > 0;
+
+    const factors = [];
+    let tier;
+
+    if (!hasHistory) {
+        if (utilizationPct >= 80) {
+            tier = 'high';
+            factors.push(`নতুন/ইতিহাসবিহীন কাস্টমার, কিন্তু এখনই ${utilizationPct}% ব্যবহার করে ফেলেছে`);
+        } else {
+            tier = 'insufficient_data';
+            factors.push('এখনো কোনো payment/reminder ইতিহাস নেই — নির্ভরযোগ্য স্কোর দেওয়ার মতো তথ্য নেই');
+        }
+    } else {
+        let riskPoints = 0;
+
+        if (utilizationPct >= 80)      { riskPoints += 3; factors.push(`বর্তমান ব্যবহার ${utilizationPct}% — সীমার কাছাকাছি`); }
+        else if (utilizationPct >= 50) { riskPoints += 1; factors.push(`বর্তমান ব্যবহার ${utilizationPct}%`); }
+
+        if (reminderCount >= 5)      { riskPoints += 3; factors.push(`${reminderCount}টা reminder পাঠাতে হয়েছে — ঘন ঘন তাগাদা লাগে`); }
+        else if (reminderCount >= 2) { riskPoints += 1; factors.push(`${reminderCount}টা reminder পাঠানো হয়েছে`); }
+
+        if (lastPaymentDaysAgo !== null && lastPaymentDaysAgo >= 60) {
+            riskPoints += 2;
+            factors.push(`শেষ payment ${lastPaymentDaysAgo} দিন আগে`);
+        }
+
+        if (paymentCount >= 3 && reminderCount === 0) {
+            riskPoints -= 1;
+            factors.push(`${paymentCount}টা payment reminder ছাড়াই — নিজে থেকে পরিশোধ করে, ভালো লক্ষণ`);
+        }
+
+        if (riskPoints >= 4)      tier = 'high';
+        else if (riskPoints >= 2) tier = 'medium';
+        else                      tier = 'low';
+    }
+
+    return { tier, factors, data_points: reminderCount + paymentCount };
+}
+
+
 const approveRequest = async (req, res) => {
     try {
         const { id } = req.params;
