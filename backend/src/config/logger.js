@@ -20,7 +20,37 @@
 
 'use strict';
 
+const { Sentry, isEnabled } = require('./sentry');
+
 const IS_PROD = process.env.NODE_ENV === 'production';
+
+// ─────────────────────────────────────────────────────────────
+// logger.error(...) কল হওয়া মানেই এখানে Sentry-তে পাঠানো — কারণ
+// controller-গুলো error next(err) দিয়ে propagate করে না, নিজেই
+// catch করে এখানে লগ করে (দেখুন উপরের usage কমেন্ট)। তাই এটাই
+// আসল, সম্পূর্ণ capture point — Express middleware না।
+// SENTRY_DSN সেট না থাকলে isEnabled() false, তখন এটা no-op।
+// ─────────────────────────────────────────────────────────────
+function reportToSentry(msg, meta) {
+  if (!isEnabled()) return;
+  try {
+    Sentry.withScope((scope) => {
+      // multi-tenant SaaS — কোন tenant/user-এ error হচ্ছে সেটা filter করার জন্য
+      if (meta?.tenantId)  scope.setTag('tenant_id', String(meta.tenantId));
+      if (meta?.workerId)  scope.setTag('worker_id', String(meta.workerId));
+      if (meta?.userId)    scope.setTag('user_id', String(meta.userId));
+      scope.setExtra('log_message', msg);
+
+      if (meta?.err instanceof Error) {
+        Sentry.captureException(meta.err);
+      } else {
+        Sentry.captureMessage(msg, 'error');
+      }
+    });
+  } catch (_sentryErr) {
+    // Sentry নিজে fail করলেও যেন মূল app-এর error response আটকে না যায়
+  }
+}
 
 // ANSI color codes — dev only
 const C = {
@@ -87,7 +117,10 @@ const logger = {
   debug: (msg, meta) => write('debug', msg, meta),
   info:  (msg, meta) => write('info',  msg, meta),
   warn:  (msg, meta) => write('warn',  msg, meta),
-  error: (msg, meta) => write('error', msg, meta),
+  error: (msg, meta) => {
+    write('error', msg, meta);
+    reportToSentry(msg, meta);
+  },
 
   // Express morgan-compatible stream — morgan('combined', { stream: logger.stream })
   stream: {
