@@ -44,6 +44,7 @@ const navGroups = [
       { path: '/admin/price-lists', icon: <FiTag />,     label: 'মূল্য তালিকা' },
       { path: '/admin/promotions', icon: <FiTag />,     label: 'অফার / প্রমোশন' },
       { path: '/admin/company-posts', icon: <FiVolume2 />, label: 'কোম্পানির পোস্ট' },
+      { path: '/admin/moderation', icon: <FiShield />, label: 'মডারেশন কিউ' },
       { path: '/admin/routes',     icon: <FiMapPin />,  label: 'রুট ম্যানেজমেন্ট' },
     ],
   },

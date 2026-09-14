@@ -24,6 +24,45 @@ const selfRegisterUpload = multer({
     }
 });
 
+// ✅ NEW (Redesign Phase ১.৫ — মিডিয়া পাইপলাইন): customer_posts ছবি —
+// selfRegisterUpload-এর ঠিক একই কনফিগ, কিন্তু আলাদা instance রাখা হলো
+// যাতে পরে কোনো একটার limit/fileFilter বদলাতে গেলে অন্যটা অজান্তে না বদলায়
+const customerPostImageUpload = multer({
+    storage: multer.memoryStorage(),
+    limits:  { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+            return cb(new Error('শুধু ছবি আপলোড করা যাবে।'));
+        }
+        cb(null, true);
+    }
+});
+
+// ✅ NEW (Redesign Phase ১.৬ — ভিডিও সাপোর্ট): customer_posts ভিডিও —
+// ২০MB লিমিট (videoMedia.service.js-এর MAX_VIDEO_BYTES-এর সাথে মিলিয়ে)
+const customerPostVideoUpload = multer({
+    storage: multer.memoryStorage(),
+    limits:  { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('video/')) {
+            return cb(new Error('শুধু ভিডিও আপলোড করা যাবে।'));
+        }
+        cb(null, true);
+    }
+});
+
+// ✅ NEW (Redesign Phase ১.৭ — মাল্টি-ইমেজ গ্যালারি): একসাথে সর্বোচ্চ ৪টা ছবি
+const customerPostGalleryUpload = multer({
+    storage: multer.memoryStorage(),
+    limits:  { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+            return cb(new Error('শুধু ছবি আপলোড করা যাবে।'));
+        }
+        cb(null, true);
+    }
+});
+
 const {
     sendPortalLink,
     getPublicCustomerByCode, // ✅ NEW: c= কোড দিয়ে shop_name/owner_name/shop_photo
@@ -57,8 +96,8 @@ const {
     getMyLimitRequests,
     submitComplaint,
     getMyComplaints,
-    getDeliveryTracking, // ✅ NEW (ফেজ ২, commerce UX — live rider tracking)
-    getActiveDeliveries, // ✅ NEW (architecture-gap ফিক্স)
+    getDeliveryTracking, // ✅ NEW (ফেজ ২, commerce UX — live rider tracking) — merged from parallel branch
+    getActiveDeliveries, // ✅ NEW (architecture-gap ফিক্স) — merged from parallel branch
 } = require('../controllers/customerPortal.controller');
 
 const { sendCreditReminder } = require('../controllers/creditReminder.controller');
@@ -91,7 +130,19 @@ const {
 const { getPortalCompanyPosts } = require('../controllers/companyPost.controller');
 
 // ✅ NEW (Phase 5 — কোড অডিট — কাস্টমার পোস্ট, HomeFeed.jsx-এর বাকি থাকা placeholder সম্পূর্ণ)
-const { getNetworkFeed, createPost: createCustomerPost, deleteMyPost: deleteCustomerPost } = require('../controllers/customerPost.controller');
+const { getNetworkFeed, createPost: createCustomerPost, deleteMyPost: deleteCustomerPost, uploadMyPostImage, uploadMyPostVideo, uploadMyPostGallery } = require('../controllers/customerPost.controller');
+
+// ✅ NEW (Redesign Phase ১ — ফিড এনগেজমেন্ট): react/report — company_posts +
+// customer_posts দুটোর জন্যই শেয়ার্ড হ্যান্ডলার (feed_reactions/feed_reports
+// পলিমরফিক টেবিল, দেখুন migration_feed_engagement.sql)
+const {
+    reactToCompanyPost, reportCompanyPost,
+    reactToCustomerPost, reportCustomerPost,
+    // ✅ NEW (Redesign Phase ১.৯ — কমেন্ট + unread ট্র্যাকিং)
+    getCompanyPostComments, createCompanyPostComment, deleteCompanyPostComment,
+    getCustomerPostComments, createCustomerPostComment, deleteCustomerPostComment,
+    markFeedSeen,
+} = require('../controllers/feedEngagement.controller');
 
 // ✅ NEW (ফেজ ৩ — উইশলিস্ট)
 const { getWishlist, addToWishlist, removeFromWishlist } = require('../controllers/wishlist.controller');
@@ -255,6 +306,33 @@ const loginOtpVerifyLimiter = rateLimit({
     message: { success: false, message: 'অনেকবার চেষ্টা হয়েছে। ১৫ মিনিট পর আবার চেষ্টা করুন।' }
 });
 
+// ✅ NEW (Redesign Phase ১ — ফিড এনগেজমেন্ট): customer_posts তৈরিতে আগে
+// কোনো rate-limit ছিল না — একজন person সেকেন্ডে-সেকেন্ডে পোস্ট করলেও
+// কিছু আটকাতো না (spam ঝুঁকি)। person_id দিয়ে key করা হলো, IP না —
+// একই দোকানের একাধিক ডিভাইস/staff একই IP থেকে পোস্ট করতে পারে, উল্টোটাও
+// (VPN/mobile data changing IP) স্বাভাবিক ইউজারকে আটকে দিতে পারত।
+const customerPostLimiter = rateLimit({
+    windowMs:     60 * 60 * 1000,
+    max:          5,
+    keyGenerator: (req) => `customer_post_create:${req.portalUser?.person_id || req.portalUser?.customer_id || req.ip}`,
+    store:        makeRedisStore(),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: { success: false, message: 'অনেকবার পোস্ট করা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।' }
+});
+
+// ✅ NEW (Redesign Phase ১.৯): কমেন্টে rate-limit — post-এর চেয়ে হালকা
+// (২০/ঘণ্টা) কারণ কমেন্ট স্বাভাবিকভাবেই বেশি ঘন ঘন হয়
+const feedCommentLimiter = rateLimit({
+    windowMs:     60 * 60 * 1000,
+    max:          20,
+    keyGenerator: (req) => `feed_comment_create:${req.portalUser?.person_id || req.portalUser?.customer_id || req.ip}`,
+    store:        makeRedisStore(),
+    standardHeaders: true,
+    legacyHeaders:   false,
+    message: { success: false, message: 'অনেকবার কমেন্ট করা হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।' }
+});
+
 // ============================================================
 // AUTH ROUTES
 // ============================================================
@@ -311,8 +389,8 @@ router.delete('/devices/:customerId/:deviceId', auth, revokeDevice);
 // ============================================================
 
 router.get('/dashboard',       portalAuth, getCustomerDashboard);
-router.get('/deliveries/:deliveryId/tracking', portalAuth, getDeliveryTracking); // ✅ NEW (ফেজ ২)
-router.get('/deliveries/active', portalAuth, getActiveDeliveries); // ✅ NEW (architecture-gap ফিক্স)
+router.get('/deliveries/:deliveryId/tracking', portalAuth, getDeliveryTracking); // ✅ NEW (ফেজ ২) — merged from parallel branch
+router.get('/deliveries/active', portalAuth, getActiveDeliveries); // ✅ NEW (architecture-gap ফিক্স) — merged from parallel branch
 router.get('/invoices',        portalAuth, getCustomerInvoices);
 router.get('/payment-history', portalAuth, getPaymentHistory);
 router.get('/monthly-summary', portalAuth, getMonthlySummary);
@@ -338,13 +416,29 @@ router.get('/product-sellers',             portalAuth, getProductSellers); // �
 router.get('/promotions/active',           portalAuth, getPortalActivePromotions); // ← Promotions Phase ৫
 router.post('/promotions/calculate',       portalAuth, calculatePortalPromotions); // ✅ NEW (ফেজ ০)
 router.get('/company-posts',               portalAuth, getPortalCompanyPosts); // ✅ NEW (ফেজ ১)
+router.post('/company-posts/:id/react',    portalAuth, reactToCompanyPost);  // ✅ NEW (Redesign Phase ১)
+router.post('/company-posts/:id/report',   portalAuth, reportCompanyPost);   // ✅ NEW (Redesign Phase ১)
+router.get('/company-posts/:id/comments',    portalAuth, getCompanyPostComments);                        // ✅ NEW (Redesign Phase ১.৯)
+router.post('/company-posts/:id/comments',   portalAuth, feedCommentLimiter, createCompanyPostComment);   // ✅ NEW (Redesign Phase ১.৯)
+router.delete('/company-posts/:id/comments/:commentId', portalAuth, deleteCompanyPostComment);            // ✅ NEW (Redesign Phase ১.৯)
 
 // ✅ NEW (Phase 5 — কোড অডিট): কাস্টমার পোস্ট — HomeFeed.jsx-এর বাকি থাকা
 // "কাস্টমার পোস্ট" placeholder সম্পূর্ণ করা। নেটওয়ার্ক-স্কোপড ভিজিবিলিটি
 // (দেখুন customerPost.controller.js-এর getNetworkFeed কমেন্ট)।
 router.get('/customer-posts',              portalAuth, getNetworkFeed);
-router.post('/customer-posts',             portalAuth, createCustomerPost);
+router.post('/customer-posts',             portalAuth, customerPostLimiter, createCustomerPost); // ✅ NEW (Redesign Phase ১): rate-limit যোগ হলো
 router.delete('/customer-posts/:id',       portalAuth, deleteCustomerPost);
+router.post('/customer-posts/:id/image',   portalAuth, customerPostImageUpload.single('image'), uploadMyPostImage); // ✅ NEW (Redesign Phase ১.৫)
+router.post('/customer-posts/:id/video',   portalAuth, customerPostVideoUpload.single('video'), uploadMyPostVideo); // ✅ NEW (Redesign Phase ১.৬)
+router.post('/customer-posts/:id/gallery', portalAuth, customerPostGalleryUpload.array('images', 4), uploadMyPostGallery); // ✅ NEW (Redesign Phase ১.৭)
+router.post('/customer-posts/:id/react',   portalAuth, reactToCustomerPost);  // ✅ NEW (Redesign Phase ১)
+router.post('/customer-posts/:id/report',  portalAuth, reportCustomerPost);   // ✅ NEW (Redesign Phase ১)
+router.get('/customer-posts/:id/comments',    portalAuth, getCustomerPostComments);                       // ✅ NEW (Redesign Phase ১.৯)
+router.post('/customer-posts/:id/comments',   portalAuth, feedCommentLimiter, createCustomerPostComment);  // ✅ NEW (Redesign Phase ১.৯)
+router.delete('/customer-posts/:id/comments/:commentId', portalAuth, deleteCustomerPostComment);           // ✅ NEW (Redesign Phase ১.৯)
+
+// ✅ NEW (Redesign Phase ১.৯ — unread ট্র্যাকিং)
+router.post('/feed/mark-seen', portalAuth, markFeedSeen);
 router.get('/wishlist',                    portalAuth, getWishlist);          // ✅ NEW (ফেজ ৩)
 router.post('/wishlist',                   portalAuth, addToWishlist);        // ✅ NEW (ফেজ ৩)
 router.delete('/wishlist/:productId',      portalAuth, removeFromWishlist);   // ✅ NEW (ফেজ ৩)

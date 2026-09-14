@@ -2,18 +2,6 @@ require('dotenv').config();
 
 const logger = require('./config/logger');
 
-// ✅ Sentry — বাকি সব require (বিশেষ করে express)-এর আগে init করা দরকার,
-// auto-instrumentation ঠিকমতো hook হওয়ার জন্য। SENTRY_DSN না থাকলে no-op।
-// আসল error-capture point এই ফাইলে না, logger.js-এর error()-এ — কারণ
-// controller-গুলো error next(err) দিয়ে propagate না করে নিজেই catch করে
-// logger.error() কল করে। এটা শুধু init + truly-unhandled crash-এর জন্য
-// extra safety net।
-const { initSentry } = require('./config/sentry');
-const sentryEnabled = initSentry();
-logger.info(sentryEnabled
-    ? '✅ Sentry error tracking চালু আছে'
-    : 'ℹ️  SENTRY_DSN সেট নেই — error tracking off (dev-এ স্বাভাবিক)');
-
 // ✅ ENV VALIDATION — dotenv-এর পরে, বাকি সব require-এর আগে।
 // Missing বা insecure variable থাকলে এখানেই server বন্ধ হবে।
 const { validateEnv } = require('./config/validateEnv');
@@ -210,6 +198,7 @@ const jisAiRoutes               = require('./routes/jisai.routes');           //
 const collectionRoutes          = require('./routes/collection.routes');       // ✅ collection (বাকি আদায়)
 const promotionRoutes           = require('./routes/promotion.routes');        // ← নতুন (Promotions)
 const companyPostRoutes         = require('./routes/companyPost.routes');      // ✅ NEW (ফেজ ১ — কোম্পানির পোস্ট)
+const moderationRoutes          = require('./routes/moderation.routes');       // ✅ NEW (Redesign Phase ১.৮ — মডারেশন কিউ)
 const deliveryRoutes            = require('./routes/delivery.routes');         // ← নতুন (Deliveries)
 const coverageRoutes            = require('./routes/coverage.routes');         // ← নতুন (Coverage)
 const leaderboardRoutes         = require('./routes/leaderboard.routes');      // ← নতুন (Leaderboard)
@@ -277,6 +266,7 @@ app.use('/api/credit-approvals',        creditApprovalRoutes); // ✅ credit app
 app.use('/api/collections',             collectionRoutes);     // ✅ collection (বাকি আদায়)
 app.use('/api/promotions',              promotionRoutes);      // ← নতুন
 app.use('/api/company-posts',           companyPostRoutes);    // ✅ NEW (ফেজ ১)
+app.use('/api/moderation',              moderationRoutes);     // ✅ NEW (Redesign Phase ১.৮)
 app.use('/api/deliveries',              deliveryRoutes);       // ← নতুন
 app.use('/api/coverage',                coverageRoutes);       // ← নতুন
 app.use('/api/leaderboard',             leaderboardRoutes);    // ← নতুন
@@ -291,19 +281,6 @@ app.use('/platform/api/support', platformSupportRoutes);
 app.use('/platform/api/tenants', platformTenantRoutes); // ← নতুন (Support Panel): read-only tenant list/detail, full+support scope
 app.use('/platform/api/staff', platformStaffRoutes); // ← নতুন: platform_staff account management, full scope only
 jisAiRoutes(app);                                              // ✅ JIS-AI WhatsApp integration
-
-// ============================================================
-// API DOCS (Phase 0 hygiene) — backend/openapi.json auto-generate হয়
-// `npm run docs:generate` দিয়ে (দেখুন scripts/generate-openapi.js)।
-// ফাইল না থাকলে (এখনো generate করা হয়নি) crash না করে শুধু route skip করে।
-// ============================================================
-try {
-    const swaggerUi = require('swagger-ui-express');
-    const openapiSpec = require('../openapi.json');
-    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
-} catch (e) {
-    logger.warn('API docs mount skip করা হলো — openapi.json পাওয়া যায়নি, "npm run docs:generate" চালান', { err: e });
-}
 
 // ============================================================
 // HEALTH CHECK
@@ -328,15 +305,6 @@ app.use('*', (req, res) => {
         message: `রুট পাওয়া যায়নি: ${req.method} ${req.originalUrl}`
     });
 });
-
-// ✅ Sentry Express hook — defense-in-depth এর জন্য। এটা শুধু সেই errors
-// ধরবে যেগুলো next(err) দিয়ে propagate হয় (middleware crash, unhandled
-// async rejection ইত্যাদি)। বেশিরভাগ controller-error এর আগেই
-// logger.error()-এর মাধ্যমে capture হয়ে গেছে (উপরে দেখুন)।
-if (sentryEnabled) {
-    const { Sentry } = require('./config/sentry');
-    Sentry.setupExpressErrorHandler(app);
-}
 
 // ============================================================
 // GLOBAL ERROR HANDLER
@@ -400,6 +368,7 @@ const { scheduleCreditReminderJob } = require('./jobs/creditReminder.job');
 const { startReservedStockJob }     = require('./jobs/reservedStock.job');
 const { startSessionCleanupJob }    = require('./jobs/sessionCleanup.job');
 const { startAccountDeletionJob }   = require('./jobs/accountDeletion.job');   // ← নতুন
+const { startPostCleanupJob }        = require('./jobs/postCleanup.job');       // ✅ NEW (Redesign Phase ১.৯ — প্রাইভেসি)
 const { startNotificationScheduleJob } = require('./jobs/notificationSchedule.job');   // ← নতুন
 const { startTenantInvoiceJob }      = require('./jobs/tenantInvoice.job');   // ← নতুন (বিলিং)
 
@@ -454,6 +423,7 @@ seedPlatformStaffFromEnv();
         startReservedStockJob();
         startSessionCleanupJob();
         startAccountDeletionJob();   // ← নতুন
+        startPostCleanupJob();       // ✅ NEW (Redesign Phase ১.৯)
         startNotificationScheduleJob();   // ← নতুন
         startTenantInvoiceJob();   // ← নতুন (বিলিং)
 
