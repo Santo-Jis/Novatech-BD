@@ -11,6 +11,19 @@ export default {
         danger:    { DEFAULT: '#991b1b', light: '#ef4444', dark: '#7f1d1d' },
 
         // ============================================================
+        // ⬇️ নতুন — SR/Worker App: Route ও Customer রিডিজাইন (Phase 0/1)
+        // এই hex value গুলো নতুন না — CustomerList.jsx-এ raw inline hex হিসেবে
+        // (map pin, next-stop badge) আগে থেকেই ব্যবহার হচ্ছিল। এখানে শুধু টোকেন
+        // বানানো হলো, তাই কোনো visual পরিবর্তন হবে না।
+        // success ইচ্ছাকৃতভাবে emerald পরিবারে (green না) — কারণ Badge.jsx-এ
+        // 'active'/'approved'/'present' আগে থেকেই emerald ব্যবহার করে; green
+        // আলাদা রাখলে অ্যাপের দুই জায়গায় দুই রকম "সফল" রঙ হয়ে যেত।
+        // ============================================================
+        success: { DEFAULT: '#10b981', dark: '#059669', bg: '#d1fae5' },
+        info:    { DEFAULT: '#2563eb', light: '#3b82f6', bg: '#eff6ff' },
+        brand:   { whatsapp: '#25d366' }, // fixed 3rd-party ব্র্যান্ড কালার, semantic set থেকে আলাদা
+
+        // ============================================================
         // ⬇️ নতুন — Customer Portal Design System (customer-design-system.html)
         // 'cp-' প্রিফিক্স দিয়ে সম্পূর্ণ আলাদা রাখা হয়েছে যাতে admin/worker/manager
         // পোর্টালের বিদ্যমান primary/secondary/accent/danger একদমই স্পর্শ না হয়।
@@ -98,6 +111,11 @@ export default {
         'pf-warning': { DEFAULT: '#B8860B', bg: '#F7EED9' },
         'pf-error':   { DEFAULT: '#B3452C', bg: '#F5E4DF' },
         'pf-info':    { DEFAULT: '#2C5C87', bg: '#E1EAF2' },
+      },
+      fontSize: {
+        // ⬇️ নতুন — Phase 0 audit-এ text-[11px]/[10px]/[9px] (২০ বার, drift) পাওয়া
+        // গিয়েছিল caption/micro টেক্সটে। একটাই deliberate সাইজ এখন থেকে।
+        '2xs': ['10px', { lineHeight: '14px' }],
       },
       fontFamily: {
         sans: ['Hind Siliguri', 'Arial', 'sans-serif'],

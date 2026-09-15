@@ -175,6 +175,7 @@ const WorkerAttendance = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/wor
 const RouteSelect      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/RouteSelect'))
 const OrderForm        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/OrderForm'))
 const CustomerList     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/CustomerList'))
+const AddCustomer      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/AddCustomer')) // ⬅️ নতুন — Phase 3 অংশ ২
 const ConnectCustomer  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/ConnectCustomer'))
 const VisitPage        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/VisitPage'))
 const SalesForm        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/SalesForm'))
@@ -640,6 +641,7 @@ function AppWithPermissions() {
                 <Route path="route"              element={<RouteSelect />} />
                 <Route path="order"              element={<OrderForm />} />
                 <Route path="customers"          element={<CustomerList />} />
+                <Route path="customers/new"       element={<AddCustomer />} /> {/* ⬅️ নতুন — Phase 3 অংশ ২, আগে modal ছিল */}
                 <Route path="connect-customer"    element={<ConnectCustomer />} />
                 <Route path="visit/:id"          element={<VisitPage />} />
                 <Route path="sales/:id"          element={<SalesForm />} />

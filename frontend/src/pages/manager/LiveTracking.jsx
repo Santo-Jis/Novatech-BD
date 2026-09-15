@@ -8,6 +8,11 @@ import api from '../../api/axios'
 // Manager Live Tracking Page
 // Firebase Realtime DB trigger করে, Backend থেকে filtered
 // লোকেশন আনে — Manager শুধু নিজের SR দেখবে
+//
+// ⬇️ Phase 4 (Route Intelligence) — Off-route alert যোগ হলো। Backend
+// (getTeamLocations) এখন প্রতিটা SR-এর জন্য তার assigned কাস্টমারদের মধ্যে
+// সবচেয়ে কাছেরটার দূরত্ব হিসাব করে পাঠায় (`offRouteMeters`/`isOffRoute`)।
+// এখানে সেটা marker-এর বর্ডার রঙ (amber) আর sidebar badge হিসেবে দেখানো হয়।
 // ============================================================
 
 // userId থেকে consistent color বের করো
@@ -74,7 +79,34 @@ export default function LiveTracking() {
             .catch(() => setMapError(true))
     }, [])
 
-    // ── ২. ম্যাপ তৈরি করো ──────────────────────────────────
+    // ── ২. Backend থেকে filtered লোকেশন আনো ──────────────
+    // ✅ FIX: আগে Firebase সরাসরি listen করত — সব SR দেখাত।
+    // এখন Firebase শুধু trigger হিসেবে কাজ করে।
+    // Actual data আসে Backend API থেকে — Manager শুধু
+    // নিজের team-এর SR দেখবে, অন্যের SR নয়।
+    //
+    // ⚠️ FIX (Phase 4 audit): এই ফাংশনটা আগে নিচে declare করা ছিল, কিন্তু
+    // পরের useEffect-এর dependency array-তে ([mapsLoaded, fetchLocations])
+    // রেফারেন্স করা হতো — যেটা তখনও declare হয়নি (temporal dead zone)।
+    // এটা প্রতিবার render-এই "Cannot access 'fetchLocations' before
+    // initialization" ছুঁড়ে পুরো পেজ ক্র্যাশ করানোর কথা। এখানে ওপরে তোলা হলো।
+    const fetchLocations = useCallback(async () => {
+        try {
+            const res = await api.get('/location/team')
+            if (!res.data?.success) return
+
+            const list = (res.data.data || []).map(loc => ({
+                ...loc,
+                color: getColorForUser(loc.userId),  // ✅ userId hash থেকে consistent color
+            }))
+            setWorkers(list)
+            updateMarkers(list)
+        } catch (err) {
+            console.error('Location fetch error:', err)
+        }
+    }, [])
+
+    // ── ৩. ম্যাপ তৈরি করো ──────────────────────────────────
     useEffect(() => {
         if (!mapsLoaded || !mapRef.current || mapInstance.current) return
 
@@ -97,27 +129,6 @@ export default function LiveTracking() {
         fetchLocations()
     }, [mapsLoaded, fetchLocations])
 
-    // ── ৩. Backend থেকে filtered লোকেশন আনো ──────────────
-    // ✅ FIX: আগে Firebase সরাসরি listen করত — সব SR দেখাত।
-    // এখন Firebase শুধু trigger হিসেবে কাজ করে।
-    // Actual data আসে Backend API থেকে — Manager শুধু
-    // নিজের team-এর SR দেখবে, অন্যের SR নয়।
-    const fetchLocations = useCallback(async () => {
-        try {
-            const res = await api.get('/location/team')
-            if (!res.data?.success) return
-
-            const list = (res.data.data || []).map(loc => ({
-                ...loc,
-                color: getColorForUser(loc.userId),  // ✅ userId hash থেকে consistent color
-            }))
-            setWorkers(list)
-            updateMarkers(list)
-        } catch (err) {
-            console.error('Location fetch error:', err)
-        }
-    }, [])
-
     // ── ৪. Firebase change হলে Backend থেকে fresh data আনো ─
     useEffect(() => {
         // প্রথমবার data আনো
@@ -135,7 +146,7 @@ export default function LiveTracking() {
         return () => off(locationRef, 'value', unsubscribe)
     }, [fetchLocations])
 
-    // ── ৪. Markers আপডেট করো (AdvancedMarkerElement) ────────
+    // ── ৫. Markers আপডেট করো (AdvancedMarkerElement) ────────
     // ✅ FIX: পুরনো google.maps.Marker deprecated (v3.58+)
     //         নতুন AdvancedMarkerElement ব্যবহার করা হচ্ছে।
     //         SVG icon এখন DOM element হিসেবে দেওয়া হয় — আরও flexible।
@@ -161,12 +172,18 @@ export default function LiveTracking() {
             const pos = { lat: worker.latitude, lng: worker.longitude }
 
             // SVG DOM element — AdvancedMarkerElement-এ content হিসেবে দেওয়া হয়
+            // ⬇️ নতুন — Phase 4: off-route হলে সাদা বর্ডারের বদলে amber বর্ডার।
+            // ইচ্ছাকৃতভাবে শুধু stroke color বদলানো হয়েছে, SVG-এর geometry/size
+            // অপরিবর্তিত রাখা হয়েছে — নাহলে marker-এর anchor point/pointing
+            // অবস্থান সূক্ষ্মভাবে সরে যেতে পারত, যেটা লাইভ না দেখে ঝুঁকিপূর্ণ।
             const makePinElement = () => {
                 const div = document.createElement('div')
+                const strokeColor = worker.isOffRoute ? '#f59e0b' : 'white'
+                const strokeWidth = worker.isOffRoute ? 4 : 3
                 div.innerHTML = `
                     <svg xmlns="http://www.w3.org/2000/svg" width="44" height="54" viewBox="0 0 44 54"
                          style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3)); cursor: pointer;">
-                        <circle cx="22" cy="22" r="20" fill="${worker.color}" stroke="white" stroke-width="3"/>
+                        <circle cx="22" cy="22" r="20" fill="${worker.color}" stroke="${strokeColor}" stroke-width="${strokeWidth}"/>
                         <text x="22" y="27" font-size="14" font-weight="bold" fill="white"
                             text-anchor="middle" font-family="Arial">
                             ${(worker.name_bn || worker.employee_code || '?').charAt(0)}
@@ -221,6 +238,10 @@ export default function LiveTracking() {
             <p style="font-size:11px;color:#9ca3af;margin:4px 0 0">
                 ${w.updatedAt ? `🕐 ${timeAgo(w.updatedAt)}${isStale(w.updatedAt) ? ' ⚠️ পুরনো' : ''}` : ''}
             </p>
+            ${w.isOffRoute ? `
+            <p style="font-size:11px;color:#f59e0b;font-weight:700;margin:6px 0 0;padding-top:6px;border-top:1px solid #f3f4f6">
+                ⚠️ সম্ভবত route থেকে দূরে (নিকটতম কাস্টমার ~${(w.offRouteMeters / 1000).toFixed(1)} কিমি)
+            </p>` : ''}
         </div>
     `
 
@@ -352,13 +373,21 @@ export default function LiveTracking() {
                                     </p>
                                 </div>
                                 {w.gpsError
-                                    ? <FiAlertTriangle style={{ color: '#ef4444', flexShrink: 0, fontSize: 13 }} />
-                                    : <FiWifi style={{ color: isStale(w.updatedAt) ? '#f59e0b' : '#10b981', flexShrink: 0, fontSize: 13 }} />
+                                    ? <FiAlertTriangle style={{ color: '#ef4444', flexShrink: 0, fontSize: 13 }} title="GPS বন্ধ" />
+                                    : w.isOffRoute
+                                        ? <FiAlertTriangle style={{ color: '#f59e0b', flexShrink: 0, fontSize: 13 }} title="সম্ভবত route থেকে দূরে" />
+                                        : <FiWifi style={{ color: isStale(w.updatedAt) ? '#f59e0b' : '#10b981', flexShrink: 0, fontSize: 13 }} />
                                 }
                             </div>
                             {w.gpsError && (
                                 <p style={{ fontSize: 10, color: '#ef4444', margin: '6px 0 0', fontWeight: 600 }}>
                                     ⚠️ GPS বন্ধ
+                                </p>
+                            )}
+                            {/* ⬇️ নতুন — Phase 4: off-route হলে (GPS ঠিক থাকা অবস্থায়) দূরত্ব দেখানো */}
+                            {!w.gpsError && w.isOffRoute && (
+                                <p style={{ fontSize: 10, color: '#f59e0b', margin: '6px 0 0', fontWeight: 600 }}>
+                                    ⚠️ রুট থেকে ~{(w.offRouteMeters / 1000).toFixed(1)} কিমি দূরে
                                 </p>
                             )}
                             {!w.gpsError && w.updatedAt && (

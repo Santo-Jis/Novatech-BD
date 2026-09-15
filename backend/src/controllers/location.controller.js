@@ -74,6 +74,47 @@ const updatePresence = async (req, res) => {
 //   supervisor/asm/rsm → নিজের manager_id-এর team-এর worker
 //                        (users.manager_id = req.user.id)
 // ============================================================
+// ============================================================
+// ⬇️ নতুন — Phase 4: Off-Route Alert
+// SR-এর লাইভ অবস্থান থেকে তার assigned কাস্টমারদের মধ্যে সবচেয়ে কাছেরটার
+// দূরত্ব বের করা। এই দূরত্ব একটা threshold-এর বেশি হলে ধরে নেওয়া হয় SR
+// সম্ভবত তার route এলাকা থেকে দূরে আছে (লাঞ্চ/ব্যক্তিগত কাজ/দুটো cluster-এর
+// মাঝে হতে পারে — তাই এটা "নিশ্চিত সমস্যা" না, "সম্ভাব্য" flag)।
+//
+// ⚠️ কোন "route" এখন active সেটা backend জানে না (selectedRoute শুধু
+// frontend/localStorage-এ) — তাই "route থেকে দূরত্ব" বলতে এখানে বোঝানো
+// হচ্ছে "তার নামে assigned যেকোনো কাস্টমার থেকে দূরত্ব" (customer_assignments
+// টেবিল, is_active=true) — practically একই জিনিস বলে দেয়, কারণ SR সাধারণত
+// তার নিজের এলাকার কাস্টমারদের কাছাকাছিই থাকে।
+const OFF_ROUTE_THRESHOLD_METERS = 2000; // ⬅️ tunable — ব্যবসার বাস্তবতা অনুযায়ী বদলানো যায়
+
+async function getNearestAssignedCustomerMeters(workerId, lat, lng, tenantId) {
+    try {
+        const result = await query(
+            `SELECT MIN(
+                ST_Distance(
+                    c.location::geography,
+                    ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography
+                )
+             ) AS nearest_meters
+             FROM customer_assignments ca
+             JOIN customers c ON c.id = ca.customer_id
+             WHERE ca.worker_id = $1
+               AND ca.is_active = true
+               AND ca.tenant_id = $4
+               AND c.location IS NOT NULL`,
+            [workerId, lng, lat, tenantId]
+        );
+        const val = result.rows[0]?.nearest_meters;
+        return val != null ? Math.round(parseFloat(val)) : null;
+    } catch (error) {
+        // ⚠️ off-route check ব্যর্থ হলেও মূল লোকেশন ডেটা যেন আটকে না যায় —
+        // silent fail, শুধু লগ করা।
+        logger.error('getNearestAssignedCustomerMeters error:', error.message);
+        return null;
+    }
+}
+
 const getTeamLocations = async (req, res) => {
     try {
         const { role, id: currentUserId } = req.user;
@@ -110,6 +151,25 @@ const getTeamLocations = async (req, res) => {
         const locations = Object.entries(data)
             .filter(([userId]) => authorizedWorkerIds === null || authorizedWorkerIds.has(userId))
             .map(([userId, loc]) => ({ userId, ...loc }));
+
+        // ⬇️ নতুন — Phase 4: প্রতিটা eligible worker-এর জন্য (GPS error নেই,
+        // valid lat/lng আছে) সমান্তরালে (Promise.all) off-route চেক করা।
+        // Sequential না করে parallel করা হলো যাতে team বড় হলেও এই ঘন ঘন-পোল
+        // হওয়া endpoint ধীর না হয়ে যায়।
+        await Promise.all(locations.map(async (loc) => {
+            if (loc.gpsError || typeof loc.latitude !== 'number' || typeof loc.longitude !== 'number') {
+                loc.offRouteMeters = null;
+                loc.isOffRoute = false;
+                return;
+            }
+            const nearestMeters = await getNearestAssignedCustomerMeters(
+                loc.userId, loc.latitude, loc.longitude, req.tenantId
+            );
+            loc.offRouteMeters = nearestMeters;
+            // nearestMeters === null মানে হয় কোনো assigned কাস্টমার নেই, বা query fail
+            // হয়েছে — সেক্ষেত্রে "off-route" বলাটা ভুল হবে (তুলনা করার কিছু নেই)
+            loc.isOffRoute = nearestMeters != null && nearestMeters > OFF_ROUTE_THRESHOLD_METERS;
+        }));
 
         res.json({ success: true, data: locations });
     } catch (error) {

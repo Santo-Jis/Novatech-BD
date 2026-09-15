@@ -146,7 +146,11 @@ const getCustomers = async (req, res) => {
                     r.name AS route_name,
                     ca.visit_order,
                     ST_Y(c.location::geometry) AS latitude,
-                    ST_X(c.location::geometry) AS longitude
+                    ST_X(c.location::geometry) AS longitude,
+                    -- ⬇️ নতুন (Phase 0 audit ফিক্স): WHERE clause-এ মোট কতগুলো সারি
+                    -- মিলেছে (LIMIT/OFFSET-এর আগে) তা প্রতি সারিতে বসিয়ে দেয় — আলাদা
+                    -- COUNT(*) কোয়েরির দরকার নেই, GROUP BY নেই বলে safe।
+                    COUNT(*) OVER() AS total_count
                     ${distanceSelect},
                     COALESCE(crr.pending_return, 0)::int      AS pending_return_count,
                     COALESCE(crr.pending_replacement, 0)::int AS pending_replacement_count,
@@ -222,7 +226,12 @@ const getCustomers = async (req, res) => {
             params
         );
 
-        const customers = result.rows.map(c => ({
+        // ⬇️ নতুন — প্রতি সারিতে ডুপ্লিকেট হওয়া total_count একবারই বের করা,
+        // তারপর প্রতিটা customer অবজেক্ট থেকে বাদ দেওয়া (নাহলে অপ্রয়োজনীয়
+        // রিপিটেড ডেটা যায়, আর has_pending_edit-এর মতো আসল কলামের সাথে গুলিয়ে যেতে পারে)
+        const totalCount = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
+
+        const customers = result.rows.map(({ total_count, ...c }) => ({
             ...c,
             visited_today: c.visited_today ?? false,
             has_pending_request: (
@@ -233,7 +242,15 @@ const getCustomers = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            data: customers
+            data: customers,
+            // ⬇️ নতুন (Phase 0 audit ফিক্স) — আগে total/has_more ফেরত যেত না,
+            // তাই default limit=50-এর বেশি কাস্টমার থাকা route নিঃশব্দে truncate
+            // হয়ে যেত। এখন frontend চাইলে বুঝতে/দেখাতে পারবে।
+            meta: {
+                total_count:    totalCount,
+                returned_count: customers.length,
+                has_more:       offset + customers.length < totalCount
+            }
         });
 
     } catch (error) {
@@ -825,9 +842,14 @@ const collectCredit = async (req, res) => {
         }
         // idempotency_key-তে unique constraint violation — concurrent duplicate request
         if (error.code === '23505' && error.constraint?.includes('idempotency')) {
+            // ✅ FIX: try ব্লকে destructure করা `amount` এখানে scope-এর বাইরে (try/catch
+            // আলাদা block scope) — আগে এখানে সরাসরি `amount` রেফারেন্স করলে
+            // ঠিক এই race-condition-এর মুহূর্তেই "amount is not defined" ছুঁড়ে
+            // দিত, বন্ধুত্বপূর্ণ মেসেজের বদলে। `req` পুরো function জুড়েই সহজলভ্য,
+            // তাই সরাসরি req.body.amount পড়া — একই মান, কিন্তু scope-নিরাপদ।
             return res.status(200).json({
                 success: true,
-                message: `৳${amount} বাকি আদায় সফল। (পূর্বে সম্পন্ন হয়েছিল)`
+                message: `৳${req.body.amount} বাকি আদায় সফল। (পূর্বে সম্পন্ন হয়েছিল)`
             });
         }
         logger.error('❌ Collect Credit Error:', error.message);
