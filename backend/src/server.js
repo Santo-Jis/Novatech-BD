@@ -405,6 +405,7 @@ const { startAccountDeletionJob }   = require('./jobs/accountDeletion.job');   /
 const { startPostCleanupJob }        = require('./jobs/postCleanup.job');       // ✅ NEW (Redesign Phase ১.৯ — প্রাইভেসি)
 const { startNotificationScheduleJob } = require('./jobs/notificationSchedule.job');   // ← নতুন
 const { startTenantInvoiceJob }      = require('./jobs/tenantInvoice.job');   // ← নতুন (বিলিং)
+const { startCommissionReconciliationJob } = require('./jobs/commissionReconciliation.job');   // ← নতুন (Phase ১, commission ledger)
 
 
 // ============================================================
@@ -460,6 +461,7 @@ seedPlatformStaffFromEnv();
         startPostCleanupJob();       // ✅ NEW (Redesign Phase ১.৯)
         startNotificationScheduleJob();   // ← নতুন
         startTenantInvoiceJob();   // ← নতুন (বিলিং)
+        startCommissionReconciliationJob();   // ← নতুন (Phase ১, commission ledger)
 
         logger.info('✅ Background jobs চালু হয়েছে');
 

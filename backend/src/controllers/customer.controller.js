@@ -812,7 +812,7 @@ const collectCredit = async (req, res) => {
             setImmediate(async () => {
                 try {
                     const bdToday = getBDToday();
-                    const { rate, amount: commAmount, totalSales } = await updateCommissionRealtime(req.user.id, bdToday);
+                    const { rate, amount: commAmount, totalSales } = await updateCommissionRealtime(req.user.id, bdToday, req.tenantId);
                     await firebaseNotify(`live/commission/${req.user.id}`, {
                         date: bdToday, totalSales, rate, amount: commAmount,
                         reason: 'credit_payment_collected',

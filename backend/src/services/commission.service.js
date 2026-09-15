@@ -3,24 +3,40 @@
 // ============================================================
 
 const { query } = require('../config/db');
+const { withTenantScope } = require('../config/tenantScopedDb');
+const { recordDailyEarnDelta } = require('./commissionLedger.service');
 
 // বিক্রয়ের পরিমাণ অনুযায়ী commission rate DB থেকে বের করো
-const calculateCommissionRate = async (salesAmount) => {
-    const result = await query(
+//
+// ✅ P0 FIX: আগে এই ফাংশন কোনো tenant_id ছাড়াই commission_settings-এ query
+// করত। tenantId প্যারামিটার যোগ করে সেই application-level bug ঠিক হয়েছিল।
+//
+// ✅ RLS FIX: কিন্তু application-level ফিল্টার নির্ভর করে কেউ ভুল না করার
+// উপর — ঠিক এই ক্লাসের bug আবার হতে পারতো। এখন withTenantScope() দিয়ে
+// একটা RLS-protected role (app_backend, NOBYPASSRLS) দিয়ে কানেক্ট করা হয়,
+// আর commission_settings-এ tenant_id ভিত্তিক policy আছে। মানে এখন এমনকি
+// WHERE ক্লজ থেকে tenant_id ফিল্টার ভুলে বাদ পড়লেও, ডেটাবেস নিজেই অন্য
+// tenant-এর row লুকিয়ে ফেলবে — code review-এর ভরসায় থাকতে হয় না।
+const calculateCommissionRate = async (salesAmount, tenantId) => {
+    if (!tenantId) {
+        throw new Error('calculateCommissionRate: tenantId is required (tenant isolation)');
+    }
+    const result = await withTenantScope(tenantId, (client) => client.query(
         `SELECT rate FROM commission_settings
          WHERE is_active = true
+           AND tenant_id = $2
            AND slab_min <= $1
            AND (slab_max IS NULL OR slab_max >= $1)
          ORDER BY slab_min DESC
          LIMIT 1`,
-        [salesAmount]
-    );
+        [salesAmount, tenantId]
+    ));
     return parseFloat(result.rows[0]?.rate) || 0;
 };
 
 // বিক্রয়ের পরিমাণ অনুযায়ী commission rate ও amount হিসাব করো
-const calculateCommission = async (salesAmount) => {
-    const rate   = await calculateCommissionRate(salesAmount);
+const calculateCommission = async (salesAmount, tenantId) => {
+    const rate   = await calculateCommissionRate(salesAmount, tenantId);
     const amount = Math.round((salesAmount * rate) / 100);
     return { rate, amount };
 };
@@ -95,9 +111,10 @@ const getDailyCommissionableSales = async (workerId, date) => {
  *
  * @param {string} workerId
  * @param {string} date  — YYYY-MM-DD (BD timezone)
+ * @param {string} tenantId — ✅ P0 FIX: tenant-aware rate lookup-এর জন্য বাধ্যতামূলক
  * @returns {Promise<{ rate, amount, totalSales }>}
  */
-const updateCommissionRealtime = async (workerId, date) => {
+const updateCommissionRealtime = async (workerId, date, tenantId) => {
     // আজকের commissionable বিক্রয় (নগদ/replacement + আজ verified হওয়া collection)
     // বাকি/credit অংশ বাদ যায় যতক্ষণ না আদায় হয় — দেখো getDailyCommissionableSales()
     const totalSales = await getDailyCommissionableSales(workerId, date);
@@ -106,10 +123,21 @@ const updateCommissionRealtime = async (workerId, date) => {
         return { rate: 0, amount: 0, totalSales: 0 };
     }
 
-    const { rate, amount } = await calculateCommission(totalSales);
+    const { rate, amount } = await calculateCommission(totalSales, tenantId);
 
-    // UPSERT — আগে থাকলে update, না থাকলে insert
-    await query(
+    // UPSERT — আগে থাকলে update, না থাকলে insert।
+    // ✅ P0 FIX (Bug #4): "DO UPDATE ... WHERE commission.paid = false" —
+    // এই দিনের commission যদি ইতিমধ্যে paid=true মার্ক হয়ে গিয়ে থাকে (মাঝ-মাসে
+    // payCommission দিয়ে), তাহলে দেরিতে আসা sale/collection এই UPSERT-এ আর
+    // sales_amount/commission_amount বদলাবে না — paid_at/payment_reference যা
+    // দেখাচ্ছিল, commission_amount ঠিক সেটার সাথেই মিলে থাকবে। Postgres-এর
+    // conditional "DO UPDATE ... WHERE" এখানে conflicting row-কে reference
+    // করে, তাই condition false হলে insert-ও হয় না, update-ও হয় না — নীরবে skip।
+    //
+    // ✅ RLS FIX: withTenantScope দিয়ে — commission টেবিলে app_backend
+    // role-এর জন্য policy আছে (user_id অবশ্যই এই tenant-এর কোনো user-এর
+    // হতে হবে), তাই ভুল workerId পাস হলেও DB নিজেই আটকাবে।
+    await withTenantScope(tenantId, (client) => client.query(
         `INSERT INTO commission
             (user_id, date, sales_amount, commission_rate, commission_amount, type, paid)
          VALUES ($1, $2, $3, $4, $5, 'daily', false)
@@ -117,9 +145,22 @@ const updateCommissionRealtime = async (workerId, date) => {
          DO UPDATE SET
             sales_amount      = EXCLUDED.sales_amount,
             commission_rate   = EXCLUDED.commission_rate,
-            commission_amount = EXCLUDED.commission_amount`,
+            commission_amount = EXCLUDED.commission_amount
+         WHERE commission.paid = false`,
         [workerId, date, totalSales, rate, amount]
-    );
+    ));
+
+    // ✅ Phase ১ — shadow-mode dual-write। পুরনো commission টেবিলের UPSERT
+    // উপরে যা-ই ঘটুক (update হোক, skip হোক কারণ paid=true), ledger নিজের
+    // আগের entry-গুলো থেকে delta বের করে independently, তাই paid হয়ে যাওয়া
+    // দিনেও দেরিতে আসা sale-এর কমিশন এখানে "এখনো owed" হিসেবে ধরা পড়ে —
+    // পুরনো টেবিলে এটা সম্ভব ছিল না। ব্যর্থ হলে swallow হয়, আসল রেসপন্স/
+    // আচরণ অক্ষুণ্ণ থাকে (দেখো commissionLedger.service.js)।
+    await recordDailyEarnDelta({
+        tenantId, userId: workerId, date,
+        newTotalSales: totalSales, newRate: rate, newAmount: amount,
+        sourceType: 'sale',
+    });
 
     return { rate, amount, totalSales };
 };

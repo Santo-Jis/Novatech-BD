@@ -15,32 +15,92 @@ jest.mock('../config/db', () => ({
     query: jest.fn()
 }));
 
+// ✅ RLS FIX: calculateCommissionRate/calculateCommission এখন withTenantScope
+// (../config/tenantScopedDb, app_backend role) দিয়ে কানেক্ট করে, plain query()
+// দিয়ে না — commission_settings-এ RLS policy আছে। getDailyCommissionableSales
+// এখনো পুরনো pool-ই ব্যবহার করে (sales_transactions/collections/credit_payments
+// — এই iteration-এর scope-এর বাইরে, দেখো RLS migration-এর নোট)।
+jest.mock('../config/tenantScopedDb', () => {
+    const clientQuery = jest.fn();
+    const withTenantScope = jest.fn(async (tenantId, callback) => {
+        if (!tenantId) {
+            throw new Error('withTenantScope: tenantId বাধ্যতামূলক (RLS-এর জন্য)');
+        }
+        return callback({ query: clientQuery });
+    });
+    return { withTenantScope, __clientQuery: clientQuery };
+});
+
 const { query } = require('../config/db');
+const { withTenantScope, __clientQuery: rlsQuery } = require('../config/tenantScopedDb');
 const { calculateCommission, calculateCommissionRate, getDailyCommissionableSales } = require('../services/commission.service');
+
+beforeEach(() => {
+    rlsQuery.mockReset();
+    withTenantScope.mockClear();
+});
 
 // ─── calculateCommissionRate ──────────────────────────────────
 
 describe('calculateCommissionRate — বিক্রয় অনুযায়ী rate বের করা', () => {
 
     test('slab পাওয়া গেলে সেই rate ফেরত দেবে', async () => {
-        query.mockResolvedValueOnce({ rows: [{ rate: 10 }] });
+        rlsQuery.mockResolvedValueOnce({ rows: [{ rate: 10 }] });
 
-        const rate = await calculateCommissionRate(50000);
+        const rate = await calculateCommissionRate(50000, 'tenant-1');
         expect(rate).toBe(10);
     });
 
     test('কোনো slab না পাওয়া গেলে rate = 0', async () => {
-        query.mockResolvedValueOnce({ rows: [] });
+        rlsQuery.mockResolvedValueOnce({ rows: [] });
 
-        const rate = await calculateCommissionRate(50000);
+        const rate = await calculateCommissionRate(50000, 'tenant-1');
         expect(rate).toBe(0);
     });
 
     test('বিক্রয় 0 হলে rate = 0 (slab নেই)', async () => {
-        query.mockResolvedValueOnce({ rows: [] });
+        rlsQuery.mockResolvedValueOnce({ rows: [] });
 
-        const rate = await calculateCommissionRate(0);
+        const rate = await calculateCommissionRate(0, 'tenant-1');
         expect(rate).toBe(0);
+    });
+
+    // ✅ P0 FIX (Bug #1) প্রমাণ: tenantId ছাড়া কল করলে এখন throw করবে —
+    // চুপচাপ অন্য tenant-এর slab নিয়ে আসার আগেই ভুলটা ধরা পড়বে।
+    test('tenantId ছাড়া কল করলে error throw করবে (tenant isolation guard)', async () => {
+        await expect(calculateCommissionRate(50000)).rejects.toThrow(/tenantId/i);
+        await expect(calculateCommissionRate(50000, null)).rejects.toThrow(/tenantId/i);
+    });
+
+    // ✅ P0 FIX (Bug #1) প্রমাণ: query-তে tenant_id ঠিকভাবে filter হিসেবে
+    // যাচ্ছে কিনা — এটাই সেই প্রপার্টি যেটা আগে কোথাও টেস্ট করা হয়নি এবং
+    // যার কারণে cross-tenant rate leak ধরা পড়েনি।
+    test('SQL-এ tenant_id ফিল্টার থাকে, এবং tenantId ঠিক param হিসেবে যায়', async () => {
+        rlsQuery.mockResolvedValueOnce({ rows: [{ rate: 8 }] });
+
+        await calculateCommissionRate(75000, 'tenant-42');
+
+        const [sql, params] = rlsQuery.mock.calls[0];
+        expect(sql).toEqual(expect.stringContaining('tenant_id'));
+        expect(params).toEqual([75000, 'tenant-42']);
+    });
+
+    // ✅ Regression guard: দুই tenant-এর slab আলাদা হলে দুইজন আলাদা rate পাবে,
+    // একজন আরেকজনের rate "দেখতে" পাবে না — mock দিয়ে সরাসরি এই প্রপার্টি প্রমাণ।
+    test('একই salesAmount-এ দুই ভিন্ন tenant ভিন্ন rate পেতে পারে (leak নেই)', async () => {
+        rlsQuery.mockResolvedValueOnce({ rows: [{ rate: 5 }] });  // tenant A-র slab
+        const rateA = await calculateCommissionRate(60000, 'tenant-A');
+
+        rlsQuery.mockResolvedValueOnce({ rows: [{ rate: 9 }] });  // tenant B-র slab
+        const rateB = await calculateCommissionRate(60000, 'tenant-B');
+
+        expect(rateA).toBe(5);
+        expect(rateB).toBe(9);
+        expect(rateA).not.toBe(rateB);
+
+        // প্রতিটা কল নিজের tenantId-ই পাঠিয়েছে, একটা আরেকটার সাথে মিশে যায়নি
+        expect(rlsQuery.mock.calls[0][1]).toEqual([60000, 'tenant-A']);
+        expect(rlsQuery.mock.calls[1][1]).toEqual([60000, 'tenant-B']);
     });
 });
 
@@ -49,41 +109,41 @@ describe('calculateCommissionRate — বিক্রয় অনুযায�
 describe('calculateCommission — rate ও amount হিসাব', () => {
 
     test('৫০,০০০ টাকা বিক্রয়ে ১০% rate — commission ৫,০০০', async () => {
-        query.mockResolvedValueOnce({ rows: [{ rate: 10 }] });
+        rlsQuery.mockResolvedValueOnce({ rows: [{ rate: 10 }] });
 
-        const result = await calculateCommission(50000);
+        const result = await calculateCommission(50000, 'tenant-1');
         expect(result.rate).toBe(10);
         expect(result.amount).toBe(5000);
     });
 
     test('commission Math.round দিয়ে পূর্ণ সংখ্যা হবে', async () => {
-        query.mockResolvedValueOnce({ rows: [{ rate: 7 }] });
+        rlsQuery.mockResolvedValueOnce({ rows: [{ rate: 7 }] });
 
         // 30000 × 7% = 2100 (এটা সঠিক)
-        const result = await calculateCommission(30000);
+        const result = await calculateCommission(30000, 'tenant-1');
         expect(Number.isInteger(result.amount)).toBe(true);
         expect(result.amount).toBe(2100);
     });
 
     test('rate 0 হলে commission 0', async () => {
-        query.mockResolvedValueOnce({ rows: [{ rate: 0 }] });
+        rlsQuery.mockResolvedValueOnce({ rows: [{ rate: 0 }] });
 
-        const result = await calculateCommission(100000);
+        const result = await calculateCommission(100000, 'tenant-1');
         expect(result.amount).toBe(0);
     });
 
     test('বিক্রয় 0 হলে commission 0', async () => {
-        query.mockResolvedValueOnce({ rows: [] }); // no slab
+        rlsQuery.mockResolvedValueOnce({ rows: [] }); // no slab
 
-        const result = await calculateCommission(0);
+        const result = await calculateCommission(0, 'tenant-1');
         expect(result.amount).toBe(0);
         expect(result.rate).toBe(0);
     });
 
     test('result object-এ rate ও amount দুটোই আছে', async () => {
-        query.mockResolvedValueOnce({ rows: [{ rate: 5 }] });
+        rlsQuery.mockResolvedValueOnce({ rows: [{ rate: 5 }] });
 
-        const result = await calculateCommission(20000);
+        const result = await calculateCommission(20000, 'tenant-1');
         expect(result).toHaveProperty('rate');
         expect(result).toHaveProperty('amount');
     });

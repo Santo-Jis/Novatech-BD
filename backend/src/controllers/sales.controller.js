@@ -730,7 +730,7 @@ const createSale = async (req, res) => {
         setImmediate(async () => {
             try {
                 const { rate, amount, totalSales } = await updateCommissionRealtime(
-                    req.user.id, today
+                    req.user.id, today, req.tenantId
                 );
                 if (amount > 0) {
                     // SR-এর app-এ live commission badge আপডেট

@@ -323,7 +323,7 @@ const paySalary = async (req, res) => {
             [worker_id, parseInt(year), parseInt(month), req.tenantId]
         );
 
-        // কমিশন
+        // কমিশন — শুধু এখনও-অপরিশোধিত অংশ (দেখো নিচের P0 FIX কমেন্ট)
         const commRes = await query(
             `SELECT
                 COALESCE(SUM(CASE WHEN type='daily'            THEN commission_amount END), 0) AS sales_commission,
@@ -332,7 +332,8 @@ const paySalary = async (req, res) => {
              FROM commission
              WHERE user_id = $1
                AND EXTRACT(YEAR  FROM date) = $2
-               AND EXTRACT(MONTH FROM date) = $3`,
+               AND EXTRACT(MONTH FROM date) = $3
+               AND paid = false`,
             [worker_id, parseInt(year), parseInt(month)]
         );
 

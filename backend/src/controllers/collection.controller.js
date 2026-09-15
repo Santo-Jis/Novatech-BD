@@ -300,7 +300,7 @@ const verifyCollection = async (req, res) => {
         setImmediate(async () => {
             try {
                 const bdToday = getBDToday();
-                const { rate, amount, totalSales } = await updateCommissionRealtime(col.sr_id, bdToday);
+                const { rate, amount, totalSales } = await updateCommissionRealtime(col.sr_id, bdToday, req.tenantId);
                 await firebaseNotify(`live/commission/${col.sr_id}`, {
                     date: bdToday, totalSales, rate, amount,
                     reason: 'collection_verified',

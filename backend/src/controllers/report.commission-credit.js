@@ -46,13 +46,22 @@ const getCommissionReport = async (req, res) => {
                     COALESCE(SUM(c.sales_amount), 0)  AS total_sales,
                     COALESCE(SUM(CASE WHEN c.type='daily' THEN c.commission_amount END), 0)            AS commission,
                     COALESCE(SUM(CASE WHEN c.type='attendance_bonus' THEN c.commission_amount END), 0) AS bonus,
+                    COALESCE(att.attendance_deduction, 0) AS attendance_deduction,
                     u.outstanding_dues
              FROM users u
              LEFT JOIN commission c ON u.id = c.user_id
                 AND EXTRACT(YEAR FROM c.date) = $1
                 AND EXTRACT(MONTH FROM c.date) = $2
+             LEFT JOIN (
+                 SELECT user_id, SUM(salary_deduction) AS attendance_deduction
+                 FROM attendance
+                 WHERE EXTRACT(YEAR  FROM date) = $1
+                   AND EXTRACT(MONTH FROM date) = $2
+                 GROUP BY user_id
+             ) att ON att.user_id = u.id
              WHERE ${conditions.join(' AND ')}
-             GROUP BY u.id, u.name_bn, u.employee_code, u.basic_salary, u.outstanding_dues
+             GROUP BY u.id, u.name_bn, u.employee_code, u.basic_salary,
+                      u.outstanding_dues, att.attendance_deduction
              ORDER BY total_sales DESC`,
             params
         );
@@ -60,10 +69,11 @@ const getCommissionReport = async (req, res) => {
         const enriched = result.rows.map(row => ({
             ...row,
             net_payable: Math.max(0,
-                parseFloat(row.basic_salary     || 0) +
-                parseFloat(row.commission       || 0) +
-                parseFloat(row.bonus            || 0) -
-                parseFloat(row.outstanding_dues || 0)
+                parseFloat(row.basic_salary         || 0) +
+                parseFloat(row.commission           || 0) +
+                parseFloat(row.bonus                || 0) -
+                parseFloat(row.attendance_deduction || 0) -
+                parseFloat(row.outstanding_dues     || 0)
             )
         }));
 

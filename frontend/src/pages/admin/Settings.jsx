@@ -69,7 +69,12 @@ export default function AdminSettings() {
     try {
       await api.put('/commission/settings', { slabs: commSlabs })
       toast.success('কমিশন স্ল্যাব সেভ হয়েছে। ✅')
-    } catch { toast.error('সমস্যা হয়েছে।') }
+    } catch (err) {
+      // ✅ FIX: backend-এর নির্দিষ্ট validation message (যেমন গ্যাপ/overlap
+      // ধরা পড়লে) আগে জেনেরিক "সমস্যা হয়েছে"-এ চাপা পড়ে যেত — Admin জানতেই
+      // পারতেন না ঠিক কোন রেঞ্জে সমস্যা হয়েছে।
+      toast.error(err?.response?.data?.message || 'সমস্যা হয়েছে।')
+    }
     finally { setCommSaving(false) }
   }
 

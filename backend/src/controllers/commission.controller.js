@@ -49,17 +49,34 @@ const getMyCommission = async (req, res) => {
         );
 
         // বেতনের সাথে যোগ হওয়ার হিসাব
+        // ✅ P0 FIX (Bug #5): cash_dues আগে SELECT-এ ছিলই না, অথচ নিচে ব্যবহার
+        // হতো — ফলে সবসময় undefined→০ হতো, আর product_dues সবসময় পুরো
+        // outstanding_dues-এর সমান দেখাত (নগদ/পণ্য ঘাটতির ব্রেকডাউন ভুল থাকত)।
         const worker = await query(
-            'SELECT basic_salary, outstanding_dues FROM users WHERE id = $1',
+            'SELECT basic_salary, outstanding_dues, cash_dues FROM users WHERE id = $1',
             [req.user.id]
         );
 
-        const basicSalary     = parseFloat(worker.rows[0]?.basic_salary      || 0);
-        const totalCommission = parseFloat(summary.rows[0]?.total_commission || 0);
-        const outstandingDues = parseFloat(worker.rows[0]?.outstanding_dues  || 0);
-        const cashDues        = parseFloat(worker.rows[0]?.cash_dues         || 0);
-        const productDues     = Math.max(0, outstandingDues - cashDues);
-        const netPayable      = basicSalary + totalCommission - outstandingDues;
+        // ✅ P0 FIX (Bug #6): এই মাসের attendance deduction — salary.controller.js
+        // আর monthlyLedger.controller.js-এর net_payable ফর্মুলায় এটা বাদ যায়, এখানে
+        // যোগ হতো না। ফলে একই SR Commission ট্যাব vs Salary ট্যাবে গিয়ে দুই রকম
+        // "net payable" দেখতে পারত। এখন দুই জায়গায় একই ফর্মুলা।
+        const attendanceRes = await query(
+            `SELECT COALESCE(SUM(salary_deduction), 0) AS attendance_deduction
+             FROM attendance
+             WHERE user_id = $1
+               AND EXTRACT(YEAR  FROM date) = $2
+               AND EXTRACT(MONTH FROM date) = $3`,
+            [req.user.id, currentYear, currentMonth]
+        );
+
+        const basicSalary       = parseFloat(worker.rows[0]?.basic_salary      || 0);
+        const totalCommission   = parseFloat(summary.rows[0]?.total_commission || 0);
+        const outstandingDues   = parseFloat(worker.rows[0]?.outstanding_dues  || 0);
+        const cashDues          = parseFloat(worker.rows[0]?.cash_dues         || 0);
+        const productDues       = Math.max(0, outstandingDues - cashDues);
+        const attendanceDeduction = parseFloat(attendanceRes.rows[0]?.attendance_deduction || 0);
+        const netPayable        = basicSalary + totalCommission - attendanceDeduction - outstandingDues;
 
         return res.status(200).json({
             success: true,
@@ -69,12 +86,13 @@ const getMyCommission = async (req, res) => {
                 daily:          daily.rows,
                 summary:        summary.rows[0],
                 salary_preview: {
-                    basic_salary:     basicSalary,
-                    total_commission: totalCommission,
-                    outstanding_dues: outstandingDues,
-                    cash_dues:        cashDues,
-                    product_dues:     productDues,
-                    net_payable:      Math.max(0, netPayable)
+                    basic_salary:         basicSalary,
+                    total_commission:     totalCommission,
+                    attendance_deduction: attendanceDeduction,
+                    outstanding_dues:     outstandingDues,
+                    cash_dues:            cashDues,
+                    product_dues:         productDues,
+                    net_payable:          Math.max(0, netPayable)
                 }
             }
         });
@@ -228,7 +246,9 @@ const getSettings = async (req, res) => {
         const result = await query(
             `SELECT * FROM commission_settings
              WHERE is_active = true
-             ORDER BY slab_min ASC`
+               AND tenant_id = $1
+             ORDER BY slab_min ASC`,
+            [req.tenantId]
         );
 
         return res.status(200).json({ success: true, data: result.rows });
@@ -243,7 +263,71 @@ const getSettings = async (req, res) => {
 // UPDATE COMMISSION SETTINGS
 // PUT /api/commission/settings
 // Admin কমিশন স্ল্যাব পরিবর্তন করবে
+//
+// ✅ FIX: Settings.jsx-এর slab editor-এ প্রতিটা row-এর পাশে আলাদা delete
+// বাটন আছে, কিন্তু সেভ করার আগে কোনো validation ছিল না। ফলে কেউ ভুলবশত
+// একটা মাঝের row মুছে ফেললে (নতুন একটা row যোগ করার সময়ও হতে পারে) পুরো
+// ফাঁকা রেঞ্জটা silently save হয়ে যেত — সেই রেঞ্জে বিক্রি করা SR-রা
+// commission_rate = 0 পেত, কোনো error/warning ছাড়াই। প্রোডাকশনেই ঠিক এই
+// প্যাটার্নের একটা batch পাওয়া গেছে (৩০,০০১–৯৯,৯৯৯ টাকার রেঞ্জ পুরো
+// অনুপস্থিত ছিল একটা সেভে)। এই ফিক্স কোনো রেট নাম্বার ঠিক করে না —
+// কোন রেঞ্জে কত % হবে সেটা প্রতিটা tenant-এর নিজস্ব Admin-এর সিদ্ধান্ত।
+// এটা শুধু নিশ্চিত করে যে যা-ই সেভ হোক, তাতে কোনো ফাঁকা রেঞ্জ বা overlap
+// থেকে না যায়।
 // ============================================================
+
+const validateSlabContinuity = (slabs) => {
+    // মৌলিক ভ্যালিডেশন — প্রতিটা slab-এ সংখ্যা আছে কিনা
+    for (const slab of slabs) {
+        const min  = parseFloat(slab.slab_min);
+        const rate = parseFloat(slab.rate);
+        if (isNaN(min) || min < 0) {
+            return `প্রতিটা স্ল্যাবের "সর্বনিম্ন বিক্রয়" একটা বৈধ, ০ বা তার বেশি সংখ্যা হতে হবে।`;
+        }
+        if (isNaN(rate) || rate < 0) {
+            return `প্রতিটা স্ল্যাবের "হার" একটা বৈধ, ০ বা তার বেশি সংখ্যা হতে হবে।`;
+        }
+        if (slab.slab_max !== null && slab.slab_max !== undefined && slab.slab_max !== '') {
+            const max = parseFloat(slab.slab_max);
+            if (isNaN(max) || max <= min) {
+                return `"সর্বোচ্চ বিক্রয়" থাকলে সেটা "সর্বনিম্ন"-এর চেয়ে বড় হতে হবে (স্ল্যাব: ৳${slab.slab_min})।`;
+            }
+        }
+    }
+
+    // slab_min অনুযায়ী সাজিয়ে ধারাবাহিকতা যাচাই — গ্যাপ বা overlap থাকলে
+    // সেই SR-দের জন্য commission_rate silently ০ resolve করবে, তাই hard reject।
+    const sorted = [...slabs]
+        .map(s => ({
+            min: parseFloat(s.slab_min),
+            max: (s.slab_max === null || s.slab_max === undefined || s.slab_max === '') ? null : parseFloat(s.slab_max),
+        }))
+        .sort((a, b) => a.min - b.min);
+
+    for (let i = 0; i < sorted.length - 1; i++) {
+        const current = sorted[i];
+        const next    = sorted[i + 1];
+
+        if (current.max === null) {
+            return `৳${current.min}-এর পর একটা "সীমাহীন" (সর্বোচ্চ ফাঁকা) স্ল্যাব আছে, কিন্তু তার পরেও আরও স্ল্যাব দেওয়া আছে — এই দুটো একসাথে overlap করছে। শুধু সবচেয়ে উপরের স্ল্যাবটাই সীমাহীন হতে পারে।`;
+        }
+        if (next.min > current.max + 1) {
+            return `৳${current.max}-এর পর আর ৳${next.min}-এর আগে কোনো স্ল্যাব নেই (গ্যাপ ৳${current.max + 1}–৳${next.min - 1})। এই রেঞ্জে বিক্রি করা SR কোনো কমিশন পাবে না। এই গ্যাপ পূরণ করা একটা স্ল্যাব যোগ করুন।`;
+        }
+        if (next.min <= current.max) {
+            return `৳${next.min}–৳${current.max} রেঞ্জ দুইটা স্ল্যাবে overlap করছে। একটা রেঞ্জের জন্য একটাই স্ল্যাব থাকা উচিত।`;
+        }
+    }
+
+    // সবচেয়ে উপরের স্ল্যাবের max সীমাহীন (null) হওয়া উচিত — না হলে সর্বোচ্চ
+    // স্ল্যাবের বাইরে বিক্রি করা SR-রাও silently ০% পাবে।
+    const top = sorted[sorted.length - 1];
+    if (top.max !== null) {
+        return `সবচেয়ে বেশি বিক্রয়ের স্ল্যাবের "সর্বোচ্চ বিক্রয়" ফাঁকা (সীমাহীন) রাখতে হবে — নাহলে ৳${top.max}-এর বেশি বিক্রি করা SR কোনো কমিশন পাবে না।`;
+    }
+
+    return null; // ভ্যালিড
+};
 
 const updateSettings = async (req, res) => {
     try {
@@ -256,12 +340,18 @@ const updateSettings = async (req, res) => {
             });
         }
 
+        const validationError = validateSlabContinuity(slabs);
+        if (validationError) {
+            return res.status(400).json({
+                success: false,
+                message: validationError
+            });
+        }
+
         // ✅ FIX: আগে এই দুইটা ধাপ আলাদা query() call ছিল (transaction ছাড়া), আর
         // deactivate-এ tenant_id filter ছিল না। ফলাফল:
         //  (ক) মাঝপথে fail করলে (network/validation) সব slab inactive হয়ে
-        //      পড়ে থাকতো, কোনো নতুন active batch ছাড়াই — production data-তেই
-        //      ঠিক এই অবস্থা পাওয়া গেছে (২২টা slab, একটাও active না, মানে
-        //      commission_rate সবার জন্য ০ resolve করছিল)।
+        //      পড়ে থাকতো, কোনো নতুন active batch ছাড়াই।
         //  (খ) tenant_id ছাড়া UPDATE হওয়ায় এক tenant slab বাঁচালে অন্য সব
         //      tenant-এর active slab-ও নিষ্ক্রিয় হয়ে যেত (cross-tenant bug)।
         // এখন পুরো ব্যাপারটা একটা transaction-এ, শুধু নিজের tenant scope-এ।

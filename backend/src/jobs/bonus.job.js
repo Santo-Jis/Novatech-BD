@@ -7,6 +7,7 @@ const {
     isWeeklyOff
 } = require('../services/attendance.service');
 const { sendPushNotification } = require('../services/fcm.service');
+const { recordOneTimeEarn } = require('../services/commissionLedger.service');
 
 // ============================================================
 // Attendance Bonus Background Job
@@ -114,7 +115,7 @@ const runMonthlyBonusJobForTenant = async (tenant, year, month) => {
                     bonusCount++;
 
                     // ৮ মাস চেক করো
-                    await checkAndPayEightMonthBonus(worker.id);
+                    await checkAndPayEightMonthBonus(worker.id, tenant.id);
                 }
 
             } catch (workerError) {
@@ -134,7 +135,7 @@ const runMonthlyBonusJobForTenant = async (tenant, year, month) => {
 // ৮ মাসের বোনাস চেক
 // ============================================================
 
-const checkAndPayEightMonthBonus = async (userId) => {
+const checkAndPayEightMonthBonus = async (userId, tenantId) => {
     try {
         // গত ৮ মাসের perfect মাস গণনা
         const result = await query(
@@ -166,6 +167,19 @@ const checkAndPayEightMonthBonus = async (userId) => {
                  VALUES ($1, CURRENT_DATE, $2, 'attendance_bonus', 0, 0)`,
                 [userId, totalBonus]
             );
+
+            // ✅ Phase ১ — shadow-mode ledger dual-write। এই ব্লক নিজেই
+            // bonus_paid=false গেট দিয়ে সুরক্ষিত (একবারই চলে), তবু defense-in-depth
+            // হিসেবে day-level idempotency key দেওয়া হলো।
+            await recordOneTimeEarn({
+                tenantId, userId,
+                date: new Date().toISOString().split('T')[0],
+                amount: totalBonus,
+                commissionType: 'attendance_bonus',
+                sourceType: 'attendance_bonus_rule',
+                idempotencyKey: `bonus8m:${userId}:${new Date().toISOString().split('T')[0]}`,
+                notes: `৮ মাস perfect attendance বোনাস — ${perfectCount} মাস`,
+            });
 
             // bonus_paid = true করো
             await query(
