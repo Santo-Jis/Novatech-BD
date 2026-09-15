@@ -12,8 +12,8 @@ const router  = express.Router()
 const GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/latest/download/app-release.apk'
 
 const APP_VERSION = {
-  versionCode: 300,
-  versionName: '1.0.300',
+  versionCode: 301,
+  versionName: '1.0.301',
   apkUrl: 'https://zovorix.onrender.com/api/app/download',
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
@@ -24,9 +24,9 @@ const APP_VERSION = {
 // GitHub Actions (build-customer-apk.yml) auto-update করবে
 // ─────────────────────────────────────────────────────────────
 // CUSTOMER_VERSION_CODE — এই comment টি রাখো, workflow grep করে এটা দিয়ে
-const CUSTOMER_VERSION_CODE = 387
-const CUSTOMER_VERSION_NAME = '1.0.387'
-const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/download/customer-v1.0.387/customer-release.apk'
+const CUSTOMER_VERSION_CODE = 388
+const CUSTOMER_VERSION_NAME = '1.0.388'
+const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/download/customer-v1.0.388/customer-release.apk'
 
 const CUSTOMER_APP_VERSION = {
   versionCode: CUSTOMER_VERSION_CODE,
@@ -43,9 +43,9 @@ const CUSTOMER_APP_VERSION = {
 // SR_VERSION_CODE — এই comment টি রাখো, workflow grep করে এটা দিয়ে
 // (baseline 0 রাখা হয়েছে — build-sr-apk.yml প্রথমবার চললে ১-এ bump হয়ে
 //  versionName '1.0.1' হবে; Customer-এর মতোই versionCode == versionName-এর শেষ অংশ)
-const SR_VERSION_CODE = 9
-const SR_VERSION_NAME = '1.0.9'
-const SR_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/download/sr-v1.0.9/sr-release.apk'
+const SR_VERSION_CODE = 10
+const SR_VERSION_NAME = '1.0.10'
+const SR_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/download/sr-v1.0.10/sr-release.apk'
 
 const SR_APP_VERSION = {
   versionCode: SR_VERSION_CODE,
