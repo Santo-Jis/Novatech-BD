@@ -15,6 +15,12 @@
 
 const STORAGE_KEY = 'zovorix_chat_offline_queue_v1'
 const MAX_ATTEMPTS = 3
+// ধাপ ৩ (Scale) — অফলাইন-কিউ conflict resolution। localStorage ডিভাইস-লোকাল
+// বলে (দুই ডিভাইসে শেয়ার হয় না), একটা মেসেজ ৫+ ঘণ্টা ধরে অফলাইন-কিউ-তে বসে
+// থাকার মানে হতে পারে ডিভাইসটাই অনেকক্ষণ অফলাইন ছিল — ততক্ষণে অন্য ডিভাইস
+// থেকে বা সরাসরি এই কথোপকথনের প্রেক্ষাপট বদলে যেতে পারে। তাই এত পুরনো
+// মেসেজ auto-flush না করে, ইউজারকে জিজ্ঞেস করা হয় "এখনও পাঠাবেন?"।
+export const STALE_THRESHOLD_MS = 2 * 60 * 60 * 1000 // ২ ঘণ্টা
 
 function loadFromStorage() {
   try {
@@ -61,7 +67,7 @@ export function enqueueMessage({ threadId, text, senderType, senderName, kind, c
     voiceUrl: voiceUrl || null, // Phase 1 (দেরিতে): ইতিমধ্যে-আপলোড-করা ভয়েস নোটের URL
     voiceDuration: voiceDuration || null,
     createdAtLocal: Date.now(),
-    status: 'pending', // 'pending' | 'sending' | 'failed'
+    status: 'pending', // 'pending' | 'sending' | 'failed' | 'stale' (২ ঘণ্টার+ পুরনো, ইউজার-কনফার্ম লাগবে)
     attempts: 0,
   }
   queue = [...queue, item]
@@ -80,6 +86,15 @@ export function markFailed(clientId) {
   queue = queue.map((i) =>
     i.clientId === clientId ? { ...i, status: 'failed', attempts: i.attempts + 1 } : i
   )
+  persist(queue)
+  emit()
+}
+
+// পুরনো (STALE_THRESHOLD_MS+) pending মেসেজ — auto-flush না করে ইউজার-কনফার্মের
+// জন্য আলাদা স্ট্যাটাসে রাখা। confirmStale() = retryMessage()-এর মতোই 'pending'-এ
+// ফিরিয়ে আনে (পরের flush pass-এ পাঠানো হবে), আলাদা ফাংশন না বানিয়ে রিইউজ করা হলো।
+export function markStale(clientId) {
+  queue = queue.map((i) => (i.clientId === clientId ? { ...i, status: 'stale' } : i))
   persist(queue)
   emit()
 }

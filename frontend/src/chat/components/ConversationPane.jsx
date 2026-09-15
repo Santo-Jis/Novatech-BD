@@ -8,7 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { FiWifiOff } from 'react-icons/fi'
+import { FiWifiOff, FiX } from 'react-icons/fi'
 import { ref, update } from 'firebase/database'
 import { useChatEngine } from '../hooks/useChatEngine'
 import { useOthersOnline } from '../hooks/usePresence'
@@ -56,13 +56,31 @@ export default function ConversationPane({
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [engine.messages.length, engine.typingOthers])
 
+  const [duplicateConfirm, setDuplicateConfirm] = useState(false)
+  useEffect(() => {
+    setDuplicateConfirm(false)
+  }, [threadId])
+
   const handleSend = () => {
     if (!composerValue.trim() || engine.blocked) return
     // ✅ ফিক্স: আগে send()-এর রেজাল্ট না দেখেই composer খালি করা হতো — তাই
     // send() ব্যর্থ হলেও (থ্রেড এখনো রেডি না) মনে হতো মেসেজ "পাঠানো হয়ে গেছে"।
     // এখন সত্যিই কিউ হলে তবেই বক্স খালি হয়।
-    const ok = engine.send(composerValue)
-    if (ok) onComposerChange('')
+    //
+    // ✅ ধাপ ৩ — send() এখন 'duplicate'-ও রিটার্ন করতে পারে (একই টেক্সট
+    // কাছাকাছি সময়ে অন্য কোনো ডিভাইস থেকে বা ডাবল-ট্যাপে গেছে বলে মনে হচ্ছে)।
+    // composer খালি না করে, নিশ্চিত হওয়ার জন্য জিজ্ঞেস করা হয়।
+    const result = engine.send(composerValue)
+    if (result === 'duplicate') {
+      setDuplicateConfirm(true)
+      return
+    }
+    if (result) onComposerChange('')
+  }
+
+  const handleSendAnyway = () => {
+    setDuplicateConfirm(false)
+    if (engine.send(composerValue, { force: true })) onComposerChange('')
   }
 
   // Phase 4 — AI কোপাইলট। মেসেজ-হিস্ট্রি এখান থেকেই (লাইভ engine.messages) —
@@ -167,6 +185,18 @@ export default function ConversationPane({
         <div className="flex-shrink-0 flex items-center justify-center gap-1.5 bg-cp-warning-bg text-cp-warning text-[11.5px] font-medium py-1.5 px-3">
           <FiWifiOff size={12} />
           ইন্টারনেট সংযোগ নেই — সংযোগ ফিরলেই মেসেজ পাঠানো হবে
+        </div>
+      )}
+
+      {duplicateConfirm && (
+        <div className="flex-shrink-0 flex items-center justify-center gap-2 bg-amber-50 text-amber-700 text-[11.5px] font-medium py-1.5 px-3 text-center">
+          একই মেসেজ একটু আগেই পাঠানো হয়েছে
+          <button onClick={handleSendAnyway} type="button" className="underline decoration-dotted hover:text-amber-800">
+            তবুও পাঠান
+          </button>
+          <button onClick={() => setDuplicateConfirm(false)} type="button" aria-label="বাতিল">
+            <FiX size={13} />
+          </button>
         </div>
       )}
 

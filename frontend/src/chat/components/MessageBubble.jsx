@@ -69,6 +69,23 @@ function LocalStatusBadge({ status, onRetry, onDiscard }) {
       </span>
     )
   }
+  // ✅ ধাপ ৩ — অফলাইন-কিউ conflict resolution: অনেকক্ষণ (২ ঘণ্টা+) আগে লেখা
+  // মেসেজ auto-send না করে এখানে আটকে থাকে, ইউজার-কনফার্ম লাগবে। onRetry-ই
+  // এখানে "নিশ্চিত, পাঠাও" হিসেবে কাজ করে — আলাদা হ্যান্ডলার লাগেনি, কারণ
+  // ভেতরে ঠিক একই কাজ (status 'pending'-এ ফিরিয়ে নেওয়া, পরের flush-এ পাঠানো)।
+  if (status === 'stale') {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-amber-600">
+        <FiClock size={12} />
+        <button onClick={onRetry} className="underline decoration-dotted hover:text-amber-700" type="button">
+          পুরনো মেসেজ — এখনও পাঠাবেন?
+        </button>
+        <button onClick={onDiscard} className="hover:text-amber-700" type="button" aria-label="মুছে ফেলুন">
+          <FiX size={12} />
+        </button>
+      </span>
+    )
+  }
   return null
 }
 
@@ -107,7 +124,7 @@ function FlagMenu({ onPick }) {
 
 export default function MessageBubble({ msg, mine, accent, showSender, readState, onRetry, onDiscard, onFlag }) {
   const isLocalOnly = Boolean(msg._localStatus)
-  const isFailed = msg._localStatus === 'failed'
+  const isFailed = msg._localStatus === 'failed' || msg._localStatus === 'stale'
   const canFlag = onFlag && mine && !msg.kind && !isLocalOnly
 
   return (

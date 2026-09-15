@@ -15,9 +15,12 @@ import {
   enqueueMessage,
   markSending,
   markFailed,
+  markStale,
   removeFromQueue,
   retryMessage,
   discardMessage,
+  getQueueForThread,
+  STALE_THRESHOLD_MS,
 } from '../services/offlineQueue'
 import { isFresh } from '../utils/time'
 
@@ -25,6 +28,9 @@ const TYPING_STALE_MS = 6000 // এর চেয়ে পুরনো টাই
 const TYPING_WRITE_THROTTLE_MS = 2000
 const TYPING_AUTO_STOP_MS = 3000
 const RETRY_INTERVAL_MS = 15000
+// ধাপ ৩ — একই sender থেকে একই থ্রেডে একই টেক্সট এর মধ্যে এলে "সম্ভবত
+// ডুপ্লিকেট" ধরে নেওয়া হয় (দুই ডিভাইস থেকে একসাথে টাইপ করা, বা ডাবল-ট্যাপ)
+const DUPLICATE_WINDOW_MS = 30000
 
 export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, senderName }) {
   const [rtdbMessages, setRtdbMessages] = useState([])
@@ -213,7 +219,16 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
     if (!db || !threadId || isOffline) return
     queueSnapshot
       .filter((i) => i.threadId === threadId && i.status === 'pending')
-      .forEach(flushOne)
+      .forEach((item) => {
+        // ✅ ধাপ ৩ — অনেকক্ষণ (STALE_THRESHOLD_MS+) অফলাইনে বসে থাকা মেসেজ
+        // চুপচাপ পাঠানো হয় না — ততক্ষণে ডিভাইস অনেকক্ষণ অফলাইন ছিল, প্রেক্ষাপট
+        // বদলে যেতে পারে। ইউজার-কনফার্ম লাগবে (LocalStatusBadge-এ দেখানো হয়)।
+        if (Date.now() - item.createdAtLocal > STALE_THRESHOLD_MS) {
+          markStale(item.clientId)
+          return
+        }
+        flushOne(item)
+      })
   }, [db, threadId, isOffline, queueSnapshot, flushOne])
 
   useEffect(() => {
@@ -262,14 +277,31 @@ export function useChatEngine({ chatApi, db, uid, ready, threadId, senderType, s
   }, [notifyTyping])
 
   // ── পাঠানো — সরাসরি RTDB না লিখে কিউ-তে ঢোকায়, optimistic UI ───
+  // ✅ ধাপ ৩ — দুই ডিভাইস থেকে (বা ডাবল-ট্যাপ) একই টেক্সট কাছাকাছি সময়ে এলে
+  // সম্ভাব্য-ডুপ্লিকেট হিসেবে ধরে 'duplicate' রিটার্ন করে, সরাসরি পাঠায় না।
+  // rtdbMessagesRef দিয়ে confirmed মেসেজ চেক হয় (RTDB-ই cross-device শেয়ার্ড
+  // সোর্স — localStorage কিউ শুধু এই ডিভাইসের, তাই শুধু কিউ চেক করলে অন্য
+  // ডিভাইস থেকে-আসা ডুপ্লিকেট ধরা পড়ত না)। force:true দিলে চেক বাইপাস।
   const send = useCallback(
-    (text) => {
+    (text, { force = false } = {}) => {
       const trimmed = (text || '').trim()
       // ✅ ফিক্স: আগে এখানে শুধু `return` করা হতো (undefined), ফলে কলার
       // (ConversationPane.jsx) বুঝতেই পারত না পাঠানো সত্যিই হয়েছে কিনা, আর
       // যেভাবেই হোক composer বক্স খালি করে দিত — মনে হতো মেসেজ "পাঠানো হলো"
-      // অথচ কিছুই কিউ হয়নি। এখন true/false রিটার্ন করে আসল ফলাফল জানানো হয়।
+      // অথচ কিছুই কিউ হয়নি। এখন true/false/'duplicate' রিটার্ন করে আসল ফলাফল জানানো হয়।
       if (!trimmed || !threadId) return false
+
+      if (!force) {
+        const cutoff = Date.now() - DUPLICATE_WINDOW_MS
+        const recentInRtdb = rtdbMessagesRef.current.some(
+          (m) => m.senderType === senderType && m.text === trimmed && (m.createdAt || 0) >= cutoff
+        )
+        const recentInQueue = getQueueForThread(threadId).some(
+          (i) => i.status !== 'failed' && i.senderType === senderType && i.text === trimmed && i.createdAtLocal >= cutoff
+        )
+        if (recentInRtdb || recentInQueue) return 'duplicate'
+      }
+
       notifyTypingRef.current?.(false)
       enqueueMessage({ threadId, text: trimmed, senderType, senderName })
       return true
