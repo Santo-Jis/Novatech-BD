@@ -2,6 +2,7 @@ const logger = require('../config/logger');
 const { query } = require('../config/db');
 const walletService = require('./wallet.service');
 const { getPublicAppUrl } = require('../config/publicAppUrl');
+const { renderEmailLayout } = require('./emailTemplates');
 // nodemailer বাদ — Render SMTP block করে, তাই Brevo HTTP API ব্যবহার করা হচ্ছে
 
 // ============================================================
@@ -179,22 +180,12 @@ const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToke
         ? `ZovoriX — অর্ডার নিশ্চিত করুন | ${shopName}`
         : `ZovoriX - OTP কোড: ${otp}`;
 
-    const html = `<!DOCTYPE html>
-<html lang="bn">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f8;padding:30px 0;">
-<tr><td align="center">
-<table width="500" cellpadding="0" cellspacing="0"
-       style="background:#fff;border-radius:10px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.1);">
-  <tr>
-    <td style="background:linear-gradient(135deg,#1a73e8,#0d47a1);padding:28px;text-align:center;">
-      <h1 style="color:#fff;margin:0;font-size:22px;">ZovoriX</h1>
-      <p style="color:#bbdefb;margin:4px 0 0;font-size:12px;">Management System</p>
-    </td>
-  </tr>
-  <tr>
-    <td style="padding:35px 40px;">
+    // ✅ REFACTOR (Notification Platform Phase 2): DOCTYPE/table wrapper এখন
+    // emailTemplates.js-এর renderEmailLayout()-এ শেয়ার্ড। শুধু bodyHtml
+    // (এই টেমপ্লেটের unique অংশ) এখানে থাকে। আগের output-এর সাথে
+    // byte-identical — executable diff test দিয়ে verify করা (দুটো branch-ই,
+    // verify-link ও OTP-only)।
+    const bodyHtml = `
       <p style="color:#333;font-size:15px;margin:0 0 8px;">প্রিয় গ্রাহক,</p>
       <p style="color:#555;font-size:13px;margin:0 0 25px;">
         <strong>${shopName}</strong> দোকানের বিক্রয় নিশ্চিত করতে নিচের বাটনে ক্লিক করুন:
@@ -228,18 +219,9 @@ const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToke
       </p>`}
 
       <p style="color:#aaa;font-size:11px;margin:0;">এই Email আপনি অনুরোধ না করলে উপেক্ষা করুন।</p>
-    </td>
-  </tr>
-  <tr>
-    <td style="background:#f8f9fa;padding:15px;text-align:center;border-top:1px solid #e0e0e0;">
-      <p style="color:#999;font-size:11px;margin:0;">ZovoriX (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
-    </td>
-  </tr>
-</table>
-</td></tr>
-</table>
-</body>
-</html>`;
+    `;
+
+    const html = renderEmailLayout({ bodyHtml, width: 500 });
 
     const text = verifyLink
         ? `ZovoriX — অর্ডার নিশ্চিত করুন\nদোকান: ${shopName}\nলিংক: ${verifyLink}\nমেয়াদ: ${expiryMinutes} মিনিট`

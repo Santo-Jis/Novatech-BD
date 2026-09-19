@@ -5,33 +5,32 @@
 // reset ও registration verification) এবং নিরাপত্তা সতর্কতা
 // (password change alert) — সবগুলোতেই ব্যবহৃত হয়।
 //
-// ⚠️ গুরুত্বপূর্ণ: এটা বিদ্যমান invoiceWhatsapp.service.js/invoice.service.js
-// এর মতোই সরাসরি Baileys গেটওয়ে (self-hosted WhatsApp Web session) ব্যবহার
-// করে — sms.service.js (যেটা tenant wallet থেকে টাকা কাটে) ইচ্ছাকৃতভাবে
-// ব্যবহার করা হয়নি। Baileys-এ কোনো tenant_id/wallet ধারণাই নেই — এটা
-// সম্পূর্ণভাবে প্ল্যাটফর্মের নিজস্ব একটা WhatsApp নম্বর থেকে পাঠায়, তাই
-// কোনো SaaS কোম্পানির ক্রেডিট/ওয়ালেট থেকে কিছু কাটা হয় না।
+// ✅ REFACTOR (Notification Platform Phase 2): আগে এই ফাইলই সরাসরি
+// axios দিয়ে Baileys গেটওয়ে কল করত। এখন সেই HTTP-call অংশ
+// whatsappGateway.service.js-এ সরানো হয়েছে (provider-agnostic adapter
+// — এখন 'baileys', ভবিষ্যতে অফিসিয়াল WhatsApp Business API-ও যোগ করা
+// যাবে caller না বদলিয়ে, শুধু WHATSAPP_PROVIDER env var পাল্টে)। এই
+// ফাইল এখন শুধু নিজের কাজ রাখে: phone format, message টেক্সট বানানো।
+//
+// public interface অপরিবর্তিত — sendPortalOTPWhatsApp,
+// sendPasswordChangedAlertWhatsApp, sendPortalWhatsAppMessage,
+// formatPhoneForWhatsApp, isWhatsAppLikelyDown — সবগুলোই আগের মতোই
+// import করা যাবে, caller-দের কিছু বদলাতে হয়নি।
+//
+// ⚠️ গুরুত্বপূর্ণ: sms.service.js (যেটা tenant wallet থেকে টাকা কাটে)
+// ইচ্ছাকৃতভাবে ব্যবহার করা হয়নি। Baileys-এ কোনো tenant_id/wallet
+// ধারণাই নেই — এটা সম্পূর্ণভাবে প্ল্যাটফর্মের নিজস্ব একটা WhatsApp
+// নম্বর থেকে পাঠায়, তাই কোনো SaaS কোম্পানির ক্রেডিট/ওয়ালেট থেকে কিছু
+// কাটা হয় না।
 // ============================================================
 
-const axios  = require('axios');
 const logger = require('../config/logger');
+const whatsappGateway = require('./whatsappGateway.service');
 
-const BAILEYS_URL = process.env.BAILEYS_URL || 'http://localhost:3001';
-const API_SECRET  = process.env.API_SECRET  || 'change-this-secret';
-
-// ─── হালকা circuit-breaker: WhatsApp গেটওয়ে সম্প্রতি ডাউন ছিল কিনা ───
-// ইন-মেমরি (এই process-এর জীবদ্দশায় থাকে, restart-এ রিসেট হয়) — এটা কোনো
-// কঠোর নিরাপত্তা নিয়ন্ত্রণ না, শুধু "সাম্প্রতিক ব্যর্থতা মনে রাখো" যাতে
-// caller (portalForgotPassword ইত্যাদি) না-পাঠিয়েও আগে থেকে বুঝতে পারে
-// গেটওয়ে ডাউন কিনা এবং ইউজারকে honest মেসেজ দিতে পারে — কোনো owner
-// lookup ছাড়াই, তাই কোনো identifier-নির্দিষ্ট তথ্য leak হয় না।
-let lastFailureAt = null;
-const DOWN_WINDOW_MS = 2 * 60 * 1000; // ২ মিনিট — এর মধ্যে আবার ব্যর্থ দেখলে "ডাউন" ধরে নেওয়া হয়, সফল হলেই সাথে সাথে রিসেট
-
-const isWhatsAppLikelyDown = () => {
-    if (!lastFailureAt) return false;
-    return (Date.now() - lastFailureAt) < DOWN_WINDOW_MS;
-};
+// circuit-breaker এখন gateway-level (invoiceWhatsapp.service.js-ও এখন
+// এই একই সুরক্ষা পায়, আগে শুধু এখানে ছিল) — এখানে শুধু re-export, যাতে
+// customerPortal.controller.js-এর ৩টা import path বদলাতে না হয়।
+const isWhatsAppLikelyDown = () => whatsappGateway.isLikelyDown();
 
 // ─── Phone Formatter (BD নম্বর → WhatsApp আন্তর্জাতিক ফরম্যাট) ───
 // ইনপুট: 01XXXXXXXXX / 8801XXXXXXXXX / 1XXXXXXXXX (যেকোনো ফরম্যাট)
@@ -47,12 +46,12 @@ const formatPhoneForWhatsApp = (phone) => {
 };
 
 /**
- * যেকোনো প্লেইন টেক্সট মেসেজ WhatsApp-এ পাঠায় (Baileys গেটওয়ে দিয়ে)।
+ * যেকোনো প্লেইন টেক্সট মেসেজ WhatsApp-এ পাঠায় (whatsappGateway.service.js দিয়ে)।
  * OTP, নিরাপত্তা সতর্কতা — সব ধরনের পোর্টাল মেসেজিং এর মূল প্রিমিটিভ।
  *
  * @param {string} phone   — যেকোনো ফরম্যাটে BD মোবাইল নম্বর
  * @param {string} message — সম্পূর্ণ মেসেজ টেক্সট (আগে থেকে তৈরি)
- * @param {string} type    — Baileys গেটওয়ে-সাইড লগিং/ক্যাটাগরির জন্য লেবেল
+ * @param {string} type    — গেটওয়ে-সাইড লগিং/ক্যাটাগরির জন্য লেবেল
  * @returns {Promise<{success: boolean, reason?: string, detail?: any}>}
  */
 const sendPortalWhatsAppMessage = async (phone, message, type = 'portal_notification') => {
@@ -62,30 +61,7 @@ const sendPortalWhatsAppMessage = async (phone, message, type = 'portal_notifica
         return { success: false, reason: 'invalid_phone' };
     }
 
-    try {
-        const res = await axios.post(
-            `${BAILEYS_URL}/send-message`,
-            { phone: formattedPhone, message, type },
-            { headers: { 'x-api-key': API_SECRET }, timeout: 10_000 }
-        );
-        if (res.data?.success) {
-            logger.info(`📲 [PortalWA:${type}] সফল → ${formattedPhone}`);
-            lastFailureAt = null; // ✅ recovery — পরের রিকোয়েস্ট আর "ডাউন" ধরবে না
-            return { success: true };
-        }
-        logger.warn(`⚠️ [PortalWA:${type}] গেটওয়ে সাড়া দিল কিন্তু success=false:`, res.data);
-        lastFailureAt = Date.now();
-        return { success: false, reason: 'baileys_error', detail: res.data };
-    } catch (err) {
-        const status = err.response?.status;
-        if (status === 503) {
-            logger.warn(`⚠️ [PortalWA:${type}] WhatsApp সেশন কানেক্টেড নেই → ${formattedPhone}`);
-        } else {
-            logger.warn(`⚠️ [PortalWA:${type}] ব্যর্থ → ${formattedPhone}:`, err.message);
-        }
-        lastFailureAt = Date.now();
-        return { success: false, reason: err.code || 'request_error', detail: err.response?.data || err.message };
-    }
+    return whatsappGateway.sendText({ to: formattedPhone, body: message, type });
 };
 
 /**

@@ -5,96 +5,26 @@
 // ============================================================
 
 const { query } = require('../config/db');
-const { sendCustomerPush } = require('../services/fcm.service');
-const nodemailer = require('nodemailer');
 const logger = require('../config/logger');
+const { dispatch } = require('../services/notification.service');
 
-// ── Email Transporter (Brevo SMTP) ──────────────────────────
-// FCM push fail হলে বা FCM token না থাকলে email fallback
-const emailEnabled = process.env.EMAIL_ENABLED === 'true';
-const transporter  = emailEnabled ? nodemailer.createTransport({
-    host:   process.env.EMAIL_HOST,
-    port:   parseInt(process.env.EMAIL_PORT) || 587,
-    secure: false,
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-    },
-}) : null;
-
-// notification type → emoji map (email subject-এ ব্যবহার)
-const TYPE_EMOJI = {
-    payment_received:     '💳',
-    new_invoice:          '🧾',
-    order_request:        '📦',
-    credit_reminder:      '⚠️',
-    general:              '🔔',
-};
-
-/**
- * sendFallbackEmail — FCM fail হলে বা token না থাকলে email পাঠাও
- * কাস্টমারের email না থাকলে silently skip করো
- */
-const sendFallbackEmail = async (customerId, { title, body, type }) => {
-    if (!emailEnabled || !transporter) return;
-    try {
-        const { rows } = await query(
-            // 🚨 FIX (Notification Module, ২য় দফা): এখানেও req.tenantId ব্যবহার হতো,
-            // কিন্তু এই ফাংশনেও req parameter নেই — একই ReferenceError bug।
-            // customerId (UUID primary key) নিজেই unique, তাই tenant_id filter
-            // বাদ দেওয়া নিরাপদ — অতিরিক্ত filter কোনো সুরক্ষা যোগ করছিল না।
-            `SELECT email, owner_name, shop_name FROM customers WHERE id = $1 AND email IS NOT NULL AND email != ''`,
-            [customerId]
-        );
-        if (!rows.length) return; // email নেই — skip
-
-        const emoji   = TYPE_EMOJI[type] || '🔔';
-        const toName  = rows[0].owner_name || rows[0].shop_name || 'কাস্টমার';
-
-        await transporter.sendMail({
-            from:    process.env.EMAIL_FROM,
-            to:      rows[0].email,
-            subject: `${emoji} ${title}`,
-            html: `
-                <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;background:#f8fafc;border-radius:12px;overflow:hidden">
-                    <div style="background:linear-gradient(135deg,#6366f1,#7c3aed);padding:20px 24px">
-                        <h2 style="color:#fff;margin:0;font-size:18px">${emoji} ${title}</h2>
-                    </div>
-                    <div style="padding:20px 24px;background:#fff">
-                        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 16px">
-                            প্রিয় ${toName},
-                        </p>
-                        <p style="color:#374151;font-size:15px;line-height:1.6;margin:0 0 20px">
-                            ${body}
-                        </p>
-                        <div style="background:#f1f5f9;border-radius:8px;padding:12px 16px">
-                            <p style="color:#6b7280;font-size:12px;margin:0">
-                                ZovoriX • স্বয়ংক্রিয় বার্তা — উত্তর দেওয়ার দরকার নেই
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            `,
-        });
-        logger.info(`📧 Email fallback sent → ${rows[0].email} (type: ${type})`);
-    } catch (e) {
-        logger.error('[EmailFallback] Error:', e.message);
-    }
-};
+// ✅ REFACTOR (Notification Platform Phase 1): এই ফাইলে আগে (Phase 0-এ)
+// TYPE_EMOJI, TYPE_TO_PREF_CATEGORY, sendFallbackEmail, getChannelAllowance,
+// আর sendCustomerNotificationFull-এর পুরো sending logic ছিল। এখন সবই
+// services/notification.service.js-এ centralize করা হয়েছে (dispatch() +
+// processNotificationEvent()) — এই ফাইল এখন শুধু HTTP-facing read
+// endpoint (getNotifications/markRead) রাখে, plus sendCustomerNotification-এর
+// একটা thin wrapper (নিচে, একই exported নাম/signature — যে ৯টা ফাইল এটা
+// import করে তাদের একটাও বদলাতে হয়নি)।
 
 // ============================================================
-// DB Table (Supabase এ একবার run করুন):
-//
-// CREATE TABLE IF NOT EXISTS customer_notifications (
-//     id          BIGSERIAL PRIMARY KEY,
-//     customer_id UUID REFERENCES customers(id) ON DELETE CASCADE,
-//     title       TEXT NOT NULL,
-//     body        TEXT NOT NULL,
-//     type        VARCHAR(50) DEFAULT 'general',
-//     is_read     BOOLEAN DEFAULT false,
-//     created_at  TIMESTAMP DEFAULT NOW()
-// );
-// CREATE INDEX IF NOT EXISTS idx_cnotif_customer ON customer_notifications(customer_id, created_at DESC);
+// DB Table: customer_notifications
+// ✅ FIX (Phase 0): এই comment-এ লেখা স্কিমা বাস্তবে যা INSERT হয় তার
+// সাথে মিলছিল না (tenant_id কলাম বাদ ছিল, অথচ এই ফাইলেই নিচে tenant_id
+// সহ INSERT হয়) — আর কোনো migration file-ও repo-তে ছিল না। এখন দুটোই
+// ঠিক করা হলো: আসল schema দেখুন repo root-এর
+// migration_notification_delivery_logs.sql-এ (email_logs, sms_logs-ও
+// একসাথে আছে, একই কারণে migration-hীন ছিল)।
 // ============================================================
 
 // ── Helper: customer_id নাও JWT থেকে ────────────────────────
@@ -236,47 +166,32 @@ const saveCustomerFCMToken = async (req, res) => {
 
 
 // ============================================================
-// UPDATED sendCustomerNotification
-// In-App DB insert + Web Push (যদি fcm_token থাকে)
+// sendCustomerNotification — Notification Platform Phase 1
+//
+// আগে (Phase 0) এই ফাংশনেই সরাসরি in-app insert + push + email-fallback
+// সব লজিক ছিল। এখন এটা শুধু services/notification.service.js-এর
+// dispatch()-কে কল করে — আসল কাজ (recipient resolve, preference check,
+// channel attempt, delivery log, queue-or-sync) ওখানে centralize করা।
+//
+// Signature অপরিবর্তিত: sendCustomerNotification(customerId, {title, body, type})
+// — এই ৯টা ফাইল এটা import করে, একটাও বদলাতে হয়নি (grep করে verify করা):
+// notification.controller.js, sales.controller.js, customer.controller.js,
+// customerPortal.controller.js, creditReminder.controller.js,
+// customerRequests.controller.js, connection.controller.js (কমেন্টে),
+// jobs/notificationSchedule.job.js, jobs/creditReminder.job.js।
 // ============================================================
-const sendCustomerNotificationFull = async (customerId, { title, body, type = 'general' }) => {
+const sendCustomerNotification = async (customerId, { title, body, type = 'general' }) => {
     try {
-        // 🚨 FIX (Notification Module): আগে req.tenantId ব্যবহার হতো, কিন্তু এই ফাংশনে
-        // req parameter-ই নেই (jobs/creditReminder.job.js থেকেও কল হয়, যেখানে req নেই) —
-        // ফলে ReferenceError-এ পুরো ফাংশনটাই silently ব্যর্থ হচ্ছিল।
-        // এখন customer row থেকেই tenant_id নেওয়া হচ্ছে।
-        const { rows } = await query(
-            `SELECT tenant_id, fcm_token, email FROM customers WHERE id = $1`,
-            [customerId]
-        );
-
-        const customer = rows[0];
-        if (!customer) return;
-
-        // ১. In-App notification (সবসময়)
-        await query(`
-            INSERT INTO customer_notifications (customer_id, title, body, type, tenant_id) VALUES ($1, $2, $3, $4, $5)
-        `, [customerId, title, body, type, customer.tenant_id]);
-
-        // ২. Web Push চেষ্টা করো
-        let pushSuccess = false;
-
-        if (customer.fcm_token) {
-            try {
-                await sendCustomerPush(customer.fcm_token, { title, body, type });
-                pushSuccess = true;
-            } catch (pushErr) {
-                logger.warn(`[CustomerNotification] FCM failed (type: ${type}):`, pushErr.message);
-            }
-        }
-
-        // ৩. FCM fail বা token না থাকলে Email fallback
-        if (!pushSuccess) {
-            await sendFallbackEmail(customerId, { title, body, type });
-        }
-
+        await dispatch({
+            eventType: type,
+            recipientType: 'customer',
+            recipientId: customerId,
+            data: { title, body },
+        });
     } catch (e) {
-        logger.error('[CustomerNotification] Error:', e.message);
+        // fire-and-forget কনভেনশন বজায় রাখা হলো — কোনো caller-ই এই
+        // ফাংশনের ব্যর্থতায় মূল request fail করাতে চায় না।
+        logger.error('[CustomerNotification] sendCustomerNotification ব্যর্থ:', e.message);
     }
 };
 
@@ -285,5 +200,5 @@ module.exports = {
     markAllRead,
     markOneRead,
     saveCustomerFCMToken,
-    sendCustomerNotification: sendCustomerNotificationFull,
+    sendCustomerNotification,
 };

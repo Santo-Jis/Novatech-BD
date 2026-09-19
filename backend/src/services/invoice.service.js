@@ -1,17 +1,24 @@
 const PDFDocument = require('pdfkit');
-const axios       = require('axios');
 const logger = require('../config/logger');
 const { generateOTP } = require('../config/encryption');
 const { sendOTP, sendInvoice: sendInvoiceSMS, getWhatsAppInvoiceLink } = require('./sms.service');
 const { sendOTPEmail, sendOTPWithInvoiceEmail, sendInvoiceEmail } = require('./email.service');
 const { getPublicAppUrl } = require('../config/publicAppUrl');
+const whatsappGateway = require('./whatsappGateway.service');
 
 // ─── WhatsApp Verify Link via Baileys ──────────────────────
-const BAILEYS_URL = process.env.BAILEYS_URL   || 'http://localhost:3001';
 // ⚠️ FRONTEND_URL নয় — ওটা CORS-এর জন্য comma/wildcard ধারণ করতে পারে (server.js দেখুন)।
 const FRONTEND_URL = getPublicAppUrl();
-const API_SECRET  = process.env.API_SECRET    || 'change-this-secret';
 
+// ✅ FIX (Notification Platform Phase 2 — audit চলাকালীন পাওয়া গেছে):
+// এই ফাইলে একটা তৃতীয়, আগে অচিহ্নিত জায়গায় Baileys-এর জন্য একই
+// হার্ডকোডেড ডিফল্ট secret ('change-this-secret') আর raw axios call
+// ছিল — Phase 0-এ portalWhatsapp.service.js/invoiceWhatsapp.service.js
+// ফিক্স করা হয়েছিল, কিন্তু grep তখন এই ফাইলটা ধরতে পারেনি (miss)।
+// এখন whatsappGateway.service.js-এর মধ্য দিয়ে পাঠানো হচ্ছে — একই
+// adapter যেটা বাকি WhatsApp sending ব্যবহার করে, তাই এই bug-টা আর
+// কোথাও লুকিয়ে থাকতে পারবে না (BAILEYS_URL/API_SECRET শুধু একটা
+// জায়গায়, gateway ফাইলে)।
 const formatPhoneForWA = (phone) => {
     if (!phone) return null;
     let d = String(phone).replace(/\D/g, '');
@@ -41,21 +48,7 @@ const sendVerifyLinkWhatsApp = async (phone, verifyToken, shopName, invoiceNumbe
         `━━━━━━━━━━━━━━━━\n` +
         `_ZovoriX (Ltd.)_`;
 
-    try {
-        const res = await axios.post(
-            `${BAILEYS_URL}/send-message`,
-            { phone: formattedPhone, message, type: 'otp_verify_link' },
-            { headers: { 'x-api-key': API_SECRET }, timeout: 10_000 }
-        );
-        if (res.data?.success) {
-            logger.info(`📲 [VerifyLink-WA] সফল → ${formattedPhone}`);
-            return { success: true };
-        }
-        return { success: false, reason: 'baileys_error', detail: res.data };
-    } catch (err) {
-        logger.warn(`⚠️ [VerifyLink-WA] ব্যর্থ → ${formattedPhone}:`, err.message);
-        return { success: false, reason: err.code || 'request_error' };
-    }
+    return whatsappGateway.sendText({ to: formattedPhone, body: message, type: 'otp_verify_link' });
 };
 
 // ============================================================

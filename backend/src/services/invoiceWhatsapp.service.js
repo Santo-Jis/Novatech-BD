@@ -9,14 +9,21 @@
 //   const { sendInvoiceWhatsApp } = require('../services/invoiceWhatsapp.service');
 //   ...createSale এর পরে...
 //   sendInvoiceWhatsApp(cust, saleResult, req.user, processedItems).catch(logger.error);
+//
+// ✅ REFACTOR (Notification Platform Phase 2): আগে এই ফাইলই সরাসরি
+// axios দিয়ে Baileys গেটওয়ে কল করত (portalWhatsapp.service.js থেকে
+// সম্পূর্ণ আলাদা কোড, নিজের কোনো circuit-breaker ছাড়াই)। এখন
+// whatsappGateway.service.js-এর মধ্য দিয়ে পাঠায় — একই provider-agnostic
+// adapter portalWhatsapp.service.js যেটা ব্যবহার করে, তাই বোনাস হিসেবে
+// এখন এটাও circuit-breaker সুরক্ষা পাচ্ছে (গেটওয়ে সাম্প্রতিক ডাউন
+// থাকলে PDF বানানোর CPU খরচ না করেই দ্রুত fail করবে)। public interface
+// (sendInvoiceWhatsApp) অপরিবর্তিত — sales.controller.js-এর কল
+// বদলাতে হয়নি।
 // ============================================================
 
-const axios = require('axios');
 const logger = require('../config/logger');
 const { generateInvoicePDF } = require('./invoice.service');
-
-const BAILEYS_URL = process.env.BAILEYS_URL  || 'http://localhost:3001';
-const API_SECRET  = process.env.API_SECRET   || 'change-this-secret';
+const whatsappGateway = require('./whatsappGateway.service');
 
 // ─── Phone Formatter ────────────────────────────────────────
 const formatPhone = (phone) => {
@@ -53,6 +60,14 @@ const sendInvoiceWhatsApp = async (customer, sale, worker, items) => {
         return { success: false, reason: 'invalid_phone' };
     }
 
+    // ✅ NEW (Phase 2, বোনাস): আগে এখানে কোনো circuit-breaker ছিল না —
+    // এখন gateway-level হওয়ায় এখানেও কাজ করে, PDF তৈরির আগেই skip করে
+    // যদি গেটওয়ে সাম্প্রতিক ডাউন দেখা যায়।
+    if (whatsappGateway.isLikelyDown()) {
+        logger.warn(`⚠️ [InvoiceWA] গেটওয়ে সাম্প্রতিক ডাউন দেখা গেছে — PDF তৈরি না করেই skip (${sale.invoice_number})`);
+        return { success: false, reason: 'gateway_likely_down' };
+    }
+
     // ── PDF তৈরি ──
     // আগে raw JSON পাঠিয়ে ওপাশে Puppeteer দিয়ে ছবি বানানোর প্ল্যান ছিল, কিন্তু গেটওয়ে
     // Render ফ্রি-টায়ারে (512MB RAM) চলে বলে Chromium চালানো ঝুঁকিপূর্ণ — তাই এখানেই
@@ -65,46 +80,14 @@ const sendInvoiceWhatsApp = async (customer, sale, worker, items) => {
         return { success: false, reason: 'pdf_generation_failed', detail: err.message };
     }
 
-    // ── Baileys গেটওয়েতে পাঠাও ──
-    try {
-        const response = await axios.post(
-            `${BAILEYS_URL}/send-document`,
-            {
-                phone:      formattedPhone,
-                base64Data: pdfBuffer.toString('base64'),
-                fileName:   `Invoice-${sale.invoice_number}.pdf`,
-                caption:    `🧾 Invoice ${sale.invoice_number} — মোট ৳${parseFloat(sale.net_amount || 0).toLocaleString('bn-BD')}`,
-                type:       'invoice_pdf',
-            },
-            {
-                headers:  { 'x-api-key': API_SECRET },
-                timeout:  15_000,
-            }
-        );
-
-        if (response.data?.success) {
-            logger.info(`✅ [InvoiceWA] Invoice PDF পাঠানো → ${formattedPhone} (${sale.invoice_number})`);
-            return { success: true };
-        } else {
-            logger.warn(`⚠️ [InvoiceWA] গেটওয়ে সাড়া দিল কিন্তু success=false:`, response.data);
-            return { success: false, reason: 'gateway_error', detail: response.data };
-        }
-
-    } catch (err) {
-        // গেটওয়ে down বা timeout হলেও main flow বন্ধ হবে না
-        const status = err.response?.status;
-        const detail = err.response?.data || err.message;
-
-        if (status === 503) {
-            logger.warn(`⚠️ [InvoiceWA] WhatsApp connect নেই — ${sale.invoice_number}`);
-        } else if (err.code === 'ECONNABORTED') {
-            logger.warn(`⚠️ [InvoiceWA] Timeout — ${sale.invoice_number}`);
-        } else {
-            logger.error(`❌ [InvoiceWA] Error — ${sale.invoice_number}:`, { detail });
-        }
-
-        return { success: false, reason: err.code || 'request_error', detail };
-    }
+    // ── গেটওয়েতে পাঠাও ──
+    return whatsappGateway.sendDocument({
+        to: formattedPhone,
+        documentBuffer: pdfBuffer,
+        filename: `Invoice-${sale.invoice_number}.pdf`,
+        caption: `🧾 Invoice ${sale.invoice_number} — মোট ৳${parseFloat(sale.net_amount || 0).toLocaleString('bn-BD')}`,
+        type: 'invoice_pdf',
+    });
 };
 
 

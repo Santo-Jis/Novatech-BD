@@ -4,13 +4,14 @@ const { connection } = require('../config/queue');
 const { sendEmail } = require('../services/email.service');
 const { sendPushToMany } = require('../services/fcm.service');
 const { sendCustomerNotification } = require('../controllers/customerNotification.controller');
+const { processNotificationEvent } = require('../services/notification.service');
 
 // ============================================================
 // Notification Worker — 'notifications' queue-এর job process করে
 //
-// এখন একটাই job type আছে (credit-reminder-email) — এটা
-// creditReminder.controller.js থেকে সরিয়ে আনা হয়েছে (আগে সরাসরি,
-// synchronous ভাবে request handler-এই sendEmail হতো)।
+// দুটো job type: credit-reminder-email (creditReminder.controller.js
+// থেকে) আর process-notification-event (notification.service.js-এর
+// dispatch() থেকে, Notification Platform Phase 1)।
 //
 // নতুন job type যোগ করতে: এখানে একটা case যোগ করো, controller থেকে
 // notificationQueue.add('your-job-name', {...data}) কল করো। নতুন
@@ -51,6 +52,16 @@ async function processJob(job) {
             }
 
             return { emailSent: true };
+        }
+
+        // ✅ NEW (Notification Platform Phase 1): notification.service.js-এর
+        // dispatch() থেকে queue করা হয়। আসল কাজ processNotificationEvent()-এ
+        // — এই একই ফাংশন dispatch()-এর sync fallback path-ও (Redis না
+        // থাকলে) কল করে, তাই লজিক duplicate হয়নি।
+        case 'process-notification-event': {
+            const { eventId } = job.data;
+            await processNotificationEvent(eventId);
+            return { processed: true };
         }
 
         default:

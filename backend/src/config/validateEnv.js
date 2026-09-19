@@ -93,7 +93,11 @@ const OPTIONAL = [
     { key: 'FRONTEND_URL',             feature: 'CORS (default: localhost:3000) — comma/wildcard চলে, single link-এ ব্যবহার হয় না' },
     { key: 'PUBLIC_APP_URL',           feature: 'Customer-facing লিংক (WhatsApp/Email/Invoice) — single clean URL, default: novatech-bd-kqrn.vercel.app' },
     { key: 'CLAUDE_API_KEY',           feature: 'AI Insights (Claude)' },
-    { key: 'API_SECRET',               feature: 'JIS-AI WhatsApp Integration (x-api-secret)' },
+    // ✅ FIX (Phase 0): API_SECRET এখান থেকে সরিয়ে নিচে ৩.৬-এ নিজস্ব
+    // ব্লকে নেওয়া হয়েছে — এটা শুধু presence-check প্রাপ্য একটা "feature
+    // flag" না, এটা একটা security secret (WhatsApp গেটওয়ে auth), আর
+    // portalWhatsapp.service.js/invoiceWhatsapp.service.js-এ আগে এর
+    // একটা হার্ডকোডেড ডিফল্ট ছিল যেটা placeholder-check ধরতে পারত না।
 ];
 
 // placeholder যেগুলো .env.example-এ আছে — এগুলো দিয়ে production চালানো নিষিদ্ধ
@@ -178,6 +182,25 @@ const validateEnv = () => {
         warnings.push('SUPER_ADMIN_SECRET_KEY এখনো placeholder মান  →  আসল random secret বসান');
     } else if (superAdminKey.trim().length < 32) {
         warnings.push(`SUPER_ADMIN_SECRET_KEY খুব ছোট (${superAdminKey.trim().length} char, সুপারিশকৃত minimum 32)  →  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))" দিয়ে নতুন key বসান`);
+    }
+
+    // ── ৩.৬ API_SECRET — Baileys WhatsApp গেটওয়ে auth (Phase 0 fix) ──
+    // SUPER_ADMIN_SECRET_KEY-র মতোই ইচ্ছাকৃতভাবে non-fatal: WhatsApp একটা
+    // সহায়ক চ্যানেল (OTP/invoice/security-alert-এর SMS/email fallback
+    // আছে), পুরো app আটকানোর দরকার নেই এটা ছাড়া। কিন্তু আগে
+    // portalWhatsapp.service.js ও invoiceWhatsapp.service.js-এ এই key-র
+    // একটা হার্ডকোডেড ডিফল্ট ('change-this-secret') ছিল যেটা এই
+    // generic OPTIONAL loop প্রেজেন্স-চেকও পাস করে যেত (env-এ কিছু একটা
+    // থাকলেই "ঠিক আছে" ধরে নিত) — সেই ডিফল্ট এখন সরানো হয়েছে (ওই দুটো
+    // ফাইলে), আর এখানে placeholder/length check যোগ করা হলো যাতে দুর্বল
+    // মান নিয়েও honest warning পাওয়া যায়।
+    const baileysSecret = process.env.API_SECRET;
+    if (!baileysSecret || baileysSecret.trim() === '') {
+        warnings.push('API_SECRET সেট নেই  →  WhatsApp (OTP/invoice/security-alert) পাঠানো বন্ধ থাকবে, বাকি app ঠিক থাকবে');
+    } else if (isPlaceholder(baileysSecret) || baileysSecret.trim() === 'change-this-secret') {
+        warnings.push('API_SECRET এখনো placeholder/ডিফল্ট মান  →  আসল random secret বসান (Baileys গেটওয়ে-তেও একই মান সেট করতে হবে)');
+    } else if (baileysSecret.trim().length < 24) {
+        warnings.push(`API_SECRET খুব ছোট (${baileysSecret.trim().length} char, সুপারিশকৃত minimum 24)  →  node -e "console.log(require('crypto').randomBytes(24).toString('hex'))" দিয়ে নতুন key বসান`);
     }
 
     // ── ৪. Extra: JWT secret দুটো একই হওয়া উচিত নয় ─────────

@@ -176,7 +176,16 @@ const STALE_TOKEN_CODES = new Set([
 ])
 
 const sendCustomerPush = async (fcmToken, { title, body, type = 'general' }) => {
-  if (!fcmToken) return
+  // ✅ FIX (Notification Platform Phase 1): আগে এই ফাংশন কখনো throw করত
+  // না আর কিছু return-ও করত না — মানে caller-দের try/catch (দেখো
+  // customerNotification.controller.js-এর পুরনো sendCustomerNotificationFull)
+  // কখনো আসল push failure ধরতেই পারত না, pushSuccess সবসময় true হয়ে
+  // যেত ব্যর্থ হলেও (শুধু token না থাকলেই fallback email যেত)। এখন
+  // {success, reason} রিটার্ন করে — নতুন notification.service.js-এর
+  // dispatch/fallback logic এটার ওপর নির্ভর করে। কোনো caller-ই আগে
+  // return value চেক করত না (৫টা call-site verify করা হয়েছে), তাই এটা
+  // নিরাপদ পরিবর্তন।
+  if (!fcmToken) return { success: false, reason: 'no_token' }
 
   initializeFirebase()
 
@@ -194,11 +203,14 @@ const sendCustomerPush = async (fcmToken, { title, body, type = 'general' }) => 
         fcmOptions: { link: '/customer/dashboard' },
       },
     })
+    return { success: true }
   } catch (e) {
     if (STALE_TOKEN_CODES.has(e.code)) {
       await clearStaleCustomerToken(fcmToken)
+      return { success: false, reason: 'stale_token' }
     } else {
       logger.error('[FCM] sendCustomerPush error:', e.message)
+      return { success: false, reason: e.message }
     }
   }
 }
