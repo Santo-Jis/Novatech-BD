@@ -307,7 +307,11 @@ const me = async (req, res) => {
         // emergency_contact DB-তে TEXT column, কিন্তু পুরনো dirty data
         // JSON string হিসেবে থাকতে পারে (যেমন: '{"number":"017..."}')।
         // এখানেই normalize করলে frontend সবসময় plain string পাবে।
-        if (row.emergency_contact) {
+        if (row.emergency_contact && typeof row.emergency_contact === 'object') {
+            // jsonb কলাম — pg driver আগেই object বানিয়ে দেয়
+            const ec = row.emergency_contact;
+            row.emergency_contact = ec.number || ec.phone || ec.value || '';
+        } else if (row.emergency_contact) {
             try {
                 const parsed = JSON.parse(row.emergency_contact);
                 if (typeof parsed === 'object' && parsed !== null) {
