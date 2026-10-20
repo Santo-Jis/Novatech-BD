@@ -277,6 +277,28 @@ const getEmployee = async (req, res) => {
     }
 };
 
+// emergency_contact (jsonb কলাম): object {name, relation, phone, address}, plain string বা null রাখা যায়।
+// Frontend FormData-তে object JSON string হয়ে আসে, তাই আগে parse করি।
+// ফাঁকা হলে null; নইলে jsonb-এর জন্য JSON string ফেরত দেয়।
+const normalizeEmergencyContact = (value) => {
+    if (value === undefined || value === null) return null;
+    let v = value;
+    if (typeof v === 'string') {
+        const t = v.trim();
+        if (t === '') return null;
+        if (t.startsWith('{') || t.startsWith('[')) {
+            try { v = JSON.parse(t); } catch { return JSON.stringify(t); }
+        } else {
+            return JSON.stringify(t);
+        }
+    }
+    if (typeof v === 'object' && v !== null) {
+        const hasValue = Object.values(v).some(x => x !== null && x !== undefined && String(x).trim() !== '');
+        return hasValue ? JSON.stringify(v) : null;
+    }
+    return JSON.stringify(String(v));
+};
+
 // ============================================================
 // CREATE EMPLOYEE
 // POST /api/employees
@@ -379,9 +401,7 @@ const createEmployee = async (req, res) => {
                     skills ? JSON.stringify(skills) : '{}',
                     education ? JSON.stringify(education) : '[]',
                     experience ? JSON.stringify(experience) : '[]',
-                    typeof emergency_contact === 'object'
-                        ? (emergency_contact?.number || emergency_contact?.phone || emergency_contact?.value || null)
-                        : (emergency_contact ? String(emergency_contact).trim() : null),
+                    normalizeEmergencyContact(emergency_contact),
                     profilePhotoUrl,
                     basic_salary || 0,
                     manager_id || req.user.manager_id || null,
@@ -424,7 +444,7 @@ const createEmployee = async (req, res) => {
                 data: { role: error.role }
             });
         }
-        logger.error('❌ Create Employee Error:', error.message);
+        logger.error(`❌ Create Employee Error: ${error.message}`);
         if (error.code === '23505') {
             return res.status(400).json({ success: false, message: 'এই তথ্য আগে থেকেই আছে।' });
         }
@@ -714,6 +734,9 @@ const editEmployee = async (req, res) => {
                 changes[field] = req.body[field];
             }
         });
+        if (changes.emergency_contact !== undefined) {
+            changes.emergency_contact = normalizeEmergencyContact(changes.emergency_contact);
+        }
 
         if (profilePhotoUrl !== currentData.profile_photo) {
             changes.profile_photo = profilePhotoUrl;
