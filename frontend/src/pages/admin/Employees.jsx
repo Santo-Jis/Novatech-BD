@@ -21,7 +21,7 @@ export default function AdminEmployees() {
   const [loading,   setLoading]   = useState(true)
   const [search,    setSearch]    = useState('')
   const [roleFilter, setRoleFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('active')
+  const [statusFilter, setStatusFilter] = useState('')
   const [page,      setPage]      = useState(1)
   const [total,     setTotal]     = useState(0)
   const [confirmModal, setConfirmModal] = useState(null)
@@ -249,6 +249,15 @@ ${emergency_contact?.name ? `
           >
             <FiDownload />
           </button>
+          {row.status === 'pending' && (
+            <button
+              onClick={() => navigate('/admin/pending')}
+              className="px-2 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-medium transition-colors"
+              title="অনুমোদন করুন"
+            >
+              অনুমোদন
+            </button>
+          )}
           {row.status === 'active' && (
             <button
               onClick={() => handleSuspend(row.id, row.name_bn)}
@@ -307,12 +316,14 @@ ${emergency_contact?.name ? `
             />
           </div>
           <Select
+            placeholder="সব পদবী"
             options={roleOptions}
             value={roleFilter}
             onChange={e => setRoleFilter(e.target.value)}
             className="w-40"
           />
           <Select
+            placeholder="সব স্ট্যাটাস"
             options={statusOptions}
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}

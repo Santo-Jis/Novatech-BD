@@ -240,7 +240,13 @@ describe('getEmployees — তালিকা', () => {
 
 describe('createEmployee — নতুন কর্মচারী', () => {
 
-    const validBody = { role: 'worker', name_bn: 'আলী', name_en: 'Ali', phone: '01700000001' };
+    const validBody = {
+        role: 'worker', name_bn: 'আলী', name_en: 'Ali', phone: '01700000001',
+        father_name: 'করিম', dob: '2000-01-01', nid: '1234567890',
+        district: 'ঢাকা', thana: 'মিরপুর',
+        permanent_address: 'ঢাকা', current_address: 'ঢাকা', basic_salary: '10000',
+        emergency_contact: JSON.stringify({ name: 'রহিম', relation: 'ভাই', phone: '01800000001', address: '' })
+    };
 
     test('name_bn না দিলে 400', async () => {
         const res = mockRes();
