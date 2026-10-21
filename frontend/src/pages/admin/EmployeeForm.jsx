@@ -83,7 +83,8 @@ export default function EmployeeForm() {
     if (empty(f.phone))              errs.push('মোবাইল নম্বর')
     else if (!/^01[3-9]\d{8}$/.test(String(f.phone).trim())) errs.push('মোবাইল নম্বর ঠিক নয় (যেমন: 017XXXXXXXX)')
     if (!empty(f.phone2) && !/^01[3-9]\d{8}$/.test(String(f.phone2).trim())) errs.push('মোবাইল নম্বর ২ ঠিক নয়')
-    if (!empty(f.email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(f.email).trim())) errs.push('ইমেইল ঠিক নয়')
+    if (empty(f.email))              errs.push('ইমেইল (পাসওয়ার্ড ইমেইলে যাবে)')
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(f.email).trim())) errs.push('ইমেইল ঠিক নয়')
     if (empty(f.district))           errs.push('জেলা')
     if (empty(f.thana))              errs.push('থানা/উপজেলা')
     if (empty(f.permanent_address))  errs.push('স্থায়ী ঠিকানা')
@@ -220,7 +221,7 @@ export default function EmployeeForm() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Input label="মোবাইল নম্বর ১" required type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} />
             <Input label="মোবাইল নম্বর ২" type="tel" value={form.phone2} onChange={e => set('phone2', e.target.value)} />
-            <Input label="ইমেইল" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
+            <Input label="ইমেইল" required type="email" value={form.email} onChange={e => set('email', e.target.value)} />
             <Input label="জেলা" required value={form.district} onChange={e => set('district', e.target.value)} />
             <Input label="থানা/উপজেলা" required value={form.thana} onChange={e => set('thana', e.target.value)} />
           </div>

@@ -332,7 +332,7 @@ const createEmployee = async (req, res) => {
         if (blank(nid))               missing.push('NID নম্বর');
         else if (!/^(\d{10}|\d{13}|\d{17})$/.test(String(nid).trim())) missing.push('সঠিক NID নম্বর');
         if (!bdPhone.test(String(phone).trim())) missing.push('সঠিক মোবাইল নম্বর (01XXXXXXXXX)');
-        if (!blank(email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) missing.push('সঠিক ইমেইল');
+        if (blank(email) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) missing.push('সঠিক ইমেইল (পাসওয়ার্ড ইমেইলে যাবে)');
         if (blank(district))          missing.push('জেলা');
         if (blank(thana))             missing.push('থানা/উপজেলা');
         if (blank(permanent_address)) missing.push('স্থায়ী ঠিকানা');
@@ -565,7 +565,7 @@ const approveEmployee = async (req, res) => {
 
         // SMS পাঠাও
         if (temp_password) {
-            await sendWelcomeSMS(employee, employeeCode, temp_password, req.tenantId);
+            var _approveSmsResult = await sendWelcomeSMS(employee, employeeCode, temp_password, req.tenantId);
             if (employee.email) {
               const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden">
                 <div style="background:#1e3a8a;padding:20px;text-align:center">
@@ -592,7 +592,9 @@ const approveEmployee = async (req, res) => {
 
         return res.status(200).json({
             success: true,
-            message: `কর্মচারী অনুমোদন সফল। কোড: ${employeeCode}` + (typeof _approveEmailResult !== 'undefined' && _approveEmailResult && !_approveEmailResult.success
+            message: `কর্মচারী অনুমোদন সফল। কোড: ${employeeCode}` + (typeof _approveSmsResult !== 'undefined' && _approveSmsResult && _approveSmsResult.success === false
+                ? (_approveSmsResult.blocked ? ' (⚠️ SMS পাঠানো যায়নি — ব্যালেন্স কম)' : ' (⚠️ SMS পাঠানো যায়নি)')
+                : '') + (typeof _approveEmailResult !== 'undefined' && _approveEmailResult && !_approveEmailResult.success
                 ? (_approveEmailResult.blocked ? ' (ইমেইল পাঠানো যায়নি — ব্যালেন্স কম)' : ' (ইমেইল পাঠানো যায়নি)')
                 : ''),
             data: { employee_code: employeeCode }

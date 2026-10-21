@@ -132,9 +132,9 @@ const generateTempPassword = () => {
 
 const sendWelcomeSMS = async (employee, employeeCode, tempPassword, tenantId = null) => {
     const phone = employee.phone || employee.phone2;
-    if (!phone) return;
+    if (!phone) return { success: false, error: 'ফোন নম্বর নেই' };
 
-    await sendLoginCredentials(
+    return sendLoginCredentials(
         phone,
         employeeCode,
         tempPassword,
