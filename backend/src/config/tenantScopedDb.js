@@ -54,8 +54,8 @@ const pool = new Pool({
         rejectUnauthorized: true,
         ca: caCert,
     },
-    max: 5,
-    min: 1,
+    max: 3,
+    min: 0,
     idleTimeoutMillis: 60000,
     connectionTimeoutMillis: 10000,
 });

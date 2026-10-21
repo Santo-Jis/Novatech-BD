@@ -323,6 +323,33 @@ const createEmployee = async (req, res) => {
             });
         }
 
+        // বাধ্যতামূলক তথ্য যাচাই (frontend বাইপাস হলেও backend আটকাবে)
+        const blank = v => v === undefined || v === null || String(v).trim() === '';
+        const bdPhone = /^01[3-9]\d{8}$/;
+        const missing = [];
+        if (blank(father_name))       missing.push('পিতার নাম');
+        if (blank(dob))               missing.push('জন্ম তারিখ');
+        if (blank(nid))               missing.push('NID নম্বর');
+        else if (!/^(\d{10}|\d{13}|\d{17})$/.test(String(nid).trim())) missing.push('সঠিক NID নম্বর');
+        if (!bdPhone.test(String(phone).trim())) missing.push('সঠিক মোবাইল নম্বর (01XXXXXXXXX)');
+        if (!blank(email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email).trim())) missing.push('সঠিক ইমেইল');
+        if (blank(district))          missing.push('জেলা');
+        if (blank(thana))             missing.push('থানা/উপজেলা');
+        if (blank(permanent_address)) missing.push('স্থায়ী ঠিকানা');
+        if (blank(current_address))   missing.push('বর্তমান ঠিকানা');
+        if (blank(basic_salary) || Number(basic_salary) < 0) missing.push('মূল বেতন');
+        let ecObj = emergency_contact;
+        if (typeof ecObj === 'string') { try { ecObj = JSON.parse(ecObj); } catch { ecObj = null; } }
+        if (!ecObj || typeof ecObj !== 'object' || blank(ecObj.name) || blank(ecObj.relation) || !bdPhone.test(String(ecObj.phone || '').trim())) {
+            missing.push('জরুরি যোগাযোগ (নাম, সম্পর্ক, সঠিক মোবাইল)');
+        }
+        if (missing.length > 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'এগুলো পূরণ করুন: ' + missing.join(', ')
+            });
+        }
+
         // ফোন নম্বর আগে থেকে আছে কিনা
         const existing = await query(
             'SELECT id, status FROM users WHERE phone = $1 OR (email IS NOT NULL AND email = $2)',

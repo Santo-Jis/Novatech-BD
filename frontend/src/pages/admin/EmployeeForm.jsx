@@ -69,8 +69,43 @@ export default function EmployeeForm() {
     experience: [...prev.experience, { company: '', position: '', duration: '', details: '' }]
   }))
 
+  // ===== বাধ্যতামূলক তথ্য যাচাই =====
+  const validateForm = () => {
+    const f = form
+    const errs = []
+    const empty = v => v === undefined || v === null || String(v).trim() === ''
+    if (empty(f.name_bn))            errs.push('বাংলা নাম')
+    if (empty(f.name_en))            errs.push('ইংরেজি নাম')
+    if (empty(f.father_name))        errs.push('পিতার নাম')
+    if (empty(f.dob))                errs.push('জন্ম তারিখ')
+    if (empty(f.nid))                errs.push('NID নম্বর')
+    else if (!/^(\d{10}|\d{13}|\d{17})$/.test(String(f.nid).trim())) errs.push('NID নম্বর ঠিক নয় (১০/১৩/১৭ ডিজিট হতে হবে)')
+    if (empty(f.phone))              errs.push('মোবাইল নম্বর')
+    else if (!/^01[3-9]\d{8}$/.test(String(f.phone).trim())) errs.push('মোবাইল নম্বর ঠিক নয় (যেমন: 017XXXXXXXX)')
+    if (!empty(f.phone2) && !/^01[3-9]\d{8}$/.test(String(f.phone2).trim())) errs.push('মোবাইল নম্বর ২ ঠিক নয়')
+    if (!empty(f.email) && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(f.email).trim())) errs.push('ইমেইল ঠিক নয়')
+    if (empty(f.district))           errs.push('জেলা')
+    if (empty(f.thana))              errs.push('থানা/উপজেলা')
+    if (empty(f.permanent_address))  errs.push('স্থায়ী ঠিকানা')
+    if (empty(f.current_address))    errs.push('বর্তমান ঠিকানা')
+    if (empty(f.basic_salary) || Number(f.basic_salary) < 0) errs.push('মূল বেতন')
+    const edu = f.education?.[0]
+    if (!edu || empty(edu.exam) || empty(edu.year)) errs.push('শিক্ষাগত যোগ্যতা (অন্তত একটি: পরীক্ষা ও পাসের বছর)')
+    const ec = f.emergency_contact || {}
+    if (empty(ec.name))              errs.push('জরুরি যোগাযোগের নাম')
+    if (empty(ec.relation))          errs.push('জরুরি যোগাযোগের সম্পর্ক')
+    if (empty(ec.phone))             errs.push('জরুরি যোগাযোগের মোবাইল')
+    else if (!/^01[3-9]\d{8}$/.test(String(ec.phone).trim())) errs.push('জরুরি যোগাযোগের মোবাইল ঠিক নয়')
+    return errs
+  }
+
   const handleSubmit = async (e) => {
     e.preventDefault()
+    const errs = validateForm()
+    if (errs.length > 0) {
+      toast.error('এগুলো পূরণ করুন: ' + errs.join(', '), { duration: 6000 })
+      return
+    }
     setLoading(true)
     try {
       const formData = new FormData()
@@ -160,17 +195,17 @@ export default function EmployeeForm() {
 
             <div className="flex-1 grid grid-cols-2 gap-3">
               <Select label="পদবী" required options={roleOptions} value={form.role} onChange={e => set('role', e.target.value)} />
-              <Input label="মূল বেতন (৳)" type="number" value={form.basic_salary} onChange={e => set('basic_salary', e.target.value)} />
+              <Input label="মূল বেতন (৳)" required type="number" value={form.basic_salary} onChange={e => set('basic_salary', e.target.value)} />
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Input label="পূর্ণ নাম (বাংলায়)" required value={form.name_bn} onChange={e => set('name_bn', e.target.value)} />
             <Input label="পূর্ণ নাম (ইংরেজিতে)" required value={form.name_en} onChange={e => set('name_en', e.target.value)} />
-            <Input label="পিতার নাম" value={form.father_name} onChange={e => set('father_name', e.target.value)} />
+            <Input label="পিতার নাম" required value={form.father_name} onChange={e => set('father_name', e.target.value)} />
             <Input label="মাতার নাম" value={form.mother_name} onChange={e => set('mother_name', e.target.value)} />
-            <Input label="জন্ম তারিখ" type="date" value={form.dob} onChange={e => set('dob', e.target.value)} />
-            <Input label="NID নম্বর" value={form.nid} onChange={e => set('nid', e.target.value)} />
+            <Input label="জন্ম তারিখ" required type="date" value={form.dob} onChange={e => set('dob', e.target.value)} />
+            <Input label="NID নম্বর" required value={form.nid} onChange={e => set('nid', e.target.value)} />
             <Select label="লিঙ্গ" value={form.gender} onChange={e => set('gender', e.target.value)}
               options={[{ value: 'male', label: 'পুরুষ' }, { value: 'female', label: 'মহিলা' }, { value: 'other', label: 'অন্যান্য' }]}
             />
@@ -186,12 +221,12 @@ export default function EmployeeForm() {
             <Input label="মোবাইল নম্বর ১" required type="tel" value={form.phone} onChange={e => set('phone', e.target.value)} />
             <Input label="মোবাইল নম্বর ২" type="tel" value={form.phone2} onChange={e => set('phone2', e.target.value)} />
             <Input label="ইমেইল" type="email" value={form.email} onChange={e => set('email', e.target.value)} />
-            <Input label="জেলা" value={form.district} onChange={e => set('district', e.target.value)} />
-            <Input label="থানা/উপজেলা" value={form.thana} onChange={e => set('thana', e.target.value)} />
+            <Input label="জেলা" required value={form.district} onChange={e => set('district', e.target.value)} />
+            <Input label="থানা/উপজেলা" required value={form.thana} onChange={e => set('thana', e.target.value)} />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-            <Textarea label="স্থায়ী ঠিকানা" rows={2} value={form.permanent_address} onChange={e => set('permanent_address', e.target.value)} />
-            <Textarea label="বর্তমান ঠিকানা" rows={2} value={form.current_address} onChange={e => set('current_address', e.target.value)} />
+            <Textarea label="স্থায়ী ঠিকানা" required rows={2} value={form.permanent_address} onChange={e => set('permanent_address', e.target.value)} />
+            <Textarea label="বর্তমান ঠিকানা" required rows={2} value={form.current_address} onChange={e => set('current_address', e.target.value)} />
           </div>
         </Card>
 
@@ -230,11 +265,11 @@ export default function EmployeeForm() {
         {/* Emergency Contact */}
         <Card title="জরুরি যোগাযোগ">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Input label="নাম" value={form.emergency_contact.name}
+            <Input label="নাম" required value={form.emergency_contact.name}
               onChange={e => set('emergency_contact', { ...form.emergency_contact, name: e.target.value })} />
-            <Input label="সম্পর্ক" value={form.emergency_contact.relation}
+            <Input label="সম্পর্ক" required value={form.emergency_contact.relation}
               onChange={e => set('emergency_contact', { ...form.emergency_contact, relation: e.target.value })} />
-            <Input label="মোবাইল" value={form.emergency_contact.phone}
+            <Input label="মোবাইল" required value={form.emergency_contact.phone}
               onChange={e => set('emergency_contact', { ...form.emergency_contact, phone: e.target.value })} />
             <Input label="ঠিকানা" value={form.emergency_contact.address}
               onChange={e => set('emergency_contact', { ...form.emergency_contact, address: e.target.value })} />

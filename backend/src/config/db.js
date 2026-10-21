@@ -59,8 +59,8 @@ const pool = new Pool({
     // Connection pool settings — Render free tier + Supabase free tier অপ্টিমাইজড
     // Supabase free: max 60 connection। Render free: single instance।
     // 10 রাখলে একসাথে ৫০+ request এলেও queue হবে, crash করবে না।
-    max:                    15,    // ১৫টি connection — ৫০+ concurrent request সামলাতে পারবে
-    min:                    5,     // ৫টি connection সবসময় warm রাখো।
+    max:                    10,    // Supabase pooler (session mode) pool_size=15 — tenantScopedDb(3) সহ মোট ১৩, বাকি ২টা headroom (deploy overlap-এর জন্য) — ৫০+ concurrent request সামলাতে পারবে
+    min:                    2,     // ২টি connection সবসময় warm রাখো।
                                     // কারণ: boot হওয়ার সাথে সাথেই ৪টা startup job একসাথে
                                     // DB hit করে — session cleanup (job_runs), tenant invoice
                                     // check (job_runs), platform staff seed (platform_staff),
