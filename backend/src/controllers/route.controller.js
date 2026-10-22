@@ -1,5 +1,6 @@
 const logger = require('../config/logger');
 const { query } = require('../config/db');
+const { getDB } = require('../config/firebase');
 
 // ============================================================
 // GET ROUTES
@@ -206,12 +207,22 @@ const assignWorkerToRoute = async (req, res) => {
             return res.status(404).json({ success: false, message: 'রুট পাওয়া যায়নি।' });
         }
 
-        await query(
-            `INSERT INTO customer_assignments (worker_id, route_id, assigned_by, tenant_id) VALUES ($1, $2, $3, $4)
-             ON CONFLICT (worker_id, route_id) DO UPDATE
-             SET is_active = true, assigned_at = NOW()`,
-            [worker_id, routeId, req.user.id, req.tenantId]
+        // রুট-লেভেল assignment (customer_id IS NULL)। এখানে (worker_id, route_id)-এ
+        // unique constraint নেই (কাস্টমার-লেভেল রো-গুলোতেও একই জোড়া থাকে), তাই
+        // ON CONFLICT না ব্যবহার করে আগে UPDATE, না পেলে INSERT।
+        const routeAssignment = await query(
+            `UPDATE customer_assignments
+             SET is_active = true, assigned_at = NOW()
+             WHERE worker_id = $1 AND route_id = $2
+               AND customer_id IS NULL AND tenant_id = $3`,
+            [worker_id, routeId, req.tenantId]
         );
+        if (routeAssignment.rowCount === 0) {
+            await query(
+                `INSERT INTO customer_assignments (worker_id, route_id, assigned_by, tenant_id) VALUES ($1, $2, $3, $4)`,
+                [worker_id, routeId, req.user.id, req.tenantId]
+            );
+        }
 
         const customers = await query(
             'SELECT id FROM customers WHERE route_id = $1 AND is_active = true AND tenant_id = $2',
@@ -293,8 +304,8 @@ const getRouteCustomers = async (req, res) => {
                 c.shop_name,
                 c.owner_name,
                 c.whatsapp,
-                c.latitude,
-                c.longitude,
+                ST_Y(c.location::geometry) AS latitude,
+                ST_X(c.location::geometry) AS longitude,
                 ca.visit_order
              FROM customers c
              JOIN routes r ON r.id = c.route_id
@@ -349,9 +360,7 @@ const getLiveRouteStatus = async (req, res) => {
                     WHERE v.created_at::date = CURRENT_DATE
                 ) AS visits_today,
                 -- রুটের মোট কাস্টমার
-                COUNT(DISTINCT c.id)  AS total_customers,
-                -- SR-এর সর্বশেষ GPS সময়
-                MAX(gl.created_at)    AS last_seen_at
+                COUNT(DISTINCT c.id)  AS total_customers
              FROM routes r
              JOIN customer_assignments ca_route
                ON ca_route.route_id   = r.id
@@ -362,15 +371,32 @@ const getLiveRouteStatus = async (req, res) => {
                ON c.route_id = r.id AND c.is_active = true
              LEFT JOIN visits v
                ON v.worker_id = u.id AND v.route_id = r.id
-             LEFT JOIN gps_logs gl
-               ON gl.user_id = u.id
              WHERE ${conditions.join(' AND ')}
              GROUP BY r.id, r.name, u.id, u.name_bn, u.employee_code, u.profile_photo
              ORDER BY r.name, u.name_bn`,
             params
         );
 
-        return res.status(200).json({ success: true, data: result.rows });
+        // SR-এর সর্বশেষ GPS সময় — Postgres-এ gps_logs টেবিল নেই,
+        // লাইভ লোকেশন Firebase (liveLocations/{userId}.updatedAt)-এ থাকে।
+        // Firebase fail করলেও মূল ডাটা যেন ফেরত যায় — তাই আলাদা try/catch।
+        let liveLocations = {};
+        try {
+            const snapshot = await getDB().ref('liveLocations').once('value');
+            liveLocations = snapshot.val() || {};
+        } catch (fbError) {
+            logger.warn('⚠️ Live Route Status: Firebase last_seen আনা যায়নি:', fbError.message);
+        }
+
+        const rows = result.rows.map(row => {
+            const updatedAt = liveLocations[row.worker_id]?.updatedAt;
+            return {
+                ...row,
+                last_seen_at: updatedAt ? new Date(updatedAt).toISOString() : null
+            };
+        });
+
+        return res.status(200).json({ success: true, data: rows });
 
     } catch (error) {
         logger.error('❌ Live Route Status Error:', error.message);
