@@ -22,8 +22,15 @@ let notificationQueue = null;
 if (process.env.REDIS_URL) {
     connection = new IORedis(process.env.REDIS_URL, {
         maxRetriesPerRequest: null, // BullMQ-র নিজস্ব requirement
+        keepAlive: 30 * 1000,       // idle কানেকশন যেন Redis/প্রক্সি কেটে না দেয়
+        connectTimeout: 10 * 1000,
+        retryStrategy: (times) => Math.min(times * 100, 3000),
     });
-    connection.on('error', (err) => logger.error('❌ Queue Redis connection error:', err.message));
+    connection.on('error', (err) => {
+        const transient = /ECONNRESET|ETIMEDOUT|EPIPE|Socket closed/i.test(`${err.code || ''} ${err.message || ''}`);
+        if (transient) logger.warn('⚠️ Queue Redis সংযোগ কেটেছে, ioredis নিজে reconnect করছে', { reason: err.message });
+        else logger.error('❌ Queue Redis connection error', { err });
+    });
     connection.on('connect', () => logger.info('✅ Job queue Redis সংযুক্ত।'));
 
     notificationQueue = new Queue('notifications', { connection });
