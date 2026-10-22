@@ -77,7 +77,19 @@ function serialize(err) {
   };
 }
 
-function write(level, msg, meta = {}) {
+// meta সবসময় plain object হওয়া উচিত। কিন্তু অনেক জায়গায়
+// logger.error('...', error.message) লেখা আছে — string-কে সরাসরি
+// destructure/spread করলে {"0":"S","1":"o",...} হয়ে যায়। তাই এখানে normalize:
+//   string/number → { detail }, Error → { err }, array → { detail }
+function normalizeMeta(meta) {
+  if (meta === undefined || meta === null) return {};
+  if (meta instanceof Error) return { err: meta };
+  if (typeof meta === 'object' && !Array.isArray(meta)) return meta;
+  return { detail: meta };
+}
+
+function write(level, msg, rawMeta) {
+  const meta = normalizeMeta(rawMeta);
   const { err, ...rest } = meta;
   const ts = new Date().toISOString();
 
@@ -117,7 +129,8 @@ const logger = {
   debug: (msg, meta) => write('debug', msg, meta),
   info:  (msg, meta) => write('info',  msg, meta),
   warn:  (msg, meta) => write('warn',  msg, meta),
-  error: (msg, meta) => {
+  error: (msg, rawMeta) => {
+    const meta = normalizeMeta(rawMeta);
     write('error', msg, meta);
     reportToSentry(msg, meta);
   },

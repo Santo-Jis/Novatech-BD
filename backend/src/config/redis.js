@@ -57,14 +57,32 @@ const getRedisClient = async () => {
     }
 
     try {
-        const client = createClient({ url: process.env.REDIS_URL });
-        client.on('error', (err) => logger.error('❌ Redis Error:', err.message));
+        const client = createClient({
+            url: process.env.REDIS_URL,
+            // Idle থাকলে Redis/প্রক্সি কানেকশন কেটে দেয় ("Socket closed unexpectedly")।
+            // ৩০ সেকেন্ডে একবার PING + TCP keep-alive দিয়ে কানেকশন জীবিত রাখা হচ্ছে।
+            pingInterval: 30 * 1000,
+            socket: {
+                keepAlive: 30 * 1000,
+                connectTimeout: 10 * 1000,
+                // কেটে গেলে দ্রুত আবার চেষ্টা (সর্বোচ্চ ৩ সেকেন্ড বিরতি)
+                reconnectStrategy: (retries) => Math.min(retries * 100, 3000),
+            },
+        });
+        client.on('error', (err) => {
+            // কানেকশন কেটে যাওয়া অস্থায়ী — নিজে reconnect হয়, তাই warn।
+            // বাকি error-গুলো (auth, config ইত্যাদি) error হিসেবেই থাকবে।
+            const transient = /Socket closed|ECONNRESET|ETIMEDOUT|EPIPE/i.test(`${err.code || ''} ${err.message || ''}`);
+            if (transient) logger.warn('⚠️ Redis সংযোগ কেটেছে, পুনরায় চেষ্টা চলছে', { reason: err.message });
+            else logger.error('❌ Redis Error', { err });
+        });
         client.on('connect', () => logger.info('✅ Redis সংযুক্ত।'));
+        client.on('reconnecting', () => logger.info('🔄 Redis reconnecting...'));
         await client.connect();
         redisClient = client;
         return redisClient;
     } catch (err) {
-        logger.error('❌ Redis সংযোগ ব্যর্থ — in-memory fallback:', err.message);
+        logger.error('❌ Redis সংযোগ ব্যর্থ — in-memory fallback', { err });
         redisClient = memoryFallback;
         return redisClient;
     }
