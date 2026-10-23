@@ -12,31 +12,12 @@ const jwt       = require('jsonwebtoken');
 const crypto    = require('crypto');
 const PDFDocument = require('pdfkit'); // ✅ NEW (Phase 5 — consolidated statement)
 const { ensureCustomerForPerson, REJECT_COOLDOWN_HOURS } = require('../services/customerConnection.service');
+const { getPersonId } = require('../services/portalPerson.service'); // ✅ FIX: শেয়ার্ড (person_id NULL হলে self-heal)
 
 // ✅ REFACTOR (Phase 2): REJECT_COOLDOWN_HOURS ও customer-creation লজিক
 // (আগে acceptCompanyRequest-এর ভেতরে ইনলাইন ছিল) এখন services/
 // customerConnection.service.js থেকে শেয়ার্ডভাবে import হয় —
 // connection.controller.js-ও একই সোর্স ব্যবহার করে।
-
-// ── Helper: portal customer_id থেকে person_id বের করো ──
-// ⚠️ FIX: আগে শুধু customerId নিয়ে DB থেকে person_id বের করতো — কিন্তু
-// company-বিহীন person-only session-এ customer_id-ই থাকে না (chicken-egg
-// সমস্যা)। এখন portalUser অবজেক্ট নেয়: person_id সরাসরি JWT-তে থাকলে
-// (নতুন token) সেটাই ব্যবহার করে, না থাকলে (পুরনো token) আগের মতো
-// customer_id দিয়ে DB lookup fallback করে — backward-compatible।
-async function getPersonId(portalUser) {
-    if (portalUser?.person_id) {
-        return portalUser.person_id;
-    }
-    if (!portalUser?.customer_id) {
-        throw new Error('PERSON_NOT_LINKED');
-    }
-    const r = await query(`SELECT person_id FROM customers WHERE id = $1`, [portalUser.customer_id]);
-    if (r.rows.length === 0 || !r.rows[0].person_id) {
-        throw new Error('PERSON_NOT_LINKED');
-    }
-    return r.rows[0].person_id;
-}
 
 // ============================================================
 // GET /api/portal/connections/my-qr

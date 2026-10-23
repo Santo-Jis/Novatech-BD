@@ -27,13 +27,8 @@ const {
 // ── Helper: portal customer_id থেকে person_id বের করো ──
 // ✅ NEW (Session 20): customerPortalConnection.controller.js-এর
 // getPersonId-এর মতোই — multi-company aggregate-এর জন্য দরকার
-const getPersonId = async (customerId) => {
-    const r = await query(`SELECT person_id FROM customers WHERE id = $1`, [customerId]);
-    if (r.rows.length === 0 || !r.rows[0].person_id) {
-        throw new Error('PERSON_NOT_LINKED');
-    }
-    return r.rows[0].person_id;
-};
+const { getPersonId: resolvePersonId } = require('../services/portalPerson.service'); // ✅ FIX: শেয়ার্ড (self-heal)
+const getPersonId = (customerId) => resolvePersonId({ customer_id: customerId });
 
 // ── Save to Firebase (non-critical) ─────────────────────────
 const saveToLog = async (customerId, message, reply) => {

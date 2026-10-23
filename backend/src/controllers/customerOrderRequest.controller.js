@@ -11,24 +11,7 @@ const { sendPushToMany, sendCustomerPush } = require('../services/fcm.service');
 const { getResolvedPrices } = require('../services/priceList.utils'); // ← নতুন (Step ৫: মাল্টিপল প্রাইস লিস্ট)
 const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
 const { generateCustomerCode } = require('../services/employee.service');
-
-// ── Helper: portal customer_id/JWT থেকে person_id বের করো ──
-// customerPortalConnection.controller.js-এর getPersonId-এর হুবহু কপি —
-// শেয়ার্ড সার্ভিসে তোলা হয়নি যাতে এই ফাইলটা স্বনির্ভর থাকে (ওই ফাইলের
-// প্যাটার্নই অনুসরণ করা হলো, যেটা নিজেও একটা লোকাল হেল্পার)।
-async function getPersonId(portalUser) {
-    if (portalUser?.person_id) {
-        return portalUser.person_id;
-    }
-    if (!portalUser?.customer_id) {
-        throw new Error('PERSON_NOT_LINKED');
-    }
-    const r = await query(`SELECT person_id FROM customers WHERE id = $1`, [portalUser.customer_id]);
-    if (r.rows.length === 0 || !r.rows[0].person_id) {
-        throw new Error('PERSON_NOT_LINKED');
-    }
-    return r.rows[0].person_id;
-}
+const { getPersonId } = require('../services/portalPerson.service'); // ✅ FIX: শেয়ার্ড (person_id NULL হলে self-heal)
 
 // ============================================================
 // HELPER — Admin ও Manager দের userId নাও

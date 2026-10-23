@@ -8,22 +8,7 @@ const logger    = require('../config/logger');
 const bcrypt    = require('bcryptjs');
 const { uploadToCloudinary } = require('../services/employee.service');
 const { invalidatePortalAuthCache } = require('../services/portalCache.service');
-
-// ⚠️ FIX: person_id সরাসরি JWT-তে থাকলে (নতুন token) সেটাই ব্যবহার করে,
-// না থাকলে (পুরনো token) customer_id দিয়ে DB lookup fallback করে।
-async function getPersonId(portalUser) {
-    if (portalUser?.person_id) {
-        return portalUser.person_id;
-    }
-    if (!portalUser?.customer_id) {
-        throw new Error('PERSON_NOT_LINKED');
-    }
-    const r = await query(`SELECT person_id FROM customers WHERE id = $1`, [portalUser.customer_id]);
-    if (r.rows.length === 0 || !r.rows[0].person_id) {
-        throw new Error('PERSON_NOT_LINKED');
-    }
-    return r.rows[0].person_id;
-}
+const { getPersonId } = require('../services/portalPerson.service'); // ✅ FIX: শেয়ার্ড (person_id NULL হলে self-heal)
 
 // ✅ NEW — person_preferences-এর ডিফল্ট, row না থাকলে GET-এ এবং
 // partial PUT-এ merge base হিসেবে ব্যবহৃত হয়
