@@ -821,11 +821,12 @@ const correctAttendance = async (req, res) => {
 
         // Manager শুধু নিজের টিমের SR কে সংশোধন করতে পারবে
         if (req.user.role === 'manager') {
+            // ✅ FIX: team_members নামে কোনো টেবিল নেই — membership হয় users.team_id দিয়ে।
+            // আগের কোয়েরি প্রতিবার 42P01 error দিত, তাই ম্যানেজার কোনো SR-এর হাজিরা সংশোধন করতে পারত না।
             const teamCheck = await query(
                 `SELECT u.id FROM users u
-                 JOIN team_members tm ON tm.worker_id = u.id
-                 JOIN teams t ON tm.team_id = t.id
-                 WHERE u.id = $1 AND t.manager_id = $2`,
+                 JOIN teams t ON t.id = u.team_id
+                 WHERE u.id = $1 AND t.manager_id = $2 AND t.is_active = true`,
                 [user_id, req.user.id]
             );
             if (teamCheck.rows.length === 0) {
