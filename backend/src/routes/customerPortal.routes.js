@@ -68,6 +68,7 @@ const {
     getPublicCustomerByCode, // ✅ NEW: c= কোড দিয়ে shop_name/owner_name/shop_photo
     sendLoginOtp,            // ✅ NEW: WhatsApp OTP লগইন ধাপ ১
     verifyLoginOtp,          // ✅ NEW: WhatsApp OTP লগইন ধাপ ২
+    completePasswordSetup,   // ✅ FIX: OTP-এর পর পাসওয়ার্ড সেট (আগে রুট রেজিস্টার ছিল না)
     selfRegisterCustomer,
     sendRegisterOtp,         // ✅ NEW: রেজিস্ট্রেশন WhatsApp OTP ধাপ ১
     verifyRegisterOtp,       // ✅ NEW: রেজিস্ট্রেশন WhatsApp OTP ধাপ ২
@@ -351,6 +352,7 @@ router.get('/customer-info/:code', customerInfoLimiter, getPublicCustomerByCode)
 // ✅ NEW: WhatsApp OTP দিয়ে সরাসরি লগইন (password/Google ছাড়াই) — ধাপ ১+২
 router.post('/send-login-otp',   loginOtpSendLimiter,   sendLoginOtp);
 router.post('/verify-login-otp', loginOtpVerifyLimiter, verifyLoginOtp);
+router.post('/complete-password-setup', loginOtpVerifyLimiter, completePasswordSetup);
 
 // ✅ NEW: রেজিস্ট্রেশনের আগে WhatsApp নম্বর OTP verification (বাধ্যতামূলক)
 router.post('/send-register-otp',   registerOtpLimiter, sendRegisterOtp);
