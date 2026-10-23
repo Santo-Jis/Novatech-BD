@@ -29,8 +29,12 @@ const whatsappGateway = require('./whatsappGateway.service');
 const formatPhone = (phone) => {
     if (!phone) return null;
     let digits = String(phone).replace(/\D/g, '');
-    if (digits.startsWith('01') && digits.length === 11) digits = '880' + digits;
+    if (!digits) return null;
     if (digits.startsWith('00')) digits = digits.slice(2);
+    // ✅ FIX: আগে '880' + '01XXXXXXXXX' হয়ে 88001XXXXXXXXX (leading 0 সহ, ভুল নম্বর) হতো
+    if (digits.startsWith('880')) return digits;
+    if (digits.startsWith('0'))   return '880' + digits.slice(1);
+    if (digits.length === 10)     return '880' + digits;
     return digits;
 };
 
