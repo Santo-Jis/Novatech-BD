@@ -45,11 +45,22 @@ const sendVerifyLinkWhatsApp = async (phone, verifyToken, shopName, invoiceNumbe
         `${link}\n` +
         (otp ? `🔐 লিংক না খুললে OTP: *${otp}*\n` : '') +
         `\n` +
-        `⏱️ মেয়াদ: ${expiryMinutes} মিনিট\n` +
+        (expiryMinutes ? `⏱️ মেয়াদ: ${expiryMinutes} মিনিট\n` : '') +
         `━━━━━━━━━━━━━━━━\n` +
         `_ZovoriX (Ltd.)_`;
 
     return whatsappGateway.sendText({ to: formattedPhone, body: message, type: 'otp_verify_link' });
+};
+
+// OTP বন্ধ (otp_required=false) থাকলেও কাস্টমারকে শুধু WhatsApp verify লিংক পাঠাও।
+// OTP কোড/মেয়াদ নেই; Email/SMS-এ পাঠানো হয় না (ওখানে OTP টেক্সট বসানো)।
+const sendVerifyLinkOnly = async (customer, sale) => {
+    const phone = customer?.whatsapp || customer?.sms_phone;
+    if (!phone || !sale?.verify_token) return { success: false, reason: 'no_phone_or_token' };
+    return sendVerifyLinkWhatsApp(
+        phone, sale.verify_token, customer.shop_name,
+        sale.invoice_number, sale.net_amount, null, null
+    );
 };
 
 // ============================================================
@@ -347,6 +358,7 @@ _ZovoriX (Ltd.) | বরিশাল_`;
 module.exports = {
     generateInvoiceNumber,
     sendInvoiceOTP,
+    sendVerifyLinkOnly,
     sendInvoiceNotification,
     generateInvoicePDF,
     getInvoiceWhatsAppMessage

@@ -65,6 +65,7 @@ jest.mock('../services/email.service', () => ({
 jest.mock('../services/invoice.service', () => ({
     generateInvoiceNumber:     jest.fn().mockResolvedValue('INV-2025-001'),
     sendInvoiceOTP:            jest.fn().mockResolvedValue({ results: [] }),
+    sendVerifyLinkOnly:        jest.fn().mockResolvedValue({ success: true }),
     sendInvoiceNotification:   jest.fn().mockResolvedValue({ results: [] }),
     generateInvoicePDF:        jest.fn().mockResolvedValue(null),
     getInvoiceWhatsAppMessage: jest.fn().mockReturnValue('msg'),

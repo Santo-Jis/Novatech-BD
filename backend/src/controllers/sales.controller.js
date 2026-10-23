@@ -12,6 +12,7 @@ const { addLedgerEntry }         = require('./ledger.controller');
 const {
     generateInvoiceNumber,
     sendInvoiceOTP,
+    sendVerifyLinkOnly,
     sendInvoiceNotification,
     generateInvoicePDF,
     getInvoiceWhatsAppMessage
@@ -678,6 +679,13 @@ const createSale = async (req, res) => {
         if (otp) {
             const otpResult = await sendInvoiceOTP(cust, saleResult.id, otp, expiryMinutes, saleResult, req.user, processedItems, req.tenantId);
             logger.info('📤 OTP+Invoice পাঠানো:', JSON.stringify(otpResult.results));
+        } else {
+            // OTP বন্ধ — তবুও WhatsApp-এ verify লিংক যাবে (SR-এর ধাপ বদলায় না, fire-and-forget)
+            sendVerifyLinkOnly(cust, saleResult)
+                .then(r => r.success
+                    ? logger.info(`📲 [VerifyLink] (OTP ছাড়া) WhatsApp সফল → ${saleResult.invoice_number}`)
+                    : logger.warn(`⚠️ [VerifyLink] (OTP ছাড়া) যায়নি (${r.reason || 'unknown'}) — ${saleResult.invoice_number}`))
+                .catch(e => logger.error('❌ [VerifyLink] Unexpected error:', e.message));
         }
 
         // Invoice SMS Fallback (email না থাকলে)
