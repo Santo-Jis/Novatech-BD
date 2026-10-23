@@ -7,6 +7,7 @@ const {
 const { generateOTP }            = require('../config/encryption');
 const crypto                     = require('crypto');
 const logger = require('../config/logger');
+const { getPublicAppUrl }       = require('../config/publicAppUrl');
 const { addLedgerEntry }         = require('./ledger.controller');
 const {
     generateInvoiceNumber,
@@ -773,7 +774,7 @@ const createSale = async (req, res) => {
                 })),
                 credit_balance_used:  creditBalanceUsed,
                 credit_balance_added: creditBalanceAdded,
-                verify_link:       `${process.env.FRONTEND_URL || 'https://zovorix.com'}/verify/${saleResult.verify_token}`,
+                verify_link:       `${getPublicAppUrl()}/verify/${saleResult.verify_token}`,
                 whatsapp_link:     `https://wa.me/${(() => { const r = cust.whatsapp?.replace(/\D/g, '') || ''; return r.startsWith('880') ? r : '880' + r.replace(/^0/, ''); })()}?text=${encodeURIComponent(waLink)}`
             }
         });
@@ -856,115 +857,104 @@ const sendInvoice = async (req, res) => {
 
 
 // ============================================================
-// VERIFY ORDER BY LINK
-// GET /api/sales/verify/:token
-// কাস্টমার WhatsApp লিংকে ট্যাপ করলে — auth লাগবে না
+// VERIFY ORDER BY LINK (public — কাস্টমার WhatsApp/Email লিংকে ট্যাপ করলে)
+//   GET  /api/sales/verify/:token   → অর্ডারের তথ্য দেখাও (state বদলায় না)
+//   POST /api/sales/verify/:token   → "নিশ্চিত করুন" বাটনে চাপ দিলে verify হয়
+// কেন GET-এ verify হয় না: WhatsApp/Telegram লিংক preview-এর জন্য নিজে URL
+// fetch করে — GET-এ verify হলে কাস্টমার না চাপলেও অর্ডার নিশ্চিত হয়ে যেত।
+// Auth নেই, তাই tenant token থেকেই আসে (64-hex, অনুমান-অযোগ্য)।
 // ============================================================
 
-const verifyOrderByLink = async (req, res) => {
+const VERIFY_TOKEN_RE = /^[a-f0-9]{64}$/i;
+
+const findSaleByVerifyToken = async (token) => {
+    const result = await query(
+        `SELECT st.id, st.tenant_id, st.invoice_number, st.net_amount, st.payment_method,
+                st.otp_verified, st.otp_expires_at, st.created_at,
+                c.shop_name, c.owner_name
+         FROM sales_transactions st
+         JOIN customers c ON c.id = st.customer_id
+         WHERE st.verify_token = $1
+         LIMIT 1`,
+        [token]
+    );
+    return result.rows[0] || null;
+};
+
+const getVerifyInfo = async (req, res) => {
     try {
         const { token } = req.params;
-        if (!token || token.length !== 64) {
-            return res.status(400).send(buildVerifyPage('error', 'লিংকটি সঠিক নয়।'));
+        if (!VERIFY_TOKEN_RE.test(token || '')) {
+            return res.status(400).json({ success: false, status: 'invalid', message: 'লিংকটি সঠিক নয়।' });
         }
-
-        const result = await query(
-            `SELECT st.id, st.invoice_number, st.net_amount, st.payment_method,
-                    st.otp_verified, st.verify_token_used, st.otp_expires_at,
-                    st.created_at, c.shop_name, c.owner_name
-             FROM sales_transactions st
-             JOIN customers c ON c.id = st.customer_id
-             WHERE st.verify_token = $1
-             AND st.tenant_id = $2`,
-            [token, req.tenantId]
-        );
-
-        if (result.rows.length === 0) {
-            return res.status(404).send(buildVerifyPage('error', 'লিংকটি বৈধ নয় বা মেয়াদ শেষ।'));
+        const sale = await findSaleByVerifyToken(token);
+        if (!sale) {
+            return res.status(404).json({ success: false, status: 'invalid', message: 'লিংকটি বৈধ নয়।' });
         }
-
-        const sale = result.rows[0];
-
-        if (sale.otp_verified) {
-            return res.send(buildVerifyPage('already', sale));
-        }
-
-        if (sale.otp_expires_at && new Date() > new Date(sale.otp_expires_at)) {
-            return res.status(410).send(buildVerifyPage('expired', sale));
-        }
-
-        // ✅ Verify
-        await query(
-            `UPDATE sales_transactions SET otp_verified = true, verify_token_used = true WHERE id = $1
-             AND tenant_id = $2`,
-            [sale.id, req.tenantId]
-        );
-
-        logger.info(`✅ [VerifyLink] → ${sale.invoice_number} (${sale.shop_name})`);
-        return res.send(buildVerifyPage('success', sale));
-
+        const expired = !sale.otp_verified && sale.otp_expires_at && new Date() > new Date(sale.otp_expires_at);
+        return res.status(200).json({
+            success: true,
+            status: sale.otp_verified ? 'already' : (expired ? 'expired' : 'pending'),
+            data: {
+                invoice_number: sale.invoice_number,
+                shop_name:      sale.shop_name,
+                net_amount:     sale.net_amount,
+                payment_method: sale.payment_method,
+                created_at:     sale.created_at,
+            }
+        });
     } catch (error) {
-        logger.error('❌ Verify Link Error:', error.message);
-        return res.status(500).send(buildVerifyPage('error', 'সমস্যা হয়েছে। আবার চেষ্টা করুন।'));
+        logger.error('❌ Verify Info Error:', error.message);
+        return res.status(500).json({ success: false, status: 'error', message: 'সমস্যা হয়েছে। আবার চেষ্টা করুন।' });
     }
 };
 
-// ─── Verification Result Page ────────────────────────────────
-const buildVerifyPage = (status, data) => {
-    const configs = {
-        success: { icon: '✅', color: '#059669', bg: '#ecfdf5', title: 'অর্ডার নিশ্চিত হয়েছে!', sub: 'আপনার ক্রয় সফলভাবে যাচাই হয়েছে।' },
-        already: { icon: '✅', color: '#2563eb', bg: '#eff6ff', title: 'আগেই যাচাই হয়েছে',      sub: 'এই অর্ডারটি আগেই নিশ্চিত করা হয়েছে।' },
-        expired: { icon: '⏰', color: '#d97706', bg: '#fffbeb', title: 'মেয়াদ শেষ',              sub: 'যাচাইয়ের সময় পেরিয়ে গেছে। SR-কে জানান।' },
-        error:   { icon: '❌', color: '#dc2626', bg: '#fef2f2', title: 'সমস্যা হয়েছে',           sub: typeof data === 'string' ? data : 'আবার চেষ্টা করুন।' },
-    };
-    const c = configs[status] || configs.error;
-    const paymentLabel = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
-    const hasData = data && typeof data === 'object' && data.invoice_number;
+const confirmVerifyLink = async (req, res) => {
+    try {
+        const { token } = req.params;
+        if (!VERIFY_TOKEN_RE.test(token || '')) {
+            return res.status(400).json({ success: false, status: 'invalid', message: 'লিংকটি সঠিক নয়।' });
+        }
+        const sale = await findSaleByVerifyToken(token);
+        if (!sale) {
+            return res.status(404).json({ success: false, status: 'invalid', message: 'লিংকটি বৈধ নয়।' });
+        }
+        if (sale.otp_verified) {
+            return res.status(200).json({ success: true, status: 'already', message: 'এই অর্ডারটি আগেই নিশ্চিত করা হয়েছে।' });
+        }
+        if (sale.otp_expires_at && new Date() > new Date(sale.otp_expires_at)) {
+            return res.status(410).json({ success: false, status: 'expired', message: 'মেয়াদ শেষ। SR-কে জানান।' });
+        }
+        await query(
+            `UPDATE sales_transactions SET otp_verified = true
+             WHERE id = $1 AND tenant_id = $2 AND otp_verified = false`,
+            [sale.id, sale.tenant_id]
+        );
+        logger.info(`✅ [VerifyLink] → ${sale.invoice_number} (${sale.shop_name})`);
+        return res.status(200).json({ success: true, status: 'success', message: 'অর্ডার নিশ্চিত হয়েছে।' });
+    } catch (error) {
+        logger.error('❌ Verify Link Error:', error.message);
+        return res.status(500).json({ success: false, status: 'error', message: 'সমস্যা হয়েছে। আবার চেষ্টা করুন।' });
+    }
+};
 
-    return `<!DOCTYPE html>
-<html lang="bn">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
-<title>ZovoriX — অর্ডার যাচাই</title>
-<link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;600;700;800&display=swap" rel="stylesheet">
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Hind Siliguri','Segoe UI',sans-serif;background:linear-gradient(135deg,#0f172a,#1e3a8a);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-.card{background:#fff;border-radius:24px;width:100%;max-width:380px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3)}
-.hdr{background:linear-gradient(135deg,#0f172a,#1e3a8a);padding:22px 20px 18px;text-align:center}
-.hdr h3{color:#fff;font-size:17px;font-weight:800}.hdr p{color:rgba(255,255,255,0.45);font-size:11px;margin-top:3px}
-.body{padding:28px 22px;text-align:center}
-.ico{width:80px;height:80px;border-radius:50%;background:${c.bg};border:3px solid ${c.color}20;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:36px}
-.ttl{font-size:21px;font-weight:800;color:${c.color};margin-bottom:6px}
-.sub{font-size:13.5px;color:#6b7280;line-height:1.6}
-.det{margin-top:20px;background:#f8fafc;border-radius:14px;padding:14px;text-align:left}
-.row{display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f1f5f9;font-size:13px}
-.row:last-child{border-bottom:none}
-.lbl{color:#9ca3af}.val{font-weight:700;color:#1f2937}
-.amt{font-size:30px;font-weight:800;color:#1e3a8a;margin-top:16px}
-.ftr{background:#f8fafc;padding:14px 20px;text-align:center;font-size:11px;color:#9ca3af;border-top:1px solid #f1f5f9}
-</style>
-</head>
-<body>
-<div class="card">
-  <div class="hdr"><h3>ZovoriX</h3><p>জানকি সিংহ রোড, বরিশাল</p></div>
-  <div class="body">
-    <div class="ico">${c.icon}</div>
-    <p class="ttl">${c.title}</p>
-    <p class="sub">${c.sub}</p>
-    ${hasData ? `
-    <div class="det">
-      <div class="row"><span class="lbl">Invoice</span><span class="val" style="font-family:monospace">${data.invoice_number}</span></div>
-      <div class="row"><span class="lbl">দোকান</span><span class="val">${data.shop_name}</span></div>
-      <div class="row"><span class="lbl">পেমেন্ট</span><span class="val">${paymentLabel[data.payment_method] || data.payment_method}</span></div>
-      <div class="row"><span class="lbl">তারিখ</span><span class="val">${new Date(data.created_at).toLocaleDateString('bn-BD',{day:'numeric',month:'long',year:'numeric'})}</span></div>
-    </div>
-    <p class="amt">৳${parseFloat(data.net_amount).toLocaleString()}</p>` : ''}
-  </div>
-  <div class="ftr">ZovoriX (Ltd.) — এই পেজটি স্বয়ংক্রিয়ভাবে তৈরি হয়েছে</div>
-</div>
-</body></html>`;
+// SR-এর OTP স্ক্রিন এটা poll করে — কাস্টমার লিংকে ট্যাপ করলেই স্ক্রিন এগিয়ে যায়
+// GET /api/sales/:id/verify-status   (auth, worker)
+const getSaleVerifyStatus = async (req, res) => {
+    try {
+        const r = await query(
+            `SELECT otp_verified FROM sales_transactions
+             WHERE id = $1 AND worker_id = $2 AND tenant_id = $3`,
+            [req.params.id, req.user.id, req.tenantId]
+        );
+        if (r.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'বিক্রয় পাওয়া যায়নি।' });
+        }
+        return res.status(200).json({ success: true, otp_verified: !!r.rows[0].otp_verified });
+    } catch (error) {
+        logger.error('❌ Verify Status Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
 };
 
 // ============================================================
@@ -1940,7 +1930,9 @@ module.exports = {
     createSale,
     sendInvoice,
     verifyOTP,
-    verifyOrderByLink,
+    getVerifyInfo,
+    confirmVerifyLink,
+    getSaleVerifyStatus,
     skipOTPWithPhoto,
     getMySales,
     getTeamSales,

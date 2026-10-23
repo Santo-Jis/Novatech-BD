@@ -34,6 +34,7 @@ const IS_LIMITED_APP = IS_CUSTOMER_APP || IS_WORKER_APP
 // Layouts
 // ============================================================
 // Customer layout — SR APK-এ import হবে না
+const OrderVerify = lazy(() => import('./pages/public/OrderVerify'))
 const CustomerLayout = IS_WORKER_APP ? null : lazy(() => import('./layouts/CustomerLayout'))
 
 // Admin/Manager layouts — Customer APK ও SR APK কোনোটাতেই import হবে না
@@ -412,6 +413,8 @@ function AppWithPermissions() {
 
           {/* ── Public ── */}
           <Route path="/"                       element={<HomeRedirect />} />
+          {/* কাস্টমারের অর্ডার ভেরিফাই লিংক (WhatsApp/Email) — public */}
+          <Route path="/verify/:token"         element={<OrderVerify />} />
 
           {/* Customer-only public routes — SR APK-এ নেই */}
           {!IS_WORKER_APP && (

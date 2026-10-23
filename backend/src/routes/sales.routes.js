@@ -22,7 +22,10 @@ const {
     getMyMonthlySales,
     getMyVisitStats,
     getVisitStatus,
-    uploadReceipt
+    uploadReceipt,
+    getVerifyInfo,
+    confirmVerifyLink,
+    getSaleVerifyStatus
 } = require('../controllers/sales.controller');
 
 // ============================================================
@@ -54,6 +57,13 @@ router.post('/upload-receipt',
     upload.single('receipt_photo'),
     uploadReceipt
 );
+
+// ✅ Public (auth নেই) — কাস্টমারের WhatsApp/Email verify লিংক
+router.get('/verify/:token',  getVerifyInfo);
+router.post('/verify/:token', confirmVerifyLink);
+
+// SR-এর OTP স্ক্রিন poll করে — কাস্টমার লিংকে নিশ্চিত করেছে কিনা
+router.get('/:id/verify-status', auth, allowRoles('worker'), getSaleVerifyStatus);
 
 // OTP যাচাই
 router.post('/verify-otp',    auth, allowRoles('worker'), verifyOTP);

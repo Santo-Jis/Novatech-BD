@@ -33,6 +33,23 @@ export default function OTPVerify() {
     }
   }, [currentSale])
 
+  // কাস্টমার WhatsApp/Email লিংকে নিশ্চিত করলে স্ক্রিন নিজে থেকেই এগিয়ে যাবে
+  useEffect(() => {
+    if (verified || skipStep) return
+    let stop = false
+    const check = async () => {
+      try {
+        const { data } = await api.get(`/sales/${saleId}/verify-status`)
+        if (!stop && data.otp_verified) {
+          setVerified(true)
+          toast.success('কাস্টমার অর্ডার নিশ্চিত করেছেন!')
+        }
+      } catch { /* নেটওয়ার্ক সমস্যা হলে পরের বারে আবার চেষ্টা */ }
+    }
+    const id = setInterval(check, 4000)
+    return () => { stop = true; clearInterval(id) }
+  }, [saleId, verified, skipStep])
+
   // ── OTP input handlers ──────────────────────────────────────
   const handleChange = (val, idx) => {
     if (!/^\d*$/.test(val)) return

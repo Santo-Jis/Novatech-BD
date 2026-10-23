@@ -22,17 +22,13 @@ const FRONTEND_URL = getPublicAppUrl();
 const formatPhoneForWA = (phone) => {
     if (!phone) return null;
     let d = String(phone).replace(/\D/g, '');
-    if (!d) return null;
+    if (d.startsWith('01') && d.length === 11) d = '880' + d;
     if (d.startsWith('00')) d = d.slice(2);
-    // ✅ FIX: আগে '880' + '01XXXXXXXXX' = 88001XXXXXXXXX (leading 0 সহ, ভুল নম্বর) হতো
-    if (d.startsWith('880')) return d;
-    if (d.startsWith('0'))   return '880' + d.slice(1);
-    if (d.length === 10)     return '880' + d;
     return d;
 };
 
 // OTP-এর বদলে Verify Link পাঠাও WhatsApp-এ
-const sendVerifyLinkWhatsApp = async (phone, verifyToken, shopName, invoiceNumber, netAmount, expiryMinutes = 10) => {
+const sendVerifyLinkWhatsApp = async (phone, verifyToken, shopName, invoiceNumber, netAmount, expiryMinutes = 10, otp = null) => {
     const formattedPhone = formatPhoneForWA(phone);
     if (!formattedPhone) return { success: false, reason: 'invalid_phone' };
 
@@ -47,6 +43,7 @@ const sendVerifyLinkWhatsApp = async (phone, verifyToken, shopName, invoiceNumbe
         `\n` +
         `নিচের লিংকে ট্যাপ করে অর্ডারটি নিশ্চিত করুন:\n` +
         `${link}\n` +
+        (otp ? `🔐 লিংক না খুললে OTP: *${otp}*\n` : '') +
         `\n` +
         `⏱️ মেয়াদ: ${expiryMinutes} মিনিট\n` +
         `━━━━━━━━━━━━━━━━\n` +
@@ -97,7 +94,8 @@ const sendInvoiceOTP = async (customer, saleId, otp, expiryMinutes = 10, sale = 
             customer.shop_name,
             sale.invoice_number,
             sale.net_amount,
-            expiryMinutes
+            expiryMinutes,
+            otp
         );
         if (results.whatsapp?.success) {
             anySent = true;
