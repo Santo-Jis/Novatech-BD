@@ -1,4 +1,10 @@
 const PDFDocument = require('pdfkit');
+const fs   = require('fs');
+const path = require('path');
+
+// Invoice PDF-এর বাংলা ফন্ট (Hind Siliguri — বাংলা + ইংরেজি দুটোই আছে)
+const BN_FONT_REGULAR = path.join(__dirname, '../assets/fonts/HindSiliguri-Regular.ttf');
+const BN_FONT_BOLD    = path.join(__dirname, '../assets/fonts/HindSiliguri-Bold.ttf');
 const logger = require('../config/logger');
 const { generateOTP } = require('../config/encryption');
 const { sendOTP, sendInvoice: sendInvoiceSMS, getWhatsAppInvoiceLink } = require('./sms.service');
@@ -206,10 +212,20 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
             doc.on('end',  ()    => resolve(Buffer.concat(chunks)));
             doc.on('error', err  => reject(err));
 
+            // বাংলা ফন্ট embed — না করলে Helvetica-তে বাংলা অক্ষর ভেঙে যায়
+            let F = 'Helvetica', FB = 'Helvetica-Bold';
+            if (fs.existsSync(BN_FONT_REGULAR) && fs.existsSync(BN_FONT_BOLD)) {
+                doc.registerFont('bn',      BN_FONT_REGULAR);
+                doc.registerFont('bn-bold', BN_FONT_BOLD);
+                F = 'bn'; FB = 'bn-bold';
+            } else {
+                logger.warn('⚠️ Invoice PDF: বাংলা ফন্ট পাওয়া যায়নি — বাংলা লেখা ভেঙে যাবে');
+            }
+
             // ── Header ──
-            doc.fontSize(14).font('Helvetica-Bold')
+            doc.fontSize(14).font(FB)
                .text('ZovoriX (Ltd.)', { align: 'center' });
-            doc.fontSize(8).font('Helvetica')
+            doc.fontSize(8).font(F)
                .text('জানকি সিংহ রোড, বরিশাল সদর – ১২০০', { align: 'center' })
                .text('inf.novatechbd@gmail.com', { align: 'center' });
 
@@ -219,9 +235,9 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
             doc.moveDown(0.3);
 
             // ── Invoice Info ──
-            doc.fontSize(9).font('Helvetica-Bold')
+            doc.fontSize(9).font(FB)
                .text(`Invoice: ${sale.invoice_number}`);
-            doc.fontSize(8).font('Helvetica')
+            doc.fontSize(8).font(F)
                .text(`তারিখ: ${new Date(sale.created_at).toLocaleDateString('bn-BD')}`)
                .text(`দোকান: ${customer.shop_name}`)
                .text(`মালিক: ${customer.owner_name}`)
@@ -233,7 +249,7 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
             doc.moveDown(0.3);
 
             // ── Items ──
-            doc.fontSize(8).font('Helvetica-Bold')
+            doc.fontSize(8).font(FB)
                .text('পণ্য', 40, doc.y, { width: 100, continued: false });
 
             let yPos = doc.y;
@@ -247,7 +263,7 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
             items.forEach(item => {
                 const subtotal = item.qty * item.price;
                 yPos = doc.y;
-                doc.fontSize(8).font('Helvetica')
+                doc.fontSize(8).font(F)
                    .text(item.product_name, 40, yPos, { width: 100 });
                 doc.text(`${item.qty} × ৳${item.price}`, 140, yPos, { width: 40 });
                 doc.text(`৳${subtotal.toLocaleString('bn-BD')}`, 185, yPos, { width: 58, align: 'right' });
@@ -257,10 +273,10 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
             // Replacement items
             if (sale.replacement_items?.length > 0) {
                 doc.moveDown(0.2);
-                doc.fontSize(8).font('Helvetica-Bold').text('রিপ্লেসমেন্ট (ফেরত):');
+                doc.fontSize(8).font(FB).text('রিপ্লেসমেন্ট (ফেরত):');
                 sale.replacement_items.forEach(item => {
                     yPos = doc.y;
-                    doc.fontSize(8).font('Helvetica')
+                    doc.fontSize(8).font(F)
                        .text(`(-) ${item.product_name}`, 40, yPos, { width: 140 });
                     doc.text(`-৳${item.total}`, 185, yPos, { width: 58, align: 'right' });
                     doc.moveDown(0.3);
@@ -275,9 +291,9 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
             const addSummaryRow = (label, value, bold = false) => {
                 yPos = doc.y;
                 doc.fontSize(9)
-                   .font(bold ? 'Helvetica-Bold' : 'Helvetica')
+                   .font(bold ? FB : F)
                    .text(label, 40, yPos, { width: 140 });
-                doc.font(bold ? 'Helvetica-Bold' : 'Helvetica')
+                doc.font(bold ? FB : F)
                    .text(value, 185, yPos, { width: 58, align: 'right' });
                 doc.moveDown(0.3);
             };
@@ -305,18 +321,18 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
 
             // OTP যাচাই
             doc.moveDown(0.3);
-            doc.fontSize(8).font('Helvetica')
-               .text(`OTP যাচাই: ${sale.otp_verified ? '✅ যাচাইকৃত' : '❌ অযাচাইকৃত'}`,
-                     { align: 'center' });
+            doc.fontSize(8).font(F)
+               .text(`OTP যাচাই: ${sale.otp_verified ? 'যাচাইকৃত' : 'অযাচাইকৃত'}`,
+                     40, doc.y, { width: 203, align: 'center' });
 
             // Footer
             doc.moveDown(0.5);
             doc.moveTo(40, doc.y).lineTo(243, doc.y).dash(3).stroke();
             doc.undash();
             doc.moveDown(0.3);
-            doc.fontSize(8).font('Helvetica')
-               .text('আমাদের সাথে কেনাকাটার জন্য ধন্যবাদ', { align: 'center' })
-               .text('ZovoriX (Ltd.)', { align: 'center' });
+            doc.fontSize(8).font(F)
+               .text('আমাদের সাথে কেনাকাটার জন্য ধন্যবাদ', 40, doc.y, { width: 203, align: 'center' })
+               .text('ZovoriX (Ltd.)', 40, doc.y, { width: 203, align: 'center' });
 
             doc.end();
 
