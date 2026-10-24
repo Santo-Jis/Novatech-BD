@@ -121,18 +121,24 @@ beforeEach(() => {
     jest.clearAllMocks();
 
     withTransaction.mockImplementation(async (cb) => {
+        const defaultRes = {
+            rows: [{
+                id:                   100,
+                invoice_number:       'INV-001',
+                total_amount:         1000,
+                net_amount:           1000,
+                payment_method:       'cash',
+                credit_balance_used:  0,
+                credit_balance_added: 0,
+            }],
+        };
         const client = {
-            query: jest.fn().mockResolvedValue({
-                rows: [{
-                    id:                   100,
-                    invoice_number:       'INV-001',
-                    total_amount:         1000,
-                    net_amount:           1000,
-                    payment_method:       'cash',
-                    credit_balance_used:  0,
-                    credit_balance_added: 0,
-                }],
-            }),
+            // SR হাতের স্টক যাচাইয়ের query-তে ডিফল্টভাবে পর্যাপ্ত স্টক ফেরত দাও
+            query: jest.fn().mockImplementation(async (sql) =>
+                typeof sql === 'string' && sql.includes('FROM sr_stock_ledger')
+                    ? { rows: [{ pid: 'p1', in_hand: '999' }] }
+                    : defaultRes
+            ),
         };
         return await cb(client);
     });
@@ -223,6 +229,77 @@ describe('createSale — বিক্রয়ের নিয়ম', () => {
         }, res);
 
         expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    // ── SR হাতের স্টক যাচাই ──────────────────────────────────────
+    describe('SR হাতের স্টক যাচাই', () => {
+        // এই describe-এর mockImplementation যেন পরের টেস্টে ঢুকে না পড়ে
+        afterEach(() => { query.mockReset(); });
+
+        const setupQueries = () => {
+            calcFromProduct.mockReturnValue({
+                unitPrice: 1000, vatRate: 0, taxRate: 0,
+                vatAmount: 0, taxAmount: 0,
+                finalPrice: 1000, subtotal: 2000,
+            });
+            query.mockImplementation(async (sql) => {
+                if (typeof sql !== 'string') return { rows: [] };
+                if (sql.includes('FROM customers'))  return { rows: [makeCustomer()] };
+                if (sql.includes('FROM products'))   return { rows: [makeProduct()] };
+                if (sql.includes('system_settings')) return { rows: [{ value: 'false' }] };
+                return { rows: [] };
+            });
+        };
+        const useStock = (stockRows) => {
+            withTransaction.mockImplementation(async (cb) => {
+                const client = {
+                    query: jest.fn().mockImplementation(async (sql) => {
+                        if (typeof sql === 'string' && sql.includes('FROM sr_stock_ledger')) {
+                            return { rows: stockRows };
+                        }
+                        return { rows: [{ id: 100, invoice_number: 'INV-001', total_amount: 2000,
+                                          net_amount: 2000, payment_method: 'cash',
+                                          credit_balance_used: 0, credit_balance_added: 0 }] };
+                    }),
+                };
+                return await cb(client);
+            });
+        };
+        const sell = async (qty) => {
+            const res = mockRes();
+            await createSale({
+                body: { customer_id: 'c1', items: [{ product_id: 'p1', qty }], payment_method: 'cash' },
+                user: workerUser, tenantId: 't1',
+            }, res);
+            return res;
+        };
+
+        test('হাতের স্টকের বেশি qty — 422, বিক্রি আটকায়', async () => {
+            setupQueries();
+            useStock([{ pid: 'p1', in_hand: '1' }]);
+            const res = await sell(2);
+            expect(res.status).toHaveBeenCalledWith(422);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ success: false, message: expect.stringContaining('হাতে 1টি') })
+            );
+        });
+
+        test('যে পণ্য হাতে নেই (Z) — 422, "হাতে নেই"', async () => {
+            setupQueries();
+            useStock([]);
+            const res = await sell(1);
+            expect(res.status).toHaveBeenCalledWith(422);
+            expect(res.json).toHaveBeenCalledWith(
+                expect.objectContaining({ message: expect.stringContaining('হাতে নেই') })
+            );
+        });
+
+        test('হাতে পর্যাপ্ত স্টক থাকলে — আটকায় না', async () => {
+            setupQueries();
+            useStock([{ pid: 'p1', in_hand: '5' }]);
+            const res = await sell(2);
+            expect(res.status).not.toHaveBeenCalledWith(422);
+        });
     });
 
     test('credit limit পার হলে sale reject', async () => {

@@ -513,6 +513,52 @@ const createSale = async (req, res) => {
                 lockedOrderId = lockResult.rows[0].id;
             }
 
+            // ── SR হাতের স্টক যাচাই — অর্ডারে/হাতে নেই এমন পণ্য বা বেশি পরিমাণ বিক্রি আটকাও ──
+            // sr_stock_ledger-এ SUM(qty × direction) = SR-এর হাতে এই মুহূর্তে যা আছে।
+            // ম্যানেজার approve করলে order_in (+) বসে, বিক্রিতে sale_out (−)।
+            // order row উপরে FOR UPDATE দিয়ে lock করা আছে, তাই একই SR-এর দুই বিক্রি একসাথে
+            // এই চেক পার হতে পারে না। ফ্রি গিফট (প্রমোশন) আলাদা পথে কমে, তাই বাদ।
+            // product_id::text — ledger-এর কলাম টাইপ (uuid/int/text) যাই হোক, তুলনা কাজ করবে।
+            const requiredByProduct = new Map();
+            for (const it of processedItems) {
+                if (it.is_free_gift) continue;
+                const key = String(it.product_id);
+                const prev = requiredByProduct.get(key) || { qty: 0, name: it.product_name || it.name || key };
+                prev.qty += Number(it.qty) || 0;
+                requiredByProduct.set(key, prev);
+            }
+            if (requiredByProduct.size > 0) {
+                const stockRes = await client.query(
+                    `SELECT product_id::text AS pid, COALESCE(SUM(qty * direction), 0) AS in_hand
+                     FROM sr_stock_ledger
+                     WHERE worker_id = $1::uuid
+                       AND product_id::text = ANY($2::text[])
+                     GROUP BY product_id`,
+                    [req.user.id, [...requiredByProduct.keys()]]
+                );
+                const inHandMap = {};
+                for (const r of stockRes.rows) inHandMap[String(r.pid)] = Number(r.in_hand) || 0;
+
+                const shortages = [];
+                for (const [pid, need] of requiredByProduct) {
+                    const have = Math.max(0, inHandMap[pid] || 0);
+                    if (need.qty > have) {
+                        shortages.push(have === 0
+                            ? `${need.name}: আপনার হাতে নেই`
+                            : `${need.name}: হাতে ${have}টি, বিক্রি করতে চাইছেন ${need.qty}টি`);
+                    }
+                }
+                if (shortages.length > 0) {
+                    throw Object.assign(
+                        new Error('INSUFFICIENT_SR_STOCK'),
+                        {
+                            statusCode: 422,
+                            clientMessage: `আপনার হাতের স্টকের বেশি বিক্রি করা যাবে না।\n${shortages.join('\n')}`
+                        }
+                    );
+                }
+            }
+
             const verifyToken = crypto.randomBytes(32).toString('hex'); // 64-char unique token
 
             const result = await client.query(
@@ -791,7 +837,7 @@ const createSale = async (req, res) => {
         logger.error('❌ Create Sale Error:', error.message);
 
         // Known business errors — transaction-এর ভেতর থেকে throw হওয়া
-        const knownErrors = ['ORDER_UNAVAILABLE', 'CREDIT_LIMIT_EXCEEDED', 'CUSTOMER_NOT_FOUND', 'PROMOTION_UNAVAILABLE'];
+        const knownErrors = ['ORDER_UNAVAILABLE', 'CREDIT_LIMIT_EXCEEDED', 'CUSTOMER_NOT_FOUND', 'PROMOTION_UNAVAILABLE', 'INSUFFICIENT_SR_STOCK'];
         if (knownErrors.includes(error.message)) {
             return res.status(error.statusCode || 400).json({
                 success: false,
