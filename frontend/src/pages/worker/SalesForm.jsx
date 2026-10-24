@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../api/axios'
 import { useAppStore } from '../../store/app.store'
@@ -49,8 +49,11 @@ function calcFinalPrice(p) {
 }
 
 // ─── একটি পণ্য কার্ড ──────────────────────────────────────
-function ProductCard({ p, qty, onUpdate, isReplacement = false }) {
+function ProductCard({ p, qty, onUpdate, isReplacement = false, stock = null }) {
   const [expanded, setExpanded] = useState(false)
+  // stock = SR-এর হাতে থাকা পরিমাণ (null = জানা নেই → ব্লক করা হবে না, backend যাচাই করবে)
+  const outOfStock = stock !== null && stock <= 0
+  const atMax      = stock !== null && qty >= stock
   const finalPrice = calcFinalPrice(p)
   const hasDiscount = parseFloat(p.discount) > 0
   const hasVat      = parseFloat(p.vat)      > 0
@@ -58,7 +61,7 @@ function ProductCard({ p, qty, onUpdate, isReplacement = false }) {
   const hasExtras   = hasDiscount || hasVat || hasTax || p.description
 
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${qty > 0 ? 'border-primary/30' : 'border-gray-100'}`}>
+    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${qty > 0 ? 'border-primary/30' : 'border-gray-100'} ${outOfStock ? 'opacity-60 bg-gray-50' : ''}`}>
       <div className="p-4">
         <div className="flex items-center gap-3">
           {/* ছবি */}
@@ -78,6 +81,13 @@ function ProductCard({ p, qty, onUpdate, isReplacement = false }) {
           <div className="flex-1 min-w-0">
             <p className="font-semibold text-sm text-gray-800 leading-tight">{p.name}</p>
             <p className="text-xs text-gray-400 font-mono mt-0.5">{p.sku}</p>
+            {stock !== null && (
+              outOfStock
+                ? <span className="inline-block mt-1 text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-medium">🚫 আপনার হাতে নেই</span>
+                : <span className={`inline-block mt-1 text-[10px] px-1.5 py-0.5 rounded-full font-medium ${atMax ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                    হাতে {stock}টি{atMax ? ' (সর্বোচ্চ)' : ''}
+                  </span>
+            )}
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               {hasDiscount ? (
                 <>
@@ -115,7 +125,8 @@ function ProductCard({ p, qty, onUpdate, isReplacement = false }) {
             <span className={`w-7 text-center font-bold text-sm ${qty > 0 ? 'text-primary' : 'text-gray-300'}`}>{qty}</span>
             <button
               onClick={() => onUpdate(p.id, 1)}
-              className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary active:scale-95"
+              disabled={outOfStock || atMax}
+              className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary active:scale-95 disabled:opacity-30"
             >
               <FiPlus size={13} />
             </button>
@@ -165,6 +176,19 @@ export default function SalesForm() {
   const [customer,     setCustomer]     = useState(null)
   const [products,     setProducts]     = useState([])
   const productFilter = useProductFilter(products)   // ক্যাটাগরি / কোম্পানি / সার্চ ফিল্টার
+  const [srStock,     setSrStock]      = useState(null)   // { [product_id]: হাতের পরিমাণ } — null = জানা নেই
+  const [onlyInHand,  setOnlyInHand]   = useState(false)
+
+  // SR-এর হাতে আছে এমন পণ্য আগে, নেই এমন পণ্য নিচে (ধূসর + ব্লক)
+  const visibleProducts = useMemo(() => {
+    let list = productFilter.filtered
+    if (srStock) {
+      const have = (p) => srStock[String(p.id)] || 0
+      if (onlyInHand) list = list.filter(p => have(p) > 0)
+      list = [...list].sort((a, b) => (have(b) > 0) - (have(a) > 0))
+    }
+    return list
+  }, [productFilter.filtered, srStock, onlyInHand])
   const [selected,     setSelected]     = useState({})
   const [replacements, setReplacements] = useState({})
   const [paymentMethod, setPaymentMethod] = useState('cash')
@@ -200,6 +224,8 @@ export default function SalesForm() {
       // প্রথমে cache থেকে দেখাও (offline fast load)
       const cachedCustomer = await getCache(`customer_${customerId}`)
       const cachedProducts = await getCache('products_active')
+      const cachedStock    = await getCache('sr_stock_map')
+      if (cachedStock?.isToday) setSrStock(cachedStock.data)
       if (cachedCustomer?.isToday) setCustomer(cachedCustomer.data)
       if (cachedProducts?.isToday)  setProducts(cachedProducts.data)
       if (cachedCustomer?.isToday && cachedProducts?.isToday) setLoading(false)
@@ -216,6 +242,15 @@ export default function SalesForm() {
           saveCache(`customer_${customerId}`, custRes.data.data)
           saveCache('products_active', prodRes.data.data)
         } catch { /* cache দিয়েই চলবে */ }
+
+        // ── SR-এর হাতের স্টক লোড করো (প্রথম পেজেই ব্লক দেখানোর জন্য) ──
+        try {
+          const stockRes = await api.get('/ledger/stock')
+          const map = {}
+          ;(stockRes.data.items || []).forEach(i => { map[String(i.product_id)] = Number(i.in_hand_qty) || 0 })
+          setSrStock(map)
+          saveCache('sr_stock_map', map)
+        } catch { /* স্টক জানা না গেলে ব্লক হবে না — সাবমিটে backend যাচাই করবে */ }
 
         // ── বাকি সতর্কতা লোড করো ─────────────────────────────
         try {
@@ -656,16 +691,29 @@ export default function SalesForm() {
       {/* ── Products ── */}
       {step === 'products' && (
         <div className="space-y-3">
+          {srStock && (
+            <div className="flex items-center justify-between bg-emerald-50 border border-emerald-100 rounded-xl px-3 py-2">
+              <p className="text-xs text-emerald-700">
+                📦 আপনার হাতে <b>{Object.values(srStock).filter(v => v > 0).length}</b> ধরনের পণ্য আছে।
+                যে পণ্য হাতে নেই তা বিক্রি করা যাবে না।
+              </p>
+              <label className="flex items-center gap-1.5 text-[11px] text-emerald-800 font-medium flex-shrink-0 ml-2">
+                <input type="checkbox" checked={onlyInHand} onChange={e => setOnlyInHand(e.target.checked)} />
+                শুধু হাতের
+              </label>
+            </div>
+          )}
           <ProductFilterBar filter={productFilter} total={products.length} />
-          {productFilter.filtered.length === 0 && (
+          {visibleProducts.length === 0 && (
             <p className="text-center text-sm text-gray-400 py-8">এই ফিল্টারে কোনো পণ্য নেই</p>
           )}
-          {productFilter.filtered.map(p => (
+          {visibleProducts.map(p => (
             <ProductCard
               key={p.id}
               p={p}
               qty={selected[p.id] || 0}
               onUpdate={updateQty}
+              stock={srStock ? (srStock[String(p.id)] || 0) : null}
             />
           ))}
           <button onClick={() => setStep('replacement')}
