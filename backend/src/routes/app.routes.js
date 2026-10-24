@@ -12,8 +12,8 @@ const router  = express.Router()
 const GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/latest/download/app-release.apk'
 
 const APP_VERSION = {
-  versionCode: 318,
-  versionName: '1.0.318',
+  versionCode: 319,
+  versionName: '1.0.319',
   apkUrl: 'https://zovorix.onrender.com/api/app/download',
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
@@ -24,9 +24,9 @@ const APP_VERSION = {
 // GitHub Actions (build-customer-apk.yml) auto-update করবে
 // ─────────────────────────────────────────────────────────────
 // CUSTOMER_VERSION_CODE — এই comment টি রাখো, workflow grep করে এটা দিয়ে
-const CUSTOMER_VERSION_CODE = 406
-const CUSTOMER_VERSION_NAME = '1.0.406'
-const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/download/customer-v1.0.406/customer-release.apk'
+const CUSTOMER_VERSION_CODE = 407
+const CUSTOMER_VERSION_NAME = '1.0.407'
+const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/download/customer-v1.0.407/customer-release.apk'
 
 const CUSTOMER_APP_VERSION = {
   versionCode: CUSTOMER_VERSION_CODE,
