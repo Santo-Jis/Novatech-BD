@@ -22,8 +22,11 @@ const FRONTEND_URL = getPublicAppUrl();
 const formatPhoneForWA = (phone) => {
     if (!phone) return null;
     let d = String(phone).replace(/\D/g, '');
-    if (d.startsWith('01') && d.length === 11) d = '880' + d;
     if (d.startsWith('00')) d = d.slice(2);
+    // ✅ FIX: আগে '880' + '01XXXXXXXXX' = 88001XXXXXXXXX (বাড়তি 0, ভুল নম্বর) হতো
+    if (d.startsWith('880')) return d;
+    if (d.startsWith('0'))   return '880' + d.slice(1);
+    if (d.length === 10)     return '880' + d;
     return d;
 };
 
