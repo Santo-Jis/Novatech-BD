@@ -5,6 +5,7 @@ import { useAppStore } from '../../store/app.store'
 import toast from 'react-hot-toast'
 import { FiMinus, FiPlus, FiCheck, FiPackage, FiChevronDown, FiChevronUp, FiWifiOff } from 'react-icons/fi'
 import { enqueue, saveCache, getCache } from '../../api/offlineQueue'
+import ProductFilterBar, { useProductFilter } from '../../components/worker/ProductFilterBar'
 
 // ─── ছবি compress helper (max 1280px, max 8MB) ────────────
 function compressImage(file) {
@@ -163,6 +164,7 @@ export default function SalesForm() {
 
   const [customer,     setCustomer]     = useState(null)
   const [products,     setProducts]     = useState([])
+  const productFilter = useProductFilter(products)   // ক্যাটাগরি / কোম্পানি / সার্চ ফিল্টার
   const [selected,     setSelected]     = useState({})
   const [replacements, setReplacements] = useState({})
   const [paymentMethod, setPaymentMethod] = useState('cash')
@@ -654,7 +656,11 @@ export default function SalesForm() {
       {/* ── Products ── */}
       {step === 'products' && (
         <div className="space-y-3">
-          {products.map(p => (
+          <ProductFilterBar filter={productFilter} total={products.length} />
+          {productFilter.filtered.length === 0 && (
+            <p className="text-center text-sm text-gray-400 py-8">এই ফিল্টারে কোনো পণ্য নেই</p>
+          )}
+          {productFilter.filtered.map(p => (
             <ProductCard
               key={p.id}
               p={p}
@@ -673,7 +679,8 @@ export default function SalesForm() {
       {step === 'replacement' && (
         <div className="space-y-3">
           <p className="text-sm text-gray-500">কাস্টমার কোনো পণ্য ফেরত দিচ্ছেন?</p>
-          {products.map(p => (
+          <ProductFilterBar filter={productFilter} total={products.length} />
+          {productFilter.filtered.map(p => (
             <ProductCard
               key={p.id}
               p={p}

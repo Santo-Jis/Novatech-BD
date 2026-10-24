@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/app.store'
 import api, { isNetworkError } from '../../api/axios'
 import { enqueue, saveCache, getCache } from '../../api/offlineQueue'
+import ProductFilterBar, { useProductFilter } from '../../components/worker/ProductFilterBar'
 import { FiShoppingCart, FiPlus, FiMinus, FiSend, FiPackage, FiChevronDown, FiChevronUp } from 'react-icons/fi'
 import toast from 'react-hot-toast'
 
@@ -183,6 +184,7 @@ export default function OrderForm() {
   const navigate = useNavigate()
   const { selectedRoute } = useAppStore()
   const [products,   setProducts]   = useState([])
+  const productFilter = useProductFilter(products)   // ক্যাটাগরি / কোম্পানি / সার্চ ফিল্টার
   const [quantities, setQuantities] = useState({})
   const [loading,    setLoading]    = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -292,8 +294,13 @@ export default function OrderForm() {
         <p className="text-xs text-gray-500">{selectedRoute?.name || 'রুট সিলেক্ট করুন'}</p>
       </div>
 
+      <ProductFilterBar filter={productFilter} total={products.length} />
+
       <div className="space-y-3">
-        {products.map(p => (
+        {productFilter.filtered.length === 0 && (
+          <p className="text-center text-sm text-gray-400 py-8">এই ফিল্টারে কোনো পণ্য নেই</p>
+        )}
+        {productFilter.filtered.map(p => (
           <ProductCard
             key={p.id}
             p={p}
