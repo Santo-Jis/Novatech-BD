@@ -1,0 +1,894 @@
+const bcrypt    = require('bcryptjs');
+const crypto    = require('crypto');
+const jwt       = require('jsonwebtoken');
+const logger    = require('../config/logger');
+const { query } = require('../config/db');
+const {
+    generateAccessToken,
+    generateRefreshToken,
+    saveRefreshToken,
+    verifyRefreshToken,
+    deleteRefreshToken
+} = require('../services/auth.service');
+const { saveFCMToken: saveFCMTokenToDB, clearFCMToken } = require('../services/fcm.service');
+const { generateOTP } = require('../config/encryption');
+const { getTenantById } = require('../middlewares/tenantResolver'); // ✅ SaaS Phase 1: tenant suspend/cancel enforce
+
+// ──────────────────────────────────────────────────────────────
+// OTP HASH HELPER
+// Plain OTP ইমেইলে পাঠানো হয়, DB-তে শুধু hash রাখা হয়।
+// DB leak হলেও attacker সরাসরি OTP ব্যবহার করতে পারবে না।
+//
+// ✅ FIX: SHA-256 → HMAC-SHA256 (keyed hash)
+// আগে: crypto.createHash('sha256') — salt নেই, rainbow table দিয়ে
+//       ১ মিলিয়ন সম্ভাব্য OTP এক সেকেন্ডে crack করা যেত।
+// এখন: HMAC-SHA256 + ENCRYPTION_KEY — secret না জানলে
+//       precomputed table কোনো কাজে আসবে না।
+// ──────────────────────────────────────────────────────────────
+const hashOTP = (otp) => {
+    const secret = process.env.ENCRYPTION_KEY;
+    if (!secret) throw new Error('ENCRYPTION_KEY environment variable সেট নেই');
+    return crypto.createHmac('sha256', secret).update(String(otp)).digest('hex');
+};
+
+// ============================================================
+// LOGIN
+// POST /api/auth/login
+// ৩ ভাবে লগইন: ইমেইল / ফোন / কর্মী কোড + পাসওয়ার্ড
+// ============================================================
+
+const login = async (req, res) => {
+    try {
+        const { identifier, password } = req.body;
+
+        // ইনপুট যাচাই
+        if (!identifier || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'ইমেইল/ফোন/কোড এবং পাসওয়ার্ড দিন।'
+            });
+        }
+
+        // ইমেইল, ফোন বা কর্মী কোড দিয়ে খোঁজো
+        // ⚠️ SECURITY: basic_salary, outstanding_dues, manager_id — login response-এ দেওয়া হয় না।
+        // এগুলো sensitive — localStorage-এ যাওয়া উচিত নয়।
+        // Profile page /auth/me থেকে আলাদাভাবে নেয়, localStorage-এ সেভ হয় না।
+        const result = await query(
+            `SELECT id, role, employee_code, name_bn, name_en,
+                    email, phone, password_hash, status,
+                    profile_photo, tenant_id
+             FROM users
+             WHERE (email = $1 
+                OR phone = $1 
+                OR employee_code = $1)
+             AND tenant_id = $2`,
+            [identifier.trim(), req.tenantId]
+        );
+
+        // ইউজার না পেলে
+        if (result.rows.length === 0) {
+            return res.status(401).json({
+                success: false,
+                message: 'ইমেইল/ফোন/কোড বা পাসওয়ার্ড ভুল।'
+            });
+        }
+
+        const user = result.rows[0];
+
+        // পাসওয়ার্ড যাচাই
+        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+        if (!isPasswordValid) {
+            return res.status(401).json({
+                success: false,
+                message: 'ইমেইল/ফোন/কোড বা পাসওয়ার্ড ভুল।'
+            });
+        }
+
+        // ✅ SaaS Phase 1: প্রতিষ্ঠান (tenant) suspended/cancelled কিনা যাচাই
+        // fail-open: tenant row না পাওয়া গেলে বা DB সমস্যা হলে ব্লক করা হবে না।
+        try {
+            const tenant = await getTenantById(user.tenant_id);
+            if (tenant && (tenant.status === 'suspended' || tenant.status === 'cancelled')) {
+                return res.status(403).json({
+                    success: false,
+                    message: tenant.status === 'suspended'
+                        ? 'আপনার প্রতিষ্ঠানের অ্যাকাউন্ট সাময়িকভাবে বন্ধ। সাপোর্টের সাথে যোগাযোগ করুন।'
+                        : 'আপনার প্রতিষ্ঠানের সাবস্ক্রিপশন বাতিল হয়ে গেছে।',
+                    code: 'TENANT_INACTIVE'
+                });
+            }
+            // নতুন — ট্রায়াল শেষ হলে শুধু admin লগইন করতে পারবে (আপগ্রেড
+            // পেজের জন্য), বাকি সব role এখানেই ব্লক — middlewares/auth.js-এর
+            // সাথে হুবহু মেলানো লজিক (দুই জায়গায় দরকার: লগইনের মুহূর্তে
+            // এখানে, আর ইতিমধ্যে-লগইন-করা সেশনের জন্য ওখানে)। status-এর
+            // পাশাপাশি trial_ends_at সরাসরি তুলনা — jobs/trialExpiry.job.js
+            // ঘণ্টায় একবার চলে, তাই শুধু status-নির্ভর হলে সাময়িক ফাঁক থাকতো।
+            const isTrialExpired = tenant && (
+                tenant.status === 'trial_expired' ||
+                (tenant.status === 'trial' && tenant.trial_ends_at && new Date(tenant.trial_ends_at) < new Date())
+            );
+            if (isTrialExpired && user.role !== 'admin') {
+                return res.status(403).json({
+                    success: false,
+                    message: 'ফ্রি ট্রায়াল শেষ হয়ে গেছে। আপনার প্রতিষ্ঠানের Admin-কে প্ল্যান আপগ্রেড করতে বলুন।',
+                    code: 'TRIAL_EXPIRED'
+                });
+            }
+        } catch (tenantErr) {
+            logger.warn('⚠️ Login tenant status check failed (fail-open):', tenantErr.message);
+        }
+
+        // অ্যাকাউন্ট স্ট্যাটাস যাচাই
+        if (user.status === 'pending') {
+            return res.status(403).json({
+                success: false,
+                message: 'আপনার অ্যাকাউন্ট এখনো অনুমোদিত হয়নি। Admin এর সাথে যোগাযোগ করুন।'
+            });
+        }
+
+        if (user.status === 'suspended') {
+            return res.status(403).json({
+                success: false,
+                message: 'আপনার অ্যাকাউন্ট সাময়িকভাবে বন্ধ। Admin এর সাথে যোগাযোগ করুন।'
+            });
+        }
+
+        if (user.status === 'archived') {
+            return res.status(403).json({
+                success: false,
+                message: 'এই অ্যাকাউন্ট নিষ্ক্রিয়।'
+            });
+        }
+
+        // Token তৈরি
+        const accessToken  = generateAccessToken(user);
+        const refreshToken = generateRefreshToken(user);
+
+        // Refresh Token DB তে সেভ (fail হলেও login চলবে)
+        try {
+            await saveRefreshToken(user.id, refreshToken);
+        } catch (tokenErr) {
+            logger.warn('⚠️ RefreshToken save failed:', tokenErr.message);
+        }
+
+        // password_hash ও tenant_id বাদ দিয়ে response পাঠাও (response shape অপরিবর্তিত)
+        const { password_hash, tenant_id, ...userData } = user;
+
+        // ✅ FIX: refreshToken HttpOnly cookie-তে — XSS attack-এ JS দিয়ে
+        // পড়া সম্ভব নয়। accessToken memory/localStorage-এ থাকে (short-lived, 15m)।
+        const isProduction = process.env.NODE_ENV === 'production';
+        res.cookie('refreshToken', refreshToken, {
+            httpOnly:  true,                      // JS দিয়ে পড়া যাবে না
+            secure:    isProduction,              // production-এ HTTPS only
+            sameSite:  isProduction ? 'none' : 'lax', // cross-origin Render+Vercel
+            maxAge:    7 * 24 * 60 * 60 * 1000,  // ৭ দিন (ms)
+            path:      '/api/auth'                // শুধু auth route-এ যাবে
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: 'লগইন সফল।',
+            data: {
+                user:        userData,
+                accessToken
+                // refreshToken body-তে নেই — HttpOnly cookie-তে আছে
+            }
+        });
+
+    } catch (error) {
+        logger.error('❌ Login Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'লগইনে সমস্যা হয়েছে।'
+        });
+    }
+};
+
+// ============================================================
+// REFRESH TOKEN
+// POST /api/auth/refresh
+// Refresh Token দিয়ে নতুন Access Token নেওয়া
+// ============================================================
+
+const refresh = async (req, res) => {
+    try {
+        // ✅ FIX: refreshToken cookie থেকে নাও — body-তে নেই
+        const refreshToken = req.cookies?.refreshToken;
+
+        if (!refreshToken) {
+            return res.status(400).json({
+                success: false,
+                message: 'Refresh Token পাওয়া যায়নি। আবার লগইন করুন।'
+            });
+        }
+
+        // Token যাচাই ও user তথ্য নাও
+        const user = await verifyRefreshToken(refreshToken);
+
+        // নতুন Access Token তৈরি
+        const newAccessToken = generateAccessToken(user);
+
+        return res.status(200).json({
+            success: true,
+            message: 'নতুন টোকেন পাওয়া গেছে।',
+            data: {
+                accessToken: newAccessToken
+            }
+        });
+
+    } catch (error) {
+        return res.status(401).json({
+            success: false,
+            message: 'টোকেন রিফ্রেশ ব্যর্থ।'
+        });
+    }
+};
+
+// ============================================================
+// LOGOUT
+// POST /api/auth/logout
+// ============================================================
+
+const logout = async (req, res) => {
+    try {
+        // ✅ FIX: refreshToken cookie থেকে নাও।
+        // sendBeacon fallback-এ cookie automatically যায় (same-site request),
+        // তাই body parse করার দরকার নেই।
+        const refreshToken = req.cookies?.refreshToken;
+        const userId = req.user?.id;
+
+        // FCM token DB থেকে মুছে ফেলো — পরের user যেন notification না পায়
+        if (userId) {
+            await clearFCMToken(userId);
+        }
+
+        if (refreshToken) {
+            await deleteRefreshToken(refreshToken);
+        }
+
+        // cookie clear করো
+        const isProduction = process.env.NODE_ENV === 'production';
+        res.clearCookie('refreshToken', {
+            httpOnly: true,
+            secure:   isProduction,
+            sameSite: isProduction ? 'none' : 'lax',
+            path:     '/api/auth'
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: 'লগআউট সফল।'
+        });
+
+    } catch (error) {
+        logger.error('❌ Logout Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'লগআউটে সমস্যা হয়েছে।'
+        });
+    }
+};
+
+// ============================================================
+// ME
+// GET /api/auth/me
+// বর্তমান লগইন করা ইউজারের তথ্য
+// ============================================================
+
+const me = async (req, res) => {
+    try {
+        // ⚠️ SECURITY: /me response localStorage-এ সেভ হয় (fetchMe → auth.store)।
+        // তাই basic_salary, outstanding_dues, manager_id, nid এখানে নেই।
+        // এই sensitive fields দরকার হলে আলাদা protected API থেকে নাও।
+        const result = await query(
+            `SELECT id, role, employee_code, name_bn, name_en,
+                    email, phone, phone2, dob, gender,
+                    marital_status, permanent_address,
+                    current_address, district, thana,
+                    skills, education, experience,
+                    emergency_contact, profile_photo,
+                    join_date, status,
+                    created_at
+             FROM users
+             WHERE id = $1
+             AND tenant_id = $2`,
+            [req.user.id, req.tenantId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'ব্যবহারকারী পাওয়া যায়নি।'
+            });
+        }
+
+        const row = result.rows[0];
+
+        // emergency_contact DB-তে TEXT column, কিন্তু পুরনো dirty data
+        // JSON string হিসেবে থাকতে পারে (যেমন: '{"number":"017..."}')।
+        // এখানেই normalize করলে frontend সবসময় plain string পাবে।
+        if (row.emergency_contact && typeof row.emergency_contact === 'object') {
+            // jsonb কলাম — pg driver আগেই object বানিয়ে দেয়
+            const ec = row.emergency_contact;
+            row.emergency_contact = ec.number || ec.phone || ec.value || '';
+        } else if (row.emergency_contact) {
+            try {
+                const parsed = JSON.parse(row.emergency_contact);
+                if (typeof parsed === 'object' && parsed !== null) {
+                    row.emergency_contact =
+                        parsed.number || parsed.phone || parsed.value || '';
+                }
+                // JSON.parse('01700000000') → number type হয়ে যায়
+                if (typeof parsed === 'number') {
+                    row.emergency_contact = String(parsed);
+                }
+            } catch {
+                // valid plain string — কিছু করতে হবে না
+            }
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: row
+        });
+
+    } catch (error) {
+        logger.error('❌ Me Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'তথ্য আনতে সমস্যা হয়েছে।'
+        });
+    }
+};
+
+// ============================================================
+// CHANGE PASSWORD
+// PUT /api/auth/change-password
+// ============================================================
+
+const changePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({
+                success: false,
+                message: 'বর্তমান ও নতুন পাসওয়ার্ড দিন।'
+            });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: 'নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।'
+            });
+        }
+
+        // বর্তমান পাসওয়ার্ড যাচাই
+        const result = await query(
+            'SELECT password_hash FROM users WHERE id = $1',
+            [req.user.id]
+        );
+
+        const isValid = await bcrypt.compare(
+            currentPassword,
+            result.rows[0].password_hash
+        );
+
+        if (!isValid) {
+            return res.status(400).json({
+                success: false,
+                message: 'বর্তমান পাসওয়ার্ড ভুল।'
+            });
+        }
+
+        // নতুন পাসওয়ার্ড hash করো
+        const newHash = await bcrypt.hash(newPassword, 10); // 12→10: Render free CPU-তে 4x দ্রুত, security ঠিক আছে
+
+        await query(
+            'UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2',
+            [newHash, req.user.id]
+        );
+
+        return res.status(200).json({
+            success: true,
+            message: 'পাসওয়ার্ড পরিবর্তন সফল।'
+        });
+
+    } catch (error) {
+        logger.error('❌ Change Password Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'পাসওয়ার্ড পরিবর্তনে সমস্যা হয়েছে।'
+        });
+    }
+};
+
+// ============================================================
+// FORGOT PASSWORD - OTP পাঠাও
+// POST /api/auth/forgot-password
+// ============================================================
+
+const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ success: false, message: 'ইমেইল দিন।' });
+        }
+
+        // ইউজার আছে কিনা দেখো
+        const result = await query(
+            `SELECT id, name_bn, email, status FROM users WHERE email = $1
+             AND tenant_id = $2`,
+            [email.trim().toLowerCase(), req.tenantId]
+        );
+
+        // ✅ SECURITY: email enumeration বন্ধ।
+        // user না থাকলে বা inactive হলেও একই 200 response দেওয়া হচ্ছে।
+        // attacker বুঝতে পারবে না কোন email সিস্টেমে আছে।
+        if (result.rows.length === 0 || result.rows[0].status !== 'active') {
+            return res.status(200).json({ success: true, message: 'OTP আপনার ইমেইলে পাঠানো হয়েছে।' });
+        }
+
+        const user = result.rows[0];
+
+        // ─── FIX #3a: Secure OTP তৈরি ────────────────────────────
+        // আগে: Math.random() — cryptographically insecure
+        // এখন: generateOTP() — crypto.randomBytes() ব্যবহার করে,
+        //       encryption.js-এ আগে থেকেই আছে
+        const otp       = generateOTP(6);
+        const otpHash   = hashOTP(otp);          // DB-তে শুধু hash যাবে
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // ১০ মিনিট
+
+        // OTP DB তে সেভ করো (আগেরটা মুছে) — plain OTP নয়, hash রাখো
+        await query(`DELETE FROM password_reset_otps WHERE user_id = $1`, [user.id]);
+        await query(
+            `INSERT INTO password_reset_otps (user_id, otp, expires_at) VALUES ($1, $2, $3)`,
+            [user.id, otpHash, expiresAt]
+        );
+
+        // Email পাঠাও
+        const { sendEmail } = require('../services/email.service');
+        const html = `<div style="font-family:Arial;max-width:500px;margin:auto;border:1px solid #eee;border-radius:10px;overflow:hidden">
+          <div style="background:#1e3a8a;padding:20px;text-align:center">
+            <h2 style="color:white;margin:0">ZovoriX</h2>
+          </div>
+          <div style="padding:24px">
+            <p>আস্সালামু আলাইকুম <strong>${user.name_bn}</strong>,</p>
+            <p>আপনার পাসওয়ার্ড রিসেটের জন্য OTP কোড:</p>
+            <div style="background:#f0f4ff;border-radius:12px;padding:24px;margin:20px 0;text-align:center">
+              <p style="font-size:36px;font-weight:bold;letter-spacing:10px;color:#1e3a8a;margin:0">${otp}</p>
+            </div>
+            <p style="color:#e74c3c;font-size:13px">⚠️ এই কোডটি <strong>১০ মিনিট</strong> পর্যন্ত কার্যকর। কাউকে শেয়ার করবেন না।</p>
+            <div style="text-align:center;margin:20px 0">
+              <a href="https://zovorix.vercel.app" style="background:#1e3a8a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">🚀 অ্যাপে যান</a>
+            </div>
+            <p style="font-size:13px;color:#666;text-align:center"><a href="https://zovorix.vercel.app" style="color:#1e3a8a">https://zovorix.vercel.app</a></p>
+            <p>ধন্যবাদ,<br><strong>ZovoriX টিম</strong></p>
+          </div>
+        </div>`;
+
+        await sendEmail(user.email, 'ZovoriX - পাসওয়ার্ড রিসেট OTP 🔑', html, '', { type: 'otp', tenant_id: req.tenantId });
+
+        return res.status(200).json({ success: true, message: 'OTP আপনার ইমেইলে পাঠানো হয়েছে।' });
+
+    } catch (error) {
+        logger.error('❌ Forgot Password Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// VERIFY OTP
+// POST /api/auth/verify-otp
+// ============================================================
+
+const verifyOtp = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+
+        if (!email || !otp) {
+            return res.status(400).json({ success: false, message: 'ইমেইল ও OTP দিন।' });
+        }
+
+        const userResult = await query(`SELECT id FROM users WHERE email = $1
+             AND tenant_id = $2`, [email.trim().toLowerCase(), req.tenantId]);
+        // ✅ SECURITY: email enumeration বন্ধ — user না থাকলেও generic error
+        if (userResult.rows.length === 0) {
+            return res.status(400).json({ success: false, message: 'OTP ভুল অথবা মেয়াদ শেষ।' });
+        }
+
+        const userId = userResult.rows[0].id;
+
+        // ─── FIX #3b: Plain OTP নয়, hash দিয়ে DB compare করো ──
+        // আগে: WHERE otp = $2 (plain text match — DB leak = instant compromise)
+        // এখন: OTP-এর hash বের করে hash column-এর সাথে মেলাও
+        const otpHash = hashOTP(otp);
+
+        const otpResult = await query(
+            `SELECT * FROM password_reset_otps WHERE user_id = $1 AND otp = $2 AND expires_at > NOW() AND used = false`,
+            [userId, otpHash]
+        );
+
+        if (otpResult.rows.length === 0) {
+            return res.status(400).json({ success: false, message: 'OTP ভুল অথবা মেয়াদ শেষ।' });
+        }
+
+        // OTP সঠিক — reset_token তৈরি করো
+        const resetToken  = crypto.randomBytes(32).toString('hex');
+        const tokenExpiry = new Date(Date.now() + 15 * 60 * 1000); // ১৫ মিনিট
+
+        await query(
+            `UPDATE password_reset_otps SET used = true, reset_token = $1, token_expires_at = $2 WHERE user_id = $3 AND otp = $4`,
+            [resetToken, tokenExpiry, userId, otpHash]
+        );
+
+        return res.status(200).json({ success: true, message: 'OTP সঠিক।', data: { reset_token: resetToken } });
+
+    } catch (error) {
+        logger.error('❌ Verify OTP Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// RESET PASSWORD (OTP দিয়ে)
+// POST /api/auth/reset-password
+// ============================================================
+
+const resetPasswordWithOtp = async (req, res) => {
+    try {
+        const { email, reset_token, new_password } = req.body;
+
+        if (!email || !reset_token || !new_password) {
+            return res.status(400).json({ success: false, message: 'সব তথ্য দিন।' });
+        }
+
+        if (new_password.length < 6) {
+            return res.status(400).json({ success: false, message: 'পাসওয়ার্ড কমপক্ষে ৬ অক্ষরের হতে হবে।' });
+        }
+
+        const userResult = await query(`SELECT id FROM users WHERE email = $1
+             AND tenant_id = $2`, [email.trim().toLowerCase(), req.tenantId]);
+        // ✅ SECURITY: email enumeration বন্ধ — user না থাকলেও generic error
+        if (userResult.rows.length === 0) {
+            return res.status(400).json({ success: false, message: 'রিসেট টোকেন অবৈধ বা মেয়াদ শেষ।' });
+        }
+
+        const userId = userResult.rows[0].id;
+
+        const tokenResult = await query(
+            `SELECT * FROM password_reset_otps WHERE user_id = $1 AND reset_token = $2 AND token_expires_at > NOW() AND used = true`,
+            [userId, reset_token]
+        );
+
+        if (tokenResult.rows.length === 0) {
+            return res.status(400).json({ success: false, message: 'রিসেট টোকেন অবৈধ বা মেয়াদ শেষ।' });
+        }
+
+        // নতুন পাসওয়ার্ড সেভ
+        const newHash = await bcrypt.hash(new_password, 10); // 12→10: Render free CPU-তে 4x দ্রুত
+        await query(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2
+             AND tenant_id = $3`, [newHash, userId,
+                req.tenantId]);
+
+        // OTP রেকর্ড মুছে ফেলো
+        await query(`DELETE FROM password_reset_otps WHERE user_id = $1`, [userId]);
+
+        return res.status(200).json({ success: true, message: 'পাসওয়ার্ড সফলভাবে পরিবর্তন হয়েছে! এখন লগইন করুন।' });
+
+    } catch (error) {
+        logger.error('❌ Reset Password OTP Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// SAVE FCM TOKEN
+// POST /api/auth/fcm-token
+// ============================================================
+
+const saveFCMToken = async (req, res) => {
+    try {
+        const { fcmToken } = req.body;
+        const userId = req.user.id;
+
+        if (!fcmToken || typeof fcmToken !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: 'fcmToken প্রয়োজন'
+            });
+        }
+
+        await saveFCMTokenToDB(userId, fcmToken);
+
+        return res.json({
+            success: true,
+            message: 'FCM Token সেভ হয়েছে'
+        });
+    } catch (error) {
+        logger.error('❌ FCM Token Save Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'FCM Token সেভ ব্যর্থ'
+        });
+    }
+};
+
+// ============================================================
+// POST /api/auth/check-email
+// Google Login এর পর email দিয়ে user type চেক করবে
+// কাস্টমার → portal_jwt দেবে
+// কর্মী    → পাসওয়ার্ড চাইবে
+// অচেনা   → 404
+// ============================================================
+const checkEmailType = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({
+                success: false,
+                message: 'Email দেওয়া হয়নি।'
+            });
+        }
+
+        const cleanEmail = email.toLowerCase().trim();
+
+        // ১. কর্মী কিনা দেখো
+        // users টেবিলে is_active কলাম নেই — status দিয়ে চেক করো
+        const workerResult = await query(
+            `SELECT id, role, name_bn, status
+             FROM users
+             WHERE email = $1
+               AND status NOT IN ('archived', 'suspended')
+             AND tenant_id = $2`,
+            [cleanEmail, req.tenantId]
+        );
+
+        if (workerResult.rows.length > 0) {
+            const worker = workerResult.rows[0];
+
+            if (worker.status === 'pending') {
+                return res.status(403).json({
+                    success: false,
+                    type: 'blocked',
+                    message: 'আপনার অ্যাকাউন্ট অনুমোদিত হয়নি। Admin এর সাথে যোগাযোগ করুন।'
+                });
+            }
+
+            return res.status(200).json({
+                success: true,
+                type: 'worker',
+                message: 'কর্মী পাওয়া গেছে।',
+                data: { name: worker.name_bn, role: worker.role }
+            });
+        }
+
+        // ২. কাস্টমার কিনা দেখো
+        const customerResult = await query(
+            `SELECT id, shop_name, owner_name, customer_code
+             FROM customers
+             WHERE email = $1 AND is_active = true
+             AND tenant_id = $2`,
+            [cleanEmail, req.tenantId]
+        );
+
+        if (customerResult.rows.length > 0) {
+            const customer = customerResult.rows[0];
+
+            // ✅ FIX: Employee JWT_ACCESS_SECRET থেকে আলাদা secret ব্যবহার করো।
+            // একই secret হলে customer token দিয়ে employee route access সম্ভব।
+            const portalSecret = process.env.JWT_PORTAL_SECRET;
+            if (!portalSecret) {
+                logger.error('❌ JWT_PORTAL_SECRET environment variable সেট নেই!');
+                return res.status(500).json({ success: false, message: 'Server configuration error.' });
+            }
+            const portalJWT = jwt.sign(
+                { customer_id: customer.id, email: cleanEmail, type: 'customer_portal' },
+                portalSecret,
+                { expiresIn: '30d' }
+            );
+
+            return res.status(200).json({
+                success: true,
+                type: 'customer',
+                message: 'কাস্টমার পাওয়া গেছে।',
+                data: {
+                    portal_jwt:    portalJWT,
+                    customer_id:   customer.id,
+                    shop_name:     customer.shop_name,
+                    owner_name:    customer.owner_name,
+                    customer_code: customer.customer_code
+                }
+            });
+        }
+
+        // ৩. অচেনা
+        return res.status(404).json({
+            success: false,
+            type: 'unknown',
+            message: 'এই Email দিয়ে কোনো অ্যাকাউন্ট পাওয়া যায়নি।'
+        });
+
+    } catch (error) {
+        logger.error('❌ checkEmailType Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।'
+        });
+    }
+};
+
+// ============================================================
+// MY SENSITIVE INFO
+// GET /api/auth/my-sensitive-info
+// basic_salary, outstanding_dues, manager_id, nid — শুধু authenticated user নিজে দেখতে পারবে।
+// এই endpoint-এর response localStorage-এ সেভ করা যাবে না — component state-এ রাখতে হবে।
+// ============================================================
+
+const mySensitiveInfo = async (req, res) => {
+    try {
+        const result = await query(
+            `SELECT basic_salary, outstanding_dues, manager_id, nid
+             FROM users
+             WHERE id = $1
+             AND tenant_id = $2`,
+            [req.user.id, req.tenantId]
+        );
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'ব্যবহারকারী পাওয়া যায়নি।'
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: result.rows[0]
+        });
+
+    } catch (error) {
+        logger.error('❌ mySensitiveInfo Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'তথ্য আনতে সমস্যা হয়েছে।'
+        });
+    }
+};
+
+// ============================================================
+// CUSTOMER LOGIN
+// POST /api/auth/customer-login
+// কাস্টমার কোড + ফোন নম্বর দিয়ে কাস্টমার পোর্টালে লগইন
+// কারণ: customers টেবিলে password নেই —
+//        customer_code (কাস্টমার জানে) + phone (নিজের নম্বর) দিয়ে verify করা হয়
+// ============================================================
+
+const customerLogin = async (req, res) => {
+    try {
+        const { customer_code, phone } = req.body;
+
+        // ইনপুট যাচাই
+        if (!customer_code || !phone) {
+            return res.status(400).json({
+                success: false,
+                message: 'কাস্টমার কোড এবং ফোন নম্বর দিন।'
+            });
+        }
+
+        const cleanCode  = customer_code.trim().toUpperCase();
+        const cleanPhone = phone.trim().replace(/\s+/g, '');
+
+        // customer_code দিয়ে কাস্টমার খোঁজো
+        const result = await query(
+            `SELECT id, shop_name, owner_name, customer_code,
+                    whatsapp, sms_phone, email, is_active
+             FROM customers
+             WHERE customer_code = $1
+             AND tenant_id = $2`,
+            [cleanCode, req.tenantId]
+        );
+
+        // কাস্টমার না পেলে — generic error (code enumeration বন্ধ)
+        if (result.rows.length === 0) {
+            return res.status(401).json({
+                success: false,
+                message: 'কাস্টমার কোড বা ফোন নম্বর ভুল।'
+            });
+        }
+
+        const customer = result.rows[0];
+
+        // অ্যাকাউন্ট নিষ্ক্রিয় হলে
+        if (!customer.is_active) {
+            return res.status(403).json({
+                success: false,
+                message: 'আপনার অ্যাকাউন্ট নিষ্ক্রিয়। SR-এর সাথে যোগাযোগ করুন।'
+            });
+        }
+
+        // ফোন নম্বর নরমালাইজ করে তুলনা করো
+        // 01XXXXXXXXX এবং 8801XXXXXXXXX উভয়ই সমান মানা হবে
+        const normalize = (p) => {
+            if (!p) return '';
+            const digits = p.replace(/\D/g, '');
+            return digits.startsWith('880')
+                ? digits
+                : '880' + digits.replace(/^0/, '');
+        };
+
+        const inputNorm    = normalize(cleanPhone);
+        const whatsappNorm = normalize(customer.whatsapp);
+        const smsNorm      = normalize(customer.sms_phone);
+
+        // whatsapp বা sms_phone — যেকোনো একটা মিললেই হবে
+        const phoneMatched = (whatsappNorm && inputNorm === whatsappNorm)
+                          || (smsNorm      && inputNorm === smsNorm);
+
+        if (!phoneMatched) {
+            return res.status(401).json({
+                success: false,
+                message: 'কাস্টমার কোড বা ফোন নম্বর ভুল।'
+            });
+        }
+
+        // Portal JWT তৈরি (employee JWT থেকে আলাদা secret)
+        const portalSecret = process.env.JWT_PORTAL_SECRET;
+        if (!portalSecret) {
+            logger.error('❌ JWT_PORTAL_SECRET environment variable সেট নেই!');
+            return res.status(500).json({
+                success: false,
+                message: 'Server configuration error.'
+            });
+        }
+
+        const portalJWT = jwt.sign(
+            {
+                customer_id: customer.id,
+                email:       customer.email || null,
+                type:        'customer_portal'
+            },
+            portalSecret,
+            { expiresIn: '30d' }
+        );
+
+        logger.info(`✅ Customer Login: ${customer.customer_code} — ${customer.shop_name}`);
+
+        return res.status(200).json({
+            success: true,
+            message: 'লগইন সফল।',
+            data: {
+                portal_jwt:    portalJWT,
+                customer_id:   customer.id,
+                shop_name:     customer.shop_name,
+                owner_name:    customer.owner_name,
+                customer_code: customer.customer_code
+            }
+        });
+
+    } catch (error) {
+        logger.error('❌ Customer Login Error:', error.message);
+        return res.status(500).json({
+            success: false,
+            message: 'লগইনে সমস্যা হয়েছে।'
+        });
+    }
+};
+
+module.exports = {
+    login,
+    refresh,
+    logout,
+    me,
+    mySensitiveInfo,
+    changePassword,
+    forgotPassword,
+    verifyOtp,
+    resetPasswordWithOtp,
+    saveFCMToken,
+    checkEmailType,
+    customerLogin
+};
