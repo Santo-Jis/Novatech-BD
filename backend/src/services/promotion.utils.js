@@ -164,32 +164,48 @@ async function getEligiblePromotions({
                 }
                 break;
 
-            case 'buy_x_get_y':
-                if (promo.buy_quantity && promo.free_product_id && scopedQty >= promo.buy_quantity) {
-                    const freeQty = Math.floor(scopedQty / promo.buy_quantity) * (promo.free_quantity || 0);
-                    if (freeQty > 0) {
-                        const freeProdRes = await queryFn(
-                            `SELECT id, name, price, stock, reserved_stock
-                             FROM products WHERE id = $1 AND tenant_id = $2`,
-                            [promo.free_product_id, tenantId]
-                        );
-                        if (freeProdRes.rows.length) {
-                            const freeProd = freeProdRes.rows[0];
-                            const availableStock = (freeProd.stock || 0) - (freeProd.reserved_stock || 0);
-                            if (availableStock >= freeQty) {
-                                discountAmount = parseFloat(freeProd.price || 0) * freeQty;
-                                promoFreeItems = [{
-                                    product_id: freeProd.id,
-                                    name:       freeProd.name,
-                                    price:      parseFloat(freeProd.price || 0),
-                                    qty:        freeQty,
-                                }];
-                                message = `${promo.name}: ${freeQty}টা ${freeProd.name} ফ্রি 🎁`;
-                            }
+            case 'buy_x_get_y': {
+                // ✅ দুই ধরনের শর্ত:
+                //  (ক) পরিমাণ-ভিত্তিক — buy_quantity দেওয়া থাকলে: কার্টে অফারের পণ্য
+                //      buy_quantity টা বা তার বেশি হলে, প্রতি buy_quantity-তে free_quantity টা ফ্রি।
+                //  (খ) টাকা-ভিত্তিক — buy_quantity ফাঁকা কিন্তু min_order_amount দেওয়া থাকলে:
+                //      অফারের পণ্যের মোট দাম min_order_amount-এ পৌঁছালে free_quantity টা ফ্রি
+                //      (প্রতি অর্ডারে একবার)। আগে min_order_amount এই টাইপে একদমই
+                //      যাচাই হতো না, তাই "৩০০০ টাকার পণ্য কিনলে ফ্রি" অফার কখনো কাজ করত না।
+                const amountMode = !promo.buy_quantity && Number(promo.min_order_amount) > 0;
+                let freeQty = 0;
+                if (promo.free_product_id) {
+                    if (amountMode) {
+                        if (scopedTotal >= Number(promo.min_order_amount)) {
+                            freeQty = Number(promo.free_quantity || 0);
+                        }
+                    } else if (promo.buy_quantity && scopedQty >= promo.buy_quantity) {
+                        freeQty = Math.floor(scopedQty / promo.buy_quantity) * (promo.free_quantity || 0);
+                    }
+                }
+                if (freeQty > 0) {
+                    const freeProdRes = await queryFn(
+                        `SELECT id, name, price, stock, reserved_stock
+                         FROM products WHERE id = $1 AND tenant_id = $2`,
+                        [promo.free_product_id, tenantId]
+                    );
+                    if (freeProdRes.rows.length) {
+                        const freeProd = freeProdRes.rows[0];
+                        const availableStock = (freeProd.stock || 0) - (freeProd.reserved_stock || 0);
+                        if (availableStock >= freeQty) {
+                            discountAmount = parseFloat(freeProd.price || 0) * freeQty;
+                            promoFreeItems = [{
+                                product_id: freeProd.id,
+                                name:       freeProd.name,
+                                price:      parseFloat(freeProd.price || 0),
+                                qty:        freeQty,
+                            }];
+                            message = `${promo.name}: ${freeQty}টা ${freeProd.name} ফ্রি 🎁`;
                         }
                     }
                 }
                 break;
+            }
 
             case 'min_order':
                 if (scopedTotal >= promo.min_order_amount) {

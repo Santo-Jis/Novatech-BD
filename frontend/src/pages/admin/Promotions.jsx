@@ -101,8 +101,8 @@ export default function Promotions() {
         if (!form.name || !form.type || !form.start_date || !form.end_date) {
             return alert('নাম, ধরন ও তারিখ দিন।');
         }
-        if (form.type === 'buy_x_get_y' && (!form.buy_quantity || !form.free_quantity || !form.free_product_id)) {
-            return alert('কতটা কিনলে, কতটা ফ্রি, ও কোন পণ্য ফ্রি — তিনটাই দিন।');
+        if (form.type === 'buy_x_get_y' && ((!form.buy_quantity && !(Number(form.min_order_amount) > 0)) || !form.free_quantity || !form.free_product_id)) {
+            return alert('"কতটা কিনলে" (অথবা ন্যূনতম অর্ডার ৳), কতটা ফ্রি, ও কোন পণ্য ফ্রি — দিন।');
         }
         if (form.type === 'tiered_discount' && (!form.tiers || !form.tiers.length)) {
             return alert('অন্তত একটা স্ল্যাব যোগ করুন (কতটা হলে কত% ছাড়)।');
@@ -353,7 +353,7 @@ export default function Promotions() {
                                     <div className="space-y-2">
                                         <div className="grid grid-cols-2 gap-2">
                                             <input
-                                                type="number" placeholder="কতটা কিনলে"
+                                                type="number" placeholder="কতটা কিনলে (টাকার শর্ত হলে ফাঁকা)"
                                                 value={form.buy_quantity}
                                                 onChange={e => set('buy_quantity', e.target.value)}
                                                 className="border rounded-xl px-4 py-2.5 text-sm"
@@ -378,6 +378,9 @@ export default function Promotions() {
                                                 </option>
                                             ))}
                                         </select>
+                                        <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
+                                            💡 "কতটা কিনলে" মানে <b>পণ্যের সংখ্যা</b>, টাকা না। টাকার শর্ত চাইলে (যেমন ৩০০০ টাকার পণ্য কিনলে ফ্রি) "কতটা কিনলে" <b>ফাঁকা রাখুন</b> এবং নিচের "ন্যূনতম অর্ডার পরিমাণ ৳" ঘরে টাকা দিন। কতটা ফ্রি-তে সাধারণত ১ দিন।
+                                        </p>
                                         {!form.free_product_id && (
                                             <p className="text-xs text-red-500">
                                                 ⚠️ ফ্রি পণ্য বাছাই না করলে এই অফার সংরক্ষণ হলেও কার্যকর হবে না।

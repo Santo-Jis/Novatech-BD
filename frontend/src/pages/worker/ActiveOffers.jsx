@@ -79,7 +79,7 @@ export default function ActiveOffers() {
                             <div className="mt-3 bg-gray-50 rounded-xl p-3 text-sm">
                                 {offer.type === 'buy_x_get_y' && (
                                     <p className="text-green-700 font-medium">
-                                        🎁 {offer.buy_quantity}টা কিনলে {offer.free_quantity}টা{' '}
+                                        🎁 {offer.buy_quantity ? `${offer.buy_quantity}টা কিনলে` : `৳${Number(offer.min_order_amount)}-এর পণ্য কিনলে`} {offer.free_quantity}টা{' '}
                                         {offer.free_product_name || 'পণ্য'} ফ্রি পাবেন
                                     </p>
                                 )}

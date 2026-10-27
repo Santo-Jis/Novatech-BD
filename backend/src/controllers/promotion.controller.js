@@ -71,10 +71,10 @@ const createPromotion = async (req, res) => {
         // ✅ NEW: buy_x_get_y-এর জন্য free_product_id বাধ্যতামূলক — আগে এই
         // চেক না থাকায় free_product_id ছাড়াই promo তৈরি হয়ে যেত এবং
         // কখনো আসলে কার্যকর হতো না।
-        if (type === 'buy_x_get_y' && (!buy_quantity || !free_quantity || !free_product_id)) {
+        if (type === 'buy_x_get_y' && ((!buy_quantity && !(Number(min_order_amount) > 0)) || !free_quantity || !free_product_id)) {
             return res.status(400).json({
                 success: false,
-                message: 'Buy X Get Y-এর জন্য কতটা কিনলে, কতটা ফ্রি ও কোন পণ্য ফ্রি — তিনটাই আবশ্যক।'
+                message: 'Buy X Get Y-এর জন্য "কতটা কিনলে" (বা ন্যূনতম অর্ডার ৳), কতটা ফ্রি ও কোন পণ্য ফ্রি — আবশ্যক।'
             });
         }
 
@@ -218,15 +218,16 @@ const updatePromotion = async (req, res) => {
         // নাহলে এডিট করে চুপচাপ free_product_id ফাঁকা করে দিলে Phase ১-এ
         // ঠিক করা "ফ্রি প্রোডাক্ট ছাড়া অফার" বাগ আবার তৈরি হয়ে যেত।
         if (current.type === 'buy_x_get_y') {
-            const bxgyFields = ['buy_quantity','free_quantity','free_product_id'];
+            const bxgyFields = ['buy_quantity','free_quantity','free_product_id','min_order_amount'];
             const bxgyChanged = bxgyFields.some(k => fields[k] !== undefined);
             if (bxgyChanged) {
                 const mergedBxgy = {
                     buy_quantity:    fields.buy_quantity    !== undefined ? fields.buy_quantity    : current.buy_quantity,
                     free_quantity:   fields.free_quantity   !== undefined ? fields.free_quantity   : current.free_quantity,
                     free_product_id: fields.free_product_id !== undefined ? fields.free_product_id : current.free_product_id,
+                    min_order_amount: fields.min_order_amount !== undefined ? fields.min_order_amount : current.min_order_amount,
                 };
-                if (!mergedBxgy.buy_quantity || !mergedBxgy.free_quantity || !mergedBxgy.free_product_id) {
+                if ((!mergedBxgy.buy_quantity && !(Number(mergedBxgy.min_order_amount) > 0)) || !mergedBxgy.free_quantity || !mergedBxgy.free_product_id) {
                     return res.status(400).json({
                         success: false,
                         message: 'Buy X Get Y-এর কতটা কিনলে, কতটা ফ্রি ও কোন পণ্য ফ্রি — তিনটাই থাকতে হবে, ফাঁকা রাখা যাবে না।'

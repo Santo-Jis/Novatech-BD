@@ -633,7 +633,7 @@ export default function HomeFeed({ portalJWT }) {
                   )}
                   <p className="text-[12.5px] font-bold text-cp-warmth-700">
                     {offer.type === 'buy_x_get_y'
-                      ? `🎁 ${offer.buy_quantity}টা কিনলে ${offer.free_quantity}টা ${offer.free_product_name || 'পণ্য'} ফ্রি`
+                      ? `🎁 ${offer.buy_quantity ? `${offer.buy_quantity}টা কিনলে` : `৳${Number(offer.min_order_amount)}-এর পণ্য কিনলে`} ${offer.free_quantity}টা ${offer.free_product_name || 'পণ্য'} ফ্রি`
                       : offer.type === 'percent_off'
                       ? `💰 ${offer.discount_value}% ছাড়${offer.min_order_amount > 0 ? ` (ন্যূনতম ৳${offer.min_order_amount})` : ''}`
                       : offer.type === 'flat_off'
