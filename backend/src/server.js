@@ -406,6 +406,7 @@ const { startPostCleanupJob }        = require('./jobs/postCleanup.job');       
 const { startNotificationScheduleJob } = require('./jobs/notificationSchedule.job');   // ← নতুন
 const { startTenantInvoiceJob }      = require('./jobs/tenantInvoice.job');   // ← নতুন (বিলিং)
 const { startCommissionReconciliationJob } = require('./jobs/commissionReconciliation.job');   // ← নতুন (Phase ১, commission ledger)
+const { startPendingOrderReminderJob } = require('./jobs/pendingOrderReminder.job');   // ← নতুন (ই-কমার্স pending অর্ডার রিমাইন্ডার)
 
 
 // ============================================================
@@ -462,6 +463,7 @@ seedPlatformStaffFromEnv();
         startNotificationScheduleJob();   // ← নতুন
         startTenantInvoiceJob();   // ← নতুন (বিলিং)
         startCommissionReconciliationJob();   // ← নতুন (Phase ১, commission ledger)
+        startPendingOrderReminderJob();   // ← নতুন (প্রতি ৪ ঘণ্টা, শুধু দিনে)
 
         logger.info('✅ Background jobs চালু হয়েছে');
 

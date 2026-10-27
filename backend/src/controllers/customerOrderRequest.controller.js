@@ -8,6 +8,7 @@ const logger = require('../config/logger');
 
 const { query, withTransaction } = require('../config/db');
 const { sendPushToMany, sendCustomerPush } = require('../services/fcm.service');
+const { notifyNewOrderRequest } = require('../services/pendingOrderNotify.service');
 const { getResolvedPrices } = require('../services/priceList.utils'); // ← নতুন (Step ৫: মাল্টিপল প্রাইস লিস্ট)
 const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
 const { generateCustomerCode } = require('../services/employee.service');
@@ -235,6 +236,14 @@ const createOrderRequest = async (req, res) => {
             } catch (pushErr) {
                 logger.error('[OrderRequest] Push notification error:', pushErr.message);
             }
+        }
+
+        // ── Email + WhatsApp (Admin/Manager) — fire-and-forget, শুধু দিনের বেলা।
+        // ব্যর্থ হলেও অর্ডার/রেসপন্সে কোনো প্রভাব পড়ে না। রাতের অর্ডার
+        // পরদিন সকালের ৪-ঘণ্টা রিমাইন্ডারে যাবে। ──
+        for (const r of createdRequests) {
+            notifyNewOrderRequest({ tenantId: r.tenant_id, requestId: r.request_id })
+                .catch(err => logger.error('[OrderRequest] Email/WhatsApp notify error:', err.message));
         }
 
         const anyPending = createdRequests.some(r => r.has_pending_order);
