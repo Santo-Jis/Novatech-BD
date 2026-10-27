@@ -67,13 +67,17 @@ const createVisit = async (req, res) => {
 
         // কাস্টমারের GPS লোকেশন নাও
         const customer = await query(
-            'SELECT id, shop_name, location, whatsapp, sms_phone FROM customers WHERE id = $1',
+            'SELECT id, shop_name, location, whatsapp, sms_phone, route_id FROM customers WHERE id = $1',
             [customer_id]
         );
 
         if (customer.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
         }
+
+        // ✅ FIX: অ্যাপ route_id না পাঠালেও দোকানের নিজের রুট ধরা হবে,
+        // নাহলে রুটের ভিজিট কাউন্ট/শেষ ভিজিট সবসময় ০ দেখায়।
+        const effectiveRouteId = route_id || customer.rows[0].route_id || null;
 
         // লোকেশন যাচাই (৫ মিটারের মধ্যে)
         let locationMatched = false;
@@ -112,15 +116,16 @@ const createVisit = async (req, res) => {
         const result = await query(
             `INSERT INTO visits (worker_id, customer_id, route_id, will_sell,
               no_sell_reason, closed_shop_photo,
-              worker_location, location_matched, location_distance, tenant_id) VALUES ($1, $2, $3, $4, $5, $6,
+              worker_location, location_matched, location_distance, tenant_id, visit_date) VALUES ($1, $2, $3, $4, $5, $6,
               ${hasLocation ? 'ST_SetSRID(ST_MakePoint($7, $8), 4326)::geography' : 'NULL'},
-              ${hasLocation ? '$9, $10, $11' : '$7, $8, $9'})
+              ${hasLocation ? '$9, $10, $11' : '$7, $8, $9'},
+              (now() AT TIME ZONE 'Asia/Dhaka')::date)
              RETURNING id`,
             hasLocation
-                ? [req.user.id, customer_id, route_id || null,
+                ? [req.user.id, customer_id, effectiveRouteId,
                    willSell, no_sell_reason || null,
                    closedShopPhoto, rawLng, rawLat, locationMatched, distance, req.tenantId]
-                : [req.user.id, customer_id, route_id || null,
+                : [req.user.id, customer_id, effectiveRouteId,
                    willSell, no_sell_reason || null,
                    closedShopPhoto, locationMatched, distance, req.tenantId]
         );
@@ -559,6 +564,31 @@ const createSale = async (req, res) => {
                 }
             }
 
+            // ✅ FIX: সেল হলে সেই দোকানে ভিজিটও হয়েছে ধরা হবে।
+            // visit_id না এলে আজকের (BD) ভিজিট খুঁজে লিংক করো; না থাকলে নতুন ভিজিট তৈরি করো।
+            let resolvedVisitId = visit_id || null;
+            if (!resolvedVisitId) {
+                const todaysVisit = await client.query(
+                    `SELECT id FROM visits
+                     WHERE worker_id = $1 AND customer_id = $2
+                       AND visit_date = $3 AND tenant_id = $4
+                     ORDER BY created_at DESC LIMIT 1`,
+                    [req.user.id, customer_id, today, req.tenantId]
+                );
+                if (todaysVisit.rows.length > 0) {
+                    resolvedVisitId = todaysVisit.rows[0].id;
+                } else {
+                    const newVisit = await client.query(
+                        `INSERT INTO visits (worker_id, customer_id, route_id, will_sell, visit_date, tenant_id)
+                         SELECT $1, c.id, c.route_id, true, $3, $4
+                         FROM customers c WHERE c.id = $2
+                         RETURNING id`,
+                        [req.user.id, customer_id, today, req.tenantId]
+                    );
+                    resolvedVisitId = newVisit.rows[0]?.id || null;
+                }
+            }
+
             const verifyToken = crypto.randomBytes(32).toString('hex'); // 64-char unique token
 
             const result = await client.query(
@@ -573,7 +603,7 @@ const createSale = async (req, res) => {
                   idempotency_key, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
                  RETURNING *`,
                 [
-                    req.user.id, customer_id, visit_id || null, lockedOrderId,
+                    req.user.id, customer_id, resolvedVisitId, lockedOrderId,
                     // ✅ FIX: আগে date কলাম বাদ ছিল বলে DB-এর CURRENT_DATE default ব্যবহার
                     // হতো, যেটা UTC session timezone-এ চলে — রাত ১২টা-ভোর ৬টা BD সময়ে
                     // sale ভুল (আগের) দিনে জমা হতো (production data-তেই এর প্রমাণ পাওয়া

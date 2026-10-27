@@ -100,6 +100,7 @@ async function syncItem(item) {
 
       formData.append('customer_id', p.customer_id)
       formData.append('will_sell', p.will_sell)
+      if (p.route_id) formData.append('route_id', p.route_id)
       if (p.no_sell_reason) formData.append('no_sell_reason', p.no_sell_reason)
       if (p.latitude)  formData.append('latitude',  p.latitude)
       if (p.longitude) formData.append('longitude', p.longitude)

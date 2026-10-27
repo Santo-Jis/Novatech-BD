@@ -657,6 +657,7 @@ export default function VisitPage() {
           type: 'VISIT',
           payload: {
             customer_id:          id,
+            route_id:             selectedRoute?.id || undefined,
             will_sell,
             no_sell_reason:       no_sell_reason || undefined,
             latitude:             location?.latitude,
@@ -682,6 +683,7 @@ export default function VisitPage() {
       const formData = new FormData()
       formData.append('customer_id', id)
       formData.append('will_sell', will_sell)
+      if (selectedRoute?.id) formData.append('route_id', selectedRoute.id)
       if (no_sell_reason) formData.append('no_sell_reason', no_sell_reason)
       if (location) {
         formData.append('latitude',  location.latitude)
