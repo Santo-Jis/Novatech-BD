@@ -1,6 +1,6 @@
 const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
-const { getEligiblePromotions, needsApproval } = require('../services/promotion.utils');
+const { getEligiblePromotions, getCustomerTargetProgress, needsApproval } = require('../services/promotion.utils');
 const { uploadToCloudinary } = require('../services/employee.service'); // ← Phase ৫: banner upload-এর জন্য পুনঃব্যবহার
 
 // ============================================================
@@ -58,6 +58,7 @@ const createPromotion = async (req, res) => {
             start_date, end_date,
             max_uses, max_per_customer,
             promo_code, stackable, priority, tiers, budget_cap, // ← Phase ২
+            period_mode, // 🎯 টার্গেট গিফট: 'offer_period' | 'calendar_month'
         } = req.body;
         // নোট: discount_type ইচ্ছাকৃতভাবে বাদ — type (percent_off/flat_off)
         // ফিল্ডই percent-vs-flat ঠিক করে, discount_type কখনো কোনো discount
@@ -86,6 +87,17 @@ const createPromotion = async (req, res) => {
             });
         }
 
+        // 🎯 টার্গেট গিফট: টার্গেট ৳, গিফট পণ্য ও পরিমাণ আবশ্যক
+        if (type === 'target_gift' && (!(Number(min_order_amount) > 0) || !free_quantity || !free_product_id)) {
+            return res.status(400).json({
+                success: false,
+                message: 'টার্গেট গিফটের জন্য টার্গেট টাকা (ন্যূনতম অর্ডার ৳), গিফট পণ্য ও গিফটের পরিমাণ — তিনটাই দিন।'
+            });
+        }
+        if (period_mode && !['offer_period', 'calendar_month'].includes(period_mode)) {
+            return res.status(400).json({ success: false, message: 'মাসের ধরন ভুল।' });
+        }
+
         // ✅ NEW (Phase ৩ — Governance): বড় ছাড়/সীমাহীন বাজেট হলে সরাসরি লাইভ
         // না করে অনুমোদনের অপেক্ষায় রাখো। থ্রেশহোল্ড: promotion.utils.js →
         // APPROVAL_THRESHOLDS (needsApproval)।
@@ -104,10 +116,10 @@ const createPromotion = async (req, res) => {
                 max_uses, max_per_customer,
                 promo_code, stackable, priority, tiers, budget_cap,
                 is_active, approval_status, approval_reason,
-                created_by, tenant_id) VALUES (
+                created_by, tenant_id, period_mode) VALUES (
                 $1,$2,$3,$4,$5,$6,$7,$8,$9,
                 $10,$11,$12,$13,$14,$15,$16,$17,$18,
-                $19,$20,$21,$22,$23,$24,$25,$26,$27,$28) RETURNING *`,
+                $19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29) RETURNING *`,
             [
                 name, description, type,
                 buy_quantity || null, free_quantity || null, free_product_id || null,
@@ -127,7 +139,8 @@ const createPromotion = async (req, res) => {
                 budget_cap || null,
                 isActive, approvalStatus, approvalReason,
                 adminId,
-                req.tenantId  // SaaS: tenant_id = $28
+                req.tenantId,  // SaaS: tenant_id = $28
+                period_mode === 'calendar_month' ? 'calendar_month' : 'offer_period'  // $29
             ]
         );
 
@@ -188,6 +201,7 @@ const updatePromotion = async (req, res) => {
             'product_ids','route_ids','customer_ids','category_ids',
             'min_order_amount','min_order_qty',
             'promo_code','stackable','priority','tiers','budget_cap', // ← Phase ২
+            'period_mode', // 🎯 টার্গেট গিফট
             'buy_quantity','free_quantity','free_product_id', // ✅ FIX: এই তিনটা কখনো এখানে ছিলই না
             // (Phase ১-এর আগে থেকেই) — Buy X Get Y তৈরির পর এডিট করা যেত না।
         ];
@@ -217,6 +231,23 @@ const updatePromotion = async (req, res) => {
         // promotion-টা buy_x_get_y হলে merged state-এ তিনটাই থাকতে হবে —
         // নাহলে এডিট করে চুপচাপ free_product_id ফাঁকা করে দিলে Phase ১-এ
         // ঠিক করা "ফ্রি প্রোডাক্ট ছাড়া অফার" বাগ আবার তৈরি হয়ে যেত।
+        if (current.type === 'target_gift') {
+            const tgFields = ['min_order_amount','free_quantity','free_product_id'];
+            if (tgFields.some(k => fields[k] !== undefined)) {
+                const m = {
+                    min_order_amount: fields.min_order_amount !== undefined ? fields.min_order_amount : current.min_order_amount,
+                    free_quantity:    fields.free_quantity    !== undefined ? fields.free_quantity    : current.free_quantity,
+                    free_product_id:  fields.free_product_id  !== undefined ? fields.free_product_id  : current.free_product_id,
+                };
+                if (!(Number(m.min_order_amount) > 0) || !m.free_quantity || !m.free_product_id) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'টার্গেট গিফটের টার্গেট ৳, গিফট পণ্য ও পরিমাণ ফাঁকা রাখা যাবে না।'
+                    });
+                }
+            }
+        }
+
         if (current.type === 'buy_x_get_y') {
             const bxgyFields = ['buy_quantity','free_quantity','free_product_id','min_order_amount'];
             const bxgyChanged = bxgyFields.some(k => fields[k] !== undefined);
@@ -336,7 +367,7 @@ const getActivePromotions = async (req, res) => {
                     fp.name AS free_product_name,
                     p.discount_value, p.tiers, p.banner_image_url,
                     p.min_order_amount, p.min_order_qty,
-                    p.apply_to, p.product_ids, p.route_ids,
+                    p.apply_to, p.product_ids, p.route_ids, p.period_mode,
                     p.start_date, p.end_date
              FROM promotions p
              LEFT JOIN products fp ON fp.id = p.free_product_id
@@ -371,7 +402,7 @@ const calculatePromotions = async (req, res) => {
         // (আগে এখানে যা ছিল: tenant_id ফিল্টার ছিল না, client-পাঠানো
         //  item.price বিশ্বাস করা হতো, free_product_id/stock guard ছিল না,
         //  max_per_customer কখনো চেক হতো না — সবগুলো এখন ঠিক করা হয়েছে।)
-        const { applicable, payableDiscount, freeItems } = await getEligiblePromotions({
+        const { applicable, payableDiscount, freeItems, progress } = await getEligiblePromotions({
             queryFn:    query,
             tenantId:   req.tenantId,
             items,
@@ -394,6 +425,7 @@ const calculatePromotions = async (req, res) => {
                 // আইটেম বাদে — সেটা free_items-এ আলাদাভাবে দেখানো হচ্ছে)
                 total_discount: payableDiscount,
                 free_items:     freeItems,
+                target_progress: progress || [],   // 🎯 টার্গেট গিফট প্রগ্রেস
             }
         });
 
@@ -772,7 +804,7 @@ const getPortalActivePromotions = async (req, res) => {
         const result = await query(
             `SELECT p.id, p.name, p.description, p.type, p.banner_image_url,
                     p.buy_quantity, p.free_quantity, fp.name AS free_product_name,
-                    p.discount_value, p.min_order_amount,
+                    p.discount_value, p.min_order_amount, p.period_mode,
                     p.start_date, p.end_date
              FROM promotions p
              LEFT JOIN products fp ON fp.id = p.free_product_id
@@ -840,7 +872,8 @@ const calculatePortalPromotions = async (req, res) => {
             applicable:      [...acc.applicable, ...r.applicable],
             payableDiscount: acc.payableDiscount + r.payableDiscount,
             freeItems:       [...acc.freeItems, ...r.freeItems],
-        }), { applicable: [], payableDiscount: 0, freeItems: [] });
+            progress:        [...acc.progress, ...(r.progress || [])],
+        }), { applicable: [], payableDiscount: 0, freeItems: [], progress: [] });
 
         // ✅ (ফেজ ৩ — কুপন-কোড): promo_code দেওয়া থাকলে, কোনো tenant-এর
         // promotions-এ ওই কোড আদৌ আছে কিনা (শর্ত পূরণ হোক বা না হোক) —
@@ -872,6 +905,7 @@ const calculatePortalPromotions = async (req, res) => {
                 // মূল্য বাদে, সেটা free_items-এ আলাদাভাবে আছে)
                 total_discount: Math.round(combined.payableDiscount * 100) / 100,
                 free_items:     combined.freeItems,
+                target_progress: combined.progress,
                 code_matched:   codeMatched,
             }
         });
@@ -879,6 +913,31 @@ const calculatePortalPromotions = async (req, res) => {
     } catch (err) {
         logger.error('[Promotion] calculatePortalPromotions error:', err.message);
         return res.status(500).json({ success: false, message: 'ছাড় হিসাব করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET /api/portal/promotions/target-progress
+// 🎯 কাস্টমারের চলমান সব টার্গেট-গিফট অফারের প্রগ্রেস (কার্ট ছাড়া) —
+// হোম ফিডে "আর ৳X কিনলেই গিফট" বার দেখানোর জন্য।
+// ============================================================
+const getPortalTargetProgress = async (req, res) => {
+    try {
+        const { customer_id } = req.portalUser;
+        const custRes = await query(
+            `SELECT route_id FROM customers WHERE id = $1 AND tenant_id = $2`,
+            [customer_id, req.tenantId]
+        );
+        const data = await getCustomerTargetProgress({
+            queryFn:    query,
+            tenantId:   req.tenantId,
+            customerId: customer_id,
+            routeId:    custRes.rows[0]?.route_id || null,
+        });
+        return res.json({ success: true, data });
+    } catch (err) {
+        logger.error('[Promotion] getPortalTargetProgress error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
 
@@ -894,6 +953,7 @@ module.exports = {
     getPortalActivePromotions, // ← Phase ৫
     calculatePromotions,
     calculatePortalPromotions, // ✅ NEW (ফেজ ০/৩ — পোর্টাল multi-vendor checkout প্রিভিউ)
+    getPortalTargetProgress,   // 🎯 টার্গেট গিফট প্রগ্রেস (পোর্টাল)
     getPromotionReport,
     getPromotionsDashboardSummary,
 };

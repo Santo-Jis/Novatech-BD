@@ -278,6 +278,7 @@ export default function HomeFeed({ portalJWT }) {
   // ✅ NEW (Phase ৫): "মার্কেটিং অফার" আগে placeholder ছিল, এখন আসল ডেটা
   const [offers,        setOffers]        = useState([])
   const [offersLoading, setOffersLoading] = useState(true)
+  const [targetProgress, setTargetProgress] = useState({}) // 🎯 টার্গেট গিফট প্রগ্রেস (promotion_id → তথ্য)
 
   // ✅ NEW (ফেজ ১) — কোম্পানির পোস্ট
   const [posts,        setPosts]        = useState([])
@@ -484,6 +485,19 @@ export default function HomeFeed({ portalJWT }) {
     return () => { cancelled = true }
   }, [portalJWT])
 
+  // 🎯 টার্গেট গিফট — এখন পর্যন্ত কত কিনেছে (চুপচাপ ব্যর্থ হলে শুধু বার দেখাবে না)
+  useEffect(() => {
+    let cancelled = false
+    portalFetch('/portal/promotions/target-progress', {
+      headers: { Authorization: `Bearer ${portalJWT}` }
+    })
+      .then(res => {
+        if (!cancelled) setTargetProgress(Object.fromEntries((res.data || []).map(t => [t.promotion_id, t])))
+      })
+      .catch(() => { if (!cancelled) setTargetProgress({}) })
+    return () => { cancelled = true }
+  }, [portalJWT])
+
   // ✅ NEW (ফেজ ১)
   useEffect(() => {
     let cancelled = false
@@ -632,8 +646,8 @@ export default function HomeFeed({ portalJWT }) {
                     <p className="text-[11.5px] text-cp-text-muted leading-relaxed mb-1.5">{offer.description}</p>
                   )}
                   <p className="text-[12.5px] font-bold text-cp-warmth-700">
-                    {offer.type === 'buy_x_get_y'
-                      ? `🎁 ${offer.buy_quantity ? `${offer.buy_quantity}টা কিনলে` : `৳${Number(offer.min_order_amount)}-এর পণ্য কিনলে`} ${offer.free_quantity}টা ${offer.free_product_name || 'পণ্য'} ফ্রি`
+                    {(offer.type === 'buy_x_get_y' || offer.type === 'target_gift')
+                      ? `🎁 ${offer.type === 'target_gift' ? `${offer.period_mode === 'calendar_month' ? 'মাসে' : 'মেয়াদে'} মোট ৳${Number(offer.min_order_amount)} কিনলে` : offer.buy_quantity ? `${offer.buy_quantity}টা কিনলে` : `৳${Number(offer.min_order_amount)}-এর পণ্য কিনলে`} ${offer.free_quantity}টা ${offer.free_product_name || 'পণ্য'} ফ্রি`
                       : offer.type === 'percent_off'
                       ? `💰 ${offer.discount_value}% ছাড়${offer.min_order_amount > 0 ? ` (ন্যূনতম ৳${offer.min_order_amount})` : ''}`
                       : offer.type === 'flat_off'
@@ -644,6 +658,31 @@ export default function HomeFeed({ portalJWT }) {
                       ? '📊 যত বেশি কিনবেন, তত বেশি ছাড়'
                       : 'বিশেষ অফার'}
                   </p>
+                  {offer.type === 'target_gift' && targetProgress[offer.id] && (() => {
+                    const tp  = targetProgress[offer.id]
+                    const pct = Math.min(100, Math.round((tp.achieved / tp.target) * 100))
+                    return (
+                      <div className="mt-2">
+                        {tp.already_given ? (
+                          <p className="text-[11.5px] font-semibold text-cp-trust-700">
+                            🎉 {tp.period_mode === 'calendar_month' ? 'এই মাসের' : 'এই অফারের'} গিফট পেয়ে গেছেন
+                          </p>
+                        ) : (
+                          <>
+                            <div style={{ height: 8, borderRadius: 999, background: '#e5e7eb', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${pct}%`, background: '#b45309', borderRadius: 999 }} />
+                            </div>
+                            <p className="text-[11px] text-cp-text-muted mt-1">
+                              ৳{Math.round(tp.achieved).toLocaleString()} / ৳{Math.round(tp.target).toLocaleString()}
+                              {tp.reached
+                                ? ' — টার্গেট পূর্ণ! পরের কেনাকাটায় গিফট পাবেন'
+                                : ` — আর ৳${Math.round(tp.remaining).toLocaleString()} কিনলেই ${tp.gift_qty}টা ${tp.gift_name} গিফট`}
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    )
+                  })()}
                   <p className="text-[10px] text-cp-text-muted mt-1">
                     {fmtDate(offer.start_date)} — {fmtDate(offer.end_date)} পর্যন্ত
                   </p>

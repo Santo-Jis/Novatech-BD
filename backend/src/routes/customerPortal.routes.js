@@ -104,7 +104,7 @@ const {
 const { sendCreditReminder } = require('../controllers/creditReminder.controller');
 // ✅ getPortalActivePromotions ইতিমধ্যে আছে (Promotions Phase ৫) — শুধু
 // calculatePortalPromotions যোগ করা হলো (ফেজ ০ — checkout discount calc)
-const { getPortalActivePromotions, calculatePortalPromotions } = require('../controllers/promotion.controller'); // ← Promotions Phase ৫ + ✅ NEW (ফেজ ০)
+const { getPortalActivePromotions, calculatePortalPromotions, getPortalTargetProgress } = require('../controllers/promotion.controller'); // ← Promotions Phase ৫ + ✅ NEW (ফেজ ০)
 const {
     getNotifications,
     markAllRead,
@@ -417,6 +417,7 @@ router.get('/payment-info',                portalAuth, getTenantPaymentInfo); //
 router.get('/product-sellers',             portalAuth, getProductSellers); // ✅ NEW (পার্ট ৩)
 router.get('/promotions/active',           portalAuth, getPortalActivePromotions); // ← Promotions Phase ৫
 router.post('/promotions/calculate',       portalAuth, calculatePortalPromotions); // ✅ NEW (ফেজ ০)
+router.get('/promotions/target-progress',  portalAuth, getPortalTargetProgress);   // 🎯 টার্গেট গিফট প্রগ্রেস
 router.get('/company-posts',               portalAuth, getPortalCompanyPosts); // ✅ NEW (ফেজ ১)
 router.post('/company-posts/:id/react',    portalAuth, reactToCompanyPost);  // ✅ NEW (Redesign Phase ১)
 router.post('/company-posts/:id/report',   portalAuth, reportCompanyPost);   // ✅ NEW (Redesign Phase ১)

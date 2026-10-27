@@ -8,6 +8,7 @@ const typeLabel = {
     flat_off        : '৳ ছাড়',
     min_order       : '🛒 ন্যূনতম অর্ডার',
     tiered_discount : '📊 স্ল্যাব ছাড়', // ← Phase ২-তে যোগ হয়েছিল, এখানে যোগ করতে ভুলে গিয়েছিলাম
+    target_gift     : '🎯 টার্গেট গিফট',
 };
 
 const typeColor = {
@@ -16,6 +17,7 @@ const typeColor = {
     flat_off        : 'bg-purple-100 text-purple-700',
     min_order       : 'bg-yellow-100 text-yellow-700',
     tiered_discount : 'bg-indigo-100 text-indigo-700',
+    target_gift     : 'bg-amber-100 text-amber-700',
 };
 // নোট: 'bundle' টাইপ আগে এখানে ছিল, কিন্তু Admin-এর Create ফর্মে এই
 // অপশনই ছিল না (তৈরি করা যেত না) এবং calculatePromotions-ও এটা হ্যান্ডেল
@@ -77,9 +79,9 @@ export default function ActiveOffers() {
 
                             {/* Offer details */}
                             <div className="mt-3 bg-gray-50 rounded-xl p-3 text-sm">
-                                {offer.type === 'buy_x_get_y' && (
+                                {(offer.type === 'buy_x_get_y' || offer.type === 'target_gift') && (
                                     <p className="text-green-700 font-medium">
-                                        🎁 {offer.buy_quantity ? `${offer.buy_quantity}টা কিনলে` : `৳${Number(offer.min_order_amount)}-এর পণ্য কিনলে`} {offer.free_quantity}টা{' '}
+                                        🎁 {offer.type === 'target_gift' ? `${offer.period_mode === 'calendar_month' ? 'মাসে' : 'মেয়াদে'} মোট ৳${Number(offer.min_order_amount)} কিনলে` : offer.buy_quantity ? `${offer.buy_quantity}টা কিনলে` : `৳${Number(offer.min_order_amount)}-এর পণ্য কিনলে`} {offer.free_quantity}টা{' '}
                                         {offer.free_product_name || 'পণ্য'} ফ্রি পাবেন
                                     </p>
                                 )}

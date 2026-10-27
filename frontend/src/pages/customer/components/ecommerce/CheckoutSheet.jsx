@@ -337,6 +337,18 @@ export default function CheckoutSheet({
                 <p className="text-[12px] text-cp-text-secondary font-cp-body px-1">কোডটি সঠিক, কিন্তু এখনো শর্ত পূরণ হয়নি (যেমন ন্যূনতম অর্ডার-মূল্য)</p>
               ) : null}
 
+              {/* 🎯 টার্গেট গিফট প্রগ্রেস — এই অর্ডারসহ কত হলো, আর কত বাকি */}
+              {(promotionInfo?.target_progress || []).map(tp => (
+                <div key={tp.promotion_id} className="bg-cp-warmth-100 rounded-xl p-3">
+                  <p className="text-[12px] text-cp-warmth-700 font-cp-body leading-relaxed">
+                    🎯 {tp.name}: ৳{Math.round(tp.achieved).toLocaleString()} / ৳{Math.round(tp.target).toLocaleString()}
+                    {tp.reached
+                      ? ` — টার্গেট পূর্ণ! ${tp.gift_qty}টা ${tp.gift_name} গিফট পাবেন`
+                      : ` — আর ৳${Math.round(tp.remaining).toLocaleString()} কিনলে ${tp.gift_qty}টা ${tp.gift_name} গিফট`}
+                  </p>
+                </div>
+              ))}
+
               {/* দামের ব্রেকডাউন */}
               <div className="bg-cp-bg-alt rounded-xl p-3.5 flex flex-col gap-1.5">
                 <PriceRow label="সাব-টোটাল" value={subtotal} />

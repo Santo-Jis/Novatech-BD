@@ -726,6 +726,14 @@ export default function SalesForm() {
                 ফ্রি পাবেন: {promoPreview.free_items.map(fi => `${fi.qty} x ${fi.name}`).join(', ')}
               </div>
             )}
+            {(promoPreview?.target_progress || []).map(tp => (
+              <div key={tp.promotion_id} className={`text-xs rounded-lg px-3 py-2 ${tp.reached ? 'text-green-700 bg-green-50' : 'text-amber-700 bg-amber-50'}`}>
+                🎯 {tp.name}: ৳{Math.round(tp.achieved).toLocaleString()} / ৳{Math.round(tp.target).toLocaleString()}
+                {tp.reached
+                  ? ` — টার্গেট পূর্ণ! ${tp.gift_qty}টা ${tp.gift_name} গিফট পাবেন`
+                  : ` — আর ৳${Math.round(tp.remaining).toLocaleString()} কিনলে ${tp.gift_qty}টা ${tp.gift_name} গিফট`}
+              </div>
+            ))}
             {promoCode && promoPreview && !promotionDiscount && !promoPreview.free_items?.length && (
               <p className="text-xs text-red-500">কোডটা মিলছে না বা মেয়াদ শেষ — বানান চেক করুন।</p>
             )}

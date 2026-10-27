@@ -19,6 +19,98 @@
  */
 
 /**
+ * 🎯 টার্গেট গিফট — একটা কাস্টমারের নির্দিষ্ট সময়ের (ক্যালেন্ডার মাস বা অফারের
+ * শুরু–শেষ তারিখ) আগের কেনাকাটার যোগফল + এই সময়ে গিফট আগেই পেয়েছে কি না।
+ *
+ * - শুধু অফারের পণ্য/ক্যাটাগরির (apply_to='specific_products') দাম গোনা হয়;
+ *   apply_to='all' হলে সব পণ্য। ফ্রি-গিফট লাইন (is_free_gift) বাদ।
+ * - সময় SQL-এ Asia/Dhaka ধরে হিসাব হয়, তাই UTC/BD তারিখের গোলমাল নেই।
+ * - এখনকার (এখনো save না হওয়া) ইনভয়েস এই যোগফলে নেই — সেটা কলার যোগ করে।
+ */
+async function getTargetPeriodData({ queryFn, promo, tenantId, customerId }) {
+    const scoped = promo.apply_to === 'specific_products';
+    const res = await queryFn(
+        `WITH pr AS (
+            SELECT id, tenant_id,
+                   CASE WHEN period_mode = 'calendar_month'
+                        THEN date_trunc('month', now() AT TIME ZONE 'Asia/Dhaka')::date
+                        ELSE start_date END AS p_start,
+                   CASE WHEN period_mode = 'calendar_month'
+                        THEN (date_trunc('month', now() AT TIME ZONE 'Asia/Dhaka') + interval '1 month - 1 day')::date
+                        ELSE end_date END AS p_end
+            FROM promotions WHERE id = $1 AND tenant_id = $2
+        )
+        SELECT pr.p_start::text AS p_start, pr.p_end::text AS p_end,
+               GREATEST(0,
+                 COALESCE((
+                   SELECT SUM(COALESCE((it->>'subtotal')::numeric,
+                                       (it->>'price')::numeric * (it->>'qty')::numeric, 0))
+                   FROM sales_transactions st
+                   CROSS JOIN LATERAL jsonb_array_elements(
+                        CASE WHEN jsonb_typeof(st.items) = 'array' THEN st.items ELSE '[]'::jsonb END) it
+                   LEFT JOIN products p ON p.id::text = it->>'product_id'
+                   WHERE st.tenant_id = pr.tenant_id
+                     AND st.customer_id = $3
+                     AND st.date BETWEEN pr.p_start AND pr.p_end
+                     AND COALESCE((it->>'is_free_gift')::boolean, false) = false
+                     AND ($4::boolean = false
+                          OR it->>'product_id' = ANY($5::text[])
+                          OR p.category_id::text = ANY($6::text[]))
+                 ), 0)
+                 -- ↓ অনুমোদিত/সম্পন্ন "ফেরত" (type='return') বাদ। রিপ্লেসমেন্ট বাদ যায় না
+                 --   (পণ্য বদলায়, কেনা বাতিল হয় না)। ফেরতটা কোন তারিখের বিক্রির, সেই
+                 --   বিক্রির তারিখ দিয়ে সময়কাল মেলানো হয়; বিক্রি খুঁজে না পেলে ফেরতের তারিখ।
+                 - COALESCE((
+                   SELECT SUM(COALESCE((it->>'subtotal')::numeric,
+                                       (it->>'unit_price')::numeric * (it->>'qty')::numeric, 0))
+                   FROM (
+                       SELECT rr.items,
+                              COALESCE(s1.date, (rr.created_at AT TIME ZONE 'Asia/Dhaka')::date) AS ref_date
+                       FROM return_requests rr
+                       LEFT JOIN sales_transactions s1 ON s1.id = rr.sale_id
+                       WHERE rr.tenant_id = pr.tenant_id AND rr.customer_id = $3
+                         AND rr.type = 'return' AND rr.status IN ('approved', 'completed')
+                       UNION ALL
+                       SELECT crr.items,
+                              COALESCE(s2.date, (crr.created_at AT TIME ZONE 'Asia/Dhaka')::date)
+                       FROM customer_return_requests crr
+                       LEFT JOIN sales_transactions s2
+                              ON s2.tenant_id = crr.tenant_id AND s2.invoice_number = crr.invoice_number
+                       WHERE crr.tenant_id = pr.tenant_id AND crr.customer_id = $3
+                         AND crr.type = 'return' AND crr.status IN ('approved', 'completed')
+                   ) r
+                   CROSS JOIN LATERAL jsonb_array_elements(
+                        CASE WHEN jsonb_typeof(r.items) = 'array' THEN r.items ELSE '[]'::jsonb END) it
+                   LEFT JOIN products p2 ON p2.id::text = it->>'product_id'
+                   WHERE r.ref_date BETWEEN pr.p_start AND pr.p_end
+                     AND ($4::boolean = false
+                          OR it->>'product_id' = ANY($5::text[])
+                          OR p2.category_id::text = ANY($6::text[]))
+                 ), 0)
+               ) AS past_total,
+               EXISTS (
+                   SELECT 1 FROM promotion_uses pu
+                   WHERE pu.promotion_id = pr.id AND pu.customer_id = $3
+                     AND (pu.used_at AT TIME ZONE 'Asia/Dhaka')::date BETWEEN pr.p_start AND pr.p_end
+               ) AS already_given
+         FROM pr`,
+        [
+            promo.id, tenantId, customerId, scoped,
+            (promo.product_ids  || []).map(String),
+            (promo.category_ids || []).map(String),
+        ]
+    );
+    if (!res.rows.length) return null;
+    const r = res.rows[0];
+    return {
+        pastTotal:    parseFloat(r.past_total) || 0,
+        alreadyGiven: !!r.already_given,
+        periodStart:  r.p_start,
+        periodEnd:    r.p_end,
+    };
+}
+
+/**
  * কার্ট (items) ও কাস্টমার দিয়ে কোন কোন promotion apply হবে এবং কত
  * discount হবে — বের করে। এটা সম্পূর্ণ read-only, কোনো DB write করে না।
  *
@@ -87,6 +179,7 @@ async function getEligiblePromotions({
     }
 
     const applicable = [];
+    const progress   = []; // 🎯 টার্গেট গিফটের প্রগ্রেস (SR/কাস্টমারকে "আর কত বাকি" দেখাতে)
 
     for (const promo of promoRes.rows) {
         // ── এলিজিবিলিটি গেট — যেকোনো একটা ব্যর্থ হলে promo সম্পূর্ণ বাদ ──
@@ -214,6 +307,57 @@ async function getEligiblePromotions({
                 }
                 break;
 
+            // 🎯 টার্গেট গিফট — নির্দিষ্ট সময়ে (ক্যালেন্ডার মাস/অফারের মেয়াদ) অফারের পণ্যে
+            // মোট min_order_amount টাকা কিনলে free_product_id এর free_quantity টা গিফট।
+            // যে ইনভয়েসে টার্গেট পূর্ণ হয় সেটাতেই গিফট যোগ হয়; এক সময়কালে একবারই।
+            case 'target_gift': {
+                const target = Number(promo.min_order_amount) || 0;
+                if (!customerId || target <= 0 || !promo.free_product_id || !(Number(promo.free_quantity) > 0)) break;
+
+                const period = await getTargetPeriodData({ queryFn, promo, tenantId, customerId });
+                if (!period || period.alreadyGiven) break;
+
+                const achieved = period.pastTotal + scopedTotal;
+                const giftQty  = Number(promo.free_quantity);
+
+                const giftRes = await queryFn(
+                    `SELECT id, name, price, stock, reserved_stock
+                     FROM products WHERE id = $1 AND tenant_id = $2`,
+                    [promo.free_product_id, tenantId]
+                );
+                if (!giftRes.rows.length) break;
+                const gift = giftRes.rows[0];
+
+                progress.push({
+                    promotion_id:  promo.id,
+                    name:          promo.name,
+                    target,
+                    achieved:      Math.round(achieved * 100) / 100,
+                    remaining:     Math.max(0, Math.round((target - achieved) * 100) / 100),
+                    reached:       achieved >= target,
+                    gift_name:     gift.name,
+                    gift_qty:      giftQty,
+                    period_mode:   promo.period_mode,
+                    period_start:  period.periodStart,
+                    period_end:    period.periodEnd,
+                });
+
+                if (achieved >= target) {
+                    const availableStock = (gift.stock || 0) - (gift.reserved_stock || 0);
+                    if (availableStock >= giftQty) {
+                        discountAmount = parseFloat(gift.price || 0) * giftQty;
+                        promoFreeItems = [{
+                            product_id: gift.id,
+                            name:       gift.name,
+                            price:      parseFloat(gift.price || 0),
+                            qty:        giftQty,
+                        }];
+                        message = `${promo.name}: ৳${target} টার্গেট পূর্ণ! ${giftQty}টা ${gift.name} গিফট 🎁`;
+                    }
+                }
+                break;
+            }
+
             // ✅ NEW: slab/tiered discount — tiers: [{min_qty, discount_value, discount_type}]
             case 'tiered_discount': {
                 const tiers = Array.isArray(promo.tiers) ? promo.tiers : [];
@@ -233,7 +377,7 @@ async function getEligiblePromotions({
 
         // ✅ NEW: margin guard — discount যেন scopedTotal-কে scopedCost-এর নিচে না
         // নামায় (buy_x_get_y বাদ — সেটা price-cut না, physical free item)
-        if (discountAmount > 0 && promo.type !== 'buy_x_get_y' && scopedCost > 0) {
+        if (discountAmount > 0 && promo.type !== 'buy_x_get_y' && promo.type !== 'target_gift' && scopedCost > 0) {
             const maxAllowedDiscount = Math.max(0, scopedTotal - scopedCost);
             if (discountAmount > maxAllowedDiscount) {
                 discountAmount = maxAllowedDiscount;
@@ -251,7 +395,7 @@ async function getEligiblePromotions({
             applicable.push({
                 promotion:      promo,
                 discountAmount: Math.round(discountAmount * 100) / 100,
-                reducesPayable: promo.type !== 'buy_x_get_y',
+                reducesPayable: promo.type !== 'buy_x_get_y' && promo.type !== 'target_gift',
                 freeItems:      promoFreeItems,
                 message,
             });
@@ -285,7 +429,64 @@ async function getEligiblePromotions({
         totalDiscount:   Math.round(totalDiscount * 100) / 100,   // true cost সহ ফ্রি-গিফট (admin reporting)
         payableDiscount: Math.round(payableDiscount * 100) / 100, // কাস্টমারের বিল যতটা কমবে (checkout-এ ব্যবহার্য)
         freeItems,
+        progress,        // 🎯 টার্গেট গিফট প্রগ্রেস (খালি array হতে পারে)
     };
+}
+
+/**
+ * 🎯 কাস্টমার পোর্টালের জন্য: কার্ট ছাড়াই, এই কাস্টমারের সব চলমান টার্গেট-গিফট
+ * অফারের এখন পর্যন্ত প্রগ্রেস (কত কিনেছে, আর কত বাকি, গিফট পেয়েছে কি না)।
+ */
+async function getCustomerTargetProgress({ queryFn, tenantId, customerId, routeId = null }) {
+    if (!customerId) return [];
+    const today = new Date().toISOString().slice(0, 10);
+    const res = await queryFn(
+        `SELECT * FROM promotions
+         WHERE is_active = true AND start_date <= $1 AND end_date >= $1
+           AND tenant_id = $2 AND type = 'target_gift' AND promo_code IS NULL
+         ORDER BY created_at DESC`,
+        [today, tenantId]
+    );
+
+    const out = [];
+    for (const promo of res.rows) {
+        const target = Number(promo.min_order_amount) || 0;
+        if (target <= 0 || !promo.free_product_id || !(Number(promo.free_quantity) > 0)) continue;
+        if (promo.max_uses && promo.current_uses >= promo.max_uses) continue;
+        if (promo.budget_cap != null &&
+            parseFloat(promo.budget_used || 0) >= parseFloat(promo.budget_cap)) continue;
+        if (promo.apply_to === 'specific_routes') {
+            if (!routeId || !(promo.route_ids || []).map(String).includes(String(routeId))) continue;
+        }
+        if (promo.apply_to === 'specific_customers') {
+            if (!(promo.customer_ids || []).map(String).includes(String(customerId))) continue;
+        }
+
+        const period = await getTargetPeriodData({ queryFn, promo, tenantId, customerId });
+        if (!period) continue;
+
+        const giftRes = await queryFn(
+            `SELECT name FROM products WHERE id = $1 AND tenant_id = $2`,
+            [promo.free_product_id, tenantId]
+        );
+
+        const achieved = period.pastTotal;
+        out.push({
+            promotion_id:  promo.id,
+            name:          promo.name,
+            target,
+            achieved:      Math.round(achieved * 100) / 100,
+            remaining:     Math.max(0, Math.round((target - achieved) * 100) / 100),
+            reached:       achieved >= target,
+            already_given: period.alreadyGiven,
+            gift_name:     giftRes.rows[0]?.name || 'গিফট',
+            gift_qty:      Number(promo.free_quantity),
+            period_mode:   promo.period_mode,
+            period_start:  period.periodStart,
+            period_end:    period.periodEnd,
+        });
+    }
+    return out;
 }
 
 /**
@@ -451,4 +652,4 @@ const APPROVAL_THRESHOLDS = {
     maxAutoBudget:     50000,  // ৳৫০,০০০-এর বেশি বাজেট ক্যাপ হলে অনুমোদন লাগবে
 };
 
-module.exports = { getEligiblePromotions, recordPromotionUsage, deductFreeGiftStock, needsApproval, APPROVAL_THRESHOLDS };
+module.exports = { getEligiblePromotions, getCustomerTargetProgress, recordPromotionUsage, deductFreeGiftStock, needsApproval, APPROVAL_THRESHOLDS };

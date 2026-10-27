@@ -8,6 +8,7 @@ const TYPES = [
     { value: 'buy_x_get_y',     label: 'কিনলে পাবেন (Buy X Get Y)' },
     { value: 'min_order',       label: 'ন্যূনতম অর্ডার অফার' },
     { value: 'tiered_discount', label: 'স্ল্যাব/টায়ার্ড ছাড় (যত বেশি কিনবেন তত বেশি ছাড়)' },
+    { value: 'target_gift',     label: '🎯 টার্গেট গিফট (মাসে/মেয়াদে মোট ৳ কিনলে গিফট)' },
 ];
 
 const APPLY_TO = [
@@ -20,7 +21,7 @@ const APPLY_TO = [
 const empty = {
     name: '', description: '', type: 'percent_off',
     discount_value: '', buy_quantity: '', free_quantity: '', free_product_id: '',
-    min_order_amount: '', start_date: '', end_date: '',
+    min_order_amount: '', period_mode: 'offer_period', start_date: '', end_date: '',
     apply_to: 'all', product_ids: [], category_ids: [], route_ids: [], customer_ids: [],
     max_uses: '', max_per_customer: '', is_active: true,
     promo_code: '', stackable: true, priority: 0, tiers: [], budget_cap: '', // ← Phase ২
@@ -103,6 +104,9 @@ export default function Promotions() {
         }
         if (form.type === 'buy_x_get_y' && ((!form.buy_quantity && !(Number(form.min_order_amount) > 0)) || !form.free_quantity || !form.free_product_id)) {
             return alert('"কতটা কিনলে" (অথবা ন্যূনতম অর্ডার ৳), কতটা ফ্রি, ও কোন পণ্য ফ্রি — দিন।');
+        }
+        if (form.type === 'target_gift' && (!(Number(form.min_order_amount) > 0) || !form.free_quantity || !form.free_product_id)) {
+            return alert('টার্গেট টাকা, গিফট পণ্য ও গিফটের পরিমাণ — তিনটাই দিন।');
         }
         if (form.type === 'tiered_discount' && (!form.tiers || !form.tiers.length)) {
             return alert('অন্তত একটা স্ল্যাব যোগ করুন (কতটা হলে কত% ছাড়)।');
@@ -389,6 +393,47 @@ export default function Promotions() {
                                     </div>
                                 )}
 
+                                {form.type === 'target_gift' && (
+                                    <div className="space-y-2 border rounded-xl p-3 bg-amber-50">
+                                        <p className="text-xs text-amber-800">
+                                            🎯 কাস্টমার নির্দিষ্ট সময়ে অফারের পণ্যে মোট টার্গেট টাকা কিনলে গিফট পাবে। যে ইনভয়েসে টার্গেট পূর্ণ হয় সেটাতেই গিফট যোগ হবে।
+                                        </p>
+                                        <input
+                                            type="number" placeholder="টার্গেট ৳ (যেমন: ৫০০০)"
+                                            value={form.min_order_amount}
+                                            onChange={e => set('min_order_amount', e.target.value)}
+                                            className="w-full border rounded-xl px-4 py-2.5 text-sm bg-white"
+                                        />
+                                        <select
+                                            value={form.period_mode || 'offer_period'}
+                                            onChange={e => set('period_mode', e.target.value)}
+                                            className="w-full border rounded-xl px-4 py-2.5 text-sm bg-white">
+                                            <option value="offer_period">অফারের শুরু–শেষ তারিখের মোট কেনা (একবারই গিফট)</option>
+                                            <option value="calendar_month">প্রতি ক্যালেন্ডার মাসের (১ তারিখ–শেষ) কেনা (প্রতি মাসে আবার)</option>
+                                        </select>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <input
+                                                type="number" placeholder="গিফট কয় পিস (যেমন: ১)"
+                                                value={form.free_quantity}
+                                                onChange={e => set('free_quantity', e.target.value)}
+                                                className="border rounded-xl px-4 py-2.5 text-sm bg-white"
+                                            />
+                                            <select
+                                                value={form.free_product_id}
+                                                onChange={e => set('free_product_id', e.target.value)}
+                                                className="border rounded-xl px-3 py-2.5 text-sm bg-white">
+                                                <option value="">গিফট পণ্য বাছাই</option>
+                                                {products.map(p => (
+                                                    <option key={p.id} value={p.id}>{p.name} — ৳{p.price}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <p className="text-xs text-blue-600 bg-blue-50 rounded-lg px-3 py-2">
+                                            💡 কোন পণ্যের কেনা গোনা হবে তা নিচে "প্রযোজ্য" থেকে <b>নির্দিষ্ট পণ্য/ক্যাটাগরি</b> বাছাই করুন (না বাছলে সব পণ্য গোনা হবে)। ক্যালেন্ডার মাস বেছে থাকলে "প্রতি কাস্টমারে সর্বোচ্চ ব্যবহার" ফাঁকা রাখুন, নইলে দ্বিতীয় মাসে গিফট আটকে যাবে।
+                                        </p>
+                                    </div>
+                                )}
+
                                 {form.type === 'tiered_discount' && (
                                     <div className="space-y-2 border rounded-xl p-3 bg-gray-50">
                                         <p className="text-xs text-gray-500">যত বেশি কিনবেন তত বেশি % ছাড় — একাধিক স্ল্যাব যোগ করুন</p>
@@ -413,6 +458,7 @@ export default function Promotions() {
                                     </div>
                                 )}
 
+                                {form.type !== 'target_gift' && (
                                 <input
                                     type="number"
                                     placeholder="ন্যূনতম অর্ডার পরিমাণ ৳ (optional)"
@@ -420,6 +466,7 @@ export default function Promotions() {
                                     onChange={e => set('min_order_amount', e.target.value)}
                                     className="w-full border rounded-xl px-4 py-2.5 text-sm"
                                 />
+                                )}
 
                                 <div className="grid grid-cols-2 gap-2">
                                     <div>
