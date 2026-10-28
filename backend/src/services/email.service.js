@@ -3,6 +3,7 @@ const { query } = require('../config/db');
 const walletService = require('./wallet.service');
 const { getPublicAppUrl } = require('../config/publicAppUrl');
 const { renderEmailLayout } = require('./emailTemplates');
+const { loadInvoiceBranding, itemSubtitle, escapeHtml } = require('./invoiceBranding.service');
 // nodemailer বাদ — Render SMTP block করে, তাই Brevo HTTP API ব্যবহার করা হচ্ছে
 
 // ============================================================
@@ -234,6 +235,9 @@ const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToke
 // ============================================================
 
 const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {}) => {
+    const { company, itemMeta } = await loadInvoiceBranding({ sale, worker, customer, items, meta });
+    const companyLine = [company.address, company.phone].filter(Boolean).map(escapeHtml).join(' | ');
+    const footerLine  = [company.name, company.email, company.address].filter(Boolean).map(escapeHtml).join(' | ');
     const subject = `ZovoriX Invoice - ${sale.invoice_number} | ${customer.shop_name}`;
 
     const paymentLabels = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
@@ -241,7 +245,7 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {})
     const itemsHTML = (items || []).map(i => {
         const subtotal = (i.qty || 0) * (i.price || 0);
         return `<tr>
-          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;">${i.product_name}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;">${i.product_name}${itemSubtitle(itemMeta, i.product_id) ? `<br><span style="color:#888;font-size:11px;">${escapeHtml(itemSubtitle(itemMeta, i.product_id))}</span>` : ''}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#555;font-size:13px;text-align:center;">${i.qty} × ৳${(i.price || 0).toLocaleString('bn-BD')}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;text-align:right;font-weight:bold;">৳${subtotal.toLocaleString('bn-BD')}</td>
         </tr>`;
@@ -268,8 +272,8 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {})
     <td style="background:linear-gradient(135deg,#1a73e8,#0d47a1);padding:25px 35px;">
       <table width="100%"><tr>
         <td>
-          <h1 style="color:#fff;margin:0;font-size:20px;">ZovoriX</h1>
-          <p style="color:#bbdefb;margin:3px 0 0;font-size:11px;">জানকি সিংহ রোড, বরিশাল সদর – ১২০০</p>
+          <h1 style="color:#fff;margin:0;font-size:20px;">${escapeHtml(company.name)}</h1>
+          ${companyLine ? `<p style="color:#bbdefb;margin:3px 0 0;font-size:11px;">${companyLine}</p>` : ''}
         </td>
         <td style="text-align:right;">
           <p style="color:#fff;margin:0;font-size:12px;">🧾 Invoice</p>
@@ -354,7 +358,7 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {})
   </tr>
   <tr>
     <td style="background:#f8f9fa;padding:12px 35px;text-align:center;border-top:1px solid #e0e0e0;">
-      <p style="color:#999;font-size:11px;margin:0;">ZovoriX (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+      <p style="color:#999;font-size:11px;margin:0;">${footerLine}</p>
     </td>
   </tr>
 </table>
@@ -372,6 +376,9 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {})
 // ============================================================
 
 const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, customer, worker, items, meta = {}) => {
+    const { company, itemMeta } = await loadInvoiceBranding({ sale, worker, customer, items, meta });
+    const companyLine = [company.address, company.phone].filter(Boolean).map(escapeHtml).join(' | ');
+    const footerLine  = [company.name, company.email, company.address].filter(Boolean).map(escapeHtml).join(' | ');
     const FRONTEND_URL = getPublicAppUrl();
     const verifyLink   = sale?.verify_token ? `${FRONTEND_URL}/verify/${sale.verify_token}` : null;
     const subject      = verifyLink
@@ -383,7 +390,7 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
     const itemsHTML = (items || []).map(i => {
         const subtotal = (i.qty || 0) * (i.price || 0);
         return `<tr>
-          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;">${i.product_name}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;">${i.product_name}${itemSubtitle(itemMeta, i.product_id) ? `<br><span style="color:#888;font-size:11px;">${escapeHtml(itemSubtitle(itemMeta, i.product_id))}</span>` : ''}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#555;font-size:13px;text-align:center;">${i.qty} × ৳${(i.price || 0).toLocaleString('bn-BD')}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;text-align:right;font-weight:bold;">৳${subtotal.toLocaleString('bn-BD')}</td>
         </tr>`;
@@ -411,8 +418,8 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
     <td style="background:linear-gradient(135deg,#1a73e8,#0d47a1);padding:25px 35px;">
       <table width="100%"><tr>
         <td>
-          <h1 style="color:#fff;margin:0;font-size:20px;">ZovoriX</h1>
-          <p style="color:#bbdefb;margin:3px 0 0;font-size:11px;">জানকি সিংহ রোড, বরিশাল সদর – ১২০০</p>
+          <h1 style="color:#fff;margin:0;font-size:20px;">${escapeHtml(company.name)}</h1>
+          ${companyLine ? `<p style="color:#bbdefb;margin:3px 0 0;font-size:11px;">${companyLine}</p>` : ''}
         </td>
         <td style="text-align:right;">
           <p style="color:#fff;margin:0;font-size:12px;">🧾 Invoice</p>
@@ -526,7 +533,7 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
   </tr>
   <tr>
     <td style="background:#f8f9fa;padding:12px 35px;text-align:center;border-top:1px solid #e0e0e0;">
-      <p style="color:#999;font-size:11px;margin:0;">ZovoriX (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+      <p style="color:#999;font-size:11px;margin:0;">${footerLine}</p>
     </td>
   </tr>
 
@@ -548,6 +555,8 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
 // ============================================================
 
 const sendOrderNotificationEmail = async (toEmails, orderData, meta = {}) => {
+    const { company } = await loadInvoiceBranding({ sale: orderData, meta });
+    const footerLine  = [company.name, company.email, company.address].filter(Boolean).map(escapeHtml).join(' | ');
     const {
         orderId,
         workerName,
@@ -687,7 +696,7 @@ const sendOrderNotificationEmail = async (toEmails, orderData, meta = {}) => {
   </tr>
   <tr>
     <td style="background:#f8f9fa;padding:12px 35px;text-align:center;border-top:1px solid #e0e0e0;">
-      <p style="color:#999;font-size:11px;margin:0;">ZovoriX (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+      <p style="color:#999;font-size:11px;margin:0;">${footerLine}</p>
     </td>
   </tr>
 
@@ -715,6 +724,8 @@ const sendOrderNotificationEmail = async (toEmails, orderData, meta = {}) => {
 // ============================================================
 
 const sendWelcomeEmail = async (email, customer, worker, meta = {}) => {
+    const { company } = await loadInvoiceBranding({ worker, customer, meta });
+    const footerLine  = [company.name, company.email, company.address].filter(Boolean).map(escapeHtml).join(' | ');
     const subject = `🎉 স্বাগতম ZovoriX পরিবারে! | ${customer.shop_name}`;
 
     const html = `<!DOCTYPE html>
@@ -860,7 +871,7 @@ const sendWelcomeEmail = async (email, customer, worker, meta = {}) => {
   </tr>
   <tr>
     <td style="background:#f8f9fa;padding:14px 35px;text-align:center;border-top:1px solid #e0e0e0;">
-      <p style="color:#999;font-size:11px;margin:0;">ZovoriX (Ltd.) | inf.novatechbd@gmail.com | বরিশাল সদর – ১২০০</p>
+      <p style="color:#999;font-size:11px;margin:0;">${footerLine}</p>
       <p style="color:#bbb;font-size:10px;margin:4px 0 0;">এই Email স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে। সরাসরি রিপ্লাই করবেন না।</p>
     </td>
   </tr>

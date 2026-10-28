@@ -17,6 +17,7 @@ const {
     generateInvoicePDF,
     getInvoiceWhatsAppMessage
 } = require('../services/invoice.service');
+const { loadInvoiceBranding } = require('../services/invoiceBranding.service');
 const { uploadToCloudinary } = require('../services/employee.service');
 const { sendCustomerNotification } = require('./customerNotification.controller');
 
@@ -781,8 +782,12 @@ const createSale = async (req, res) => {
             .catch(e => logger.error('❌ [InvoiceWA] Unexpected error:', e.message));
 
         // WhatsApp লিংক তৈরি
+        const { company: waCompany } = await loadInvoiceBranding({
+            sale: saleResult, worker: req.user, customer: cust, items: processedItems,
+            meta: { tenant_id: req.tenantId }
+        });
         const waLink = getInvoiceWhatsAppMessage(
-            saleResult, cust, req.user, processedItems
+            saleResult, cust, req.user, processedItems, waCompany.name
         );
 
         // ✅ কাস্টমারকে নতুন invoice notification দাও

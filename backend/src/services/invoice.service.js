@@ -11,6 +11,7 @@ const { sendOTP, sendInvoice: sendInvoiceSMS, getWhatsAppInvoiceLink } = require
 const { sendOTPEmail, sendOTPWithInvoiceEmail, sendInvoiceEmail } = require('./email.service');
 const { getPublicAppUrl } = require('../config/publicAppUrl');
 const whatsappGateway = require('./whatsappGateway.service');
+const { loadInvoiceBranding, itemSubtitle } = require('./invoiceBranding.service');
 
 // ─── WhatsApp Verify Link via Baileys ──────────────────────
 // ⚠️ FRONTEND_URL নয় — ওটা CORS-এর জন্য comma/wildcard ধারণ করতে পারে (server.js দেখুন)।
@@ -203,6 +204,10 @@ const sendInvoiceNotification = async (customer, sale, worker, items, tenantId =
 // ============================================================
 
 const generateInvoicePDF = async (sale, customer, worker, items) => {
+    // কোম্পানির নাম/ঠিকানা (tenants) + পণ্যের ক্যাটাগরি/ব্র্যান্ড — আর হার্ডকোড নয়
+    const branding = await loadInvoiceBranding({ sale, worker, customer, items });
+    const company  = branding.company;
+
     return new Promise((resolve, reject) => {
         try {
             const doc    = new PDFDocument({ margin: 40, size: [283, 600] }); // Receipt size
@@ -224,10 +229,11 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
 
             // ── Header ──
             doc.fontSize(14).font(FB)
-               .text('ZovoriX (Ltd.)', { align: 'center' });
-            doc.fontSize(8).font(F)
-               .text('জানকি সিংহ রোড, বরিশাল সদর – ১২০০', { align: 'center' })
-               .text('inf.novatechbd@gmail.com', { align: 'center' });
+               .text(company.name, { align: 'center' });
+            doc.fontSize(8).font(F);
+            if (company.address) doc.text(company.address, { align: 'center' });
+            if (company.phone)   doc.text(company.phone,   { align: 'center' });
+            if (company.email)   doc.text(company.email,   { align: 'center' });
 
             doc.moveDown(0.3);
             doc.moveTo(40, doc.y).lineTo(243, doc.y).dash(3).stroke();
@@ -241,7 +247,8 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
                .text(`তারিখ: ${new Date(sale.created_at).toLocaleDateString('bn-BD')}`)
                .text(`দোকান: ${customer.shop_name}`)
                .text(`মালিক: ${customer.owner_name}`)
-               .text(`SR: ${worker.name_bn} (${worker.employee_code})`);
+               .text(`SR: ${worker.name_bn} (${worker.employee_code})`)
+               .text(`প্রতিষ্ঠান: ${company.name}`);
 
             doc.moveDown(0.3);
             doc.moveTo(40, doc.y).lineTo(243, doc.y).dash(3).stroke();
@@ -267,6 +274,14 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
                    .text(item.product_name, 40, yPos, { width: 100 });
                 doc.text(`${item.qty} × ৳${item.price}`, 140, yPos, { width: 40 });
                 doc.text(`৳${subtotal.toLocaleString('bn-BD')}`, 185, yPos, { width: 58, align: 'right' });
+                const sub = itemSubtitle(branding.itemMeta, item.product_id);
+                if (sub) {
+                    // নাম লম্বা হয়ে একাধিক লাইন নিলেও সাব-লাইন নামের নিচেই বসে
+                    const nameH = doc.fontSize(8).font(F).heightOfString(String(item.product_name || ''), { width: 100 });
+                    doc.fontSize(6.5).fillColor('#555555')
+                       .text(sub, 40, yPos + nameH, { width: 100 });
+                    doc.fillColor('#000000').fontSize(8);
+                }
                 doc.moveDown(0.3);
             });
 
@@ -332,7 +347,7 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
             doc.moveDown(0.3);
             doc.fontSize(8).font(F)
                .text('আমাদের সাথে কেনাকাটার জন্য ধন্যবাদ', 40, doc.y, { width: 203, align: 'center' })
-               .text('ZovoriX (Ltd.)', 40, doc.y, { width: 203, align: 'center' });
+               .text(company.name, 40, doc.y, { width: 203, align: 'center' });
 
             doc.end();
 
@@ -346,7 +361,7 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
 // WhatsApp Invoice Message
 // ============================================================
 
-const getInvoiceWhatsAppMessage = (sale, customer, worker, items) => {
+const getInvoiceWhatsAppMessage = (sale, customer, worker, items, companyName = null) => {
     const itemsList = items
         .map(i => `• ${i.product_name}: ${i.qty} × ৳${i.price} = ৳${i.qty * i.price}`)
         .join('\n');
@@ -371,7 +386,7 @@ ${itemsList}${replacementList}
 💳 পেমেন্ট: ${paymentLabels[sale.payment_method]}
 ✅ পরিশোধযোগ্য: *৳${sale.net_amount}*
 ━━━━━━━━━━━━━━━━━━
-_ZovoriX (Ltd.) | বরিশাল_`;
+_${companyName || 'ZovoriX'}_`;
 };
 
 module.exports = {
