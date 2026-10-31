@@ -166,6 +166,7 @@ const createSale = async (req, res) => {
             payment_method,
             replacement_items,
             use_credit_balance,  // কাস্টমারের জমা ব্যালেন্স ব্যবহার
+            cash_received: partialCashInput, // আংশিক পেমেন্ট: payment_method='credit' + এই অঙ্ক নগদ নেওয়া হলো, বাকিটা বাকি
             idempotency_key,     // Offline duplicate প্রতিরোধ
             promo_code,          // ← নতুন (Phase ২): SR/কাস্টমার-এর দেওয়া কোড, থাকলে
         } = req.body;
@@ -184,7 +185,8 @@ const createSale = async (req, res) => {
         // যাতে mock sequence সব test-এ একই থাকে।
         const existing = await query(
             `SELECT id, invoice_number, total_amount, net_amount,
-                    payment_method, credit_balance_used, credit_balance_added
+                    payment_method, credit_balance_used, credit_balance_added,
+                    cash_received, credit_used
              FROM sales_transactions
              WHERE worker_id = $1 AND idempotency_key = $2
              AND tenant_id = $3`,
@@ -202,6 +204,9 @@ const createSale = async (req, res) => {
                     total_amount:         prev.total_amount,
                     net_amount:           prev.net_amount,
                     payment_method:       prev.payment_method,
+                    cash_received:        prev.cash_received,
+                    credit_used:          prev.credit_used,
+                    due_amount:           prev.credit_used,
                     credit_balance_used:  prev.credit_balance_used,
                     credit_balance_added: prev.credit_balance_added,
                 }
@@ -394,7 +399,36 @@ const createSale = async (req, res) => {
         if (payment_method === 'cash') {
             cashReceived = netAmount;
         } else if (payment_method === 'credit') {
-            creditUsed = netAmount;
+            // ── আংশিক পেমেন্ট (নগদ + বাকি) ─────────────────────────────
+            // উদাহরণ: বিল ৫০০০, নগদ ৪৫০০ → cash_received=4500, credit_used=500।
+            // payment_method 'credit' থাকছে — DB ট্রিগার trg_sale_credit শুধু
+            // credit_used পরিমাণ current_credit-এ যোগ করে, তাই বাকি ঠিকই বাড়বে।
+            // cash_received না পাঠালে (বা ০) আগের মতোই পুরোটা বাকি।
+            const hasPartialCash = partialCashInput !== undefined &&
+                                   partialCashInput !== null && partialCashInput !== '';
+            if (hasPartialCash) {
+                const partialCash = Number(partialCashInput);
+                if (!Number.isFinite(partialCash) || partialCash < 0) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'নগদ প্রাপ্তির পরিমাণ সঠিক নয়।'
+                    });
+                }
+                if (partialCash > 0) {
+                    if (partialCash >= netAmount) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'নগদ প্রাপ্তি মোট বিলের কম হতে হবে। সম্পূর্ণ নগদে নিলে "নগদ" পদ্ধতি বেছে নিন।'
+                        });
+                    }
+                    cashReceived = Math.round(partialCash * 100) / 100;
+                    creditUsed   = Math.round((netAmount - cashReceived) * 100) / 100;
+                } else {
+                    creditUsed = netAmount;
+                }
+            } else {
+                creditUsed = netAmount;
+            }
         } else if (payment_method === 'replacement') {
             cashReceived = netAmount;
         }
@@ -421,7 +455,7 @@ const createSale = async (req, res) => {
         // চূড়ান্ত চেক transaction-এর ভেতরে FOR UPDATE দিয়ে হবে (নিচে)
         // NOTE: OTP query-র পরে রাখা হয়েছে যাতে সব mock consume হয় early return-এর আগে।
         if (payment_method === 'credit') {
-            const prelimCredit = parseFloat(cust.current_credit) + netAmount;
+            const prelimCredit = parseFloat(cust.current_credit) + creditUsed;
             if (prelimCredit > parseFloat(cust.credit_limit)) {
                 return res.status(400).json({
                     success: false,
@@ -458,7 +492,7 @@ const createSale = async (req, res) => {
                 }
 
                 const freshCust    = lockedCustomer.rows[0];
-                const finalCredit  = parseFloat(freshCust.current_credit) + netAmount;
+                const finalCredit  = parseFloat(freshCust.current_credit) + creditUsed;
 
                 if (finalCredit > parseFloat(freshCust.credit_limit)) {
                     throw Object.assign(
@@ -793,10 +827,12 @@ const createSale = async (req, res) => {
         // ✅ কাস্টমারকে নতুন invoice notification দাও
         sendCustomerNotification(customer_id, {
             title: '🧾 নতুন ইনভয়েস',
-            body:  `Invoice ${invoiceNumber} — মোট: ৳${netAmount.toLocaleString('bn-BD')} (${
-                payment_method === 'cash'   ? 'নগদ' :
-                payment_method === 'credit' ? 'বাকি' : 'মিশ্র'
-            })`,
+            body:  payment_method === 'credit' && cashReceived > 0
+                ? `Invoice ${invoiceNumber} — মোট: ৳${netAmount.toLocaleString('bn-BD')} (নগদ ৳${cashReceived.toLocaleString('bn-BD')}, বাকি ৳${creditUsed.toLocaleString('bn-BD')})`
+                : `Invoice ${invoiceNumber} — মোট: ৳${netAmount.toLocaleString('bn-BD')} (${
+                    payment_method === 'cash'   ? 'নগদ' :
+                    payment_method === 'credit' ? 'বাকি' : 'মিশ্র'
+                })`,
             type:  'new_invoice',
         }).catch(e => logger.error('[Sale] Invoice notification error:', e.message));
 
@@ -853,6 +889,9 @@ const createSale = async (req, res) => {
                 items:                processedItems,
                 replacement_items:    processedReplacement,
                 payment_method:       payment_method,
+                cash_received:        cashReceived,
+                credit_used:          creditUsed,
+                due_amount:           creditUsed,
                 discount_amount:      discountAmount,
                 promotion_discount:   promotionDiscount,
                 applied_promotions:   applicablePromotions.map(a => ({

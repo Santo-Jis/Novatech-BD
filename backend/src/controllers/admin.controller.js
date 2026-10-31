@@ -559,9 +559,11 @@ const getSystemStats = async (req, res) => {
                 SELECT
                     COUNT(id)                                                    AS invoice_count,
                     COALESCE(SUM(total_amount), 0)                               AS total_sales,
-                    COALESCE(SUM(CASE WHEN payment_method = 'cash'   THEN total_amount ELSE 0 END), 0) AS cash_sales,
-                    COALESCE(SUM(CASE WHEN payment_method = 'credit' THEN total_amount ELSE 0 END), 0) AS credit_sales,
-                    COALESCE(SUM(CASE WHEN payment_method = 'credit' THEN total_amount ELSE 0 END), 0) AS credit_given,
+                    COALESCE(SUM(CASE WHEN payment_method = 'cash'   THEN total_amount
+                                      WHEN payment_method = 'credit' THEN COALESCE(cash_received, 0)
+                                      ELSE 0 END), 0) AS cash_sales,
+                    COALESCE(SUM(CASE WHEN payment_method = 'credit' THEN total_amount - COALESCE(cash_received, 0) ELSE 0 END), 0) AS credit_sales,
+                    COALESCE(SUM(CASE WHEN payment_method = 'credit' THEN total_amount - COALESCE(cash_received, 0) ELSE 0 END), 0) AS credit_given,
                     COUNT(DISTINCT worker_id)                                     AS active_workers
                 FROM sales_transactions
                 WHERE date BETWEEN $1 AND $2 AND tenant_id = $3

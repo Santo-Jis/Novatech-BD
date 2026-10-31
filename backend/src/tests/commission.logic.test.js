@@ -199,84 +199,68 @@ describe('Credit বাকির উপর commission বিজনেস নি�
 });
 
 // ─── getDailyCommissionableSales — আসল ফাংশন, DB mock দিয়ে ────
-// এখানে query() দুইবার call হয় (sales_transactions + collections),
-// Promise.all ব্যবহার হয় বলে mockResolvedValueOnce-এর অর্ডার হবে
-// query() কল হওয়ার অর্ডার অনুযায়ী: প্রথমে sales, তারপর collections।
+// query() তিনবার call হয়: sales_transactions, collections, credit_payments
+// (Promise.all — mock-এর অর্ডার = call-এর অর্ডার)।
+// sales query-তে 'credit' sale-এর শুধু cash_received অংশ commissionable
+// (আংশিক পেমেন্ট), বাকি অংশ নয় — SQL নিজেই এই হিসাব করে cash_sales ফেরত দেয়।
 
 describe('getDailyCommissionableSales — আসল implementation (DB mocked)', () => {
+
+    const mockAll = (cashSales, viaCollections = '0', viaCreditPay = '0') => {
+        query
+            .mockResolvedValueOnce({ rows: cashSales === null ? [] : [{ cash_sales: cashSales }] })
+            .mockResolvedValueOnce({ rows: cashSales === null ? [] : [{ collected: viaCollections }] })
+            .mockResolvedValueOnce({ rows: cashSales === null ? [] : [{ collected: viaCreditPay }] });
+    };
 
     beforeEach(() => {
         query.mockReset();
     });
 
-    test('শুধু নগদ বিক্রয় — পুরো amount commissionable, credit query 0', async () => {
-        query
-            .mockResolvedValueOnce({ rows: [{ cash_sales: '50000' }] })  // sales_transactions
-            .mockResolvedValueOnce({ rows: [{ collected:  '0'     }] }); // collections
-
-        const result = await getDailyCommissionableSales('worker-1', '2026-09-08');
-        expect(result).toBe(50000);
+    test('শুধু নগদ বিক্রয় — পুরো amount commissionable', async () => {
+        mockAll('50000');
+        expect(await getDailyCommissionableSales('worker-1', '2026-09-08')).toBe(50000);
     });
 
-    test('credit বিক্রয় বাদ যায় — FILTER (WHERE payment_method != \'credit\') ধরে নিয়ে cash_sales-ই কম আসে', async () => {
-        // ৫০,০০০ মোট বিক্রয়ের মধ্যে ১৫,০০০ credit — DB query নিজেই ৩৫,০০০ ফেরত দেবে
-        // (FILTER ক্লজ credit বাদ দেয়), তাই cash_sales = 35000 আসাটাই আসল প্যাটার্ন
-        query
-            .mockResolvedValueOnce({ rows: [{ cash_sales: '35000' }] })
-            .mockResolvedValueOnce({ rows: [{ collected:  '0'     }] });
-
-        const result = await getDailyCommissionableSales('worker-1', '2026-09-08');
-        expect(result).toBe(35000);
+    test('আংশিক পেমেন্ট — ৫০০০ বিলে ৪৫০০ নগদ হলে শুধু ৪৫০০ commissionable (SQL ফল)', async () => {
+        mockAll('4500');
+        expect(await getDailyCommissionableSales('worker-1', '2026-09-08')).toBe(4500);
     });
 
-    test('আজ verified হওয়া collection যোগ হয় cash sales-এর সাথে', async () => {
-        query
-            .mockResolvedValueOnce({ rows: [{ cash_sales: '20000' }] })
-            .mockResolvedValueOnce({ rows: [{ collected:  '15000' }] }); // আজ verify হওয়া বাকি আদায়
-
-        const result = await getDailyCommissionableSales('worker-1', '2026-09-08');
-        expect(result).toBe(35000); // 20000 + 15000
+    test('পুরো বাকি বিক্রয় — commissionable ০', async () => {
+        mockAll('0');
+        expect(await getDailyCommissionableSales('worker-1', '2026-09-08')).toBe(0);
     });
 
-    test('sales বা collection কোনোটাই না থাকলে 0', async () => {
-        query
-            .mockResolvedValueOnce({ rows: [{ cash_sales: '0' }] })
-            .mockResolvedValueOnce({ rows: [{ collected:  '0' }] });
-
-        const result = await getDailyCommissionableSales('worker-1', '2026-09-08');
-        expect(result).toBe(0);
+    test('আজ verified হওয়া collection যোগ হয়', async () => {
+        mockAll('20000', '15000');
+        expect(await getDailyCommissionableSales('worker-1', '2026-09-08')).toBe(35000);
     });
 
-    test('row না পাওয়া গেলেও (undefined) crash না করে 0 ধরবে', async () => {
-        query
-            .mockResolvedValueOnce({ rows: [] })
-            .mockResolvedValueOnce({ rows: [] });
-
-        const result = await getDailyCommissionableSales('worker-1', '2026-09-08');
-        expect(result).toBe(0);
+    test('credit_payments (সরাসরি বাকি আদায়) যোগ হয়', async () => {
+        mockAll('20000', '0', '5000');
+        expect(await getDailyCommissionableSales('worker-1', '2026-09-08')).toBe(25000);
     });
 
-    test('collections query worker_id ও status=verified দিয়ে ফিল্টার করে', async () => {
-        query
-            .mockResolvedValueOnce({ rows: [{ cash_sales: '0' }] })
-            .mockResolvedValueOnce({ rows: [{ collected:  '0' }] });
+    test('row না পাওয়া গেলেও crash না করে 0 ধরবে', async () => {
+        mockAll(null);
+        expect(await getDailyCommissionableSales('worker-1', '2026-09-08')).toBe(0);
+    });
 
+    test('collections query status=verified দিয়ে ফিল্টার করে', async () => {
+        mockAll('0');
         await getDailyCommissionableSales('worker-1', '2026-09-08');
-
-        const collectionsCallArgs = query.mock.calls[1];
-        expect(collectionsCallArgs[0]).toEqual(expect.stringContaining("status = 'verified'"));
-        expect(collectionsCallArgs[1]).toEqual(['worker-1', '2026-09-08']);
+        const args = query.mock.calls[1];
+        expect(args[0]).toEqual(expect.stringContaining("status = 'verified'"));
+        expect(args[1]).toEqual(['worker-1', '2026-09-08']);
     });
 
-    test('sales query credit বাদ দিতে payment_method != \'credit\' ব্যবহার করে', async () => {
-        query
-            .mockResolvedValueOnce({ rows: [{ cash_sales: '0' }] })
-            .mockResolvedValueOnce({ rows: [{ collected:  '0' }] });
-
+    test("sales query 'credit' sale-এ cash_received ব্যবহার করে, total_amount নয়", async () => {
+        mockAll('0');
         await getDailyCommissionableSales('worker-1', '2026-09-08');
-
-        const salesCallArgs = query.mock.calls[0];
-        expect(salesCallArgs[0]).toEqual(expect.stringContaining("payment_method != 'credit'"));
+        const sql = query.mock.calls[0][0];
+        expect(sql).toEqual(expect.stringContaining("payment_method = 'credit'"));
+        expect(sql).toEqual(expect.stringContaining('cash_received'));
     });
 });
 

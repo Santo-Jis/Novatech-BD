@@ -168,6 +168,8 @@ export default function SalesForm() {
   const [selected,     setSelected]     = useState({})
   const [replacements, setReplacements] = useState({})
   const [paymentMethod, setPaymentMethod] = useState('cash')
+  // আংশিক পেমেন্ট: 'partial' শুধু UI-র অপশন — server-এ payment_method='credit' + cash_received যায়
+  const [cashNow, setCashNow] = useState('')
   const [useCreditBalance, setUseCreditBalance] = useState(false)
   const [promoPreview, setPromoPreview] = useState(null) // ← নতুন: /promotions/calculate-এর ফলাফল
   const [promoCode, setPromoCode] = useState('')          // ← নতুন (Phase ২): কোড-ভিত্তিক অফার
@@ -314,12 +316,19 @@ export default function SalesForm() {
   const netAmount          = Math.max(0, netAfterDiscount - replacementValue + vatAmount)
   const creditBalanceAdded = Math.max(0, replacementValue - netAfterDiscount)
 
-  const canCredit = paymentMethod === 'credit' &&
-    parseFloat(customer?.current_credit || 0) + netAmount <= parseFloat(customer?.credit_limit || 0)
+  const isCreditType  = paymentMethod === 'credit' || paymentMethod === 'partial'
+  const cashNowNum    = paymentMethod === 'partial' ? (parseFloat(cashNow) || 0) : 0
+  const partialValid  = paymentMethod !== 'partial' || (cashNowNum > 0 && cashNowNum < netAmount)
+  // বাকির অঙ্ক: পুরো বাকিতে = netAmount, আংশিকে = netAmount − নগদ। ক্রেডিট লিমিট শুধু এই অংশের উপর।
+  const dueAmount     = paymentMethod === 'credit' ? netAmount
+                      : paymentMethod === 'partial' ? Math.max(0, netAmount - cashNowNum) : 0
+
+  const canCredit = isCreditType &&
+    parseFloat(customer?.current_credit || 0) + dueAmount <= parseFloat(customer?.credit_limit || 0)
 
   // approval দরকার কিনা: settings-এ require_approval=true AND credit limit-এ পৌঁছাবে
   const needsApproval = creditSettings?.require_approval === true &&
-    paymentMethod === 'credit' && !canCredit
+    isCreditType && !canCredit
 
   const sendApprovalRequest = async () => {
     if (requestingApproval) return
@@ -327,7 +336,7 @@ export default function SalesForm() {
     try {
       const res = await api.post('/credit-approvals/request', {
         customer_id:      customerId,
-        requested_amount: netAmount,
+        requested_amount: dueAmount,
         note:             approvalNote || undefined
       })
       setApprovalStatus('pending')
@@ -361,7 +370,12 @@ export default function SalesForm() {
       return
     }
 
-    if (paymentMethod === 'credit' && !canCredit && !needsApproval) {
+    if (paymentMethod === 'partial' && !partialValid) {
+      toast.error('নগদের অঙ্ক ০-এর বেশি এবং মোট বিলের কম হতে হবে।')
+      return
+    }
+
+    if (isCreditType && !canCredit && !needsApproval) {
       toast.error('ক্রেডিট লিমিট পার হবে। পেমেন্ট পদ্ধতি পরিবর্তন করুন।')
       return
     }
@@ -392,7 +406,8 @@ export default function SalesForm() {
             customer_id:        customerId,
             visit_id:           visitId || undefined,
             items,
-            payment_method:     paymentMethod,
+            payment_method:     paymentMethod === 'partial' ? 'credit' : paymentMethod,
+            cash_received:      paymentMethod === 'partial' ? cashNowNum : undefined,
             replacement_items:  replacementItems,
             use_credit_balance: useCreditBalance,
             _receipt_photo_base64: receiptPhotoBase64 || undefined,
@@ -448,7 +463,8 @@ export default function SalesForm() {
         visit_id:           visitId || undefined,
         order_id:           orderId || undefined,
         items,
-        payment_method:     paymentMethod,
+        payment_method:     paymentMethod === 'partial' ? 'credit' : paymentMethod,
+        cash_received:      paymentMethod === 'partial' ? cashNowNum : undefined,
         replacement_items:  replacementItems,
         use_credit_balance: useCreditBalance,
         receipt_photo:      receiptPhotoUrl || undefined,
@@ -801,7 +817,7 @@ export default function SalesForm() {
             const remaining = Math.max(0, limit - used)
             const isFull = limit > 0 && used >= limit
             const isHigh = pct >= 80 && !isFull
-            const willExceed = paymentMethod === 'credit' && (used + netAmount) > limit
+            const willExceed = isCreditType && (used + dueAmount) > limit
 
             if (limit === 0) return null
 
@@ -836,12 +852,12 @@ export default function SalesForm() {
                       className={`h-full rounded-full transition-all duration-500 ${
                         isFull || willExceed ? 'bg-red-500' : isHigh ? 'bg-amber-400' : 'bg-emerald-400'
                       }`}
-                      style={{ width: `${paymentMethod === 'credit' ? Math.min(100, Math.round(((used + netAmount) / limit) * 100)) : pct}%` }}
+                      style={{ width: `${isCreditType ? Math.min(100, Math.round(((used + dueAmount) / limit) * 100)) : pct}%` }}
                     />
                   </div>
-                  {paymentMethod === 'credit' && !isFull && (
+                  {isCreditType && !isFull && (
                     <p className="text-[10px] text-gray-400 mt-0.5 text-right">
-                      এই বিক্রয়ের পর: {Math.min(100, Math.round(((used + netAmount) / limit) * 100))}%
+                      এই বিক্রয়ের পর: {Math.min(100, Math.round(((used + dueAmount) / limit) * 100))}%
                     </p>
                   )}
                 </div>
@@ -875,7 +891,7 @@ export default function SalesForm() {
                     ⚠️ এই বিক্রয়ে লিমিট পার হয়ে যাবে! নগদে নিন অথবা পরিমাণ কমান।
                   </div>
                 )}
-                {isHigh && !willExceed && paymentMethod === 'credit' && (
+                {isHigh && !willExceed && isCreditType && (
                   <div className="bg-amber-100 rounded-xl px-3 py-2 text-xs text-amber-800 font-semibold text-center">
                     ⚠️ লিমিটের ৮০% পার হয়েছে। সতর্কতার সাথে বাকি দিন।
                   </div>
@@ -966,12 +982,13 @@ export default function SalesForm() {
             <p className="text-sm font-semibold text-gray-700">পেমেন্ট পদ্ধতি:</p>
             {[
               { key: 'cash',   label: '💵 নগদ',  desc: 'সম্পূর্ণ নগদে পরিশোধ' },
+              { key: 'partial', label: '💵+📋 আংশিক (নগদ + বাকি)', desc: 'কিছু নগদ নিন, বাকিটা বাকি রাখুন — কমিশন শুধু নগদের উপর' },
               { key: 'credit', label: '📋 বাকি', desc: `লিমিট: ৳${parseFloat(customer?.credit_limit || 0).toLocaleString()} | বর্তমান বাকি: ৳${parseFloat(customer?.current_credit || 0).toLocaleString()}` },
             ].map(pm => (
               <button
                 key={pm.key}
                 onClick={() => setPaymentMethod(pm.key)}
-                disabled={pm.key === 'credit' && parseFloat(customer?.credit_limit || 0) === 0}
+                disabled={(pm.key === 'credit' || pm.key === 'partial') && parseFloat(customer?.credit_limit || 0) === 0}
                 className={`w-full p-4 rounded-2xl border-2 text-left transition-all disabled:opacity-40 active:scale-[0.98] ${paymentMethod === pm.key ? 'border-primary bg-primary/5' : 'border-gray-200 bg-white'}`}
               >
                 <div className="flex items-center gap-3">
@@ -985,6 +1002,25 @@ export default function SalesForm() {
                 </div>
               </button>
             ))}
+
+            {paymentMethod === 'partial' && (
+              <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4 space-y-2">
+                <label className="text-xs font-semibold text-gray-700">এখন কত টাকা নগদ নিলেন? (৳)</label>
+                <input
+                  type="number" inputMode="decimal" min="0" value={cashNow}
+                  onChange={e => setCashNow(e.target.value)}
+                  placeholder="যেমন: 4500"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white"
+                />
+                <div className="flex justify-between text-xs">
+                  <span className="text-emerald-700 font-semibold">💵 নগদ: ৳{cashNowNum.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+                  <span className="text-amber-700 font-semibold">📋 বাকি: ৳{dueAmount.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+                </div>
+                {cashNow !== '' && !partialValid && (
+                  <p className="text-[11px] text-red-600">নগদ ০-এর বেশি এবং মোট বিলের (৳{netAmount.toLocaleString('en', { maximumFractionDigits: 2 })}) কম হতে হবে।</p>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Offline notice */}

@@ -49,7 +49,8 @@ const calculateCommission = async (salesAmount, tenantId) => {
  * উপরেও SR কমিশন পেয়ে যেত। এই ফাংশন সেই "commissionable" অংশটুকু বের করে:
  *
  *   - payment_method = 'cash' / 'replacement'  → সাথে সাথে commissionable
- *   - payment_method = 'credit'                → বাদ (০), যতদিন না আদায় হয়
+ *   - payment_method = 'credit'                → শুধু cash_received অংশ (আংশিক পেমেন্টে
+ *                                                 নগদ নেওয়া টাকা); বাকি অংশ বাদ, যতদিন না আদায় হয়
  *   - সেদিন যে collection admin verify করেছে   → সেদিনের commissionable-এ যোগ
  *     (pending/submitted অবস্থায় ধরা হয় না — collection.controller.js-এর
  *      একই ফ্রড-প্রুফ নিয়ম: admin verify ছাড়া টাকা "আদায় হয়েছে" ধরা হয় না,
@@ -72,7 +73,13 @@ const calculateCommission = async (salesAmount, tenantId) => {
 const getDailyCommissionableSales = async (workerId, date) => {
     const [salesRes, collectionRes, creditPaymentRes] = await Promise.all([
         query(
-            `SELECT COALESCE(SUM(total_amount) FILTER (WHERE payment_method != 'credit'), 0) AS cash_sales
+            // 'credit' sale-এ শুধু নগদ-পাওয়া অংশ (cash_received) commissionable — আংশিক
+            // পেমেন্টে (যেমন ৫০০০-এর মধ্যে ৪৫০০ নগদ) শুধু ৪৫০০-এর উপর commission।
+            // বাকি অংশ আদায় হলে নিচের credit_payments/collections পথে যোগ হয়।
+            `SELECT COALESCE(SUM(
+                        CASE WHEN payment_method = 'credit' THEN COALESCE(cash_received, 0)
+                             ELSE total_amount END
+                    ), 0) AS cash_sales
              FROM sales_transactions
              WHERE worker_id = $1 AND date = $2`,
             [workerId, date]

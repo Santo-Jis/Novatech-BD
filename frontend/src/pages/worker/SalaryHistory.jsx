@@ -144,7 +144,7 @@ function SaleDetailModal({ sale, onClose }) {
 
         {/* Summary */}
         {[
-          ['পেমেন্ট পদ্ধতি', sale.payment_method === 'cash' ? '💵 নগদ' : sale.payment_method === 'credit' ? '📋 বাকি' : '🔄 রিপ্লেসমেন্ট'],
+          ['পেমেন্ট পদ্ধতি', sale.payment_method === 'cash' ? '💵 নগদ' : sale.payment_method === 'credit' ? (parseFloat(sale.cash_received) > 0 ? `💵+📋 আংশিক (নগদ ৳${sale.cash_received}, বাকি ৳${sale.credit_used})` : '📋 বাকি') : '🔄 রিপ্লেসমেন্ট'],
           ['মোট বিক্রয়', taka(sale.total_amount)],
           sale.discount_amount > 0 && ['ক্রেডিট ব্যালেন্স ব্যবহার', `- ${taka(sale.discount_amount)}`],
           sale.replacement_value > 0 && ['রিপ্লেসমেন্ট মূল্য', `- ${taka(sale.replacement_value)}`],
@@ -729,7 +729,7 @@ export default function SalesHistory() {
                         background: sale.payment_method === 'cash' ? '#f0fdf4' : '#fffbeb',
                         color: sale.payment_method === 'cash' ? '#15803d' : '#d97706'
                       }}>
-                        {sale.payment_method === 'cash' ? 'নগদ' : 'বাকি'}
+                        {sale.payment_method === 'cash' ? 'নগদ' : (parseFloat(sale.cash_received) > 0 ? 'আংশিক' : 'বাকি')}
                       </span>
                     </div>
                   </div>

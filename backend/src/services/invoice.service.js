@@ -322,7 +322,10 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
             doc.moveDown(0.2);
 
             const paymentLabels = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
-            addSummaryRow('পেমেন্ট পদ্ধতি', paymentLabels[sale.payment_method]);
+            addSummaryRow('পেমেন্ট পদ্ধতি',
+                (sale.payment_method === 'credit' && parseFloat(sale.cash_received) > 0)
+                    ? 'আংশিক (নগদ + বাকি)'
+                    : paymentLabels[sale.payment_method]);
 
             if (sale.cash_received > 0) {
                 addSummaryRow('নগদ প্রাপ্ত', `৳${sale.cash_received}`);
@@ -383,7 +386,9 @@ const getInvoiceWhatsAppMessage = (sale, customer, worker, items, companyName = 
 ${itemsList}${replacementList}
 ━━━━━━━━━━━━━━━━━━
 💰 মোট: ৳${sale.total_amount}${sale.discount_amount > 0 ? `\n💳 ক্রেডিট ব্যালেন্স থেকে: -৳${sale.discount_amount}` : ''}${sale.replacement_value > 0 ? `\n↩️ রিপ্লেসমেন্ট: -৳${sale.replacement_value}` : ''}${sale.credit_balance_added > 0 ? `\n✅ ব্যালেন্সে জমা: +৳${sale.credit_balance_added}` : ''}
-💳 পেমেন্ট: ${paymentLabels[sale.payment_method]}
+💳 পেমেন্ট: ${(sale.payment_method === 'credit' && parseFloat(sale.cash_received) > 0) ? 'আংশিক (নগদ + বাকি)' : paymentLabels[sale.payment_method]}${(sale.payment_method === 'credit' && parseFloat(sale.cash_received) > 0) ? `
+💵 নগদ প্রাপ্ত: ৳${sale.cash_received}
+📋 বাকি: ৳${sale.credit_used}` : ''}
 ✅ পরিশোধযোগ্য: *৳${sale.net_amount}*
 ━━━━━━━━━━━━━━━━━━
 _${companyName || 'ZovoriX'}_`;
