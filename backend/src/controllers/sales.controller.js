@@ -998,6 +998,7 @@ const VERIFY_TOKEN_RE = /^[a-f0-9]{64}$/i;
 const findSaleByVerifyToken = async (token) => {
     const result = await query(
         `SELECT st.id, st.tenant_id, st.invoice_number, st.net_amount, st.payment_method,
+                st.cash_received, st.credit_used,
                 st.otp_verified, st.otp_expires_at, st.created_at,
                 c.shop_name, c.owner_name
          FROM sales_transactions st
@@ -1028,6 +1029,8 @@ const getVerifyInfo = async (req, res) => {
                 shop_name:      sale.shop_name,
                 net_amount:     sale.net_amount,
                 payment_method: sale.payment_method,
+                cash_received:  sale.cash_received,
+                credit_used:    sale.credit_used,
                 created_at:     sale.created_at,
             }
         });

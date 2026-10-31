@@ -9,7 +9,10 @@ export default function InvoiceCard({ sale, customer, worker, onShare, onDownloa
     credit:      { color: '#2563eb', bg: '#eff6ff', label: '📋 বাকি' },
     replacement: { color: '#d97706', bg: '#fffbeb', label: '↩️ রিপ্লেসমেন্ট' },
   }
-  const pm = paymentMeta[sale.payment_method] || { color: '#6b7280', bg: '#f9fafb', label: sale.payment_method }
+  const isPartial = sale.payment_method === 'credit' && parseFloat(sale.cash_received) > 0
+  const pm = isPartial
+    ? { color: '#7c3aed', bg: '#f5f3ff', label: '💵+📋 আংশিক' }
+    : (paymentMeta[sale.payment_method] || { color: '#6b7280', bg: '#f9fafb', label: sale.payment_method })
 
   const date = new Date().toLocaleDateString('bn-BD', { day: 'numeric', month: 'long', year: 'numeric' })
 

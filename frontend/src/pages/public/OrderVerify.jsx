@@ -43,6 +43,8 @@ export default function OrderVerify() {
   }
 
   const v = VIEW[status]
+  // আংশিক পেমেন্ট: payment_method 'credit' কিন্তু কিছু নগদ নেওয়া হয়েছে
+  const isPartial = data?.payment_method === 'credit' && parseFloat(data?.cash_received) > 0
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
@@ -61,7 +63,9 @@ export default function OrderVerify() {
               <div style={{ margin: '18px 0', background: '#f8fafc', borderRadius: 14, padding: 14, textAlign: 'left', fontSize: 13 }}>
                 <Row l="Invoice" r={data.invoice_number} mono />
                 <Row l="দোকান" r={data.shop_name} />
-                <Row l="পেমেন্ট" r={PAYMENT[data.payment_method] || data.payment_method} />
+                <Row l="পেমেন্ট" r={isPartial ? 'আংশিক (নগদ + বাকি)' : (PAYMENT[data.payment_method] || data.payment_method)} />
+                {isPartial && <Row l="নগদ প্রাপ্ত" r={`৳${parseFloat(data.cash_received).toLocaleString()}`} />}
+                {isPartial && <Row l="বাকি" r={`৳${parseFloat(data.credit_used || 0).toLocaleString()}`} />}
               </div>
               <p style={{ fontSize: 30, fontWeight: 800, color: '#1e3a8a', margin: '0 0 16px' }}>
                 ৳{parseFloat(data.net_amount || 0).toLocaleString()}

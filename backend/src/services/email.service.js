@@ -341,7 +341,7 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {})
             </tr>
             <tr>
               <td style="color:#777;font-size:12px;padding:8px 0 0;">পেমেন্ট পদ্ধতি</td>
-              <td style="color:#333;font-size:12px;text-align:right;padding:8px 0 0;font-weight:bold;">${paymentLabels[sale.payment_method] || sale.payment_method}</td>
+              <td style="color:#333;font-size:12px;text-align:right;padding:8px 0 0;font-weight:bold;">${(sale.payment_method === 'credit' && parseFloat(sale.cash_received) > 0) ? 'আংশিক (নগদ + বাকি)' : (paymentLabels[sale.payment_method] || sale.payment_method)}</td>
             </tr>
             ${sale.cash_received > 0 ? `<tr><td style="color:#777;font-size:12px;padding:3px 0;">নগদ প্রাপ্ত</td><td style="color:#2e7d32;font-size:12px;text-align:right;padding:3px 0;">৳${sale.cash_received}</td></tr>` : ''}
             ${sale.credit_used > 0 ? `<tr><td style="color:#777;font-size:12px;padding:3px 0;">বাকি দেওয়া হয়েছে</td><td style="color:#e65100;font-size:12px;text-align:right;padding:3px 0;">৳${sale.credit_used}</td></tr>` : ''}
@@ -367,7 +367,7 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {})
 </body>
 </html>`;
 
-    const text = `ZovoriX Invoice\nদোকান: ${customer.shop_name}\nInvoice: ${sale.invoice_number}\nমোট: ৳${sale.net_amount}\nপেমেন্ট: ${paymentLabels[sale.payment_method] || sale.payment_method}\nধন্যবাদ।`;
+    const text = `ZovoriX Invoice\nদোকান: ${customer.shop_name}\nInvoice: ${sale.invoice_number}\nমোট: ৳${sale.net_amount}\nপেমেন্ট: ${(sale.payment_method === 'credit' && parseFloat(sale.cash_received) > 0) ? 'আংশিক (নগদ + বাকি)' : (paymentLabels[sale.payment_method] || sale.payment_method)}\nধন্যবাদ।`;
     return sendEmail(email, subject, html, text, { type: 'invoice', tenant_id: meta.tenant_id });
 };
 
@@ -516,7 +516,7 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
             </tr>
             <tr>
               <td style="color:#777;font-size:12px;padding:8px 0 0;">পেমেন্ট পদ্ধতি</td>
-              <td style="color:#333;font-size:12px;text-align:right;padding:8px 0 0;font-weight:bold;">${paymentLabels[sale.payment_method] || sale.payment_method}</td>
+              <td style="color:#333;font-size:12px;text-align:right;padding:8px 0 0;font-weight:bold;">${(sale.payment_method === 'credit' && parseFloat(sale.cash_received) > 0) ? 'আংশিক (নগদ + বাকি)' : (paymentLabels[sale.payment_method] || sale.payment_method)}</td>
             </tr>
             ${sale.cash_received > 0 ? `<tr><td style="color:#777;font-size:12px;padding:3px 0;">নগদ প্রাপ্ত</td><td style="color:#2e7d32;font-size:12px;text-align:right;padding:3px 0;">৳${sale.cash_received}</td></tr>` : ''}
             ${sale.credit_used > 0 ? `<tr><td style="color:#777;font-size:12px;padding:3px 0;">বাকি দেওয়া হয়েছে</td><td style="color:#e65100;font-size:12px;text-align:right;padding:3px 0;">৳${sale.credit_used}</td></tr>` : ''}
