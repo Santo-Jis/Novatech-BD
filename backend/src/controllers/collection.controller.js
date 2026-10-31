@@ -133,7 +133,7 @@ const createCollection = async (req, res) => {
                 cheque_bank, cheque_no, cheque_date,
                 receipt_photo_url, note, latitude, longitude,
                 status, created_at, tenant_id) VALUES
-               ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', NOW(, 2))
+               ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', NOW(), $12)
              RETURNING *`,
             [
                 sr_id,
@@ -147,6 +147,7 @@ const createCollection = async (req, res) => {
                 note         || null,
                 latitude     ? parseFloat(latitude)  : null,
                 longitude    ? parseFloat(longitude) : null,
+                req.tenantId,
             ]
         );
 
