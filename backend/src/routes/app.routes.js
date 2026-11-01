@@ -9,11 +9,11 @@ const router  = express.Router()
 // MAIN APK (Staff) version
 // GitHub Actions (build-apk.yml) auto-update করবে
 // ─────────────────────────────────────────────────────────────
-const GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/latest/download/app-release.apk'
+const GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/latest/download/app-release.apk'
 
 const APP_VERSION = {
-  versionCode: 325,
-  versionName: '1.0.325',
+  versionCode: 324,
+  versionName: '1.0.324',
   apkUrl: 'https://zovorix.onrender.com/api/app/download',
   forceUpdate: false,
   changelog: 'প্রথম সংস্করণ। সব ফিচার যোগ করা হয়েছে।',
@@ -24,9 +24,9 @@ const APP_VERSION = {
 // GitHub Actions (build-customer-apk.yml) auto-update করবে
 // ─────────────────────────────────────────────────────────────
 // CUSTOMER_VERSION_CODE — এই comment টি রাখো, workflow grep করে এটা দিয়ে
-const CUSTOMER_VERSION_CODE = 413
-const CUSTOMER_VERSION_NAME = '1.0.413'
-const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/download/customer-v1.0.413/customer-release.apk'
+const CUSTOMER_VERSION_CODE = 412
+const CUSTOMER_VERSION_NAME = '1.0.412'
+const CUSTOMER_GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/download/customer-v1.0.412/customer-release.apk'
 
 const CUSTOMER_APP_VERSION = {
   versionCode: CUSTOMER_VERSION_CODE,
@@ -45,7 +45,7 @@ const CUSTOMER_APP_VERSION = {
 //  versionName '1.0.1' হবে; Customer-এর মতোই versionCode == versionName-এর শেষ অংশ)
 const SR_VERSION_CODE = 21
 const SR_VERSION_NAME = '1.0.21'
-const SR_GITHUB_APK_URL = 'https://github.com/Santo-Jis/ZovoriX/releases/download/sr-v1.0.21/sr-release.apk'
+const SR_GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/download/sr-v1.0.21/sr-release.apk'
 
 const SR_APP_VERSION = {
   versionCode: SR_VERSION_CODE,
