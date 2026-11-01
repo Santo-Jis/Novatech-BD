@@ -29,6 +29,34 @@ export const PayBadge = ({ method }) => {
 }
 
 /**
+ * বাকি ইনভয়েসের আদায়-অবস্থা badge (paid / partial / unpaid)
+ * status null/undefined হলে (নগদ ইনভয়েস, বা পুরনো API) কিছুই দেখায় না।
+ */
+export const DueStatusBadge = ({ status }) => {
+  const map = {
+    paid:    { label: '✓ আদায় হয়েছে', bg: '#ECFDF5', color: '#059669' },
+    partial: { label: '◐ আংশিক আদায়', bg: '#FFFBEB', color: '#D97706' },
+    unpaid:  { label: '● বাকি আছে',    bg: '#FEF2F2', color: '#DC2626' },
+  }
+  const m = map[status]
+  if (!m) return null
+  return (
+    <span style={{
+      display: 'inline-block',
+      background: m.bg,
+      color: m.color,
+      fontSize: 10,
+      fontWeight: 700,
+      padding: '2px 9px',
+      borderRadius: 20,
+      letterSpacing: 0.2,
+    }}>
+      {m.label}
+    </span>
+  )
+}
+
+/**
  * Order status badge
  */
 export const StatusBadge = ({ status }) => {

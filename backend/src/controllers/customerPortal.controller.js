@@ -2633,9 +2633,26 @@ const getCustomerInvoices = async (req, res) => {
                     st.replacement_value, st.credit_balance_used,
                     st.created_at,
                     u.name_bn AS sr_name,
+                    -- বাকি ইনভয়েসে কতটা আদায় হয়েছে (payment_allocations থেকে computed)।
+                    -- শুধু credit_used > 0 ইনভয়েসে অর্থপূর্ণ; বাকিতে null রাখা হয়েছে যাতে UI badge না দেখায়।
+                    CASE WHEN st.credit_used > 0 THEN COALESCE(pa.allocated, 0) END AS paid_amount,
+                    CASE WHEN st.credit_used > 0
+                         THEN GREATEST(st.credit_used - COALESCE(pa.allocated, 0), 0) END AS remaining_amount,
+                    CASE WHEN st.credit_used > 0 THEN
+                        CASE
+                            WHEN st.credit_used - COALESCE(pa.allocated, 0) <= 0 THEN 'paid'
+                            WHEN COALESCE(pa.allocated, 0) > 0                  THEN 'partial'
+                            ELSE 'unpaid'
+                        END
+                    END AS payment_status,
                     COUNT(*) OVER() AS total_count
              FROM sales_transactions st
              JOIN users u ON st.worker_id = u.id
+             LEFT JOIN LATERAL (
+                 SELECT SUM(amount) AS allocated
+                 FROM payment_allocations
+                 WHERE sale_id = st.id
+             ) pa ON true
              WHERE ${whereClause}
              ORDER BY st.created_at DESC
              LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
@@ -2709,7 +2726,22 @@ const getPaymentHistory = async (req, res) => {
             FROM credit_payments cp
             JOIN users u ON cp.worker_id = u.id
             WHERE cp.customer_id = $1
-              ${dateClause}`;
+              ${dateClause}
+            UNION ALL
+            -- SR-রেকর্ড করা আদায় (collections) — শুধু অ্যাডমিন verify হওয়াগুলো, কারণ বকেয়া
+            -- তখনই কমে। আগে এই টেবিল এখানে ধরাই হতো না, তাই এই পথে আদায় হওয়া টাকা
+            -- পোর্টালের ইতিহাসে দেখা যেত না। তারিখ = verify-এর তারিখ (বকেয়া কমার মুহূর্ত)।
+            SELECT
+                col.amount                              AS amount,
+                'credit'                                AS payment_type,
+                COALESCE(col.note, col.payment_mode)    AS reference,
+                u.name_bn                               AS collected_by,
+                col.verified_at                         AS created_at
+            FROM collections col
+            LEFT JOIN users u ON col.sr_id = u.id
+            WHERE col.customer_id = $1
+              AND col.status = 'verified'
+              ${dateClause.replace(/created_at/g, 'col.verified_at')}`;
 
         let unionSQL;
         if (typeFilter === 'cash')         unionSQL = cashBranch;
@@ -2747,6 +2779,11 @@ const getPaymentHistory = async (req, res) => {
                  SELECT amount, 'credit' AS payment_type
                  FROM credit_payments
                  WHERE customer_id = $1
+                 UNION ALL
+                 SELECT amount, 'credit' AS payment_type
+                 FROM collections
+                 WHERE customer_id = $1
+                   AND status = 'verified'
              ) AS all_payments`,
             [customer_id]
         );

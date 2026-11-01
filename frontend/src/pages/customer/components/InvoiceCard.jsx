@@ -3,7 +3,7 @@
 
 import { useState } from 'react'
 import { fmt, fmtDate } from '../utils/helpers'
-import { PayBadge } from './Badges'
+import { PayBadge, DueStatusBadge } from './Badges'
 import CompanyTag from './CompanyTag'
 
 // Payment method → left border color
@@ -77,6 +77,11 @@ export default function InvoiceCard({ sale, company }) {
             ৳{fmt(sale.net_amount)}
           </p>
           <PayBadge method={sale.payment_method} />
+          {sale.payment_status && (
+            <div style={{ marginTop: 4 }}>
+              <DueStatusBadge status={sale.payment_status} />
+            </div>
+          )}
           <p style={{ margin: '5px 0 0', fontSize: 10, color: '#2563EB', fontWeight: 600 }}>
             {open ? '▲ বন্ধ করুন' : '▼ বিস্তারিত'}
           </p>
@@ -169,6 +174,30 @@ export default function InvoiceCard({ sale, company }) {
                 <span style={{ fontSize: 12, color: '#DC2626', fontWeight: 600 }}>⚠ বাকি রাখা হয়েছে</span>
                 <span style={{ fontSize: 12, color: '#DC2626', fontWeight: 700, fontFamily: 'Inter, system-ui' }}>
                   ৳{fmt(sale.credit_used)}
+                </span>
+              </div>
+            )}
+
+            {/* পরে আদায় হওয়া অংশ — payment_allocations থেকে (শুধু বাকি ইনভয়েসে আসে) */}
+            {parseFloat(sale.paid_amount) > 0 && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                background: '#ECFDF5', borderRadius: 8, padding: '6px 10px', marginTop: 2,
+              }}>
+                <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>✓ পরে আদায় হয়েছে</span>
+                <span style={{ fontSize: 12, color: '#059669', fontWeight: 700, fontFamily: 'Inter, system-ui' }}>
+                  ৳{fmt(sale.paid_amount)}
+                </span>
+              </div>
+            )}
+            {sale.payment_status && sale.payment_status !== 'paid' && parseFloat(sale.remaining_amount) > 0 && (
+              <div style={{
+                display: 'flex', justifyContent: 'space-between',
+                background: '#FEF2F2', borderRadius: 8, padding: '6px 10px', marginTop: 2,
+              }}>
+                <span style={{ fontSize: 12, color: '#DC2626', fontWeight: 600 }}>এখনো বাকি</span>
+                <span style={{ fontSize: 12, color: '#DC2626', fontWeight: 700, fontFamily: 'Inter, system-ui' }}>
+                  ৳{fmt(sale.remaining_amount)}
                 </span>
               </div>
             )}

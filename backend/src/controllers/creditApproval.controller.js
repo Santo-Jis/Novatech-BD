@@ -53,7 +53,7 @@ const updateSettings = async (req, res) => {
 
         // UPSERT — row না থাকলে insert, থাকলে update
         await query(
-            `INSERT INTO credit_settings (id, alert_threshold_pct, require_approval, updated_by, updated_at, tenant_id) VALUES (1, $1, $2, $3, NOW(, $4))
+            `INSERT INTO credit_settings (id, alert_threshold_pct, require_approval, updated_by, updated_at, tenant_id) VALUES (1, $1, $2, $3, NOW(), $4)
              ON CONFLICT (id) DO UPDATE
                SET alert_threshold_pct = EXCLUDED.alert_threshold_pct,
                    require_approval    = EXCLUDED.require_approval,
@@ -119,9 +119,9 @@ const requestApproval = async (req, res) => {
              LEFT JOIN customer_assignments ca
                ON ca.customer_id = c.id AND ca.is_active = true AND ca.worker_id = $2
              LEFT JOIN routes r ON c.route_id = r.id
-             WHERE c.id = $1`,
-            [customer_id, req.user.id,
-                req.tenantId]
+             WHERE c.id = $1
+               AND c.tenant_id = $3`,
+            [customer_id, req.user.id, req.tenantId]
         );
 
         if (custResult.rows.length === 0) {
@@ -138,7 +138,7 @@ const requestApproval = async (req, res) => {
                AND status      = 'pending'
                AND expires_at  > NOW()
              AND tenant_id = $3`,
-            [customer_id, req.user.id]
+            [customer_id, req.user.id, req.tenantId]
         );
 
         if (existing.rows.length > 0) {
@@ -150,7 +150,7 @@ const requestApproval = async (req, res) => {
         }
 
         const result = await query(
-            `INSERT INTO credit_approval_requests (customer_id, worker_id, manager_id, requested_amount, note, expires_at, tenant_id) VALUES ($1, $2, $3, $4, $5, NOW(, $6) + INTERVAL '24 hours')
+            `INSERT INTO credit_approval_requests (customer_id, worker_id, manager_id, requested_amount, note, expires_at, tenant_id) VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '24 hours', $6)
              RETURNING id, created_at`,
             [
                 customer_id,

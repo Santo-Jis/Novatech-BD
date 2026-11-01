@@ -26,6 +26,7 @@ const sharp                        = require('sharp');
 const { uploadToStorage }          = require('../config/firebase'); // existing upload helper
 const { updateCommissionRealtime } = require('../services/commission.service');
 const { firebaseNotify }           = require('../services/firebase.notify');
+const { allocatePaymentSafe }      = require('../services/paymentAllocation.service');
 
 // ✅ FIX: UTC নয়, BD local date — commission.service.js/sales.controller.js-এর
 // getBDToday()-এর সাথে মিলবে (রাত ১২টা-ভোর ৬টা BD সময়ে UTC date এক দিন পিছিয়ে থাকে)
@@ -292,6 +293,17 @@ const verifyCollection = async (req, res) => {
              AND tenant_id = $3`,
                 [parseFloat(col.amount), col.customer_id, req.tenantId]
             );
+
+            // এই আদায় কোন ইনভয়েসগুলোর বাকি শোধ করল তা রেকর্ড (FIFO — সবচেয়ে পুরনো আগে)।
+            // একই transaction-এ, কিন্তু best-effort (SAVEPOINT) — বরাদ্দ ফেল করলেও
+            // verify/current_credit কমা আটকায় না। দেখো services/paymentAllocation.service.js
+            await allocatePaymentSafe(client, {
+                tenantId:   req.tenantId,
+                customerId: col.customer_id,
+                paymentId:  col.id,
+                source:     'collection',
+                amount:     col.amount,
+            });
         });
 
         // ✅ FIX: বাকি আদায় হলো — এই টাকা এখন commission-যোগ্য।

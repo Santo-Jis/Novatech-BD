@@ -591,10 +591,28 @@ export default function SalesForm() {
                       </p>
                     </div>
                     <div className="text-right flex-shrink-0">
-                      <p className="text-sm font-bold text-red-500">
-                        ৳{parseInt(sale.credit_used).toLocaleString()}
-                      </p>
-                      <span className="text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">বাকি</span>
+                      {sale.payment_status === 'paid' ? (
+                        <>
+                          <p className="text-sm font-bold text-gray-400 line-through">
+                            ৳{parseInt(sale.credit_used).toLocaleString()}
+                          </p>
+                          <span className="text-[9px] bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full">আদায় হয়েছে</span>
+                        </>
+                      ) : (
+                        <>
+                          {/* remaining_amount নতুন API-তে আসে; না এলে (পুরনো সার্ভার) credit_used-ই দেখায় */}
+                          <p className="text-sm font-bold text-red-500">
+                            ৳{parseInt(sale.remaining_amount ?? sale.credit_used).toLocaleString()}
+                          </p>
+                          {sale.payment_status === 'partial' ? (
+                            <span className="text-[9px] bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded-full">
+                              আংশিক আদায় (মোট ৳{parseInt(sale.credit_used).toLocaleString()})
+                            </span>
+                          ) : (
+                            <span className="text-[9px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">বাকি</span>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
                 ))}

@@ -55,11 +55,18 @@ jest.mock('../config/encryption', () => ({
     generateOTP: jest.fn().mockReturnValue('123456'),
 }));
 
+// ইনভয়েসে FIFO বরাদ্দ — আলাদা unit test আছে (paymentAllocation.service.test.js),
+// এখানে শুধু collectCredit সেটা সঠিক আর্গুমেন্টে ডাকে কিনা দেখা হয়।
+jest.mock('../services/paymentAllocation.service', () => ({
+    allocatePaymentSafe: jest.fn().mockResolvedValue({ allocations: [], allocated: 0, unallocated: 0 }),
+}));
+
 // ─── IMPORTS (mock এর পরে) ────────────────────────────────────────
 const { query } = require('../config/db');
 const { uploadToCloudinary, generateCustomerCode } = require('../services/employee.service');
 const { sendWelcomeEmail, sendOTPEmail } = require('../services/email.service');
 const { generateOTP } = require('../config/encryption');
+const { allocatePaymentSafe } = require('../services/paymentAllocation.service');
 
 const {
     getCustomers,
@@ -771,7 +778,7 @@ describe('collectCredit — বাকি আদায়', () => {
         // withTransaction: success
         const mockClientQuery = jest.fn()
             .mockResolvedValueOnce({ rows: [{ shop_name: 'আলীর স্টোর', current_credit: '1000' }] })
-            .mockResolvedValueOnce({ rows: [] }); // INSERT
+            .mockResolvedValueOnce({ rows: [{ id: 'pay-full-1' }] }); // INSERT ... RETURNING id
         withTransaction.mockImplementationOnce(async (cb) => {
             const mockClient = { query: mockClientQuery };
             await cb(mockClient);
@@ -788,6 +795,39 @@ describe('collectCredit — বাকি আদায়', () => {
         expect(res.status).toHaveBeenCalledWith(200);
         // INSERT query client.query-তে হয়েছে
         expect(mockClientQuery.mock.calls[1][0]).toContain('credit_payments');
+        // নতুন আদায়-row ইনভয়েসে বরাদ্দের জন্য একই transaction client দিয়ে ডাকা হয়েছে
+        expect(allocatePaymentSafe).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                customerId: 'a1b2c3d4-e5f6-4789-abcd-ef1234567890',
+                paymentId:  'pay-full-1',
+                source:     'credit_payment',
+                amount:     1000,
+            })
+        );
+    });
+
+    test('ইনভয়েস-বরাদ্দ ব্যর্থ (null) হলেও আদায় সফল — 200', async () => {
+        const { withTransaction } = require('../config/db');
+        query.mockResolvedValueOnce({ rows: [] });
+        allocatePaymentSafe.mockResolvedValueOnce(null); // allocatePaymentSafe ব্যর্থ হলে null দেয়, throw করে না
+        withTransaction.mockImplementationOnce(async (cb) => {
+            await cb({
+                query: jest.fn()
+                    .mockResolvedValueOnce({ rows: [{ shop_name: 'দোকান', current_credit: '800' }] })
+                    .mockResolvedValueOnce({ rows: [{ id: 'pay-x' }] }),
+            });
+        });
+
+        const req = {
+            params: { id: 'a1b2c3d4-e5f6-4789-abcd-ef1234567890' },
+            body:   { amount: 300, idempotency_key: 'idem-alloc-fail' },
+            user:   workerUser,
+        };
+        const res = mockRes();
+        await collectCredit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
     });
 
     test('আংশিক payment (কম amount) → 200', async () => {
@@ -799,7 +839,7 @@ describe('collectCredit — বাকি আদায়', () => {
             const mockClient = {
                 query: jest.fn()
                     .mockResolvedValueOnce({ rows: [{ shop_name: 'দোকান', current_credit: '5000' }] })
-                    .mockResolvedValueOnce({ rows: [] }), // INSERT
+                    .mockResolvedValueOnce({ rows: [{ id: 'pay-partial-1' }] }), // INSERT ... RETURNING id
             };
             await cb(mockClient);
         });

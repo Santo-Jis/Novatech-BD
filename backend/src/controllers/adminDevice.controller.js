@@ -268,7 +268,7 @@ const revokeDevice = async (req, res) => {
 
         await query(
             `INSERT INTO audit_logs (user_id, action, table_name, record_id, new_value, tenant_id) VALUES ($1, 'REVOKE_PORTAL_DEVICE', 'customer_portal_devices', $2, $3, $4)`,
-            [req.user.id, deviceId, JSON.stringify({ device_label, google_email, customer_id: customerId, by_role: req.user.role })]
+            [req.user.id, deviceId, JSON.stringify({ device_label, google_email, customer_id: customerId, by_role: req.user.role }), req.tenantId]
         ).catch(() => {});
 
         return res.status(200).json({
@@ -339,7 +339,7 @@ const revokeAllDevices = async (req, res) => {
                 revoked_count: deviceResult.rows.length,
                 also_revoke_link: alsoRevokeLink,
                 by_role: req.user.role,
-            })]
+            }), req.tenantId]
         ).catch(() => {});
 
         return res.status(200).json({

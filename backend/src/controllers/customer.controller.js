@@ -7,6 +7,7 @@ const { sendCustomerNotification } = require('./customerNotification.controller'
 const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
 const { updateCommissionRealtime } = require('../services/commission.service');
 const { firebaseNotify } = require('../services/firebase.notify');
+const { allocatePaymentSafe } = require('../services/paymentAllocation.service');
 
 // ✅ FIX: UTC নয়, BD local date — commission.service.js/sales.controller.js-এর
 // getBDToday()-এর সাথে মিলবে (রাত ১২টা-ভোর ৬টা BD সময়ে UTC date এক দিন পিছিয়ে থাকে)
@@ -794,10 +795,21 @@ const collectCredit = async (req, res) => {
             }
 
             // INSERT — trigger অটো current_credit কমাবে
-            await client.query(
-                `INSERT INTO credit_payments (customer_id, worker_id, amount, notes, idempotency_key, tenant_id) VALUES ($1, $2, $3, $4, $5, $6)`,
+            const paymentInsert = await client.query(
+                `INSERT INTO credit_payments (customer_id, worker_id, amount, notes, idempotency_key, tenant_id) VALUES ($1, $2, $3, $4, $5, $6)
+                 RETURNING id`,
                 [customerId, req.user.id, amount, notes || null, idempotency_key, req.tenantId]
             );
+
+            // এই আদায় কোন ইনভয়েসগুলোর বাকি শোধ করল তা রেকর্ড (FIFO)। best-effort (SAVEPOINT) —
+            // ফেল করলেও আদায়/ট্রিগার-কমানো আটকায় না। দেখো services/paymentAllocation.service.js
+            await allocatePaymentSafe(client, {
+                tenantId:   req.tenantId,
+                customerId,
+                paymentId:  paymentInsert.rows[0].id,
+                source:     'credit_payment',
+                amount,
+            });
 
             remainingCredit = Math.max(0, currentCredit - parseFloat(amount));
         });
@@ -1310,11 +1322,26 @@ const getCustomerCreditAlert = async (req, res) => {
         }
 
         const salesResult = await query(
+            // paid_amount/remaining_amount: payment_allocations থেকে computed (migration_payment_allocations.sql)।
+            // আদায় হওয়া ইনভয়েসও তালিকায় থাকে (payment_status = 'paid'), যাতে SR দেখতে পারে কোনটা শোধ হলো।
             `SELECT st.id AS sale_id, st.invoice_number, st.created_at,
                     st.net_amount, st.credit_used, st.payment_method,
+                    COALESCE(pa.allocated, 0)                    AS paid_amount,
+                    GREATEST(st.credit_used - COALESCE(pa.allocated, 0), 0) AS remaining_amount,
+                    CASE
+                        WHEN st.credit_used - COALESCE(pa.allocated, 0) <= 0 THEN 'paid'
+                        WHEN COALESCE(pa.allocated, 0) > 0                  THEN 'partial'
+                        ELSE 'unpaid'
+                    END                                          AS payment_status,
                     u.name_bn AS sr_name, u.id AS sr_id
              FROM sales_transactions st
              JOIN users u ON st.worker_id = u.id
+             LEFT JOIN (
+                 SELECT sale_id, SUM(amount) AS allocated
+                 FROM payment_allocations
+                 WHERE customer_id = $1
+                 GROUP BY sale_id
+             ) pa ON pa.sale_id = st.id
              WHERE st.customer_id = $1 AND st.payment_method = 'credit' AND st.credit_used > 0
              AND st.tenant_id = $2
              ORDER BY st.created_at DESC LIMIT 20`,

@@ -146,7 +146,7 @@ const createBooking = async (payload) => {
         company_address, company_phone, company_email, billing_name, billing_email,
         industry, company_size, country, division, city, timezone, website, referral_source,
         payment_method, trx_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
      RETURNING *`,
     [tenant_id, requested_plan, JSON.stringify(seat_counts), billing_cycle, estimated_total_paisa,
      company_name, company_name_bn, slug, contact_name, contact_phone, contact_email,
