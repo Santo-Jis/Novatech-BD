@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import api from '../../api/axios'
 import { useAppStore } from '../../store/app.store'
@@ -49,8 +49,13 @@ function calcFinalPrice(p) {
   return after + (after * vat / 100) + (after * tax / 100)
 }
 
+// স্টক এই সংখ্যা বা তার কম হলে কমলা রঙে "কম" দেখাবে
+const LOW_STOCK_LIMIT = 5
+
 // ─── একটি পণ্য কার্ড ──────────────────────────────────────
-function ProductCard({ p, qty, onUpdate, isReplacement = false }) {
+// have: SR-এর হাতে এই পণ্য কত পিস আছে (সংখ্যা) — null/undefined হলে স্টক UI দেখানো হয় না
+// (রিপ্লেসমেন্ট ট্যাবে বা স্টকের তথ্য না থাকলে আগের মতোই চলে)
+function ProductCard({ p, qty, onUpdate, isReplacement = false, have = null, onFixQty }) {
   const [expanded, setExpanded] = useState(false)
   const finalPrice = calcFinalPrice(p)
   const hasDiscount = parseFloat(p.discount) > 0
@@ -58,8 +63,22 @@ function ProductCard({ p, qty, onUpdate, isReplacement = false }) {
   const hasTax      = parseFloat(p.tax)      > 0
   const hasExtras   = hasDiscount || hasVat || hasTax || p.description
 
+  const showStock   = !isReplacement && have !== null && have !== undefined
+  const unit        = p.unit || 'pcs'
+  const overStock   = showStock && qty > have                  // স্টকের বেশি দেওয়া আছে (লাল সতর্কতা)
+  const outOfStock  = showStock && have <= 0 && !overStock     // স্টক শূন্য — কার্ড ধূসর
+  const atMax       = showStock && have > 0 && qty >= have && !overStock
+  const lowStock    = showStock && have > 0 && have <= LOW_STOCK_LIMIT
+  const plusBlocked = showStock && qty >= have
+
+  const cardStyle = overStock
+    ? 'border-red-400 bg-red-50 ring-1 ring-red-200'
+    : outOfStock
+      ? 'border-gray-100 bg-gray-50 opacity-60'
+      : qty > 0 ? 'border-primary/30 bg-white' : 'border-gray-100 bg-white'
+
   return (
-    <div className={`bg-white rounded-2xl border shadow-sm overflow-hidden transition-all ${qty > 0 ? 'border-primary/30' : 'border-gray-100'}`}>
+    <div id={`prod-${p.id}`} className={`rounded-2xl border shadow-sm overflow-hidden transition-all ${cardStyle}`}>
       <div className="p-4">
         <div className="flex items-center gap-3">
           {/* ছবি */}
@@ -102,26 +121,59 @@ function ProductCard({ p, qty, onUpdate, isReplacement = false }) {
                 <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Tax {p.tax}%</span>
               )}
             </div>
+
+            {/* ── হাতে কত স্টক আছে ── */}
+            {showStock && (
+              <p className={`text-xs font-semibold mt-1 ${
+                have <= 0 ? 'text-red-500' : lowStock ? 'text-orange-500' : 'text-gray-500'
+              }`}>
+                {have <= 0
+                  ? '● স্টক নেই'
+                  : `স্টক: ${have} ${unit}${lowStock ? ' (কম)' : ''}`}
+              </p>
+            )}
           </div>
 
           {/* কাউন্টার */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <button
-              onClick={() => onUpdate(p.id, -1)}
-              disabled={qty === 0}
-              className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center disabled:opacity-30 active:scale-95"
-            >
-              <FiMinus size={13} />
-            </button>
-            <span className={`w-7 text-center font-bold text-sm ${qty > 0 ? 'text-primary' : 'text-gray-300'}`}>{qty}</span>
-            <button
-              onClick={() => onUpdate(p.id, 1)}
-              className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary active:scale-95"
-            >
-              <FiPlus size={13} />
-            </button>
+          <div className="flex flex-col items-end gap-1 flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onUpdate(p.id, -1)}
+                disabled={qty === 0}
+                className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center disabled:opacity-30 active:scale-95"
+              >
+                <FiMinus size={13} />
+              </button>
+              <span className={`w-7 text-center font-bold text-sm ${overStock ? 'text-red-600' : qty > 0 ? 'text-primary' : 'text-gray-300'}`}>{qty}</span>
+              <button
+                onClick={() => onUpdate(p.id, 1)}
+                disabled={plusBlocked}
+                aria-label={plusBlocked ? 'স্টকের সর্বোচ্চ সীমায় পৌঁছেছে' : 'বাড়ান'}
+                className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary active:scale-95 disabled:opacity-30 disabled:active:scale-100"
+              >
+                <FiPlus size={13} />
+              </button>
+            </div>
+            {atMax && <span className="text-[10px] font-semibold text-amber-600">সর্বোচ্চ স্টক</span>}
           </div>
         </div>
+
+        {/* স্টকের বেশি দেওয়া থাকলে — এই কার্ডেই লাল সতর্কতা + এক ট্যাপে ঠিক করার বাটন */}
+        {overStock && (
+          <div className="mt-2 pt-2 border-t border-red-200 flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold text-red-600">
+              ⚠️ {have > 0 ? `স্টকে আছে ${have} ${unit}, আপনি ${qty} দিয়েছেন` : `স্টক নেই, আপনি ${qty} দিয়েছেন`}
+            </p>
+            {onFixQty && (
+              <button
+                onClick={() => onFixQty(p.id)}
+                className="text-xs font-bold text-white bg-red-500 px-3 py-1 rounded-full active:scale-95 flex-shrink-0"
+              >
+                {have > 0 ? `${have} করুন` : 'সরান'}
+              </button>
+            )}
+          </div>
+        )}
 
         {/* সাবটোটাল */}
         {qty > 0 && (
@@ -155,6 +207,46 @@ function ProductCard({ p, qty, onUpdate, isReplacement = false }) {
   )
 }
 
+// ─── স্টক সতর্কতা বক্স ─────────────────────────────────────
+// বিক্রয় নিশ্চিত করার সময় (বা তার আগে) স্টক কম ধরা পড়লে এই পেইজেই দেখায় —
+// SR-কে পিছনের ধাপে যেতে হয় না, এক ট্যাপে "স্টক অনুযায়ী ঠিক করুন" চাপলেই হয়।
+function StockAlert({ lines, onFixAll, onShowProducts, boxRef }) {
+  if (lines.length === 0) return null
+  return (
+    <div ref={boxRef} className="rounded-2xl border-2 border-red-300 bg-red-50 p-4 space-y-3">
+      <div className="flex items-start gap-2">
+        <span className="text-lg">🚫</span>
+        <div>
+          <p className="text-sm font-bold text-red-700">হাতের স্টকের বেশি দেওয়া আছে</p>
+          <p className="text-[11px] text-red-500 mt-0.5">নিচের পণ্যগুলোর পরিমাণ ঠিক না করলে বিক্রয় সম্পন্ন হবে না।</p>
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        {lines.map(l => (
+          <div key={l.id} className="flex items-center justify-between gap-2 bg-white/80 rounded-xl px-3 py-2">
+            <p className="text-xs font-semibold text-gray-800 min-w-0 truncate">{l.name}</p>
+            <p className="text-[11px] font-semibold text-red-600 flex-shrink-0">
+              {l.have > 0 ? `হাতে ${l.have}, দিয়েছেন ${l.need}` : `স্টক নেই, দিয়েছেন ${l.need}`}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button onClick={onFixAll}
+          className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-xs font-bold active:scale-[0.98]">
+          স্টক অনুযায়ী ঠিক করুন
+        </button>
+        {onShowProducts && (
+          <button onClick={onShowProducts}
+            className="px-4 py-2.5 border border-red-300 text-red-600 rounded-xl text-xs font-semibold bg-white active:scale-[0.98]">
+            পণ্য দেখুন
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── MAIN COMPONENT ────────────────────────────────────────
 export default function SalesForm() {
   const { id: customerId }    = useParams()
@@ -182,6 +274,15 @@ export default function SalesForm() {
   const [loading,      setLoading]      = useState(true)
   const [submitting,   setSubmitting]   = useState(false)
   const [step,         setStep]         = useState('products')
+
+  // ── SR-এর হাতের স্টক (sr_stock_ledger) ─────────────────────
+  // srStock: { [product_id]: হাতে কত পিস } — শুধু যেসব পণ্য হাতে আছে সেগুলোর এন্ট্রি থাকে।
+  // stockKnown=true মানে তালিকাটা সম্পূর্ণ, তাই এন্ট্রি না থাকা পণ্য = হাতে ০।
+  // stockKnown=false (অফলাইনে ক্যাশও নেই / লোড ব্যর্থ) হলে স্টক আটকানো হয় না — আগের মতো চলে,
+  // আর সার্ভার বিক্রয়ের সময় যাচাই করবেই।
+  const [srStock,    setSrStock]    = useState({})
+  const [stockKnown, setStockKnown] = useState(false)
+  const stockAlertRef = useRef(null)
 
   // ── বাকি সতর্কতা (Credit Alert) ───────────────────────────
   const [creditAlert,       setCreditAlert]       = useState(null)   // API response
@@ -218,6 +319,12 @@ export default function SalesForm() {
       if (cachedCustomer?.data) setCustomer(cachedCustomer.data)
       loadPromoSnapshot(customerId).then(snap => { if (snap) setPromoSnapshot(snap) })
       if (cachedProducts?.data) setProducts(cachedProducts.data)
+      // হাতের স্টকের ক্যাশ — অফলাইনেও স্টক দেখানো/আটকানোর জন্য (আজকের না হলে ভরসা করা যায় না)
+      const cachedStock = await getCache('sr_stock')
+      if (cachedStock?.data && cachedStock.isToday) {
+        setSrStock(cachedStock.data)
+        setStockKnown(true)
+      }
       if (cachedCustomer?.data && cachedProducts?.data) setLoading(false)
       if (!navigator.onLine && !cachedProducts?.data) {
         toast.error('পণ্যের তালিকা সংরক্ষিত নেই। একবার ইন্টারনেট চালু করে অ্যাপ খুলুন।', { duration: 5000 })
@@ -226,10 +333,22 @@ export default function SalesForm() {
       // Online হলে fresh data নাও + cache আপডেট করো
       if (navigator.onLine) {
         try {
-          const [custRes, prodRes] = await Promise.all([
+          const [custRes, prodRes, stockRes] = await Promise.all([
             api.get(`/customers/${customerId}`),
             api.get('/products?is_active=true'),
+            // স্টক আনতে ব্যর্থ হলে বাকি লোড যেন না আটকায় — তাই আলাদা catch
+            api.get('/ledger/stock').catch(() => null),
           ])
+          if (stockRes?.data?.success) {
+            const map = {}
+            for (const it of stockRes.data.items || []) {
+              const n = Math.max(0, parseInt(it.in_hand_qty) || 0)
+              if (n > 0) map[String(it.product_id)] = n
+            }
+            setSrStock(map)
+            setStockKnown(true)
+            saveCache('sr_stock', map)
+          }
           setCustomer(custRes.data.data)
           setProducts(prodRes.data.data)
           saveCache(`customer_${customerId}`, custRes.data.data)
@@ -308,7 +427,80 @@ export default function SalesForm() {
     return () => clearTimeout(timer)
   }, [selected, customerId, promoCode, isOnline, promoSnapshot, products, customer])
 
+  // এই পণ্য SR-এর হাতে কত পিস আছে। null = জানা নেই (তখন আটকানো হবে না)।
+  const getHave = (pid) => {
+    const key = String(pid)
+    if (key in srStock) return srStock[key]
+    return stockKnown ? 0 : null
+  }
+
+  // সার্ভার "স্টক কম" জানালে সেই সংখ্যা বসিয়ে দাও — তখন কার্ডগুলো নিজে থেকেই লাল হবে
+  // ০-ও স্পষ্টভাবে বসানো হয়: stockKnown=false থাকলেও ওই পণ্যটা "হাতে নেই" হিসেবে ধরা পড়বে,
+  // অথচ বাকি পণ্যগুলো (যাদের সংখ্যা জানা নেই) ভুল করে ০ হয়ে যাবে না।
+  const applyServerShortages = (shortages) => {
+    setSrStock(prev => {
+      const next = { ...prev }
+      for (const s of shortages) {
+        next[String(s.product_id)] = Math.max(0, parseInt(s.have) || 0)
+      }
+      return next
+    })
+  }
+
+  // স্টকের বেশি দেওয়া পণ্যের তালিকা — state নয়, প্রতি রেন্ডারে হিসাব হয়, তাই
+  // পরিমাণ কমালেই লাল চিহ্ন ও সতর্কতা নিজে থেকে মিলিয়ে যায়
+  const overStockLines = products
+    .map(p => ({ p, have: getHave(p.id), need: selected[p.id] || 0 }))
+    .filter(x => x.have !== null && x.need > x.have)
+    .map(x => ({ id: x.p.id, name: x.p.name, have: x.have, need: x.need, unit: x.p.unit || 'pcs' }))
+
+  // এক ট্যাপে স্টক অনুযায়ী ঠিক করা: হাতে যতটা আছে ততটা রাখো, ০ হলে বাদ দাও
+  const fixOverStock = (onlyId = null) => {
+    const lines = onlyId ? overStockLines.filter(l => String(l.id) === String(onlyId)) : overStockLines
+    if (lines.length === 0) return
+    setSelected(prev => {
+      const next = { ...prev }
+      for (const l of lines) {
+        if (l.have > 0) next[l.id] = l.have
+        else delete next[l.id]
+      }
+      return next
+    })
+    if (!onlyId) toast.success('পরিমাণ হাতের স্টক অনুযায়ী ঠিক করা হয়েছে', { duration: 2500 })
+  }
+
+  // বিক্রয় হয়ে গেলে লোকাল স্টক ক্যাশ থেকে সেই পরিমাণ বাদ দাও
+  const commitStockCache = (soldItems) => {
+    if (!stockKnown) return
+    const next = {}
+    for (const [k, v] of Object.entries(srStock)) if (v > 0) next[k] = v
+    for (const { product_id, qty } of soldItems) {
+      const key  = String(product_id)
+      const left = Math.max(0, (next[key] || 0) - (parseInt(qty) || 0))
+      if (left > 0) next[key] = left
+      else delete next[key]
+    }
+    saveCache('sr_stock', next)
+  }
+
+  // সতর্কতা বক্স/লাল কার্ডে স্ক্রল করে দেখাও (পেইজ বদলায় না)
+  const focusStockProblem = (firstId) => {
+    setTimeout(() => {
+      // পণ্য ট্যাবে থাকলে সরাসরি প্রথম লাল কার্ডে, অন্য ট্যাবে থাকলে সতর্কতা বক্সে
+      const target = (firstId ? document.getElementById(`prod-${firstId}`) : null) || stockAlertRef.current
+      target?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 80)
+  }
+
   const updateQty = (pid, delta, isReplacement = false) => {
+    // বিক্রয়ে + চাপলে হাতের স্টকের বেশি যাবে না (রিপ্লেসমেন্টে সীমা নেই — ওটা ফেরত আসা মাল)
+    if (!isReplacement && delta > 0) {
+      const have = getHave(pid)
+      if (have !== null && (selected[pid] || 0) + delta > have) {
+        toast(have > 0 ? `এই প্রডাক্টের স্টক আছে ${have} পিস` : 'এই প্রডাক্টের স্টক নেই', { icon: '⚠️', id: `stock-${pid}` })
+        return
+      }
+    }
     const setter = isReplacement ? setReplacements : setSelected
     setter(prev => {
       const curr = prev[pid] || 0
@@ -387,6 +579,14 @@ export default function SalesForm() {
   const submit = async () => {
     if (Object.keys(selected).length === 0) { toast.error('পণ্য সিলেক্ট করুন।'); return }
 
+    // হাতের স্টকের বেশি কিছু দেওয়া থাকলে সার্ভারে না গিয়ে এই পেইজেই লাল করে দেখাও
+    // (সার্ভার তবুও নিজে আবার যাচাই করে — নিচে catch-এ দেখুন)
+    if (overStockLines.length > 0) {
+      toast.error('কিছু পণ্যের স্টক কম — নিচে লাল দেখানো হয়েছে।', { duration: 3500 })
+      focusStockProblem(overStockLines[0].id)
+      return
+    }
+
     // approval বাধ্যতামূলক এবং এখনো approved হয়নি
     if (needsApproval && approvalStatus !== 'approved') {
       if (approvalStatus === 'pending') {
@@ -450,6 +650,9 @@ export default function SalesForm() {
           },
         })
 
+        // পরের অফলাইন বিক্রয়ে যেন এই পরিমাণ বাদ দিয়ে স্টক দেখায় (ledger sync না হওয়া পর্যন্ত)
+        commitStockCache(items)
+
         toast.success('✅ বিক্রয় offline এ সংরক্ষিত হয়েছে! নেটওয়ার্ক ফিরলে sync হবে।', {
           duration: 5000,
           icon: '📶',
@@ -506,6 +709,8 @@ export default function SalesForm() {
 
       const res = await api.post('/sales', payload)
 
+      commitStockCache(items)
+
       setCurrentSale({
         ...res.data.data,
         otp_required: res.data.data.otp_required,
@@ -519,7 +724,16 @@ export default function SalesForm() {
 
       navigate(`/worker/otp/${res.data.data.sale_id}`)
     } catch (err) {
-      toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।')
+      const data = err.response?.data
+      // সার্ভারের চূড়ান্ত স্টক যাচাইয়ে আটকালে (অন্য কেউ/অন্য ডিভাইসে স্টক বদলে গেলে)
+      // পিছনের ধাপে না পাঠিয়ে এই পেইজেই ওই পণ্যগুলো লাল করে দেখাও
+      if (data?.code === 'INSUFFICIENT_SR_STOCK' && Array.isArray(data.shortages) && data.shortages.length > 0) {
+        applyServerShortages(data.shortages)
+        toast.error('কিছু পণ্যের স্টক কম — নিচে লাল দেখানো হয়েছে।', { duration: 4000 })
+        focusStockProblem(data.shortages[0].product_id)
+      } else {
+        toast.error(data?.message || 'সমস্যা হয়েছে।')
+      }
     } finally {
       setSubmitting(false)
     }
@@ -711,8 +925,11 @@ export default function SalesForm() {
       <div className="flex bg-gray-100 p-1 rounded-xl">
         {[['products', '📦 পণ্য'], ['replacement', '🔄 রিপ্লেস'], ['payment', '💰 পেমেন্ট']].map(([key, label]) => (
           <button key={key} onClick={() => setStep(key)}
-            className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${step === key ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}>
+            className={`relative flex-1 py-2 rounded-lg text-xs font-medium transition-all ${step === key ? 'bg-white text-primary shadow-sm' : 'text-gray-500'}`}>
             {label}
+            {key === 'products' && overStockLines.length > 0 && (
+              <span className="absolute top-1 right-2 w-2 h-2 rounded-full bg-red-500" aria-label="স্টক সমস্যা" />
+            )}
           </button>
         ))}
       </div>
@@ -720,7 +937,13 @@ export default function SalesForm() {
       {/* ── Products ── */}
       {step === 'products' && (
         <div className="space-y-3">
+          <StockAlert lines={overStockLines} onFixAll={() => fixOverStock()} boxRef={stockAlertRef} />
           <ProductFilterBar filter={productFilter} total={products.length} />
+          {stockKnown && !isOnline && (
+            <p className="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+              📶 অফলাইন — স্টকের সংখ্যা সর্বশেষ সংরক্ষিত তথ্য থেকে দেখানো হচ্ছে।
+            </p>
+          )}
           {productFilter.filtered.length === 0 && (
             <p className="text-center text-sm text-gray-400 py-8">এই ফিল্টারে কোনো পণ্য নেই</p>
           )}
@@ -730,6 +953,8 @@ export default function SalesForm() {
               p={p}
               qty={selected[p.id] || 0}
               onUpdate={updateQty}
+              have={getHave(p.id)}
+              onFixQty={fixOverStock}
             />
           ))}
           <button onClick={() => setStep('replacement')}
@@ -1092,6 +1317,14 @@ export default function SalesForm() {
               </p>
             </div>
           )}
+
+          {/* স্টক সমস্যা ধরা পড়লে এখানেই দেখাবে — পিছনের ধাপে যেতে হবে না */}
+          <StockAlert
+            lines={overStockLines}
+            onFixAll={() => fixOverStock()}
+            onShowProducts={() => { setStep('products'); focusStockProblem(overStockLines[0]?.id) }}
+            boxRef={stockAlertRef}
+          />
 
           <div className="flex gap-3">
             <button onClick={() => setStep('replacement')} className="flex-1 py-3 border border-gray-200 rounded-2xl text-gray-600 font-semibold">← পিছনে</button>

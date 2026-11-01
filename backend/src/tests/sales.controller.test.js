@@ -284,6 +284,17 @@ describe('createSale — বিক্রয়ের নিয়ম', () => {
             );
         });
 
+        test('স্টক কম হলে রেসপন্সে code + shortages থাকে (frontend পেইজেই লাল দেখাবে)', async () => {
+            setupQueries();
+            useStock([{ pid: 'p1', in_hand: '1' }]);
+            const res = await sell(2);
+            const body = res.json.mock.calls[0][0];
+            expect(body.code).toBe('INSUFFICIENT_SR_STOCK');
+            expect(body.shortages).toEqual([
+                expect.objectContaining({ product_id: 'p1', need: 2, have: 1 }),
+            ]);
+        });
+
         test('যে পণ্য হাতে নেই (Z) — 422, "হাতে নেই"', async () => {
             setupQueries();
             useStock([]);

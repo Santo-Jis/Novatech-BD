@@ -580,12 +580,16 @@ const createSale = async (req, res) => {
                 for (const r of stockRes.rows) inHandMap[String(r.pid)] = Number(r.in_hand) || 0;
 
                 const shortages = [];
+                // structured তালিকা — frontend এটা দিয়ে বিক্রয় পেইজেই ওই পণ্যগুলো লাল করে
+                // দেখায় (পিছনের ধাপে ফিরে যেতে হয় না), আর হাতের স্টকের সংখ্যাও আপডেট করে
+                const shortageDetails = [];
                 for (const [pid, need] of requiredByProduct) {
                     const have = Math.max(0, inHandMap[pid] || 0);
                     if (need.qty > have) {
                         shortages.push(have === 0
                             ? `${need.name}: আপনার হাতে নেই`
                             : `${need.name}: হাতে ${have}টি, বিক্রি করতে চাইছেন ${need.qty}টি`);
+                        shortageDetails.push({ product_id: pid, name: need.name, need: need.qty, have });
                     }
                 }
                 if (shortages.length > 0) {
@@ -593,7 +597,8 @@ const createSale = async (req, res) => {
                         new Error('INSUFFICIENT_SR_STOCK'),
                         {
                             statusCode: 422,
-                            clientMessage: `আপনার হাতের স্টকের বেশি বিক্রি করা যাবে না।\n${shortages.join('\n')}`
+                            clientMessage: `আপনার হাতের স্টকের বেশি বিক্রি করা যাবে না।\n${shortages.join('\n')}`,
+                            shortages: shortageDetails,
                         }
                     );
                 }
@@ -915,7 +920,9 @@ const createSale = async (req, res) => {
         if (knownErrors.includes(error.message)) {
             return res.status(error.statusCode || 400).json({
                 success: false,
-                message: error.clientMessage || 'বিক্রয়ে সমস্যা হয়েছে।'
+                code: error.message,
+                message: error.clientMessage || 'বিক্রয়ে সমস্যা হয়েছে।',
+                ...(error.shortages ? { shortages: error.shortages } : {}),
             });
         }
 
