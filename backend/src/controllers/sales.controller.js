@@ -25,7 +25,7 @@ const { sendCustomerNotification } = require('./customerNotification.controller'
 const { firebaseNotify } = require('../services/firebase.notify');
 
 // ✅ Real-time commission
-const { updateCommissionRealtime, getDailyCommissionableSales } = require('../services/commission.service');
+const { updateCommissionRealtime, getDailyCommissionableSales, getWorkerRateOverride, getDailyCommissionBreakdown, getSaleCommissionMap } = require('../services/commission.service');
 
 // WhatsApp Invoice Image
 const { sendInvoiceWhatsApp } = require('../services/invoiceWhatsapp.service');
@@ -881,11 +881,32 @@ const createSale = async (req, res) => {
             }
         });
 
+        // ✅ এই বিক্রি থেকে আনুমানিক কমিশন (SR-কে সাথে সাথে দেখানোর জন্য)।
+        // sale ইতিমধ্যে commit হয়ে গেছে; এই অংশ ব্যর্থ হলে sale/response আটকায় না।
+        // রেট দিনের মোট বিক্রয়ের স্ল্যাবে বদলাতে পারে — তাই এটা "এখনকার রেটে" আনুমানিক।
+        let estimatedCommission = null;
+        try {
+            const day = await getDailyCommissionBreakdown(req.user.id, today, req.tenantId);
+            const mine = day.entries.find(e => e.kind === 'sale' && e.id === saleResult.id);
+            if (mine) {
+                estimatedCommission = {
+                    amount:         mine.commission,
+                    commissionable: mine.commissionable,
+                    rate:           day.rate,
+                    rate_mode:      day.rate_mode,
+                    status:         mine.status,
+                };
+            }
+        } catch (e) {
+            logger.warn('[Sale] estimated commission skipped:', e.message);
+        }
+
         return res.status(201).json({
             success: true,
             message: 'বিক্রয় সফল।',
             data: {
                 sale_id:           saleResult.id,
+                estimated_commission: estimatedCommission,
                 invoice_number:    invoiceNumber,
                 total_amount:      totalAmount,
                 replacement_value:    replacementValue,
@@ -1177,6 +1198,25 @@ const getMySales = async (req, res) => {
              ORDER BY st.created_at DESC`,
             params
         );
+
+        // ✅ প্রতিটি ইনভয়েসে কমিশন (আনুমানিক — দিনের রেটে)। ব্যর্থ হলে শুধু বাদ যায়।
+        let commissionMap = {};
+        try {
+            commissionMap = await getSaleCommissionMap(
+                req.user.id, result.rows.map(r => r.date), req.tenantId
+            );
+        } catch (e) {
+            logger.warn('[MySales] commission map skipped:', e.message);
+        }
+        result.rows = result.rows.map(r => {
+            const c = commissionMap[r.id];
+            return {
+                ...r,
+                commission:      c ? c.commission : null,
+                commission_rate: c ? c.rate       : null,
+                commission_mode: c ? c.rate_mode  : null,
+            };
+        });
 
         // ─── Visit stats per date (fallback mode এর জন্য) ───────────────
         let visitsByDate = {};
@@ -1491,8 +1531,10 @@ const getDashboardSummary = async (req, res) => {
         const todaySales   = commissionableSales || 0;
         const currentRate  = parseFloat(commission?.rate || 0);
         const earnedAmount = parseFloat(commission?.amount || 0);
-        const currentSlab  = slabRes.rows.find(s => todaySales >= parseFloat(s.slab_min) && (s.slab_max === null || todaySales <= parseFloat(s.slab_max)));
-        const nextSlab     = slabRes.rows.find(s => parseFloat(s.slab_min) > todaySales);
+        // এই SR-এর নিজস্ব রেট সেট থাকলে স্ল্যাব প্রযোজ্য নয়
+        const customRate   = await getWorkerRateOverride(workerId, tenantId);
+        const currentSlab  = customRate !== null ? null : slabRes.rows.find(s => todaySales >= parseFloat(s.slab_min) && (s.slab_max === null || todaySales <= parseFloat(s.slab_max)));
+        const nextSlab     = customRate !== null ? null : slabRes.rows.find(s => parseFloat(s.slab_min) > todaySales);
 
         const rankIdx = teamId ? teamRankRes.rows.findIndex(r => r.id === workerId) : -1;
 
@@ -1522,6 +1564,7 @@ const getDashboardSummary = async (req, res) => {
                     total_sales:  todaySales,
                     rate:         currentRate,
                     amount:       earnedAmount,
+                    custom_rate:  customRate,
                     current_slab: currentSlab ? { min: currentSlab.slab_min, max: currentSlab.slab_max, rate: currentSlab.rate } : null,
                     next_slab:    nextSlab ? {
                         min:              nextSlab.slab_min,

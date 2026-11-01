@@ -17,7 +17,10 @@ const {
     getCommissionSummary,
     payCommission,
     getPayableCommissions,
-    getLiveCommission
+    getLiveCommission,
+    getWorkerRates,
+    setWorkerRate,
+    getMyDayBreakdown
 } = require('../controllers/commission.controller');
 
 // ============================================================
@@ -27,6 +30,9 @@ const {
 
 // SR এর নিজের কমিশন
 router.get('/my',           auth, getMyCommission);
+
+// ✅ কোন বিক্রি/আদায় থেকে কত কমিশন — একটা দিনের ব্রেকডাউন (শুধু SR নিজের)
+router.get('/my/day/:date', auth, allowRoles('worker'), getMyDayBreakdown);
 
 // ✅ আজকের live commission — প্রতিটি sale-এর পরে আপডেট হয়
 // SR app-এ real-time badge দেখানোর জন্য
@@ -79,6 +85,20 @@ router.post('/pay',
     auth,
     allowRoles('admin', 'accountant'),
     payCommission
+);
+
+// ✅ SR ভিত্তিক আলাদা কমিশন রেট
+// দেখা: Admin/Accountant — বদলানো: শুধু Admin
+router.get('/worker-rates',
+    auth,
+    allowRoles('admin', 'accountant'),
+    getWorkerRates
+);
+
+router.put('/worker-rates/:userId',
+    auth,
+    canManageCommission,
+    setWorkerRate
 );
 
 module.exports = router;

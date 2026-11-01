@@ -145,6 +145,41 @@ export default function OTPVerify() {
           </p>
         </div>
 
+        {/* ✅ এই বিক্রি থেকে আনুমানিক কমিশন */}
+        {currentSale?.estimated_commission && (() => {
+          const ec  = currentSale.estimated_commission
+          const due = ec.status === 'due'
+          return (
+            <div className={`rounded-2xl px-4 py-3 border ${due ? 'bg-amber-50 border-amber-100' : 'bg-emerald-50 border-emerald-100'}`}>
+              {due ? (
+                <>
+                  <p className="text-sm font-bold text-amber-700">বাকি বিক্রি — এখন কমিশন নেই</p>
+                  <p className="text-[11px] text-amber-600 mt-0.5">টাকা আদায় হলে সেই অংশের কমিশন যোগ হবে।</p>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold text-emerald-800">এই বিক্রিতে আপনার কমিশন</span>
+                    <span className="text-lg font-extrabold text-emerald-700">
+                      ৳{parseInt(ec.amount || 0).toLocaleString('en-IN')}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-emerald-700/80 mt-0.5">
+                    ৳{parseInt(ec.commissionable || 0).toLocaleString('en-IN')}
+                    {ec.status === 'partial' ? ' (নগদ পাওয়া অংশ)' : ''} এর {ec.rate}%
+                    {ec.rate_mode === 'custom' ? ' · নির্দিষ্ট রেট' : ' · আজকের রেটে আনুমানিক'}
+                  </p>
+                  {ec.rate_mode !== 'custom' && (
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      দিনের মোট বিক্রয় বাড়লে স্ল্যাব বাড়তে পারে, তখন কমিশনও বাড়বে।
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          )
+        })()}
+
         {currentSale && (
           <InvoiceCard
             sale={currentSale}

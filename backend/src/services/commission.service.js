@@ -17,10 +17,41 @@ const { recordDailyEarnDelta } = require('./commissionLedger.service');
 // আর commission_settings-এ tenant_id ভিত্তিক policy আছে। মানে এখন এমনকি
 // WHERE ক্লজ থেকে tenant_id ফিল্টার ভুলে বাদ পড়লেও, ডেটাবেস নিজেই অন্য
 // tenant-এর row লুকিয়ে ফেলবে — code review-এর ভরসায় থাকতে হয় না।
-const calculateCommissionRate = async (salesAmount, tenantId) => {
+// ─── SR ভিত্তিক নিজস্ব কমিশন রেট ───────────────────────────
+// users.commission_rate_override: NULL = কোম্পানির স্ল্যাব, সংখ্যা = এই SR-এর নির্দিষ্ট %।
+// (০ বৈধ — মানে এই SR কমিশন পাবে না।) tenant_id দিয়ে ফিল্টার করা, তাই অন্য
+// কোম্পানির user-এর রেট কখনো পড়া হবে না।
+//
+// মাইগ্রেশন (migration_per_sr_commission_rate.sql) চালানোর আগেই কোড ডিপ্লয় হয়ে গেলে
+// কলামটা থাকবে না (Postgres 42703) — তখন কমিশন যেন থেমে না যায়, তাই null ধরে
+// আগের মতো স্ল্যাবে ফিরে যাই।
+const getWorkerRateOverride = async (workerId, tenantId) => {
+    if (!workerId || !tenantId) return null;
+    try {
+        const r = await query(
+            `SELECT commission_rate_override FROM users WHERE id = $1 AND tenant_id = $2`,
+            [workerId, tenantId]
+        );
+        const v = r.rows[0]?.commission_rate_override;
+        if (v === null || v === undefined) return null;
+        const n = parseFloat(v);
+        return Number.isFinite(n) && n >= 0 ? n : null;
+    } catch (err) {
+        if (err.code !== '42703') {
+            require('../config/logger').error('❌ getWorkerRateOverride:', err.message);
+        }
+        return null;
+    }
+};
+
+const calculateCommissionRate = async (salesAmount, tenantId, workerId = null) => {
     if (!tenantId) {
         throw new Error('calculateCommissionRate: tenantId is required (tenant isolation)');
     }
+    // এই SR-এর নিজস্ব রেট থাকলে সেটাই — স্ল্যাব দেখা হয় না
+    const override = await getWorkerRateOverride(workerId, tenantId);
+    if (override !== null) return override;
+
     const result = await withTenantScope(tenantId, (client) => client.query(
         `SELECT rate FROM commission_settings
          WHERE is_active = true
@@ -35,8 +66,8 @@ const calculateCommissionRate = async (salesAmount, tenantId) => {
 };
 
 // বিক্রয়ের পরিমাণ অনুযায়ী commission rate ও amount হিসাব করো
-const calculateCommission = async (salesAmount, tenantId) => {
-    const rate   = await calculateCommissionRate(salesAmount, tenantId);
+const calculateCommission = async (salesAmount, tenantId, workerId = null) => {
+    const rate   = await calculateCommissionRate(salesAmount, tenantId, workerId);
     const amount = Math.round((salesAmount * rate) / 100);
     return { rate, amount };
 };
@@ -130,7 +161,7 @@ const updateCommissionRealtime = async (workerId, date, tenantId) => {
         return { rate: 0, amount: 0, totalSales: 0 };
     }
 
-    const { rate, amount } = await calculateCommission(totalSales, tenantId);
+    const { rate, amount } = await calculateCommission(totalSales, tenantId, workerId);
 
     // UPSERT — আগে থাকলে update, না থাকলে insert।
     // ✅ P0 FIX (Bug #4): "DO UPDATE ... WHERE commission.paid = false" —
@@ -172,4 +203,200 @@ const updateCommissionRealtime = async (workerId, date, tenantId) => {
     return { rate, amount, totalSales };
 };
 
-module.exports = { calculateCommission, calculateCommissionRate, getDailyCommissionableSales, updateCommissionRealtime };
+// ============================================================
+// প্রতিটি বিক্রি/আদায় থেকে কত কমিশন এসেছে — দিনভিত্তিক ব্রেকডাউন
+// ============================================================
+//
+// কমিশন DB-তে দিনের মোট commissionable বিক্রয়ের উপর একটাই রেটে জমা হয়
+// (দেখো getDailyCommissionableSales / updateCommissionRealtime)। এই ফাংশন
+// সেই একই উৎসগুলো (sales_transactions, verified collections, credit_payments)
+// আলাদা আলাদা সারিতে ভেঙে দেখায় এবং প্রতিটির অংশে দিনের রেট প্রয়োগ করে।
+// কোনো ডেটা লেখে না, কোনো নতুন টেবিল/কলাম লাগে না।
+//
+// ⚠️ স্ল্যাব দিনের মোট বিক্রয়ে নির্ধারিত হয়, তাই দিন শেষ না হওয়া পর্যন্ত রেট
+// বাড়তে পারে এবং আগের বিক্রির কমিশনও বাড়বে (SR-এর নিজস্ব স্থির রেট থাকলে
+// বাড়ে না)। এজন্য আজকের মানগুলো "এখনকার রেট অনুযায়ী" — `rate_mode` দেখো।
+//
+// রাউন্ডিং: দিনের মোট কমিশন একবারই Math.round হয় (calculateCommission)।
+// সারিগুলো যোগ করলে যেন হুবহু সেই মোট মেলে, তাই "largest remainder"
+// পদ্ধতিতে পূর্ণ টাকায় ভাগ করা হয়।
+
+const _num = (v) => {
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : 0;
+};
+
+const allocateByLargestRemainder = (amounts, rate, target) => {
+    const EPS    = 1e-9;
+    const raw    = amounts.map(a => (a * rate) / 100);
+    const floors = raw.map(r => Math.floor(r + EPS));
+    let remaining = target - floors.reduce((a, b) => a + b, 0);
+    if (remaining <= 0) return floors;
+
+    const order = raw
+        .map((r, i) => ({ i, frac: r - floors[i] }))
+        .filter(x => amounts[x.i] > 0)
+        .sort((a, b) => (b.frac - a.frac) || (a.i - b.i));
+
+    for (const { i } of order) {
+        if (remaining <= 0) break;
+        floors[i] += 1;
+        remaining -= 1;
+    }
+    return floors;
+};
+
+const getDailyCommissionBreakdown = async (workerId, date, tenantId) => {
+    if (!workerId || !date || !tenantId) {
+        throw new Error('getDailyCommissionBreakdown: workerId, date, tenantId required');
+    }
+
+    const [salesRes, collRes, cpRes, storedRes] = await Promise.all([
+        query(
+            `SELECT st.id, st.invoice_number, st.payment_method, st.total_amount,
+                    st.net_amount, st.cash_received, st.created_at AS at, c.shop_name
+             FROM sales_transactions st
+             LEFT JOIN customers c ON c.id = st.customer_id AND c.tenant_id = $3
+             WHERE st.worker_id = $1 AND st.date = $2
+             ORDER BY st.created_at ASC`,
+            [workerId, date, tenantId]
+        ),
+        query(
+            `SELECT co.id, co.amount, co.payment_mode, co.verified_at AS at, c.shop_name
+             FROM collections co
+             LEFT JOIN customers c ON c.id = co.customer_id AND c.tenant_id = $3
+             WHERE co.sr_id = $1
+               AND co.status = 'verified'
+               AND (co.verified_at AT TIME ZONE 'UTC' + INTERVAL '6 hours')::date = $2::date
+             ORDER BY co.verified_at ASC`,
+            [workerId, date, tenantId]
+        ),
+        query(
+            `SELECT cp.id, cp.amount, cp.payment_method, cp.created_at AS at, c.shop_name
+             FROM credit_payments cp
+             LEFT JOIN customers c ON c.id = cp.customer_id AND c.tenant_id = $3
+             WHERE cp.worker_id = $1
+               AND (cp.created_at AT TIME ZONE 'UTC' + INTERVAL '6 hours')::date = $2::date
+             ORDER BY cp.created_at ASC`,
+            [workerId, date, tenantId]
+        ),
+        query(
+            `SELECT sales_amount, commission_rate, commission_amount, paid
+             FROM commission
+             WHERE user_id = $1 AND date = $2 AND type = 'daily'`,
+            [workerId, date]
+        ),
+    ]);
+
+    // ── সারি তৈরি — commissionable নিয়ম getDailyCommissionableSales-এর সাথে হুবহু এক ──
+    const entries = [];
+
+    for (const r of salesRes.rows) {
+        const isCredit = r.payment_method === 'credit';
+        const cash     = _num(r.cash_received);
+        entries.push({
+            kind:           'sale',
+            id:             r.id,
+            ref:            r.invoice_number,
+            customer:       r.shop_name || null,
+            at:             r.at,
+            amount:         _num(r.net_amount) || _num(r.total_amount),
+            commissionable: isCredit ? cash : _num(r.total_amount),
+            // cash = পুরো নগদ, replacement = রিপ্লেসমেন্ট, partial = আংশিক নগদ, due = পুরো বাকি
+            status:         r.payment_method === 'replacement' ? 'replacement'
+                          : !isCredit ? 'cash' : (cash > 0 ? 'partial' : 'due'),
+        });
+    }
+    for (const r of collRes.rows) {
+        entries.push({
+            kind: 'collection', id: r.id, ref: null, customer: r.shop_name || null,
+            at: r.at, amount: _num(r.amount), commissionable: _num(r.amount),
+            status: 'collected',
+        });
+    }
+    for (const r of cpRes.rows) {
+        entries.push({
+            kind: 'credit_payment', id: r.id, ref: null, customer: r.shop_name || null,
+            at: r.at, amount: _num(r.amount), commissionable: _num(r.amount),
+            status: 'collected',
+        });
+    }
+    entries.sort((a, b) => new Date(a.at) - new Date(b.at));
+
+    const totalSales = entries.reduce((s, e) => s + e.commissionable, 0);
+    const customRate = await getWorkerRateOverride(workerId, tenantId);
+    const stored     = storedRes.rows[0] || null;
+    const paid       = !!stored?.paid;
+
+    // ── রেট ও দিনের মোট কমিশন ──
+    // পরিশোধিত দিনে DB-তে জমা রেটই চূড়ান্ত; অন্যথায় এখনকার হিসাব।
+    let rate = 0, total = 0;
+    if (totalSales > 0) {
+        if (paid) {
+            rate  = _num(stored.commission_rate);
+            total = Math.round((totalSales * rate) / 100);
+        } else {
+            const c = await calculateCommission(totalSales, tenantId, workerId);
+            rate  = c.rate;
+            total = c.amount;
+        }
+    }
+
+    const shares = allocateByLargestRemainder(entries.map(e => e.commissionable), rate, total);
+    entries.forEach((e, i) => { e.commission = totalSales > 0 ? shares[i] : 0; });
+
+    // পরিশোধের পরে আসা বিক্রি থাকলে DB-র দিনের অংক আর এই যোগফল না-ও মিলতে পারে
+    const mismatch = !!(stored && paid &&
+        Math.abs(_num(stored.sales_amount) - totalSales) > 0.5);
+
+    return {
+        date,
+        rate,
+        rate_mode:        customRate !== null ? 'custom' : 'slab',
+        total_sales:      totalSales,
+        total_commission: total,
+        paid,
+        mismatch,
+        stored: stored ? {
+            sales_amount:      _num(stored.sales_amount),
+            commission_amount: _num(stored.commission_amount),
+        } : null,
+        entries,
+    };
+};
+
+// কয়েকটা sale-এর কমিশন একসাথে: { [saleId]: { commission, rate, rate_mode } }
+// ইনভয়েস তালিকায় ব্যাজ দেখানোর জন্য। এক দিনের জন্য একবারই হিসাব হয়;
+// ভারী রেঞ্জে লোড কমাতে সর্বোচ্চ `maxDates`টি দিন ধরা হয় (সবচেয়ে নতুন আগে)।
+const getSaleCommissionMap = async (workerId, dates, tenantId, maxDates = 10) => {
+    // pg DATE কলাম JS Date হিসেবে আসে (সার্ভারের লোকাল মধ্যরাত) — লোকাল getter দিয়ে YYYY-MM-DD করি
+    const ymd = (d) => {
+        if (d instanceof Date) {
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${d.getFullYear()}-${m}-${day}`;
+        }
+        return String(d).slice(0, 10);
+    };
+    const uniq = [...new Set((dates || []).map(ymd))]
+        .sort().reverse().slice(0, maxDates);
+    const out = {};
+    const results = await Promise.all(uniq.map(async (d) => {
+        try { return await getDailyCommissionBreakdown(workerId, d, tenantId); }
+        catch { return null; }
+    }));
+    for (const day of results) {
+        if (!day) continue;
+        for (const e of day.entries) {
+            if (e.kind !== 'sale') continue;
+            out[e.id] = { commission: e.commission, rate: day.rate, rate_mode: day.rate_mode, status: e.status };
+        }
+    }
+    return out;
+};
+
+module.exports = {
+    calculateCommission, calculateCommissionRate, getWorkerRateOverride,
+    getDailyCommissionableSales, updateCommissionRealtime,
+    getDailyCommissionBreakdown, getSaleCommissionMap,
+};

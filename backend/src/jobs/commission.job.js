@@ -91,8 +91,8 @@ const runDailyCommissionJobForTenant = async (tenant, date) => {
                     continue;
                 }
 
-                // কমিশন হিসাব — এই tenant-এর নিজস্ব slab দিয়ে
-                const { rate, amount } = await calculateCommission(totalSales, tenant.id);
+                // কমিশন হিসাব — SR-এর নিজস্ব রেট থাকলে সেটা, না থাকলে এই tenant-এর slab
+                const { rate, amount } = await calculateCommission(totalSales, tenant.id, worker.id);
 
                 // আগে থেকে আছে কিনা (duplicate এড়াতে), তারপর update/insert —
                 // একই RLS-protected transaction-এ, যাতে commission টেবিলে

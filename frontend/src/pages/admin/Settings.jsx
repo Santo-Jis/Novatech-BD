@@ -19,6 +19,12 @@ export default function AdminSettings() {
   const [commLoading,     setCommLoading]     = useState(false)
   const [commSaving,      setCommSaving]      = useState(false)
 
+  // ── SR ভিত্তিক আলাদা কমিশন রেট ─────────────────────────────
+  // rate: সার্ভারে সেভ করা মান (null = কোম্পানির স্ল্যাব), draft: ইনপুট বক্সের লেখা
+  const [srRates,         setSrRates]         = useState([])
+  const [srLoading,       setSrLoading]       = useState(false)
+  const [srSavingId,      setSrSavingId]      = useState(null)
+
   // ── Settings লোড ────────────────────────────────────────────
   useEffect(() => {
     api.get('/admin/settings').then(res => {
@@ -41,6 +47,31 @@ export default function AdminSettings() {
   }, [])
 
   useEffect(() => { loadCommSettings() }, [loadCommSettings])
+
+  const loadSrRates = useCallback(async () => {
+    setSrLoading(true)
+    try {
+      const res = await api.get('/commission/worker-rates')
+      setSrRates((res.data.data || []).map(r => ({ ...r, draft: r.rate === null ? '' : String(r.rate) })))
+    } catch { /* silent — শুধু admin/accountant দেখতে পায় */ }
+    finally { setSrLoading(false) }
+  }, [])
+
+  useEffect(() => { loadSrRates() }, [loadSrRates])
+
+  // rate = সংখ্যা (সেট করো) অথবা null (কোম্পানির স্ল্যাবে ফিরে যাও)
+  const saveSrRate = async (id, rate) => {
+    setSrSavingId(id)
+    try {
+      const res = await api.put(`/commission/worker-rates/${id}`, { rate })
+      toast.success(res.data.message || 'সেভ হয়েছে। ✅')
+      setSrRates(prev => prev.map(r => r.id === id
+        ? { ...r, rate, draft: rate === null ? '' : String(rate) }
+        : r))
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'সমস্যা হয়েছে।')
+    } finally { setSrSavingId(null) }
+  }
 
   const set = (key, val) => setSettings(prev => ({ ...prev, [key]: val }))
 
@@ -307,6 +338,69 @@ export default function AdminSettings() {
                 </button>
               </div>
             </>
+          )}
+        </div>
+      </Card>
+
+      {/* ✅ SR ভিত্তিক আলাদা কমিশন রেট */}
+      <Card title="SR ভিত্তিক কমিশন রেট">
+        <div className="space-y-3">
+          <p className="text-xs text-gray-500">
+            কোনো SR-এর জন্য নির্দিষ্ট শতাংশ (%) দিলে সে সব বিক্রয়ে সেই হারেই কমিশন পাবে, স্ল্যাব প্রযোজ্য হবে না।
+            ঘর খালি থাকলে সে কোম্পানির স্ল্যাব অনুযায়ী পাবে। নতুন রেট পরের বিক্রয় থেকে কার্যকর হয়;
+            আগে পরিশোধ হয়ে যাওয়া দিনের কমিশন বদলায় না।
+          </p>
+          {srLoading ? (
+            <div className="space-y-2">
+              {[...Array(3)].map((_, i) => <div key={i} className="h-14 bg-gray-100 rounded-xl animate-pulse" />)}
+            </div>
+          ) : srRates.length === 0 ? (
+            <p className="text-sm text-gray-400 py-4 text-center">কোনো SR পাওয়া যায়নি।</p>
+          ) : (
+            <div className="space-y-2">
+              {srRates.map(r => {
+                const draftNum  = r.draft === '' ? null : Number(r.draft)
+                const invalid   = draftNum !== null && (!Number.isFinite(draftNum) || draftNum < 0 || draftNum > 100)
+                const changed   = draftNum !== r.rate
+                const saving    = srSavingId === r.id
+                return (
+                  <div key={r.id} className="flex items-center gap-2 p-2.5 rounded-xl border border-gray-200 bg-white">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate">
+                        {r.name}
+                        {r.status !== 'active' && <span className="ml-1.5 text-[11px] font-normal text-gray-400">(নিষ্ক্রিয়)</span>}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {r.rate === null ? 'স্ল্যাব অনুযায়ী' : `নির্দিষ্ট ${r.rate}%`}
+                        {r.employee_code ? ` · ${r.employee_code}` : ''}
+                      </p>
+                    </div>
+                    <div className="relative w-24 flex-shrink-0">
+                      <input
+                        type="number" inputMode="decimal" min="0" max="100" step="0.1"
+                        aria-label={`${r.name} এর কমিশন রেট`}
+                        placeholder="স্ল্যাব"
+                        value={r.draft}
+                        onChange={e => setSrRates(prev => prev.map(x => x.id === r.id ? { ...x, draft: e.target.value } : x))}
+                        className={`w-full border rounded-xl pl-3 pr-7 py-2 text-sm focus:outline-none focus:border-primary ${invalid ? 'border-red-400' : 'border-gray-200'}`}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">%</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => saveSrRate(r.id, draftNum)}
+                      disabled={!changed || invalid || saving}
+                      className="flex-shrink-0 h-10 px-3 rounded-xl bg-primary text-white text-sm font-semibold disabled:opacity-40 flex items-center gap-1"
+                    >
+                      {saving
+                        ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        : <FiSave size={13} />}
+                      সেভ
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
           )}
         </div>
       </Card>

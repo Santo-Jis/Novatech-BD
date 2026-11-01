@@ -16,6 +16,24 @@ const WEEKDAYS_BN = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', '
 const taka = (n) => '৳' + parseInt(n || 0).toLocaleString('en-IN')
 const pct  = (n) => `${Math.min(100, Math.round(n || 0))}%`
 
+// ─── এই ইনভয়েস থেকে কমিশন (API: sale.commission — আনুমানিক, দিনের রেটে) ───
+const isFullDue = (sale) =>
+  sale.payment_method === 'credit' && !(parseFloat(sale.cash_received) > 0)
+
+function CommissionChip({ sale }) {
+  if (sale.commission === null || sale.commission === undefined) return null
+  const due = isFullDue(sale)
+  return (
+    <span style={{
+      fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 99,
+      background: due ? '#fffbeb' : '#ecfdf5',
+      color:      due ? '#b45309' : '#047857'
+    }}>
+      {due ? 'কমিশন: আদায়ের পর' : `কমিশন ${taka(sale.commission)}`}
+    </span>
+  )
+}
+
 // ─── Progress Bar ────────────────────────────────────────────
 function ProgressBar({ value, max, color = '#1e3a8a', height = 8 }) {
   const ratio = max > 0 ? Math.min(1, value / max) : 0
@@ -149,6 +167,12 @@ function SaleDetailModal({ sale, onClose }) {
           sale.discount_amount > 0 && ['ক্রেডিট ব্যালেন্স ব্যবহার', `- ${taka(sale.discount_amount)}`],
           sale.replacement_value > 0 && ['রিপ্লেসমেন্ট মূল্য', `- ${taka(sale.replacement_value)}`],
           ['নিট পরিমাণ', taka(sale.net_amount)],
+          (sale.commission !== null && sale.commission !== undefined) && [
+            'এই বিক্রিতে কমিশন',
+            isFullDue(sale)
+              ? 'আদায় হলে যোগ হবে'
+              : `${taka(sale.commission)} (${sale.commission_rate}%${sale.commission_mode === 'custom' ? ' নির্দিষ্ট রেট' : ' স্ল্যাব'})`
+          ],
         ].filter(Boolean).map(([label, val], i) => (
           <div key={i} style={{
             display: 'flex', justifyContent: 'space-between',
@@ -695,9 +719,12 @@ export default function SalesHistory() {
                       </span>
                     </div>
                   </div>
-                  <p style={{ fontSize: 10, color: '#1e3a8a', marginTop: 6, fontWeight: 500 }}>
-                    বিস্তারিত দেখুন →
-                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                    <p style={{ fontSize: 10, color: '#1e3a8a', fontWeight: 500 }}>
+                      বিস্তারিত দেখুন →
+                    </p>
+                    <CommissionChip sale={sale} />
+                  </div>
                 </div>
               ))
             )}

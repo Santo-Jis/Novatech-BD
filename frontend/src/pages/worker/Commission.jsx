@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import api from '../../api/axios'
 import { FiTrendingUp, FiGift, FiDollarSign, FiCalendar, FiChevronLeft, FiChevronRight, FiCheckCircle, FiClock, FiUser, FiHash, FiInfo, FiAward, FiStar } from 'react-icons/fi'
+import CommissionDayBreakdown, { toYMD } from '../../components/CommissionDayBreakdown'
 
 // ─── বাংলা মাসের নাম ───────────────────────────────
 const MONTHS_BN = ['', 'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন',
@@ -324,6 +325,9 @@ export default function Commission() {
               </div>
             ) : (
               <div>
+                <p className="text-[10px] text-slate-400 px-4 pt-2 pb-1 m-0 bg-white">
+                  যেকোনো দিনে ট্যাপ করলে দেখবেন কোন বিক্রি থেকে কত কমিশন এসেছে
+                </p>
                 {daily.map((row, i) => {
                   const isExpanded = expandedRow === i
                   const isPaid = row.paid
@@ -365,7 +369,7 @@ export default function Commission() {
                                 : <><FiClock size={10} /> বাকি</>
                               }
                             </span>
-                            {isPaid && (
+                            {(isPaid || row.type === 'daily') && (
                               <FiInfo size={11} color={isExpanded ? '#1d4ed8' : '#94a3b8'} />
                             )}
                           </div>
@@ -375,6 +379,12 @@ export default function Commission() {
                       {/* ─── পেমেন্ট বিস্তারিত (expanded) ─── */}
                       {isExpanded && (
                         <div className="bg-sky-50 border-t border-dashed border-sky-200 px-4 pt-2.5 pb-3">
+                          {/* ✅ কোন বিক্রি/আদায় থেকে কত কমিশন */}
+                          {row.type === 'daily' && toYMD(row.date) && (
+                            <div className="mb-3 pb-3 border-b border-dashed border-sky-200">
+                              <CommissionDayBreakdown date={toYMD(row.date)} />
+                            </div>
+                          )}
                           {isPaid ? (
                             <div className="flex flex-col gap-1.5">
                               {/* পরিশোধের তারিখ */}

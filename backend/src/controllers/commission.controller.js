@@ -6,7 +6,7 @@ const { query, withTransaction } = require('../config/db');
 // বিক্রয় অনুযায়ী কমিশন রেট বের করা
 // ============================================================
 
-const { calculateCommission, calculateCommissionRate, getDailyCommissionableSales } = require('../services/commission.service');
+const { calculateCommission, calculateCommissionRate, getWorkerRateOverride, getDailyCommissionableSales, getDailyCommissionBreakdown } = require('../services/commission.service');
 
 // ============================================================
 // GET MY COMMISSION
@@ -616,12 +616,15 @@ const getLiveCommission = async (req, res) => {
         const currentRate  = parseFloat(commission?.rate   || 0);
         const earnedAmount = parseFloat(commission?.amount || 0);
 
+        // এই SR-এর নিজস্ব রেট সেট থাকলে স্ল্যাব প্রযোজ্য নয় — "পরের স্ল্যাব" দেখানো হবে না
+        const customRate = await getWorkerRateOverride(workerId, req.tenantId);
+
         // পরের slab কত দূরে
-        const currentSlab = slabRes.rows.find(s =>
+        const currentSlab = customRate !== null ? null : slabRes.rows.find(s =>
             totalSales >= parseFloat(s.slab_min) &&
             (s.slab_max === null || totalSales <= parseFloat(s.slab_max))
         );
-        const nextSlab = slabRes.rows.find(s =>
+        const nextSlab = customRate !== null ? null : slabRes.rows.find(s =>
             parseFloat(s.slab_min) > totalSales
         );
 
@@ -637,6 +640,8 @@ const getLiveCommission = async (req, res) => {
                     paid:       commission?.paid || false,
                     paid_at:    commission?.paid_at || null,
                 },
+                // null হলে কোম্পানির স্ল্যাব চলছে; সংখ্যা হলে এই SR-এর নির্দিষ্ট রেট (%)
+                custom_rate:  customRate,
                 current_slab: currentSlab
                     ? { min: currentSlab.slab_min, max: currentSlab.slab_max, rate: currentSlab.rate }
                     : null,
@@ -660,6 +665,125 @@ const getLiveCommission = async (req, res) => {
     }
 };
 
+// ============================================================
+// GET MY DAY COMMISSION BREAKDOWN (SR)
+// GET /api/commission/my/day/:date
+// কোন বিক্রি/আদায় থেকে কত কমিশন এসেছে — শুধু নিজের (req.user.id)
+// ============================================================
+
+const getMyDayBreakdown = async (req, res) => {
+    try {
+        const { date } = req.params;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || Number.isNaN(Date.parse(date))) {
+            return res.status(400).json({ success: false, message: 'তারিখ YYYY-MM-DD ফরম্যাটে দিন।' });
+        }
+        const data = await getDailyCommissionBreakdown(req.user.id, date, req.tenantId);
+        return res.status(200).json({ success: true, data });
+    } catch (error) {
+        logger.error('❌ My Day Breakdown Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// GET WORKER COMMISSION RATES (Admin/Accountant)
+// GET /api/commission/worker-rates
+// প্রতিটি SR-এর নিজস্ব কমিশন রেট (null = কোম্পানির স্ল্যাব)
+// ============================================================
+
+const getWorkerRates = async (req, res) => {
+    try {
+        const result = await query(
+            `SELECT id, employee_code, name_bn, name_en, status, commission_rate_override
+             FROM users
+             WHERE tenant_id = $1 AND role = 'worker'
+             ORDER BY (status = 'active') DESC, name_en ASC NULLS LAST`,
+            [req.tenantId]
+        );
+        return res.status(200).json({
+            success: true,
+            data: result.rows.map(r => ({
+                id:            r.id,
+                employee_code: r.employee_code,
+                name:          r.name_bn || r.name_en,
+                status:        r.status,
+                rate:          r.commission_rate_override === null ? null : parseFloat(r.commission_rate_override),
+            }))
+        });
+    } catch (error) {
+        logger.error('❌ Get Worker Rates Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// SET WORKER COMMISSION RATE (শুধু Admin)
+// PUT /api/commission/worker-rates/:userId
+// body: { rate: 0..100 } — অথবা { rate: null } দিলে কোম্পানির স্ল্যাবে ফিরে যায়
+//
+// প্রভাব: নতুন রেট এই SR-এর পরের প্রতিটি বিক্রয়/আদায়ে (এবং রাতের জবে) আজকের
+// অপরিশোধিত কমিশন নতুন করে হিসাব করে। যে দিনের কমিশন আগেই পরিশোধ (paid) হয়ে
+// গেছে সেটা বদলায় না।
+// ============================================================
+
+const setWorkerRate = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        let { rate } = req.body || {};
+
+        if (rate === '' || rate === undefined) rate = null;
+        if (rate !== null) {
+            const n = Number(rate);
+            if (!Number.isFinite(n) || n < 0 || n > 100) {
+                return res.status(400).json({ success: false, message: 'কমিশন রেট ০ থেকে ১০০ এর মধ্যে হতে হবে।' });
+            }
+            rate = Math.round(n * 100) / 100;
+        }
+
+        const user = await query(
+            `SELECT id, role, commission_rate_override FROM users WHERE id = $1 AND tenant_id = $2`,
+            [userId, req.tenantId]
+        );
+        if (user.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'কর্মী পাওয়া যায়নি।' });
+        }
+        if (user.rows[0].role !== 'worker') {
+            return res.status(400).json({ success: false, message: 'শুধু SR (worker)-এর জন্য আলাদা রেট সেট করা যায়।' });
+        }
+
+        const before = user.rows[0].commission_rate_override;
+
+        await withTransaction(async (client) => {
+            await client.query(
+                `UPDATE users SET commission_rate_override = $1, updated_at = NOW()
+                 WHERE id = $2 AND tenant_id = $3`,
+                [rate, userId, req.tenantId]
+            );
+            await client.query(
+                `INSERT INTO audit_logs (user_id, action, table_name, old_value, new_value, tenant_id)
+                 VALUES ($1, 'UPDATE_WORKER_COMMISSION_RATE', 'users', $2, $3, $4)`,
+                [
+                    req.user.id,
+                    JSON.stringify({ worker_id: userId, rate: before === null ? null : parseFloat(before) }),
+                    JSON.stringify({ worker_id: userId, rate }),
+                    req.tenantId,
+                ]
+            );
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: rate === null
+                ? 'এই SR এখন থেকে কোম্পানির স্ল্যাব অনুযায়ী কমিশন পাবে।'
+                : `এই SR এখন থেকে সব বিক্রয়ে ${rate}% কমিশন পাবে।`,
+            data: { id: userId, rate }
+        });
+    } catch (error) {
+        logger.error('❌ Set Worker Rate Error:', error.message);
+        return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getMyCommission,
     getBonusStatus,
@@ -671,5 +795,8 @@ module.exports = {
     calculateCommission,
     payCommission,
     getPayableCommissions,
-    getLiveCommission
+    getLiveCommission,
+    getWorkerRates,
+    setWorkerRate,
+    getMyDayBreakdown
 };
