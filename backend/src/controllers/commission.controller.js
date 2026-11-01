@@ -784,6 +784,184 @@ const setWorkerRate = async (req, res) => {
     }
 };
 
+// ============================================================
+// SR × প্রডাক্ট ভিত্তিক কমিশন রেট
+// ============================================================
+// রেট বাছাই: (SR, প্রডাক্ট) রেট → SR-এর নির্দিষ্ট রেট → কোম্পানির স্ল্যাব।
+// সারি না থাকলে/মুছলে ঐ প্রডাক্ট আগের নিয়মে (২ বা ৩ নম্বর) কমিশন দেয়।
+
+// GET /api/commission/product-rates?worker_id=<uuid>&search=<text>
+// এই SR-এর জন্য সব active প্রডাক্ট + (থাকলে) আলাদা রেট। (Admin/Accountant)
+const getProductRates = async (req, res) => {
+    try {
+        const { worker_id: workerId, search } = req.query;
+        if (!workerId) {
+            return res.status(400).json({ success: false, message: 'SR নির্বাচন করুন।' });
+        }
+        const w = await query(
+            `SELECT id, role, commission_rate_override FROM users WHERE id = $1 AND tenant_id = $2`,
+            [workerId, req.tenantId]
+        );
+        if (w.rows.length === 0 || w.rows[0].role !== 'worker') {
+            return res.status(404).json({ success: false, message: 'SR পাওয়া যায়নি।' });
+        }
+
+        const params = [req.tenantId, workerId];
+        let searchSql = '';
+        if (search && String(search).trim()) {
+            params.push(`%${String(search).trim()}%`);
+            searchSql = `AND (p.name ILIKE $3 OR p.sku ILIKE $3)`;
+        }
+
+        const result = await query(
+            `SELECT p.id, p.name, p.sku, p.price, p.unit,
+                    c.name AS category_name, c.name_bn AS category_name_bn,
+                    r.rate
+             FROM products p
+             LEFT JOIN categories c ON c.id = p.category_id
+             LEFT JOIN sr_product_commission_rates r
+                    ON r.product_id = p.id AND r.worker_id = $2 AND r.tenant_id = $1
+             WHERE p.tenant_id = $1 AND p.is_active = true ${searchSql}
+             ORDER BY (r.rate IS NOT NULL) DESC, p.name ASC`,
+            params
+        );
+
+        const overrideRaw = w.rows[0].commission_rate_override;
+        return res.status(200).json({
+            success: true,
+            data: {
+                worker_id: workerId,
+                // প্রডাক্টে আলাদা রেট না থাকলে এই রেট প্রযোজ্য (null = কোম্পানির স্ল্যাব)
+                fallback_rate: overrideRaw === null || overrideRaw === undefined ? null : parseFloat(overrideRaw),
+                products: result.rows.map(r => ({
+                    id:            r.id,
+                    name:          r.name,
+                    sku:           r.sku,
+                    price:         r.price === null ? null : parseFloat(r.price),
+                    unit:          r.unit,
+                    category_name: r.category_name_bn || r.category_name || null,
+                    rate:          r.rate === null ? null : parseFloat(r.rate),
+                })),
+            },
+        });
+    } catch (error) {
+        logger.error('❌ Get Product Rates Error:', error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// PUT /api/commission/product-rates/:workerId   (শুধু Admin)
+// body: { rates: [{ product_id, rate }] } — rate: 0..100 (সেট) অথবা null (আলাদা রেট মুছে ফেলো)
+// প্রভাব: পরের বিক্রয়/আদায় থেকে; পরিশোধ হয়ে যাওয়া দিনের কমিশন বদলায় না।
+const setProductRates = async (req, res) => {
+    try {
+        const { workerId } = req.params;
+        const list = Array.isArray(req.body?.rates) ? req.body.rates : null;
+        if (!list || list.length === 0) {
+            return res.status(400).json({ success: false, message: 'কোনো পরিবর্তন পাঠানো হয়নি।' });
+        }
+        if (list.length > 1000) {
+            return res.status(400).json({ success: false, message: 'একবারে সর্বোচ্চ ১০০০টি প্রডাক্ট সেভ করা যায়।' });
+        }
+
+        // ইনপুট যাচাই + একই প্রডাক্ট দুইবার এলে শেষটা নেওয়া
+        const cleaned = new Map();
+        for (const it of list) {
+            const pid = it && it.product_id;
+            if (!pid || typeof pid !== 'string') {
+                return res.status(400).json({ success: false, message: 'প্রডাক্ট আইডি সঠিক নয়।' });
+            }
+            let rate = it.rate;
+            if (rate === '' || rate === undefined) rate = null;
+            if (rate !== null) {
+                const n = Number(rate);
+                if (!Number.isFinite(n) || n < 0 || n > 100) {
+                    return res.status(400).json({ success: false, message: 'কমিশন রেট ০ থেকে ১০০ এর মধ্যে হতে হবে।' });
+                }
+                rate = Math.round(n * 100) / 100;
+            }
+            cleaned.set(pid, rate);
+        }
+        const productIds = [...cleaned.keys()];
+
+        const w = await query(
+            `SELECT id, role FROM users WHERE id = $1 AND tenant_id = $2`,
+            [workerId, req.tenantId]
+        );
+        if (w.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'কর্মী পাওয়া যায়নি।' });
+        }
+        if (w.rows[0].role !== 'worker') {
+            return res.status(400).json({ success: false, message: 'শুধু SR (worker)-এর জন্য প্রডাক্ট রেট সেট করা যায়।' });
+        }
+
+        // সব প্রডাক্ট এই কোম্পানির কিনা
+        const owned = await query(
+            `SELECT id FROM products WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
+            [req.tenantId, productIds]
+        );
+        if (owned.rows.length !== productIds.length) {
+            return res.status(400).json({ success: false, message: 'কিছু প্রডাক্ট পাওয়া যায়নি।' });
+        }
+
+        let upserted = 0, removed = 0;
+        await withTransaction(async (client) => {
+            const before = await client.query(
+                `SELECT product_id, rate FROM sr_product_commission_rates
+                 WHERE tenant_id = $1 AND worker_id = $2 AND product_id = ANY($3::uuid[])`,
+                [req.tenantId, workerId, productIds]
+            );
+            const beforeMap = {};
+            for (const r of before.rows) beforeMap[r.product_id] = parseFloat(r.rate);
+
+            for (const [pid, rate] of cleaned) {
+                if (rate === null) {
+                    const d = await client.query(
+                        `DELETE FROM sr_product_commission_rates
+                         WHERE tenant_id = $1 AND worker_id = $2 AND product_id = $3`,
+                        [req.tenantId, workerId, pid]
+                    );
+                    removed += d.rowCount || 0;
+                } else {
+                    await client.query(
+                        `INSERT INTO sr_product_commission_rates (tenant_id, worker_id, product_id, rate)
+                         VALUES ($1, $2, $3, $4)
+                         ON CONFLICT (tenant_id, worker_id, product_id)
+                         DO UPDATE SET rate = EXCLUDED.rate, updated_at = NOW()`,
+                        [req.tenantId, workerId, pid, rate]
+                    );
+                    upserted += 1;
+                }
+            }
+
+            const afterMap = {};
+            for (const [pid, rate] of cleaned) afterMap[pid] = rate;
+            await client.query(
+                `INSERT INTO audit_logs (user_id, action, table_name, old_value, new_value, tenant_id)
+                 VALUES ($1, 'UPDATE_SR_PRODUCT_COMMISSION_RATES', 'sr_product_commission_rates', $2, $3, $4)`,
+                [
+                    req.user.id,
+                    JSON.stringify({ worker_id: workerId, rates: beforeMap }),
+                    JSON.stringify({ worker_id: workerId, rates: afterMap }),
+                    req.tenantId,
+                ]
+            );
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: `${upserted}টি প্রডাক্টের রেট সেভ হয়েছে${removed ? `, ${removed}টি মুছেছে` : ''}।`,
+            data: { upserted, removed },
+        });
+    } catch (error) {
+        if (error.code === '42P01') {
+            return res.status(500).json({ success: false, message: 'ডেটাবেস মাইগ্রেশন (migration_sr_product_commission_rates.sql) এখনো চালানো হয়নি।' });
+        }
+        logger.error('❌ Set Product Rates Error:', error.message);
+        return res.status(500).json({ success: false, message: 'আপডেটে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
     getMyCommission,
     getBonusStatus,
@@ -798,5 +976,7 @@ module.exports = {
     getLiveCommission,
     getWorkerRates,
     setWorkerRate,
+    getProductRates,
+    setProductRates,
     getMyDayBreakdown
 };

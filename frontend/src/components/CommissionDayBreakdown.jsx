@@ -64,7 +64,8 @@ export default function CommissionDayBreakdown({ date }) {
     return <p className="text-xs text-slate-400 m-0 text-center">এই দিনে কোনো বিক্রি বা আদায়ের তথ্য নেই।</p>
   }
 
-  const isCustom = data.rate_mode === 'custom'
+  const isProduct = data.rate_mode === 'product'
+  const isCustom  = data.rate_mode === 'custom' || isProduct
 
   return (
     <div>
@@ -100,6 +101,7 @@ export default function CommissionDayBreakdown({ date }) {
                     <p className="text-[10px] text-slate-400 m-0">
                       {taka(e.commissionable)} এর
                       {e.status === 'partial' ? ' (নগদ অংশ)' : ''}
+                      {data.rate_mode === 'product' && e.rate != null ? ` · ${e.rate}%` : ''}
                     </p>
                   </>
                 )}
@@ -111,7 +113,7 @@ export default function CommissionDayBreakdown({ date }) {
         {/* মোট */}
         <div className="flex items-center justify-between px-2.5 py-2 bg-emerald-50 border-t border-emerald-100">
           <span className="text-[11px] text-slate-600">
-            {taka(data.total_sales)} × {data.rate}% {isCustom ? '(নির্দিষ্ট রেট)' : '(স্ল্যাব)'}
+            {taka(data.total_sales)} × {data.rate}% {isProduct ? '(প্রডাক্ট অনুযায়ী গড়)' : isCustom ? '(নির্দিষ্ট রেট)' : '(স্ল্যাব)'}
           </span>
           <span className="text-[13px] font-extrabold text-emerald-800">{taka(data.total_commission)}</span>
         </div>

@@ -2,7 +2,7 @@ const cron          = require('node-cron');
 const logger = require('../config/logger');
 const { query }     = require('../config/db');
 const { withTenantScope } = require('../config/tenantScopedDb');
-const { calculateCommission, getDailyCommissionableSales } = require('../services/commission.service');
+const { calculateDailyCommission } = require('../services/commission.service');
 const { recordDailyEarnDelta } = require('../services/commissionLedger.service');
 
 // ============================================================
@@ -82,17 +82,15 @@ const runDailyCommissionJobForTenant = async (tenant, date) => {
 
         for (const worker of workers.rows) {
             try {
-                // সেদিনের commissionable বিক্রয় (বাকি বাদে + আজ আদায়-verified যোগে)
-                const totalSales = await getDailyCommissionableSales(worker.id, date);
+                // সেদিনের commissionable বিক্রয় (বাকি বাদে + আজ আদায়-verified যোগে) ও কমিশন —
+                // SR × প্রডাক্ট রেট থাকলে প্রডাক্ট অনুযায়ী, না থাকলে SR-এর নির্দিষ্ট রেট/স্ল্যাব
+                const { totalSales, rate, amount } = await calculateDailyCommission(worker.id, date, tenant.id);
 
                 // বিক্রয়/আদায় কিছুই না থাকলে skip
                 if (totalSales <= 0) {
                     skipped++;
                     continue;
                 }
-
-                // কমিশন হিসাব — SR-এর নিজস্ব রেট থাকলে সেটা, না থাকলে এই tenant-এর slab
-                const { rate, amount } = await calculateCommission(totalSales, tenant.id, worker.id);
 
                 // আগে থেকে আছে কিনা (duplicate এড়াতে), তারপর update/insert —
                 // একই RLS-protected transaction-এ, যাতে commission টেবিলে

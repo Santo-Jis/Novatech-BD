@@ -167,9 +167,9 @@ export default function OTPVerify() {
                   <p className="text-[11px] text-emerald-700/80 mt-0.5">
                     ৳{parseInt(ec.commissionable || 0).toLocaleString('en-IN')}
                     {ec.status === 'partial' ? ' (নগদ পাওয়া অংশ)' : ''} এর {ec.rate}%
-                    {ec.rate_mode === 'custom' ? ' · নির্দিষ্ট রেট' : ' · আজকের রেটে আনুমানিক'}
+                    {ec.rate_mode === 'custom' ? ' · নির্দিষ্ট রেট' : ec.rate_mode === 'product' ? ' · প্রডাক্ট অনুযায়ী রেট' : ' · আজকের রেটে আনুমানিক'}
                   </p>
-                  {ec.rate_mode !== 'custom' && (
+                  {ec.rate_mode !== 'custom' && ec.rate_mode !== 'product' && (
                     <p className="text-[10px] text-slate-400 mt-1">
                       দিনের মোট বিক্রয় বাড়লে স্ল্যাব বাড়তে পারে, তখন কমিশনও বাড়বে।
                     </p>

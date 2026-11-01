@@ -20,6 +20,8 @@ const {
     getLiveCommission,
     getWorkerRates,
     setWorkerRate,
+    getProductRates,
+    setProductRates,
     getMyDayBreakdown
 } = require('../controllers/commission.controller');
 
@@ -99,6 +101,20 @@ router.put('/worker-rates/:userId',
     auth,
     canManageCommission,
     setWorkerRate
+);
+
+// ✅ SR × প্রডাক্ট ভিত্তিক কমিশন রেট
+// দেখা: Admin/Accountant — বদলানো: শুধু Admin
+router.get('/product-rates',
+    auth,
+    allowRoles('admin', 'accountant'),
+    getProductRates
+);
+
+router.put('/product-rates/:workerId',
+    auth,
+    canManageCommission,
+    setProductRates
 );
 
 module.exports = router;

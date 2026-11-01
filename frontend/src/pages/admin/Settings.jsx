@@ -6,6 +6,7 @@ import Input from '../../components/ui/Input'
 import toast from 'react-hot-toast'
 import { FiSave, FiPlus, FiTrash2 } from 'react-icons/fi'
 import AdminCreditSettings from './AdminCreditSettings'
+import ProductCommissionRates from './ProductCommissionRates'
 
 export default function AdminSettings() {
   const [settings,        setSettings]        = useState({})
@@ -347,7 +348,7 @@ export default function AdminSettings() {
         <div className="space-y-3">
           <p className="text-xs text-gray-500">
             কোনো SR-এর জন্য নির্দিষ্ট শতাংশ (%) দিলে সে সব বিক্রয়ে সেই হারেই কমিশন পাবে, স্ল্যাব প্রযোজ্য হবে না।
-            ঘর খালি থাকলে সে কোম্পানির স্ল্যাব অনুযায়ী পাবে। নতুন রেট পরের বিক্রয় থেকে কার্যকর হয়;
+            ঘর খালি থাকলে সে কোম্পানির স্ল্যাব অনুযায়ী পাবে। (নির্দিষ্ট প্রডাক্টে আলাদা রেট থাকলে নিচের "প্রডাক্ট ভিত্তিক কমিশন রেট" আগে প্রযোজ্য।) নতুন রেট পরের বিক্রয় থেকে কার্যকর হয়;
             আগে পরিশোধ হয়ে যাওয়া দিনের কমিশন বদলায় না।
           </p>
           {srLoading ? (
@@ -404,6 +405,9 @@ export default function AdminSettings() {
           )}
         </div>
       </Card>
+
+      {/* ✅ SR × প্রডাক্ট ভিত্তিক কমিশন রেট */}
+      <ProductCommissionRates />
 
       {/* Credit Alert Settings */}
       <AdminCreditSettings />

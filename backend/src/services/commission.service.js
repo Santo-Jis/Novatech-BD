@@ -139,6 +139,175 @@ const getDailyCommissionableSales = async (workerId, date) => {
     return cashSales + viaCollections + viaCreditPayment;
 };
 
+// ============================================================
+// SR × প্রডাক্ট ভিত্তিক কমিশন
+// ============================================================
+// রেট বাছাইয়ের অগ্রাধিকার:
+//   ১) sr_product_commission_rates-এ (এই SR, এই প্রডাক্ট) জোড়ার রেট
+//   ২) SR-এর নির্দিষ্ট রেট (users.commission_rate_override)
+//   ৩) কোম্পানির স্ল্যাব (দিনের মোট commissionable বিক্রয় অনুযায়ী)
+//
+// কোনো প্রডাক্ট-রেট সেট না থাকলে (বা টেবিলই না থাকলে) নিচের কোড পুরনো পথেই
+// চলে — হিসাব হুবহু আগের মতো।
+//
+// কোন টাকা কোন প্রডাক্টের:
+//  - বিক্রি: commissionable অংশ (নগদ → পুরো মোট, বাকি → শুধু নগদ-পাওয়া অংশ)
+//    ইনভয়েসের আইটেমগুলোর subtotal-এর অনুপাতে ভাগ হয়। ফ্রি গিফট বাদ।
+//  - আদায় (collections / credit_payments): payment_allocations অনুযায়ী যে
+//    ইনভয়েসে টাকা বসেছে, সেই ইনভয়েসের আইটেম-অনুপাতে ভাগ হয়। অর্থাৎ Y SR
+//    X প্রডাক্টের বাকি আদায় করলে Y-এর X-রেটেই কমিশন।
+//  - যে অংশ কোনো প্রডাক্টে বসানো যায় না (বরাদ্দ নেই/opening-balance বাকি)
+//    সেটা ২ নম্বর/৩ নম্বর রেটে (SR-এর নির্দিষ্ট রেট বা স্ল্যাব) হিসাব হয়।
+const getWorkerProductRates = async (workerId, tenantId) => {
+    const map = new Map();
+    if (!workerId || !tenantId) return map;
+    try {
+        const r = await query(
+            `SELECT product_id, rate FROM sr_product_commission_rates
+             WHERE worker_id = $1 AND tenant_id = $2`,
+            [workerId, tenantId]
+        );
+        for (const row of (r?.rows || [])) {
+            const n = parseFloat(row.rate);
+            if (Number.isFinite(n) && n >= 0) map.set(String(row.product_id), n);
+        }
+    } catch (err) {
+        // 42P01 = মাইগ্রেশন এখনো চলেনি → আগের মতো স্ল্যাবে ফিরে যাই
+        if (err.code !== '42P01') {
+            require('../config/logger').error('❌ getWorkerProductRates:', err.message);
+        }
+    }
+    return map;
+};
+
+const _itemWeights = (items) => {
+    let arr = items;
+    if (typeof arr === 'string') { try { arr = JSON.parse(arr); } catch { arr = []; } }
+    if (!Array.isArray(arr)) return [];
+    const out = [];
+    for (const it of arr) {
+        if (!it || it.is_free_gift || it.product_id === null || it.product_id === undefined) continue;
+        const w = _num(it.subtotal) || (_num(it.price) * _num(it.qty));
+        if (w > 0) out.push({ productId: String(it.product_id), weight: w });
+    }
+    return out;
+};
+
+// amount-কে আইটেম-অনুপাতে ভাগ করো; আইটেম না থাকলে productId=null (অবণ্টিত)
+const _spread = (amount, weights) => {
+    if (!(amount > 0)) return [];
+    const total = weights.reduce((s, w) => s + w.weight, 0);
+    if (total <= 0) return [{ productId: null, amount }];
+    return weights.map(w => ({ productId: w.productId, amount: (amount * w.weight) / total }));
+};
+
+// একটি দিনের প্রতিটি commissionable সারি + তার প্রডাক্ট-ভিত্তিক অংশ।
+// commissionable-এর সংজ্ঞা getDailyCommissionableSales-এর সাথে হুবহু এক।
+const loadDayLines = async (workerId, date) => {
+    const [salesRes, collRes, cpRes] = await Promise.all([
+        query(
+            `SELECT id, items, payment_method, total_amount, cash_received
+             FROM sales_transactions
+             WHERE worker_id = $1 AND date = $2`,
+            [workerId, date]
+        ),
+        query(
+            `SELECT id, amount FROM collections
+             WHERE sr_id = $1 AND status = 'verified'
+               AND (verified_at AT TIME ZONE 'UTC' + INTERVAL '6 hours')::date = $2::date`,
+            [workerId, date]
+        ),
+        query(
+            `SELECT id, amount FROM credit_payments
+             WHERE worker_id = $1
+               AND (created_at AT TIME ZONE 'UTC' + INTERVAL '6 hours')::date = $2::date`,
+            [workerId, date]
+        ),
+    ]);
+
+    const lines = [];
+
+    for (const r of (salesRes?.rows || [])) {
+        const c = r.payment_method === 'credit' ? _num(r.cash_received) : _num(r.total_amount);
+        lines.push({ kind: 'sale', id: r.id, commissionable: c, portions: _spread(c, _itemWeights(r.items)) });
+    }
+
+    const pays = [
+        ...(collRes?.rows || []).map(r => ({ kind: 'collection',     id: r.id, amount: _num(r.amount) })),
+        ...(cpRes?.rows   || []).map(r => ({ kind: 'credit_payment', id: r.id, amount: _num(r.amount) })),
+    ];
+
+    const allocByPay = new Map();
+    if (pays.length > 0) {
+        try {
+            const a = await query(
+                `SELECT pa.payment_source, pa.payment_id, pa.amount, st.items
+                 FROM payment_allocations pa
+                 JOIN sales_transactions st ON st.id = pa.sale_id
+                 WHERE pa.payment_id = ANY($1::uuid[])`,
+                [pays.map(p => p.id)]
+            );
+            for (const row of (a?.rows || [])) {
+                const key = `${row.payment_source}:${row.payment_id}`;
+                if (!allocByPay.has(key)) allocByPay.set(key, []);
+                allocByPay.get(key).push(row);
+            }
+        } catch (err) {
+            if (err.code !== '42P01') {
+                require('../config/logger').error('❌ loadDayLines allocations:', err.message);
+            }
+        }
+    }
+
+    for (const p of pays) {
+        const allocs = allocByPay.get(`${p.kind}:${p.id}`) || [];
+        const allocSum = allocs.reduce((s, x) => s + _num(x.amount), 0);
+        const scale = allocSum > p.amount && allocSum > 0 ? p.amount / allocSum : 1; // নিরাপত্তা
+        const portions = [];
+        for (const x of allocs) {
+            portions.push(..._spread(_num(x.amount) * scale, _itemWeights(x.items)));
+        }
+        const leftover = p.amount - allocSum * scale;
+        if (leftover > 0.005) portions.push({ productId: null, amount: leftover });
+        lines.push({ kind: p.kind, id: p.id, commissionable: p.amount, portions });
+    }
+
+    return lines;
+};
+
+// একটি সারির অনির্ধারিত (রাউন্ডিং-ছাড়া) কমিশন
+const _rawCommission = (line, baseRate, productRates) =>
+    line.portions.reduce((s, pt) => {
+        const r = pt.productId !== null && productRates.has(pt.productId)
+            ? productRates.get(pt.productId) : baseRate;
+        return s + (pt.amount * r) / 100;
+    }, 0);
+
+/**
+ * একটি দিনের মোট কমিশন (প্রডাক্ট-রেট থাকলে প্রডাক্ট অনুযায়ী, নইলে আগের মতো)।
+ * ফেরত: { totalSales, rate (কার্যকর গড় %), amount, productMode }
+ */
+const calculateDailyCommission = async (workerId, date, tenantId) => {
+    const productRates = await getWorkerProductRates(workerId, tenantId);
+
+    if (productRates.size === 0) {
+        const totalSales = await getDailyCommissionableSales(workerId, date);
+        if (totalSales <= 0) return { totalSales: 0, rate: 0, amount: 0, productMode: false };
+        const { rate, amount } = await calculateCommission(totalSales, tenantId, workerId);
+        return { totalSales, rate, amount, productMode: false };
+    }
+
+    const lines      = await loadDayLines(workerId, date);
+    const totalSales = lines.reduce((s, l) => s + l.commissionable, 0);
+    if (totalSales <= 0) return { totalSales: 0, rate: 0, amount: 0, productMode: true };
+
+    // প্রডাক্ট-রেট নেই এমন অংশের রেট: SR-এর নির্দিষ্ট রেট, না থাকলে দিনের মোটে স্ল্যাব
+    const baseRate = await calculateCommissionRate(totalSales, tenantId, workerId);
+    const amount   = Math.round(lines.reduce((s, l) => s + _rawCommission(l, baseRate, productRates), 0));
+    const rate     = Math.round((amount / totalSales) * 10000) / 100;
+    return { totalSales, rate, amount, productMode: true };
+};
+
 /**
  * ✅ REAL-TIME: প্রতিটি sale/collection-verify-এর পরে SR-এর আজকের commission তাৎক্ষণিক আপডেট।
  *
@@ -155,13 +324,12 @@ const getDailyCommissionableSales = async (workerId, date) => {
 const updateCommissionRealtime = async (workerId, date, tenantId) => {
     // আজকের commissionable বিক্রয় (নগদ/replacement + আজ verified হওয়া collection)
     // বাকি/credit অংশ বাদ যায় যতক্ষণ না আদায় হয় — দেখো getDailyCommissionableSales()
-    const totalSales = await getDailyCommissionableSales(workerId, date);
+    // SR × প্রডাক্ট রেট থাকলে প্রডাক্ট অনুযায়ী, না থাকলে আগের মতো (দেখো calculateDailyCommission)
+    const { totalSales, rate, amount } = await calculateDailyCommission(workerId, date, tenantId);
 
     if (totalSales <= 0) {
         return { rate: 0, amount: 0, totalSales: 0 };
     }
-
-    const { rate, amount } = await calculateCommission(totalSales, tenantId, workerId);
 
     // UPSERT — আগে থাকলে update, না থাকলে insert।
     // ✅ P0 FIX (Bug #4): "DO UPDATE ... WHERE commission.paid = false" —
@@ -238,6 +406,24 @@ const allocateByLargestRemainder = (amounts, rate, target) => {
         .filter(x => amounts[x.i] > 0)
         .sort((a, b) => (b.frac - a.frac) || (a.i - b.i));
 
+    for (const { i } of order) {
+        if (remaining <= 0) break;
+        floors[i] += 1;
+        remaining -= 1;
+    }
+    return floors;
+};
+
+// প্রতিটি সারির নিজস্ব (ভিন্ন ভিন্ন রেটের) raw কমিশন → পূর্ণ টাকায়, যোগফল হুবহু target
+const allocateRawByLargestRemainder = (raws, target) => {
+    const EPS    = 1e-9;
+    const floors = raws.map(r => Math.floor(r + EPS));
+    let remaining = target - floors.reduce((a, b) => a + b, 0);
+    if (remaining <= 0) return floors;
+    const order = raws
+        .map((r, i) => ({ i, frac: r - floors[i] }))
+        .filter(x => raws[x.i] > 0)
+        .sort((a, b) => (b.frac - a.frac) || (a.i - b.i));
     for (const { i } of order) {
         if (remaining <= 0) break;
         floors[i] += 1;
@@ -328,31 +514,53 @@ const getDailyCommissionBreakdown = async (workerId, date, tenantId) => {
     const stored     = storedRes.rows[0] || null;
     const paid       = !!stored?.paid;
 
-    // ── রেট ও দিনের মোট কমিশন ──
-    // পরিশোধিত দিনে DB-তে জমা রেটই চূড়ান্ত; অন্যথায় এখনকার হিসাব।
-    let rate = 0, total = 0;
-    if (totalSales > 0) {
-        if (paid) {
-            rate  = _num(stored.commission_rate);
-            total = Math.round((totalSales * rate) / 100);
-        } else {
-            const c = await calculateCommission(totalSales, tenantId, workerId);
-            rate  = c.rate;
-            total = c.amount;
-        }
-    }
-
-    const shares = allocateByLargestRemainder(entries.map(e => e.commissionable), rate, total);
-    entries.forEach((e, i) => { e.commission = totalSales > 0 ? shares[i] : 0; });
-
     // পরিশোধের পরে আসা বিক্রি থাকলে DB-র দিনের অংক আর এই যোগফল না-ও মিলতে পারে
     const mismatch = !!(stored && paid &&
         Math.abs(_num(stored.sales_amount) - totalSales) > 0.5);
 
+    const productRates = await getWorkerProductRates(workerId, tenantId);
+    const productMode  = productRates.size > 0 && totalSales > 0;
+
+    // ── রেট ও দিনের মোট কমিশন ──
+    let rate = 0, total = 0;
+    if (productMode) {
+        // SR × প্রডাক্ট রেট: প্রতিটি সারির অংশগুলোর নিজ নিজ প্রডাক্ট-রেটে কমিশন
+        const lines    = await loadDayLines(workerId, date);
+        const baseRate = await calculateCommissionRate(totalSales, tenantId, workerId);
+        const rawByKey = new Map(lines.map(l => [`${l.kind}:${l.id}`, _rawCommission(l, baseRate, productRates)]));
+        const raws     = entries.map(e => rawByKey.get(`${e.kind}:${e.id}`) || 0);
+
+        // পরিশোধিত দিনে DB-র জমা অংকই চূড়ান্ত (মিসম্যাচ না থাকলে)
+        total = (paid && !mismatch)
+            ? Math.round(_num(stored.commission_amount))
+            : Math.round(raws.reduce((a, b) => a + b, 0));
+        rate  = Math.round((total / totalSales) * 10000) / 100;
+
+        const shares = allocateRawByLargestRemainder(raws, total);
+        entries.forEach((e, i) => {
+            e.commission = shares[i];
+            e.rate       = e.commissionable > 0 ? Math.round((shares[i] / e.commissionable) * 10000) / 100 : 0;
+        });
+    } else {
+        // পরিশোধিত দিনে DB-তে জমা রেটই চূড়ান্ত; অন্যথায় এখনকার হিসাব।
+        if (totalSales > 0) {
+            if (paid) {
+                rate  = _num(stored.commission_rate);
+                total = Math.round((totalSales * rate) / 100);
+            } else {
+                const c = await calculateCommission(totalSales, tenantId, workerId);
+                rate  = c.rate;
+                total = c.amount;
+            }
+        }
+        const shares = allocateByLargestRemainder(entries.map(e => e.commissionable), rate, total);
+        entries.forEach((e, i) => { e.commission = totalSales > 0 ? shares[i] : 0; });
+    }
+
     return {
         date,
         rate,
-        rate_mode:        customRate !== null ? 'custom' : 'slab',
+        rate_mode:        productMode ? 'product' : (customRate !== null ? 'custom' : 'slab'),
         total_sales:      totalSales,
         total_commission: total,
         paid,
@@ -389,7 +597,7 @@ const getSaleCommissionMap = async (workerId, dates, tenantId, maxDates = 10) =>
         if (!day) continue;
         for (const e of day.entries) {
             if (e.kind !== 'sale') continue;
-            out[e.id] = { commission: e.commission, rate: day.rate, rate_mode: day.rate_mode, status: e.status };
+            out[e.id] = { commission: e.commission, rate: e.rate ?? day.rate, rate_mode: day.rate_mode, status: e.status };
         }
     }
     return out;
@@ -397,6 +605,7 @@ const getSaleCommissionMap = async (workerId, dates, tenantId, maxDates = 10) =>
 
 module.exports = {
     calculateCommission, calculateCommissionRate, getWorkerRateOverride,
+    getWorkerProductRates, calculateDailyCommission,
     getDailyCommissionableSales, updateCommissionRealtime,
     getDailyCommissionBreakdown, getSaleCommissionMap,
 };
