@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useAppStore } from '../../store/app.store'
 import api, { isNetworkError } from '../../api/axios'
 import { enqueue, saveCache, getCache } from '../../api/offlineQueue'
-import ProductFilterBar, { useProductFilter } from '../../components/worker/ProductFilterBar'
-import { FiShoppingCart, FiPlus, FiMinus, FiSend, FiPackage, FiChevronDown, FiChevronUp } from 'react-icons/fi'
+import { useProductFilter } from '../../components/worker/ProductFilterBar'
+import OrderFilterBar from '../../components/worker/OrderFilterBar'
+import { FiPlus, FiMinus, FiSend, FiPackage, FiChevronDown, FiChevronUp } from 'react-icons/fi'
 import toast from 'react-hot-toast'
 
 // ─── মূল্য বিস্তারিত (দাম, ছাড়, VAT, Tax, চূড়ান্ত) ──────────
@@ -27,6 +28,7 @@ function calcFinalPrice(p) {
 }
 
 // ─── একটি পণ্য কার্ড ──────────────────────────────────────
+// ডিজাইন: বড় (৪৪px) + / − বাটন, বাছাই করা পণ্য নীল বর্ডারে আলাদা, মোট টাকা সাথেই দেখায়।
 function ProductCard({ p, qty, onUpdate, onSetQty }) {
   const [expanded, setExpanded] = useState(false)
   const breakdown    = getPriceBreakdown(p)
@@ -36,140 +38,144 @@ function ProductCard({ p, qty, onUpdate, onSetQty }) {
   const hasTax       = parseFloat(p.tax)      > 0
   const hasPriceInfo = hasDiscount || hasVat || hasTax
   const hasExtras    = hasPriceInfo || p.description
+  const selected     = qty > 0
+  const money        = (n) => n.toLocaleString('en', { maximumFractionDigits: 2 })
 
   return (
-    <div className={`bg-white rounded-2xl shadow-sm overflow-hidden transition-all ${qty > 0 ? 'ring-2 ring-primary/30' : ''}`}>
-      <div className="p-4">
-        <div className="flex items-center gap-3">
-          {/* ছবি */}
-          {p.image_url ? (
-            <img
-              src={p.image_url}
-              alt={p.name}
-              className="w-14 h-14 rounded-xl object-cover border border-gray-100 flex-shrink-0"
-            />
-          ) : (
-            <div className="w-14 h-14 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
-              <FiPackage className="text-gray-400" size={22} />
-            </div>
+    <div className={`rounded-2xl border-[1.5px] transition-colors ${selected ? 'bg-primary/5 border-primary' : 'bg-white border-gray-200'}`}>
+      <div className="flex items-center gap-3 p-3">
+        {/* ছবি */}
+        {p.image_url ? (
+          <img
+            src={p.image_url}
+            alt=""
+            loading="lazy"
+            className="w-12 h-12 rounded-xl object-cover border border-gray-100 flex-shrink-0"
+          />
+        ) : (
+          <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center flex-shrink-0">
+            <FiPackage className="text-primary" size={22} />
+          </div>
+        )}
+
+        {/* নাম ও মূল্য */}
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-900 text-base leading-snug break-words">{p.name}</p>
+          <div className="flex items-center gap-x-2 gap-y-0.5 mt-0.5 flex-wrap">
+            {hasDiscount && (
+              <span className="text-xs text-gray-500 line-through">৳{parseFloat(p.price).toLocaleString()}</span>
+            )}
+            <span className="text-[15px] font-bold text-secondary">
+              ৳{money(finalPrice)}
+              <span className="text-xs font-medium text-gray-500"> / {p.unit || 'pcs'}</span>
+            </span>
+            {hasDiscount && (
+              <span className="text-[11px] bg-green-100 text-green-800 px-1.5 py-0.5 rounded-full">
+                ছাড় {p.discount_type === 'percent' ? `${p.discount}%` : `৳${p.discount}`}
+              </span>
+            )}
+            {hasVat && (
+              <span className="text-[11px] bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-full">VAT {p.vat}%</span>
+            )}
+            {hasTax && (
+              <span className="text-[11px] bg-red-100 text-red-800 px-1.5 py-0.5 rounded-full">Tax {p.tax}%</span>
+            )}
+          </div>
+          {selected && (
+            <p className="text-sm font-semibold text-primary mt-0.5">মোট ৳{money(qty * finalPrice)}</p>
           )}
-
-          {/* নাম ও মূল্য */}
-          <div className="flex-1 min-w-0">
-            <p className="font-semibold text-gray-800 text-sm leading-tight">{p.name}</p>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              {hasDiscount ? (
-                <>
-                  <span className="text-xs text-gray-400 line-through">৳{parseFloat(p.price).toLocaleString()}</span>
-                  <span className="text-sm font-bold text-secondary">
-                    ৳{finalPrice.toLocaleString('en', { maximumFractionDigits: 2 })} / {p.unit || 'pcs'}
-                  </span>
-                  <span className="text-[10px] bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">
-                    ছাড় {p.discount_type === 'percent' ? `${p.discount}%` : `৳${p.discount}`}
-                  </span>
-                </>
-              ) : (
-                <span className="text-sm font-bold text-secondary">
-                  ৳{finalPrice.toLocaleString('en', { maximumFractionDigits: 2 })} / {p.unit || 'pcs'}
-                </span>
-              )}
-              {hasVat && (
-                <span className="text-[10px] bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">VAT {p.vat}%</span>
-              )}
-              {hasTax && (
-                <span className="text-[10px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full">Tax {p.tax}%</span>
-              )}
-            </div>
-          </div>
-
-          {/* কাউন্টার — পরিমাণ এখন সরাসরি টাইপও করা যায়, শুধু +/- চাপতে হয় না */}
-          <div className="flex items-center gap-1.5 flex-shrink-0">
-            <button onClick={() => onUpdate(p.id, -1)} disabled={qty === 0}
-              className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center disabled:opacity-30 active:scale-95">
-              <FiMinus size={13} />
-            </button>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              aria-label="পরিমাণ"
-              value={qty === 0 ? '' : qty}
-              placeholder="0"
-              onFocus={(e) => e.target.select()}
-              onChange={(e) => {
-                const digits = e.target.value.replace(/[^0-9]/g, '')
-                onSetQty(p.id, digits === '' ? 0 : parseInt(digits, 10))
-              }}
-              className={`w-12 text-center font-bold text-sm rounded-lg py-1.5 border outline-none focus:border-primary focus:bg-white
-                ${qty > 0 ? 'text-primary border-primary/30 bg-primary/5' : 'text-gray-400 border-gray-200 bg-gray-50'}`}
-            />
-            <button onClick={() => onUpdate(p.id, 1)}
-              className="w-8 h-8 bg-primary rounded-full flex items-center justify-center active:scale-95">
-              <FiPlus className="text-white" size={13} />
-            </button>
-          </div>
         </div>
 
-        {/* সাবটোটাল */}
-        {qty > 0 && (
-          <div className="mt-2 pt-2 border-t border-gray-50 flex justify-between">
-            <span className="text-xs text-gray-500">মোট</span>
-            <span className="text-xs font-bold text-primary">
-              ৳{(qty * finalPrice).toLocaleString('en', { maximumFractionDigits: 2 })}
-            </span>
-          </div>
-        )}
-
-        {/* বিবরণ টগল */}
-        {hasExtras && (
+        {/* কাউন্টার — পরিমাণ সরাসরি টাইপও করা যায় */}
+        <div className="flex items-center gap-1 flex-shrink-0">
           <button
-            onClick={() => setExpanded(!expanded)}
-            className="mt-2 text-xs text-primary flex items-center gap-1"
+            type="button"
+            onClick={() => onUpdate(p.id, -1)}
+            disabled={qty === 0}
+            aria-label="কমান"
+            className={`w-11 h-11 rounded-full flex items-center justify-center active:scale-95 ${
+              qty === 0 ? 'bg-gray-100 text-gray-400' : 'bg-gray-200 text-primary'
+            }`}
           >
-            {expanded ? <FiChevronUp size={12} /> : <FiChevronDown size={12} />}
-            {expanded ? 'কম দেখুন' : 'বিস্তারিত দেখুন'}
+            <FiMinus size={18} />
           </button>
-        )}
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            aria-label="পরিমাণ"
+            value={qty === 0 ? '' : qty}
+            placeholder="0"
+            onFocus={(e) => e.target.select()}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/[^0-9]/g, '')
+              onSetQty(p.id, digits === '' ? 0 : parseInt(digits, 10))
+            }}
+            className={`w-11 h-11 text-center font-bold text-base rounded-xl border-[1.5px] outline-none focus:border-primary focus:bg-white
+              ${selected ? 'text-primary border-primary/40 bg-white' : 'text-gray-500 border-gray-200 bg-gray-50'}`}
+          />
+          <button
+            type="button"
+            onClick={() => onUpdate(p.id, 1)}
+            aria-label="বাড়ান"
+            className="w-11 h-11 bg-primary rounded-full flex items-center justify-center active:scale-95"
+          >
+            <FiPlus className="text-white" size={18} />
+          </button>
+        </div>
       </div>
+
+      {/* বিবরণ টগল */}
+      {hasExtras && (
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          aria-expanded={expanded}
+          className="ml-3 mb-1 h-9 px-1 text-sm text-primary font-medium flex items-center gap-1"
+        >
+          {expanded ? <FiChevronUp size={14} /> : <FiChevronDown size={14} />}
+          {expanded ? 'কম দেখুন' : 'বিস্তারিত দেখুন'}
+        </button>
+      )}
 
       {/* Expanded: মূল্য বিস্তারিত + বিবরণ */}
       {expanded && (
-        <div className="px-4 pb-4">
-          <div className="bg-gray-50 rounded-xl p-3 space-y-2">
+        <div className="px-3 pb-3">
+          <div className="bg-white/80 border border-gray-200 rounded-xl p-3 space-y-2">
             {hasPriceInfo && (
               <div className="space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-gray-500">মূল্য</span>
-                  <span className="text-gray-700 font-medium">৳{breakdown.price.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-600">মূল্য</span>
+                  <span className="text-gray-800 font-medium">৳{money(breakdown.price)}</span>
                 </div>
                 {hasDiscount && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-500">ছাড়</span>
-                    <span className="text-green-600 font-medium">− ৳{breakdown.discAmt.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">ছাড়</span>
+                    <span className="text-green-700 font-medium">− ৳{money(breakdown.discAmt)}</span>
                   </div>
                 )}
                 {hasVat && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-500">VAT ({p.vat}%)</span>
-                    <span className="text-gray-700 font-medium">+ ৳{breakdown.vatAmt.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">VAT ({p.vat}%)</span>
+                    <span className="text-gray-800 font-medium">+ ৳{money(breakdown.vatAmt)}</span>
                   </div>
                 )}
                 {hasTax && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-gray-500">Tax ({p.tax}%)</span>
-                    <span className="text-gray-700 font-medium">+ ৳{breakdown.taxAmt.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Tax ({p.tax}%)</span>
+                    <span className="text-gray-800 font-medium">+ ৳{money(breakdown.taxAmt)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-xs pt-1 border-t border-gray-200">
-                  <span className="text-gray-500 font-medium">সর্বমোট (প্রতি {p.unit || 'pcs'})</span>
-                  <span className="text-primary font-bold">৳{breakdown.final.toLocaleString('en', { maximumFractionDigits: 2 })}</span>
+                <div className="flex justify-between text-sm pt-1 border-t border-gray-200">
+                  <span className="text-gray-700 font-medium">সর্বমোট (প্রতি {p.unit || 'pcs'})</span>
+                  <span className="text-primary font-bold">৳{money(breakdown.final)}</span>
                 </div>
               </div>
             )}
             {p.description && (
               <div className={hasPriceInfo ? 'pt-2 border-t border-gray-200' : ''}>
-                <p className="text-xs text-gray-400 mb-1 font-medium">বিবরণ</p>
-                <p className="text-xs text-gray-600 whitespace-pre-wrap leading-relaxed">{p.description}</p>
+                <p className="text-sm text-gray-500 mb-1 font-medium">বিবরণ</p>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{p.description}</p>
               </div>
             )}
           </div>
@@ -242,6 +248,11 @@ export default function OrderForm() {
     return sum + (quantities[p.id] || 0) * calcFinalPrice(p)
   }, 0)
 
+  // নিচের কার্ট বারের জন্য: কয়টি পণ্য, মোট কত পিস
+  const selectedCount = products.filter(p => (quantities[p.id] || 0) > 0).length
+  const totalPieces   = products.reduce((sum, p) => sum + (quantities[p.id] || 0), 0)
+  const clearAll      = () => setQuantities({})
+
   const handleSubmit = async () => {
     const items = products
       .filter(p => quantities[p.id] > 0)
@@ -288,17 +299,30 @@ export default function OrderForm() {
   if (loading) return <div className="p-4"><div className="h-64 bg-white rounded-2xl animate-pulse" /></div>
 
   return (
-    <div className="p-4 space-y-4 pb-56">
-      <div>
-        <h2 className="font-bold text-gray-800 text-lg">অর্ডার দিন</h2>
-        <p className="text-xs text-gray-500">{selectedRoute?.name || 'রুট সিলেক্ট করুন'}</p>
+    <div className="px-4 pt-3 pb-52">
+      <div className="mb-3">
+        <h2 className="font-bold text-gray-900 text-xl">অর্ডার দিন</h2>
+        <p className="text-sm text-gray-600">{selectedRoute?.name || 'রুট সিলেক্ট করুন'}</p>
       </div>
 
-      <ProductFilterBar filter={productFilter} total={products.length} />
+      {/* সার্চ + ক্যাটাগরি: স্ক্রল করলেও ওপরে থাকে */}
+      <OrderFilterBar filter={productFilter} total={products.length} />
 
-      <div className="space-y-3">
+      <div className="space-y-2 mt-3">
         {productFilter.filtered.length === 0 && (
-          <p className="text-center text-sm text-gray-400 py-8">এই ফিল্টারে কোনো পণ্য নেই</p>
+          <div className="text-center py-12 px-4">
+            <p className="text-base text-gray-700 font-medium">কোনো পণ্য পাওয়া যায়নি</p>
+            <p className="text-sm text-gray-500 mt-1">অন্য নামে খুঁজুন বা ফিল্টার মুছে দিন।</p>
+            {productFilter.hasActiveFilter && (
+              <button
+                type="button"
+                onClick={productFilter.clear}
+                className="mt-4 h-11 px-5 rounded-xl border border-primary text-primary font-semibold"
+              >
+                ফিল্টার মুছুন
+              </button>
+            )}
+          </div>
         )}
         {productFilter.filtered.map(p => (
           <ProductCard
@@ -312,15 +336,32 @@ export default function OrderForm() {
       </div>
 
       {/* Fixed bottom bar — নিচের navigation bar এর উপরে (bottom-20 + z-40) */}
-      <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-md z-40 bg-white border-t border-gray-100 p-4">
-        <div className="flex justify-between items-center mb-3">
-          <span className="text-sm text-gray-500">মোট অর্ডার</span>
-          <span className="font-bold text-primary text-lg">
+      <div className="fixed bottom-20 left-1/2 -translate-x-1/2 w-full max-w-md z-40 bg-white border-t border-gray-200 px-4 pt-3 pb-3 shadow-[0_-4px_14px_rgba(20,30,60,0.08)]">
+        <div className="flex justify-between items-center mb-2 min-h-[28px]">
+          <div className="flex items-center gap-2 text-sm text-gray-600">
+            {selectedCount > 0 ? (
+              <>
+                <span>{selectedCount} টি পণ্য · {totalPieces} পিস</span>
+                <button type="button" onClick={clearAll} className="text-danger font-semibold h-8 px-1">
+                  মুছুন
+                </button>
+              </>
+            ) : (
+              <span>পণ্যের পাশে + চেপে যোগ করুন</span>
+            )}
+          </div>
+          <span className="font-bold text-primary text-xl">
             ৳{totalAmount.toLocaleString('en', { maximumFractionDigits: 2 })}
           </span>
         </div>
-        <button onClick={handleSubmit} disabled={submitting}
-          className="w-full bg-primary text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={handleSubmit}
+          disabled={submitting || selectedCount === 0}
+          className={`w-full h-12 rounded-xl font-bold text-base flex items-center justify-center gap-2 transition-colors ${
+            selectedCount === 0 ? 'bg-gray-200 text-gray-500' : 'bg-primary text-white active:bg-primary-dark'
+          }`}
+        >
           {submitting
             ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             : <FiSend />}
