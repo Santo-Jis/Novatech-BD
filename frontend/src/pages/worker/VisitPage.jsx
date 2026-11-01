@@ -178,6 +178,34 @@ function CollectionModal({ customer, location, onClose, onSuccess }) {
   const [showCamera,  setShowCamera]  = useState(false)
   const [submitting,  setSubmitting]  = useState(false)
 
+  // ── ঐচ্ছিক: নির্দিষ্ট ইনভয়েস বেছে আদায় ────────────────────
+  // না বাছলে সবচেয়ে পুরনো বাকি ইনভয়েস আগে শোধ হয় (FIFO)। বাছলে সেগুলো আগে, বাকি টাকা FIFO-তে।
+  // তালিকা শুধু online থাকলে আসে; offline-এ ফেচ ব্যর্থ → সেকশন লুকানো, আদায় আগের মতোই কাজ করে।
+  const [dueInvoices,   setDueInvoices]   = useState([])
+  const [selectedSales, setSelectedSales] = useState([])
+  const [showInvoices,  setShowInvoices]  = useState(false)
+
+  useEffect(() => {
+    if (!customer?.id || !navigator.onLine) return
+    let cancelled = false
+    api.get(`/customers/${customer.id}/credit-alert`)
+      .then(res => {
+        if (cancelled) return
+        const open = (res.data?.due_sales || []).filter(s =>
+          s.payment_status !== 'paid' && parseFloat(s.remaining_amount ?? s.credit_used) > 0)
+        setDueInvoices(open)
+      })
+      .catch(() => { /* তালিকা না এলেও আদায় চলবে */ })
+    return () => { cancelled = true }
+  }, [customer?.id])
+
+  const remainingOf = (s) => parseFloat(s.remaining_amount ?? s.credit_used) || 0
+  const selectedTotal = dueInvoices
+    .filter(s => selectedSales.includes(s.sale_id))
+    .reduce((sum, s) => sum + remainingOf(s), 0)
+  const toggleSale = (id) =>
+    setSelectedSales(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
+
   const parsedAmount = parseFloat(amount) || 0
   const isValid = parsedAmount > 0 && parsedAmount <= due + 1  // ১ টাকা tolerance
   const isChequeModeValid = payMode !== 'cheque' || (chequeName.trim() && chequeNo.trim() && chequeDate)
@@ -255,6 +283,8 @@ function CollectionModal({ customer, location, onClose, onSuccess }) {
             cheque_no:      chequeNo   || undefined,
             cheque_date:    chequeDate || undefined,
             note:           note       || undefined,
+            // FormData-তে array স্ট্রিং হয়ে যায় — তাই JSON string (backend parseSaleIds দুই রূপই বোঝে)
+            sale_ids:       selectedSales.length ? JSON.stringify(selectedSales) : undefined,
             latitude:       location?.latitude,
             longitude:      location?.longitude,
             _receipt_photo: photoBase64 || undefined,
@@ -285,6 +315,7 @@ function CollectionModal({ customer, location, onClose, onSuccess }) {
         formData.append('cheque_date', chequeDate)
       }
       if (note.trim())         formData.append('note', note.trim())
+      if (selectedSales.length) formData.append('sale_ids', JSON.stringify(selectedSales))
       if (location?.latitude)  formData.append('latitude',  location.latitude)
       if (location?.longitude) formData.append('longitude', location.longitude)
 
@@ -404,6 +435,93 @@ function CollectionModal({ customer, location, onClose, onSuccess }) {
               </p>
             )}
           </div>
+
+          {/* ঐচ্ছিক: নির্দিষ্ট ইনভয়েস বেছে আদায় */}
+          {dueInvoices.length > 0 && (
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setShowInvoices(v => !v)}
+                className="w-full flex items-center justify-between text-sm font-semibold text-gray-700"
+              >
+                <span>
+                  🧾 কোন ইনভয়েসের টাকা? <span className="text-gray-400 font-normal">(ঐচ্ছিক)</span>
+                </span>
+                <span className="text-xs text-blue-600">
+                  {selectedSales.length > 0 ? `${selectedSales.length}টি বাছা হয়েছে` : (showInvoices ? '▲ বন্ধ' : '▼ বাছুন')}
+                </span>
+              </button>
+
+              {!showInvoices && selectedSales.length === 0 && (
+                <p className="text-[11px] text-gray-400">না বাছলে সবচেয়ে পুরনো বাকি আগে শোধ হবে।</p>
+              )}
+
+              {showInvoices && (
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                  {dueInvoices.map(sale => {
+                    const checked = selectedSales.includes(sale.sale_id)
+                    return (
+                      <label
+                        key={sale.sale_id}
+                        className={`flex items-center gap-3 rounded-xl border px-3 py-2 cursor-pointer transition-colors ${
+                          checked ? 'border-emerald-400 bg-emerald-50' : 'border-gray-200 bg-white'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleSale(sale.sale_id)}
+                          className="w-4 h-4 accent-emerald-600"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-semibold text-gray-700">
+                            {sale.invoice_number || `#${String(sale.sale_id).slice(0, 8)}`}
+                          </p>
+                          <p className="text-[10px] text-gray-400">
+                            {new Date(sale.created_at).toLocaleDateString('bn-BD', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            {sale.payment_status === 'partial' && ' · আংশিক আদায় হয়েছে'}
+                          </p>
+                        </div>
+                        <span className="text-sm font-bold text-red-500">৳{parseInt(remainingOf(sale)).toLocaleString()}</span>
+                      </label>
+                    )
+                  })}
+                  {dueInvoices.length >= 20 && (
+                    <p className="text-[10px] text-gray-400">সর্বশেষ ২০টি ইনভয়েস দেখানো হচ্ছে।</p>
+                  )}
+                </div>
+              )}
+
+              {selectedSales.length > 0 && (
+                <div className="flex items-center justify-between rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-2">
+                  <p className="text-xs text-emerald-700">
+                    বাছা ইনভয়েসের বাকি: <b>৳{parseInt(selectedTotal).toLocaleString()}</b>
+                  </p>
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setAmount(String(Math.min(Math.round(selectedTotal), Math.round(due))))}
+                      className="text-xs font-semibold text-emerald-700 underline"
+                    >
+                      এই পরিমাণ নিন
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSales([])}
+                      className="text-xs text-gray-500 underline"
+                    >
+                      মুছুন
+                    </button>
+                  </div>
+                </div>
+              )}
+              {selectedSales.length > 0 && parsedAmount > selectedTotal + 1 && (
+                <p className="text-[11px] text-gray-500">
+                  বাছা ইনভয়েসের চেয়ে বেশি নিলে বাড়তি টাকা পুরনো বাকি ইনভয়েসে যাবে।
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Payment Mode */}
           <div className="space-y-2">

@@ -2384,12 +2384,23 @@ const getCustomerDashboard = async (req, res) => {
                 [customer_id]
             ),
             query(
-                `SELECT cp.amount, cp.notes, cp.created_at,
-                        u.name_bn AS collected_by
-                 FROM credit_payments cp
-                 JOIN users u ON cp.worker_id = u.id
-                 WHERE cp.customer_id = $1
-                 ORDER BY cp.created_at DESC
+                `SELECT * FROM (
+                     SELECT cp.amount, cp.notes, cp.created_at,
+                            u.name_bn AS collected_by
+                     FROM credit_payments cp
+                     JOIN users u ON cp.worker_id = u.id
+                     WHERE cp.customer_id = $1
+                     UNION ALL
+                     -- SR-রেকর্ড করা আদায় (collections) — শুধু অ্যাডমিন verify হওয়াগুলো; তারিখ = verify-এর তারিখ।
+                     SELECT col.amount, COALESCE(col.note, col.payment_mode) AS notes,
+                            col.verified_at AS created_at,
+                            u.name_bn AS collected_by
+                     FROM collections col
+                     LEFT JOIN users u ON col.sr_id = u.id
+                     WHERE col.customer_id = $1
+                       AND col.status = 'verified'
+                 ) all_cp
+                 ORDER BY created_at DESC
                  LIMIT 20`,
                 [customer_id]
             ),
@@ -2851,8 +2862,17 @@ const getMonthlySummary = async (req, res) => {
             `SELECT
                  TO_CHAR(created_at, 'YYYY-MM')  AS month_label,
                  COALESCE(SUM(amount), 0)         AS total_credit_collected
-             FROM credit_payments
-             WHERE customer_id = $1
+             FROM (
+                 SELECT amount, created_at
+                 FROM credit_payments
+                 WHERE customer_id = $1
+                 UNION ALL
+                 -- verified collections — verify-এর তারিখের মাসে ধরা হয় (বকেয়া তখনই কমে)
+                 SELECT amount, verified_at AS created_at
+                 FROM collections
+                 WHERE customer_id = $1
+                   AND status = 'verified'
+             ) all_cp
              GROUP BY TO_CHAR(created_at, 'YYYY-MM')`,
             [customer_id]
         );
@@ -2907,12 +2927,22 @@ const getCreditOverview = async (req, res) => {
                 [customer_id]
             ),
             query(
-                `SELECT cp.amount, cp.notes, cp.created_at,
-                        u.name_bn AS collected_by
-                 FROM credit_payments cp
-                 JOIN users u ON cp.worker_id = u.id
-                 WHERE cp.customer_id = $1
-                 ORDER BY cp.created_at DESC
+                `SELECT * FROM (
+                     SELECT cp.amount, cp.notes, cp.created_at,
+                            u.name_bn AS collected_by
+                     FROM credit_payments cp
+                     JOIN users u ON cp.worker_id = u.id
+                     WHERE cp.customer_id = $1
+                     UNION ALL
+                     SELECT col.amount, COALESCE(col.note, col.payment_mode) AS notes,
+                            col.verified_at AS created_at,
+                            u.name_bn AS collected_by
+                     FROM collections col
+                     LEFT JOIN users u ON col.sr_id = u.id
+                     WHERE col.customer_id = $1
+                       AND col.status = 'verified'
+                 ) all_cp
+                 ORDER BY created_at DESC
                  LIMIT 5`,
                 [customer_id]
             ),
@@ -3191,12 +3221,23 @@ const getCustomerStatement = async (req, res) => {
                 if (date_from) { cpParams.push(date_from); cpClause += ` AND cp.created_at >= $${cpParams.length}::date`; }
                 if (date_to)   { cpParams.push(date_to);   cpClause += ` AND cp.created_at < ($${cpParams.length}::date + INTERVAL '1 day')`; }
                 return query(
-                    `SELECT cp.amount, cp.notes, cp.created_at, u.name_bn AS collected_by
-                     FROM credit_payments cp
-                     JOIN users u ON cp.worker_id = u.id
-                     WHERE cp.customer_id = $1
-                       ${cpClause}
-                     ORDER BY cp.created_at ASC`,
+                    `SELECT * FROM (
+                         SELECT cp.amount, cp.notes, cp.created_at, u.name_bn AS collected_by
+                         FROM credit_payments cp
+                         JOIN users u ON cp.worker_id = u.id
+                         WHERE cp.customer_id = $1
+                           ${cpClause}
+                         UNION ALL
+                         -- verified collections — তারিখ-ফিল্টারও verify-এর তারিখে
+                         SELECT col.amount, COALESCE(col.note, col.payment_mode) AS notes,
+                                col.verified_at AS created_at, u.name_bn AS collected_by
+                         FROM collections col
+                         LEFT JOIN users u ON col.sr_id = u.id
+                         WHERE col.customer_id = $1
+                           AND col.status = 'verified'
+                           ${cpClause.replace(/cp\.created_at/g, 'col.verified_at')}
+                     ) all_cp
+                     ORDER BY created_at ASC`,
                     cpParams
                 );
             })(),

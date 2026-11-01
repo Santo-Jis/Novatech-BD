@@ -7,7 +7,7 @@ const { sendCustomerNotification } = require('./customerNotification.controller'
 const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
 const { updateCommissionRealtime } = require('../services/commission.service');
 const { firebaseNotify } = require('../services/firebase.notify');
-const { allocatePaymentSafe } = require('../services/paymentAllocation.service');
+const { allocatePaymentSafe, parseSaleIds, assertSaleIdsBelongToCustomer } = require('../services/paymentAllocation.service');
 
 // ✅ FIX: UTC নয়, BD local date — commission.service.js/sales.controller.js-এর
 // getBDToday()-এর সাথে মিলবে (রাত ১২টা-ভোর ৬টা BD সময়ে UTC date এক দিন পিছিয়ে থাকে)
@@ -767,6 +767,14 @@ const collectCredit = async (req, res) => {
             }
         }
 
+        // ঐচ্ছিক: SR নির্দিষ্ট ইনভয়েস বেছে দিলে সেগুলো আগে শোধ হবে (বাকিটা FIFO)।
+        // অন্যের/শোধ-যোগ্য-নয় এমন ইনভয়েস হলে 400 — নিচের catch statusCode ধরে।
+        const preferredSaleIds = await assertSaleIdsBelongToCustomer(query, {
+            saleIds:    parseSaleIds(req.body.sale_ids),
+            customerId,
+            tenantId:   req.tenantId,
+        });
+
         let remainingCredit;
 
         // ─── Transaction: READ + INSERT একসাথে, race condition সম্ভব নয় ────────────
@@ -809,6 +817,7 @@ const collectCredit = async (req, res) => {
                 paymentId:  paymentInsert.rows[0].id,
                 source:     'credit_payment',
                 amount,
+                preferredSaleIds,
             });
 
             remainingCredit = Math.max(0, currentCredit - parseFloat(amount));

@@ -8,6 +8,9 @@
 //     customers.current_credit কমানো আগের মতোই ওই দুই পথের নিজস্ব কাজ।
 //
 // নিয়ম: FIFO — সবচেয়ে পুরনো বাকি ইনভয়েস আগে শোধ।
+//   SR চাইলে নির্দিষ্ট ইনভয়েস বেছে দিতে পারে (preferredSaleIds): সেগুলো আগে (নিজেদের মধ্যে
+//   পুরনো-আগে), তারপর বাকি টাকা অন্য ইনভয়েসে FIFO-তে। বেছে নেওয়া ইনভয়েসের চেয়ে আদায় বেশি
+//   হলে বাড়তি টাকা আটকে যায় না।
 //
 // ⚠️ Idempotency: একই আদায় (source + payment_id) দ্বিতীয়বার বরাদ্দ হবে না।
 // ⚠️ caller-কে অবশ্যই withTransaction()-এর client দিতে হবে (customer row lock + atomic লেখা)।
@@ -20,6 +23,52 @@ const logger = require('../config/logger');
 // টাকা paisa (পূর্ণসংখ্যা)-তে হিসাব — floating-point জমা ভুল এড়াতে
 const toPaisa = (v) => Math.round((parseFloat(v) || 0) * 100);
 const fromPaisa = (p) => p / 100;
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_PREFERRED = 50;
+
+/**
+ * রিকোয়েস্ট থেকে আসা sale_ids পার্স — array, JSON string ('["id1","id2"]'), বা কমা-বিভক্ত string
+ * (multipart/form-data এবং offline-queue-তে array আসে string হয়ে)। অবৈধ/ডুপ্লিকেট বাদ।
+ * @returns {string[]} বৈধ UUID-এর তালিকা (ক্রম বজায় রেখে, সর্বোচ্চ ৫০)
+ */
+const parseSaleIds = (raw) => {
+    let list = [];
+    if (Array.isArray(raw)) {
+        list = raw;
+    } else if (typeof raw === 'string' && raw.trim() !== '') {
+        const t = raw.trim();
+        if (t.startsWith('[')) {
+            try { const j = JSON.parse(t); list = Array.isArray(j) ? j : []; } catch { list = []; }
+        } else {
+            list = t.split(',');
+        }
+    }
+    const seen = new Set();
+    const out = [];
+    for (const v of list) {
+        const id = String(v == null ? '' : v).trim().toLowerCase();
+        if (UUID_RE.test(id) && !seen.has(id)) { seen.add(id); out.push(id); }
+        if (out.length >= MAX_PREFERRED) break;
+    }
+    return out;
+};
+
+/**
+ * বেছে নেওয়া ইনভয়েসগুলো সামনে আনে (প্রতিটা দলের ভেতরে মূল ক্রম — পুরনো আগে — অক্ষত)।
+ * তালিকায় না থাকা (ইতিমধ্যে শোধ / অন্য কাস্টমারের) preferred id নীরবে বাদ।
+ */
+const orderWithPreferred = (openInvoices, preferredIds) => {
+    const list = openInvoices || [];
+    if (!preferredIds || preferredIds.length === 0) return list;
+    const pref = new Set(preferredIds.map(x => String(x).toLowerCase()));
+    const first = [];
+    const rest  = [];
+    for (const inv of list) {
+        (pref.has(String(inv.sale_id).toLowerCase()) ? first : rest).push(inv);
+    }
+    return [...first, ...rest];
+};
 
 /**
  * Pure FIFO পরিকল্পনা — DB ছোঁয় না, তাই সরাসরি unit-test করা যায়।
@@ -64,9 +113,10 @@ const planFifoAllocation = (openInvoices, amount) => {
  * @param {string} p.paymentId   collections.id অথবা credit_payments.id
  * @param {'collection'|'credit_payment'} p.source
  * @param {number|string} p.amount
+ * @param {string[]} [p.preferredSaleIds] SR-এর বেছে নেওয়া ইনভয়েস (ঐচ্ছিক) — আগে শোধ হবে
  * @returns {Promise<{allocations:Array, allocated:number, unallocated:number, skipped?:boolean}>}
  */
-const allocatePaymentFifo = async (client, { tenantId, customerId, paymentId, source, amount }) => {
+const allocatePaymentFifo = async (client, { tenantId, customerId, paymentId, source, amount, preferredSaleIds }) => {
     if (!['collection', 'credit_payment'].includes(source)) {
         throw new Error(`allocatePaymentFifo: অজানা source "${source}"`);
     }
@@ -108,7 +158,7 @@ const allocatePaymentFifo = async (client, { tenantId, customerId, paymentId, so
         [customerId, tenantId]
     );
 
-    const plan = planFifoAllocation(open.rows, amount);
+    const plan = planFifoAllocation(orderWithPreferred(open.rows, preferredSaleIds), amount);
 
     for (const a of plan.allocations) {
         await client.query(
@@ -121,6 +171,32 @@ const allocatePaymentFifo = async (client, { tenantId, customerId, paymentId, so
     }
 
     return plan;
+};
+
+/**
+ * বেছে নেওয়া ইনভয়েসগুলো সত্যিই এই কাস্টমারের (এবং এই tenant-এর) বাকি ইনভয়েস কিনা যাচাই।
+ * একটাও অবৈধ হলে statusCode=400 সহ Error ছোঁড়ে — SR ভুল/অন্যের ইনভয়েস ধরাতে পারবে না।
+ *
+ * @param {Function} queryFn  (text, params) => Promise<{rows}>  — query() অথবা client.query.bind(client)
+ * @returns {Promise<string[]>} যাচাই করা id-র তালিকা (খালি হলে খালি)
+ */
+const assertSaleIdsBelongToCustomer = async (queryFn, { saleIds, customerId, tenantId }) => {
+    if (!saleIds || saleIds.length === 0) return [];
+    const r = await queryFn(
+        `SELECT id FROM sales_transactions
+         WHERE id = ANY($1::uuid[])
+           AND customer_id    = $2
+           AND tenant_id      = $3
+           AND payment_method = 'credit'
+           AND credit_used    > 0`,
+        [saleIds, customerId, tenantId]
+    );
+    if (r.rows.length !== saleIds.length) {
+        const err = new Error('নির্বাচিত ইনভয়েসের মধ্যে এই কাস্টমারের বাকি নয় এমন ইনভয়েস আছে।');
+        err.statusCode = 400;
+        throw err;
+    }
+    return saleIds;
 };
 
 /**
@@ -152,4 +228,11 @@ const allocatePaymentSafe = async (client, params) => {
     }
 };
 
-module.exports = { planFifoAllocation, allocatePaymentFifo, allocatePaymentSafe };
+module.exports = {
+    parseSaleIds,
+    orderWithPreferred,
+    planFifoAllocation,
+    assertSaleIdsBelongToCustomer,
+    allocatePaymentFifo,
+    allocatePaymentSafe,
+};

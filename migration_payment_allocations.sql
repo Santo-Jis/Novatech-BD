@@ -13,8 +13,9 @@
 --   * collections / credit_payments টেবিলে কলাম যোগ নেই — একটা আদায় একাধিক
 --     ইনভয়েসে ভাগ হতে পারে, তাই আলাদা join টেবিল।
 --
--- ⚠️ অনুমান: id কলামগুলো UUID (supplier_payments / users-এর মতো)। যদি
---    sales_transactions.id অন্য টাইপের হয়, রান করার আগে নিচের sale_id টাইপ মিলিয়ে নিন।
+-- ✅ যাচাইকৃত (Supabase project novatechbd): tenants / customers / sales_transactions /
+--    collections / credit_payments — সবার `id` UUID। sales_transactions.payment_method একটা enum
+--    (cash / credit / replacement), তাই নিচের `= 'credit'` তুলনা ঠিক আছে।
 -- ⚠️ এই ফাইল রান করার পরেই নতুন backend কোড deploy করুন (কোড টেবিল ধরে নিয়ে query করে)।
 --    ব্যাকফিল (পুরনো আদায় ইনভয়েসে বসানো) এই ফাইলে অটো-রান হয় না — নিচের
 --    ফাংশন আলাদাভাবে, প্রথমে dry-run দেখে চালাতে হবে।
@@ -44,6 +45,11 @@ CREATE INDEX IF NOT EXISTS idx_payment_allocations_customer
 
 CREATE INDEX IF NOT EXISTS idx_payment_allocations_tenant
     ON payment_allocations (tenant_id);
+
+-- বাকি সব টেবিলের মতোই RLS চালু, কোনো policy নেই: PostgREST-এর anon/authenticated কী দিয়ে এই
+-- টেবিলে কিছু পড়া/লেখা যাবে না। backend `postgres` রোলে (rolbypassrls = true) কানেক্ট করে, তাই তার কাজে
+-- কোনো প্রভাব নেই। (commission-এর `app_backend` রোল এই টেবিল ছোঁয় না।)
+ALTER TABLE payment_allocations ENABLE ROW LEVEL SECURITY;
 
 -- ─────────────────────────────────────────────────────────────
 -- ব্যাকফিল ফাংশন — পুরনো আদায়গুলো সময়ের ক্রমে FIFO-তে ইনভয়েসে বসায়।
@@ -175,3 +181,11 @@ $$ LANGUAGE plpgsql;
 --   GROUP BY c.id, c.shop_name, c.current_credit
 --   HAVING c.current_credit <> COALESCE(SUM(st.credit_used), 0) - COALESCE(SUM(a.paid), 0);
 -- ─────────────────────────────────────────────────────────────
+
+-- ─────────────────────────────────────────────────────────────
+-- SR-এর বেছে নেওয়া ইনভয়েস (ঐচ্ছিক ফিচার) — আদায়ের সময় বাছা ইনভয়েস verify পর্যন্ত রাখা হয়।
+-- `collections` পথে আদায় রেকর্ড (SR) আর বরাদ্দ (অ্যাডমিন verify) আলাদা মুহূর্তে হয়, তাই এই কলাম।
+-- `collectCredit` পথে (তাৎক্ষণিক) এটা লাগে না।
+-- না বাছলে NULL → আগের মতো পুরো FIFO। ব্যাকফিল ফাংশন এই কলাম দেখে না (পুরনো আদায়ে এটা ছিল না)।
+-- ─────────────────────────────────────────────────────────────
+ALTER TABLE collections ADD COLUMN IF NOT EXISTS target_sale_ids UUID[];

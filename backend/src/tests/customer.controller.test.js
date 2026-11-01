@@ -58,6 +58,8 @@ jest.mock('../config/encryption', () => ({
 // ইনভয়েসে FIFO বরাদ্দ — আলাদা unit test আছে (paymentAllocation.service.test.js),
 // এখানে শুধু collectCredit সেটা সঠিক আর্গুমেন্টে ডাকে কিনা দেখা হয়।
 jest.mock('../services/paymentAllocation.service', () => ({
+    // pure/validation ফাংশনগুলো আসল (sale_ids না থাকলে DB ছোঁয় না); শুধু DB-লেখা বরাদ্দটা মক
+    ...jest.requireActual('../services/paymentAllocation.service'),
     allocatePaymentSafe: jest.fn().mockResolvedValue({ allocations: [], allocated: 0, unallocated: 0 }),
 }));
 
@@ -805,6 +807,55 @@ describe('collectCredit — বাকি আদায়', () => {
                 amount:     1000,
             })
         );
+    });
+
+    test('sale_ids দিলে যাচাই হয় ও preferredSaleIds হিসেবে বরাদ্দে যায়', async () => {
+        const { withTransaction } = require('../config/db');
+        const SALE = '11111111-1111-4111-8111-111111111111';
+        query.mockResolvedValueOnce({ rows: [] });                    // idempotency
+        query.mockResolvedValueOnce({ rows: [{ id: SALE }] });        // assertSaleIdsBelongToCustomer
+        withTransaction.mockImplementationOnce(async (cb) => {
+            await cb({
+                query: jest.fn()
+                    .mockResolvedValueOnce({ rows: [{ shop_name: 'দোকান', current_credit: '900' }] })
+                    .mockResolvedValueOnce({ rows: [{ id: 'pay-sel' }] }),
+            });
+        });
+        const req = {
+            params: { id: 'a1b2c3d4-e5f6-4789-abcd-ef1234567890' },
+            body:   { amount: 200, idempotency_key: 'idem-sel', sale_ids: JSON.stringify([SALE, 'bogus', SALE]) },
+            user:   workerUser,
+        };
+        const res = mockRes();
+        await collectCredit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(200);
+        // অবৈধ ও ডুপ্লিকেট বাদ — শুধু একটা বৈধ UUID যাচাইয়ে গেছে
+        const verifyCall = query.mock.calls.find(c => /ANY\(\$1::uuid\[\]\)/.test(c[0]));
+        expect(verifyCall).toBeDefined();
+        expect(verifyCall[1][0]).toEqual([SALE]);
+        expect(allocatePaymentSafe).toHaveBeenLastCalledWith(
+            expect.anything(),
+            expect.objectContaining({ preferredSaleIds: [SALE] })
+        );
+    });
+
+    test('অন্যের/বাকি-নয় এমন ইনভয়েস বেছে দিলে 400, কিছুই আদায় হয় না', async () => {
+        const { withTransaction } = require('../config/db');
+        const SALE = '22222222-2222-4222-8222-222222222222';
+        query.mockResolvedValueOnce({ rows: [] });   // idempotency
+        query.mockResolvedValueOnce({ rows: [] });   // যাচাই: কোনো মিল নেই
+        withTransaction.mockClear();
+        const req = {
+            params: { id: 'a1b2c3d4-e5f6-4789-abcd-ef1234567890' },
+            body:   { amount: 200, idempotency_key: 'idem-bad', sale_ids: [SALE] },
+            user:   workerUser,
+        };
+        const res = mockRes();
+        await collectCredit(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(withTransaction).not.toHaveBeenCalled();
     });
 
     test('ইনভয়েস-বরাদ্দ ব্যর্থ (null) হলেও আদায় সফল — 200', async () => {

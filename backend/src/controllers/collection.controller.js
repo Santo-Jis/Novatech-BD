@@ -26,7 +26,7 @@ const sharp                        = require('sharp');
 const { uploadToStorage }          = require('../config/firebase'); // existing upload helper
 const { updateCommissionRealtime } = require('../services/commission.service');
 const { firebaseNotify }           = require('../services/firebase.notify');
-const { allocatePaymentSafe }      = require('../services/paymentAllocation.service');
+const { allocatePaymentSafe, parseSaleIds, assertSaleIdsBelongToCustomer } = require('../services/paymentAllocation.service');
 
 // ✅ FIX: UTC নয়, BD local date — commission.service.js/sales.controller.js-এর
 // getBDToday()-এর সাথে মিলবে (রাত ১২টা-ভোর ৬টা BD সময়ে UTC date এক দিন পিছিয়ে থাকে)
@@ -128,13 +128,23 @@ const createCollection = async (req, res) => {
             }
         }
 
+        // ── ঐচ্ছিক: SR-এর বেছে নেওয়া ইনভয়েস ───────────────────
+        // multipart/form-data-তে array আসে JSON string হয়ে; verify-এর সময় পর্যন্ত
+        // collections.target_sale_ids-এ রাখা হয় (migration_payment_allocations.sql)।
+        // না দিলে (বা কলাম-সহ migration apply না থাকলে) আগের মতোই শুধু FIFO।
+        const targetSaleIds = await assertSaleIdsBelongToCustomer(query, {
+            saleIds:    parseSaleIds(req.body.sale_ids),
+            customerId: customer_id,
+            tenantId:   req.tenantId,
+        });
+
         // ── Insert collection record ──────────────────────────
         const insertResult = await query(
             `INSERT INTO collections (sr_id, customer_id, amount, payment_mode,
                 cheque_bank, cheque_no, cheque_date,
                 receipt_photo_url, note, latitude, longitude,
-                status, created_at, tenant_id) VALUES
-               ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', NOW(), $12)
+                status, created_at, tenant_id${targetSaleIds.length ? ', target_sale_ids' : ''}) VALUES
+               ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', NOW(), $12${targetSaleIds.length ? ', $13' : ''})
              RETURNING *`,
             [
                 sr_id,
@@ -149,6 +159,7 @@ const createCollection = async (req, res) => {
                 latitude     ? parseFloat(latitude)  : null,
                 longitude    ? parseFloat(longitude) : null,
                 req.tenantId,
+                ...(targetSaleIds.length ? [targetSaleIds] : []),
             ]
         );
 
@@ -160,6 +171,7 @@ const createCollection = async (req, res) => {
         });
 
     } catch (err) {
+        if (err.statusCode) return res.status(err.statusCode).json({ message: err.message });
         console.error('createCollection error:', err);
         return res.status(500).json({ message: 'সার্ভার সমস্যা। আবার চেষ্টা করুন।' });
     }
@@ -303,6 +315,8 @@ const verifyCollection = async (req, res) => {
                 paymentId:  col.id,
                 source:     'collection',
                 amount:     col.amount,
+                // SR আদায়ের সময় যে ইনভয়েস বেছেছিল (না বাছলে null → শুধু FIFO)
+                preferredSaleIds: col.target_sale_ids || undefined,
             });
         });
 

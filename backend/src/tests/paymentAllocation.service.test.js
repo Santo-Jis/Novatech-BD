@@ -16,7 +16,10 @@ jest.mock('../config/logger', () => ({
 
 const logger = require('../config/logger');
 const {
+    parseSaleIds,
+    orderWithPreferred,
     planFifoAllocation,
+    assertSaleIdsBelongToCustomer,
     allocatePaymentFifo,
     allocatePaymentSafe,
 } = require('../services/paymentAllocation.service');
@@ -99,6 +102,80 @@ describe('planFifoAllocation', () => {
     });
 });
 
+
+// ════════════════════════════════════════════════════════════════
+// parseSaleIds / orderWithPreferred — SR-এর বেছে নেওয়া ইনভয়েস
+// ════════════════════════════════════════════════════════════════
+describe('parseSaleIds', () => {
+    const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+    test('array, JSON string ও কমা-বিভক্ত string — তিনটাই কাজ করে', () => {
+        expect(parseSaleIds([A, B])).toEqual([A, B]);
+        expect(parseSaleIds(JSON.stringify([A, B]))).toEqual([A, B]);
+        expect(parseSaleIds(`${A}, ${B}`)).toEqual([A, B]);
+    });
+    test('অবৈধ, ডুপ্লিকেট ও বড়-হাতের id সামলায় (ক্রম বজায়)', () => {
+        expect(parseSaleIds([B, 'nope', A.toUpperCase(), B, '', null, 42])).toEqual([B, A]);
+    });
+    test('খালি/ভাঙা/অন্য টাইপ → []', () => {
+        for (const v of [undefined, null, '', '   ', '[bad json', '{}', 5, {}]) expect(parseSaleIds(v)).toEqual([]);
+    });
+    test('সর্বোচ্চ ৫০টা', () => {
+        const many = Array.from({ length: 80 }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`);
+        expect(parseSaleIds(many)).toHaveLength(50);
+    });
+});
+
+describe('orderWithPreferred', () => {
+    const inv = [{ sale_id: 'A' }, { sale_id: 'B' }, { sale_id: 'C' }, { sale_id: 'D' }];
+    test('বেছে নেওয়াগুলো আগে, প্রতি দলে মূল (পুরনো-আগে) ক্রম', () => {
+        expect(orderWithPreferred(inv, ['D', 'B']).map(i => i.sale_id)).toEqual(['B', 'D', 'A', 'C']);
+    });
+    test('preferred না থাকলে/খালি হলে অপরিবর্তিত', () => {
+        expect(orderWithPreferred(inv, []).map(i => i.sale_id)).toEqual(['A', 'B', 'C', 'D']);
+        expect(orderWithPreferred(inv, undefined)).toBe(inv);
+    });
+    test('তালিকায় না থাকা preferred id নীরবে বাদ', () => {
+        expect(orderWithPreferred(inv, ['ZZZ', 'C']).map(i => i.sale_id)).toEqual(['C', 'A', 'B', 'D']);
+    });
+    test('বেছে-নেওয়া + FIFO একসাথে: বেছে নেওয়া ইনভয়েস শেষ করে বাকিটা পুরনো ইনভয়েসে গড়ায়', () => {
+        const open = [
+            { sale_id: 'A', remaining: '1000' }, // সবচেয়ে পুরনো
+            { sale_id: 'B', remaining: '500' },
+            { sale_id: 'C', remaining: '700' },  // SR এটা বেছেছে
+        ];
+        const r = planFifoAllocation(orderWithPreferred(open, ['C']), 1000);
+        expect(r.allocations).toEqual([
+            { sale_id: 'C', amount: 700 },
+            { sale_id: 'A', amount: 300 },
+        ]);
+        expect(r.unallocated).toBe(0);
+    });
+});
+
+describe('assertSaleIdsBelongToCustomer', () => {
+    const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+    test('খালি তালিকায় DB ছোঁয় না', async () => {
+        const q = jest.fn();
+        await expect(assertSaleIdsBelongToCustomer(q, { saleIds: [], customerId: 'c', tenantId: 't' })).resolves.toEqual([]);
+        expect(q).not.toHaveBeenCalled();
+    });
+    test('সব মিললে id ফেরত; customer ও tenant প্যারামিটারে যায়', async () => {
+        const q = jest.fn().mockResolvedValue({ rows: [{ id: A }, { id: B }] });
+        await expect(assertSaleIdsBelongToCustomer(q, { saleIds: [A, B], customerId: 'c1', tenantId: 't1' })).resolves.toEqual([A, B]);
+        expect(q.mock.calls[0][1]).toEqual([[A, B], 'c1', 't1']);
+        expect(q.mock.calls[0][0]).toMatch(/payment_method = 'credit'/);
+    });
+    test('একটাও না মিললে statusCode=400 সহ Error', async () => {
+        const q = jest.fn().mockResolvedValue({ rows: [{ id: A }] });
+        await expect(assertSaleIdsBelongToCustomer(q, { saleIds: [A, B], customerId: 'c', tenantId: 't' }))
+            .rejects.toMatchObject({ statusCode: 400 });
+    });
+});
+
 // ════════════════════════════════════════════════════════════════
 // allocatePaymentFifo — fake client
 // ════════════════════════════════════════════════════════════════
@@ -161,6 +238,18 @@ describe('allocatePaymentFifo', () => {
         expect(client.query).toHaveBeenCalledTimes(3);
         expect(r.allocations).toEqual([]);
         expect(r.unallocated).toBe(400);
+    });
+
+    test('preferredSaleIds দিলে বেছে নেওয়া ইনভয়েসে আগে বসে', async () => {
+        const client = fakeClient([
+            { rows: [] }, { rows: [{ id: 'c1' }] },
+            { rows: [{ sale_id: 'OLD', remaining: '5000' }, { sale_id: 'PICK', remaining: '800' }] },
+            { rows: [] }, { rows: [] },
+        ]);
+        const r = await allocatePaymentFifo(client, { ...base, amount: 1000, preferredSaleIds: ['PICK'] });
+        expect(client.query.mock.calls[3][1]).toEqual(['t1', 'c1', 'PICK', 'collection', 'p1', 800]);
+        expect(client.query.mock.calls[4][1]).toEqual(['t1', 'c1', 'OLD',  'collection', 'p1', 200]);
+        expect(r.unallocated).toBe(0);
     });
 
     test('insert-এ ON CONFLICT DO NOTHING আছে (concurrent double-submit রক্ষা)', async () => {
