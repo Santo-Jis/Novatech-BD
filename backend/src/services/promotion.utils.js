@@ -652,4 +652,4 @@ const APPROVAL_THRESHOLDS = {
     maxAutoBudget:     50000,  // ৳৫০,০০০-এর বেশি বাজেট ক্যাপ হলে অনুমোদন লাগবে
 };
 
-module.exports = { getEligiblePromotions, getCustomerTargetProgress, recordPromotionUsage, deductFreeGiftStock, needsApproval, APPROVAL_THRESHOLDS };
+module.exports = { getTargetPeriodData, getEligiblePromotions, getCustomerTargetProgress, recordPromotionUsage, deductFreeGiftStock, needsApproval, APPROVAL_THRESHOLDS };

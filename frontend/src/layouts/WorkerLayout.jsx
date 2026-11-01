@@ -18,6 +18,7 @@ import { retryFailed, initAutoSync } from '../api/syncService'
 import { getPendingQueue } from '../api/offlineQueue'
 import api from '../api/axios'
 import { useLiveTracking } from '../hooks/useLiveTracking'
+import { prefetchProducts } from '../api/prefetchProducts'
 
 // ─── Bottom Navigation (সবসময় দেখা যাবে) ───────────────────
 // "বিক্রয় করুন" সবচেয়ে বেশি ব্যবহৃত — সরাসরি BottomNav-এ রাখা হয়েছে
@@ -125,6 +126,13 @@ export default function WorkerLayout() {
   // ⚠️ SECURITY: outstanding_dues আর user store-এ নেই (localStorage expose হত)।
   // এখন আলাদা API থেকে আনা হচ্ছে — component state-এ থাকে, localStorage-এ না।
   const [outstandingDues, setOutstandingDues] = useState(0)
+  // অফলাইনের জন্য পণ্য তালিকা আগে থেকেই cache করো
+  useEffect(() => {
+    prefetchProducts()
+    window.addEventListener('online', prefetchProducts)
+    return () => window.removeEventListener('online', prefetchProducts)
+  }, [])
+
   useEffect(() => {
     api.get('/auth/my-sensitive-info')
       .then(res => setOutstandingDues(parseFloat(res.data?.data?.outstanding_dues || 0)))

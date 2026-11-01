@@ -5,6 +5,7 @@ import { useAppStore } from '../../store/app.store'
 import toast from 'react-hot-toast'
 import { FiMinus, FiPlus, FiCheck, FiPackage, FiChevronDown, FiChevronUp, FiWifiOff } from 'react-icons/fi'
 import { enqueue, saveCache, getCache } from '../../api/offlineQueue'
+import { fetchAndCachePromoSnapshot, loadPromoSnapshot, calculateOfflinePromotions } from '../../utils/offlinePromotions'
 import ProductFilterBar, { useProductFilter } from '../../components/worker/ProductFilterBar'
 
 // ─── ছবি compress helper (max 1280px, max 8MB) ────────────
@@ -172,6 +173,8 @@ export default function SalesForm() {
   const [cashNow, setCashNow] = useState('')
   const [useCreditBalance, setUseCreditBalance] = useState(false)
   const [promoPreview, setPromoPreview] = useState(null) // ← নতুন: /promotions/calculate-এর ফলাফল
+  const [promoSnapshot, setPromoSnapshot] = useState(null)   // অফলাইন প্রমোশন হিসাবের ক্যাশ
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [promoCode, setPromoCode] = useState('')          // ← নতুন (Phase ২): কোড-ভিত্তিক অফার
 
   const [receiptPhoto, setReceiptPhoto] = useState(null)
@@ -197,14 +200,28 @@ export default function SalesForm() {
   const [orderCheckDone,   setOrderCheckDone]   = useState(false)  // check শেষ হয়েছে কিনা
   const [orderCheckError,  setOrderCheckError]  = useState(false)  // নেটওয়ার্ক error হয়েছে কিনা
 
+  // নেট আসা-যাওয়ায় প্রিভিউ নিজে থেকে অনলাইন/অফলাইন হিসাবে বদলাবে
+  useEffect(() => {
+    const on  = () => setIsOnline(true)
+    const off = () => setIsOnline(false)
+    window.addEventListener('online', on)
+    window.addEventListener('offline', off)
+    return () => { window.removeEventListener('online', on); window.removeEventListener('offline', off) }
+  }, [])
+
   useEffect(() => {
     const loadData = async () => {
       // প্রথমে cache থেকে দেখাও (offline fast load)
       const cachedCustomer = await getCache(`customer_${customerId}`)
-      const cachedProducts = await getCache('products_active')
-      if (cachedCustomer?.isToday) setCustomer(cachedCustomer.data)
-      if (cachedProducts?.isToday)  setProducts(cachedProducts.data)
-      if (cachedCustomer?.isToday && cachedProducts?.isToday) setLoading(false)
+      const cachedProducts = (await getCache('products_active')) || (await getCache('products_catalog'))
+      // পুরনো (গতকালের) cache হলেও দেখাও — খালি দেখানোর চেয়ে ভালো; অনলাইনে এলে নতুন ডেটা বসবে
+      if (cachedCustomer?.data) setCustomer(cachedCustomer.data)
+      loadPromoSnapshot(customerId).then(snap => { if (snap) setPromoSnapshot(snap) })
+      if (cachedProducts?.data) setProducts(cachedProducts.data)
+      if (cachedCustomer?.data && cachedProducts?.data) setLoading(false)
+      if (!navigator.onLine && !cachedProducts?.data) {
+        toast.error('পণ্যের তালিকা সংরক্ষিত নেই। একবার ইন্টারনেট চালু করে অ্যাপ খুলুন।', { duration: 5000 })
+      }
 
       // Online হলে fresh data নাও + cache আপডেট করো
       if (navigator.onLine) {
@@ -217,6 +234,9 @@ export default function SalesForm() {
           setProducts(prodRes.data.data)
           saveCache(`customer_${customerId}`, custRes.data.data)
           saveCache('products_active', prodRes.data.data)
+          saveCache('products_catalog', prodRes.data.data)
+          // অফলাইন প্রমোশন হিসাবের জন্য snapshot ক্যাশ করো
+          fetchAndCachePromoSnapshot(customerId).then(snap => { if (snap) setPromoSnapshot(snap) })
         } catch { /* cache দিয়েই চলবে */ }
 
         // ── বাকি সতর্কতা লোড করো ─────────────────────────────
@@ -268,7 +288,16 @@ export default function SalesForm() {
   // discount ধরবে (offline sale sync হওয়ার সময়ও), শুধু প্রিভিউটা মিস হবে।
   useEffect(() => {
     const items = Object.entries(selected).map(([product_id, qty]) => ({ product_id, qty: parseInt(qty) }))
-    if (!items.length || !customerId || !navigator.onLine) { setPromoPreview(null); return }
+    if (!items.length || !customerId) { setPromoPreview(null); return }
+
+    // ── অফলাইন: ক্যাশ করা অফার দিয়ে ফোনেই হিসাব (আনুমানিক — সিঙ্কে সার্ভার চূড়ান্ত করবে) ──
+    if (!isOnline) {
+      let cancelled = false
+      calculateOfflinePromotions({ snapshot: promoSnapshot, products, items, customer, customerId, promoCode })
+        .then(r => { if (!cancelled) setPromoPreview(r) })
+        .catch(() => { if (!cancelled) setPromoPreview(null) })
+      return () => { cancelled = true }
+    }
 
     const timer = setTimeout(() => {
       api.post('/promotions/calculate', { items, customer_id: customerId, promo_code: promoCode || undefined })
@@ -277,7 +306,7 @@ export default function SalesForm() {
     }, 400)
 
     return () => clearTimeout(timer)
-  }, [selected, customerId, promoCode])
+  }, [selected, customerId, promoCode, isOnline, promoSnapshot, products, customer])
 
   const updateQty = (pid, delta, isReplacement = false) => {
     const setter = isReplacement ? setReplacements : setSelected
@@ -410,6 +439,7 @@ export default function SalesForm() {
             cash_received:      paymentMethod === 'partial' ? cashNowNum : undefined,
             replacement_items:  replacementItems,
             use_credit_balance: useCreditBalance,
+            promo_code:         promoCode || undefined, // অফলাইনে লেখা প্রমো কোড sync-এ যাবে
             _receipt_photo_base64: receiptPhotoBase64 || undefined,
             // Idempotency key — retry-তে duplicate invoice প্রতিরোধ
             // crypto.randomUUID() — browser built-in, cryptographically secure UUID v4
@@ -769,7 +799,19 @@ export default function SalesForm() {
               </div>
             ))}
             {promoCode && promoPreview && !promotionDiscount && !promoPreview.free_items?.length && (
-              <p className="text-xs text-red-500">কোডটা মিলছে না বা মেয়াদ শেষ — বানান চেক করুন।</p>
+              <p className="text-xs text-red-500">
+                {promoPreview.code_status === 'unverifiable'
+                  ? 'এই ডিভাইসে অফলাইনে কোড যাচাই করা যাচ্ছে না — সিঙ্কের সময় সার্ভার যাচাই করবে।'
+                  : promoPreview.code_status === 'matched'
+                    ? 'কোডটা সঠিক, কিন্তু এই কার্ট/কাস্টমারের জন্য শর্ত পূরণ হয়নি (ন্যূনতম অর্ডার, পণ্য বা ব্যবহারসীমা)।'
+                    : 'কোডটা মিলছে না বা মেয়াদ শেষ — বানান চেক করুন।'}
+              </p>
+            )}
+            {promoPreview?._offline && (
+              <p className="text-[11px] text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+                📶 অফলাইন হিসাব (আনুমানিক) — সিঙ্কের সময় সার্ভার চূড়ান্ত ছাড় নিশ্চিত করবে।
+                {promoPreview._noSnapshot && ' এই ডিভাইসে অফারের তালিকা সংরক্ষিত নেই — একবার অনলাইনে এই পেজ খুলুন।'}
+              </p>
             )}
             {creditDiscount > 0 && <div className="flex justify-between text-emerald-600"><span>ব্যালেন্স ছাড়</span><span>-৳{creditDiscount.toFixed(2)}</span></div>}
             {replacementValue > 0 && <div className="flex justify-between text-orange-600"><span>রিপ্লেসমেন্ট</span><span>-৳{replacementValue.toFixed(2)}</span></div>}

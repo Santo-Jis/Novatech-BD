@@ -7,7 +7,7 @@ const {
     getAllPromotions, createPromotion, updatePromotion,
     deletePromotion, approvePromotion, rejectPromotion,
     uploadPromotionBanner, // ← Phase ৫
-    getActivePromotions, calculatePromotions, getPromotionReport,
+    getActivePromotions, getOfflineSnapshot, calculatePromotions, getPromotionReport,
     getPromotionsDashboardSummary,
 } = require('../controllers/promotion.controller');
 
@@ -16,6 +16,7 @@ const bannerUpload = multer({ storage: multer.memoryStorage(), limits: { fileSiz
 
 // Worker
 router.get('/active',        auth, allowRoles('worker','manager','admin'), getActivePromotions);
+router.get('/offline-snapshot', auth, allowRoles('worker'),                getOfflineSnapshot);
 router.post('/calculate',    auth, allowRoles('worker'),                   calculatePromotions);
 
 // Admin/Manager

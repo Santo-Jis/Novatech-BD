@@ -1,6 +1,7 @@
 const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
-const { getEligiblePromotions, getCustomerTargetProgress, needsApproval } = require('../services/promotion.utils');
+const { getEligiblePromotions, getCustomerTargetProgress, needsApproval, getTargetPeriodData } = require('../services/promotion.utils');
+const crypto = require('crypto');
 const { uploadToCloudinary } = require('../services/employee.service'); // ← Phase ৫: banner upload-এর জন্য পুনঃব্যবহার
 
 // ============================================================
@@ -383,6 +384,76 @@ const getActivePromotions = async (req, res) => {
 
     } catch (err) {
         logger.error('[Promotion] getActivePromotions error:', err.message);
+        return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+
+// ============================================================
+// GET /api/promotions/offline-snapshot?customer_id=
+// অফলাইন হিসাবের জন্য: চলমান সব promotion (কোড-ভিত্তিকসহ) + এই কাস্টমারের
+// প্রসঙ্গ (route, ব্যবহারসংখ্যা, টার্গেট-গিফটের আগের কেনাকাটা)।
+// নিরাপত্তা: আসল promo_code কখনো পাঠানো হয় না — শুধু SHA-256 হ্যাশ
+// (promo_code_hash), যাতে SR-এর ফোনে কোডগুলো ফাঁস না হয়, তবু অফলাইনে
+// SR-এর লেখা কোড মিলিয়ে দেখা যায়।
+// ============================================================
+const getOfflineSnapshot = async (req, res) => {
+    try {
+        const customerId = req.query.customer_id || null;
+        const today = new Date().toISOString().slice(0, 10);
+
+        const promoRes = await query(
+            `SELECT * FROM promotions
+             WHERE is_active = true AND start_date <= $1 AND end_date >= $1
+               AND tenant_id = $2`,
+            [today, req.tenantId]
+        );
+
+        const promotions = promoRes.rows.map(p => {
+            const { promo_code, ...rest } = p;
+            return {
+                ...rest,
+                has_code: !!promo_code,
+                promo_code_hash: promo_code
+                    ? crypto.createHash('sha256').update(String(promo_code).trim().toUpperCase()).digest('hex')
+                    : null,
+            };
+        });
+
+        // কাস্টমার প্রসঙ্গ
+        const customerContext = { route_id: null, uses: {}, targets: {} };
+        if (customerId) {
+            const custRes = await query(
+                `SELECT route_id FROM customers WHERE id = $1 AND tenant_id = $2`,
+                [customerId, req.tenantId]
+            );
+            customerContext.route_id = custRes.rows[0]?.route_id || null;
+
+            const limited = promoRes.rows.filter(p => p.max_per_customer).map(p => p.id);
+            if (limited.length) {
+                const usesRes = await query(
+                    `SELECT promotion_id, COUNT(*)::INTEGER AS cnt FROM promotion_uses
+                     WHERE customer_id = $1 AND promotion_id = ANY($2::uuid[])
+                     GROUP BY promotion_id`,
+                    [customerId, limited]
+                );
+                usesRes.rows.forEach(r => { customerContext.uses[r.promotion_id] = r.cnt; });
+            }
+
+            for (const promo of promoRes.rows.filter(p => p.type === 'target_gift')) {
+                const period = await getTargetPeriodData({
+                    queryFn: query, promo, tenantId: req.tenantId, customerId,
+                });
+                if (period) customerContext.targets[promo.id] = period;
+            }
+        }
+
+        return res.json({
+            success: true,
+            data: { promotions, customer: customerContext, generated_at: new Date().toISOString() },
+        });
+    } catch (err) {
+        logger.error('[Promotion] getOfflineSnapshot error:', err.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
@@ -950,6 +1021,7 @@ module.exports = {
     rejectPromotion,
     uploadPromotionBanner, // ← Phase ৫
     getActivePromotions,
+    getOfflineSnapshot,
     getPortalActivePromotions, // ← Phase ৫
     calculatePromotions,
     calculatePortalPromotions, // ✅ NEW (ফেজ ০/৩ — পোর্টাল multi-vendor checkout প্রিভিউ)
