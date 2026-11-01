@@ -815,10 +815,8 @@ const getProductRates = async (req, res) => {
 
         const result = await query(
             `SELECT p.id, p.name, p.sku, p.price, p.unit,
-                    c.name AS category_name, c.name_bn AS category_name_bn,
                     r.rate
              FROM products p
-             LEFT JOIN categories c ON c.id = p.category_id
              LEFT JOIN sr_product_commission_rates r
                     ON r.product_id = p.id AND r.worker_id = $2 AND r.tenant_id = $1
              WHERE p.tenant_id = $1 AND p.is_active = true ${searchSql}
@@ -839,7 +837,6 @@ const getProductRates = async (req, res) => {
                     sku:           r.sku,
                     price:         r.price === null ? null : parseFloat(r.price),
                     unit:          r.unit,
-                    category_name: r.category_name_bn || r.category_name || null,
                     rate:          r.rate === null ? null : parseFloat(r.rate),
                 })),
             },
