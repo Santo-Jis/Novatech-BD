@@ -1,9 +1,13 @@
 // backend/src/jobs/creditReminder.job.js
 // ============================================================
-// বাকি Reminder Job
-// প্রতিদিন রাত ১০:০০ তে auto চলবে
-// → কাস্টমারকে Email
-// → SR ও Manager কে App Notification (FCM + Realtime DB)
+// স্মার্ট বাকি Reminder Job
+// প্রতিদিন সকাল ১১:০০ (ঢাকা) তে চলে, কিন্তু প্রতিদিন সবাইকে পাঠায় না —
+// নীতি (creditReminderPolicy.service.js):
+//   • ইনভয়েস-ভিত্তিক বাকির বয়স ≥ ৭ দিন, বাকি ≥ ৳৫০০
+//   • গত ৩ দিনে পেমেন্ট করলে বা snooze থাকলে বাদ
+//   • ধাপ ১→২→৩ এর মাঝে ৭/৭ দিন বিরতি; ধাপ ৪–৫ শুধু SR/Manager-কে (১৪ দিন পরপর)
+//   • চ্যানেল: WhatsApp আগে, না হলে Email; ধাপ ৩-এ দুটোই
+// SR/Manager-কে কাস্টমার-প্রতি push নয়, একটাই সারাংশ push।
 // ============================================================
 
 const cron      = require('node-cron');
@@ -13,6 +17,8 @@ const { sendEmail }          = require('../services/email.service');
 const { sendPushToMany }     = require('../services/fcm.service');
 const { sendCustomerNotification } = require('../controllers/customerNotification.controller');
 const { getPublicAppUrl } = require('../config/publicAppUrl');
+const { sendPortalWhatsAppMessage, isWhatsAppLikelyDown } = require('../services/portalWhatsapp.service');
+const { decideReminder, channelPlan, isSendWindow } = require('../services/creditReminderPolicy.service');
 
 // ============================================================
 // EMAIL TEMPLATE — কাস্টমারের বাকি reminder
@@ -135,105 +141,318 @@ const buildReminderEmail = (customer, portalLink) => {
 };
 
 // ============================================================
-// MAIN JOB — বাকি আছে এমন কাস্টমারদের reminder পাঠাও
+// WhatsApp / In-app টেক্সট — ধাপ অনুযায়ী সুর
 // ============================================================
-const runCreditReminderJob = async () => {
-    logger.info('\n💳 Credit Reminder Job শুরু...');
+const bn = (n) => parseFloat(n || 0).toLocaleString('bn-BD');
+
+const buildWhatsAppMessage = (c, stage, days, portalLink) => {
+    const amount = bn(c.current_credit);
+    const link = portalLink ? `\n\n🔗 বিস্তারিত দেখুন: ${portalLink}` : '';
+    if (stage === 1) {
+        return `আসসালামু আলাইকুম ${c.owner_name || ''},\n` +
+            `${c.shop_name}-এর ৳${amount} বাকি আছে (সবচেয়ে পুরনো ইনভয়েস ${bn(days)} দিনের)। ` +
+            `সুবিধামতো সময়ে পরিশোধ করলে কৃতজ্ঞ থাকব। কবে দিতে পারবেন তা পোর্টালের ক্রেডিট ট্যাবে "পরে পরিশোধ করব" থেকে জানালে ততদিন আর মনে করাব না।${link}\n\n— ZovoriX`;
+    }
+    if (stage === 2) {
+        return `আসসালামু আলাইকুম ${c.owner_name || ''},\n` +
+            `আগের অনুরোধের পরও ${c.shop_name}-এর ৳${amount} বাকি রয়ে গেছে (${bn(days)} দিন)। ` +
+            `অনুগ্রহ করে এই সপ্তাহের মধ্যে পরিশোধ করুন, বা পোর্টালের ক্রেডিট ট্যাবে "পরে পরিশোধ করব" থেকে তারিখ জানান।${link}\n\n— ZovoriX`;
+    }
+    return `${c.owner_name || 'সম্মানিত গ্রাহক'},\n` +
+        `${c.shop_name}-এর ৳${amount} বাকি ${bn(days)} দিন ধরে অপরিশোধিত। ` +
+        `আমাদের প্রতিনিধি শীঘ্রই যোগাযোগ করবেন — তার আগে পরিশোধ করলে ভালো হয়।${link}\n\n— ZovoriX`;
+};
+
+const buildInAppBody = (c, stage) => {
+    const amount = bn(c.current_credit);
+    if (stage === 1) return `আপনার ${c.shop_name} দোকানে ৳${amount} বাকি আছে। সুবিধামতো সময়ে পরিশোধ করুন।`;
+    if (stage === 2) return `আপনার ${c.shop_name} দোকানের ৳${amount} বাকি এখনো অপরিশোধিত। এই সপ্তাহে পরিশোধ করুন।`;
+    return `আপনার ${c.shop_name} দোকানের ৳${amount} বাকি অনেক দিনের। প্রতিনিধি শীঘ্রই যোগাযোগ করবেন।`;
+};
+
+// ============================================================
+// কাস্টমারের সব তথ্য — ইনভয়েস-ভিত্তিক বাকি + বয়স + শেষ পেমেন্ট/রিমাইন্ডার + snooze
+//
+// "সবচেয়ে পুরনো অপরিশোধিত ইনভয়েস": ইনভয়েসের বাকি = credit_used − SUM(payment_allocations)।
+// ব্যাকফিল না চালানো থাকলে পুরনো শোধ-হওয়া ইনভয়েসও "বাকি" দেখাত — তাই নতুন ইনভয়েস থেকে
+// পেছনের দিকে জমিয়ে customers.current_credit পর্যন্ত যে ইনভয়েসগুলো লাগে শুধু সেগুলো ধরা হয়
+// (FIFO-সামঞ্জস্যপূর্ণ)। এতে ব্যাকফিল ছাড়াও বয়স/পরিমাণ অতিরিক্ত বাড়ে না।
+// ============================================================
+const CANDIDATES_SQL = `
+    WITH inv AS (
+        SELECT st.id, st.customer_id, st.tenant_id, st.created_at,
+               st.credit_used - COALESCE(pa.allocated, 0) AS remaining
+        FROM sales_transactions st
+        LEFT JOIN (
+            SELECT sale_id, SUM(amount) AS allocated
+            FROM payment_allocations GROUP BY sale_id
+        ) pa ON pa.sale_id = st.id
+        WHERE st.payment_method = 'credit'
+          AND st.credit_used > 0
+          AND st.credit_used - COALESCE(pa.allocated, 0) > 0
+    ),
+    cov AS (
+        SELECT i.*, c.current_credit,
+               SUM(i.remaining) OVER (PARTITION BY i.customer_id
+                                      ORDER BY i.created_at DESC, i.id DESC) - i.remaining AS newer_sum
+        FROM inv i
+        JOIN customers c ON c.id = i.customer_id AND c.tenant_id = i.tenant_id
+        WHERE c.is_active = true AND c.current_credit > 0
+    ),
+    inv_due AS (
+        SELECT customer_id,
+               LEAST(SUM(remaining), MAX(current_credit)) AS inv_amount,
+               MIN(created_at)                            AS oldest_invoice_at
+        FROM cov
+        WHERE newer_sum < current_credit
+        GROUP BY customer_id
+    ),
+    -- বাকি = ইনভয়েস-ভিত্তিক অংশ + (ইনভয়েসে ব্যাখ্যা-না-হওয়া অংশ = শুরুর/ম্যানুয়াল ব্যালেন্স)।
+    -- শুরুর ব্যালেন্সের বয়স অজানা, তাই কাস্টমারের রেকর্ড তৈরির তারিখ ধরা হয় (যেন এমন কাস্টমার
+    -- কখনোই রিমাইন্ডার-বহির্ভূত না থাকে — প্রোডাকশন ডেটায় এমন কাস্টমারই বেশি ছিল)।
+    due AS (
+        SELECT c.id AS customer_id,
+               c.current_credit AS amount_due,
+               CASE WHEN COALESCE(i.inv_amount, 0) < c.current_credit
+                    THEN LEAST(COALESCE(i.oldest_invoice_at, c.created_at), c.created_at)
+                    ELSE i.oldest_invoice_at
+               END AS oldest_invoice_at
+        FROM customers c
+        LEFT JOIN inv_due i ON i.customer_id = c.id
+        WHERE c.is_active = true AND c.current_credit > 0
+    )
+    SELECT
+        c.id, c.tenant_id, c.shop_name, c.owner_name, c.customer_code,
+        c.email, c.whatsapp, c.current_credit,
+        d.amount_due, d.oldest_invoice_at,
+        lp.last_payment_at,
+        lr.last_reminder_at,
+        COALESCE(cyc.cnt, 0)::int AS reminders_in_cycle,
+        sn.snoozed_until,
+        u.id AS sr_id, u.name_bn AS sr_name, u.manager_id,
+        cpt.redirect_id AS portal_redirect_id
+    FROM due d
+    JOIN customers c ON c.id = d.customer_id
+    LEFT JOIN LATERAL (
+        SELECT MAX(t) AS last_payment_at FROM (
+            SELECT cp.created_at AS t FROM credit_payments cp WHERE cp.customer_id = c.id
+            UNION ALL
+            SELECT COALESCE(col.verified_at, col.created_at)
+            FROM collections col WHERE col.customer_id = c.id AND col.status = 'verified'
+        ) p
+    ) lp ON true
+    LEFT JOIN LATERAL (
+        SELECT MAX(l.sent_at) AS last_reminder_at
+        FROM credit_reminder_logs l WHERE l.customer_id = c.id
+    ) lr ON true
+    LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS cnt FROM credit_reminder_logs l
+        WHERE l.customer_id = c.id
+          AND (lp.last_payment_at IS NULL OR l.sent_at > lp.last_payment_at)
+    ) cyc ON true
+    LEFT JOIN LATERAL (
+        SELECT MAX(s.snoozed_until) AS snoozed_until
+        FROM credit_reminder_snoozes s
+        WHERE s.customer_id = c.id AND s.snoozed_until >= CURRENT_DATE
+    ) sn ON true
+    LEFT JOIN LATERAL (
+        SELECT ca.worker_id FROM customer_assignments ca
+        WHERE ca.customer_id = c.id AND ca.is_active = true LIMIT 1
+    ) assign ON true
+    LEFT JOIN users u ON u.id = assign.worker_id
+    LEFT JOIN LATERAL (
+        SELECT t.redirect_id FROM customer_portal_tokens t
+        WHERE t.customer_id = c.id AND t.expires_at > NOW()
+        ORDER BY t.expires_at DESC LIMIT 1
+    ) cpt ON true
+    ORDER BY c.current_credit DESC
+`;
+
+const DAY_MS = 86400000;
+const daysSince = (ts, now) => (ts ? Math.floor((now - new Date(ts)) / DAY_MS) : null);
+
+// ============================================================
+// MAIN JOB
+// ============================================================
+let running = false;
+
+const runCreditReminderJob = async ({ force = false } = {}) => {
+    if (running) { logger.warn('💳 Credit Reminder Job আগের রান এখনো চলছে — বাদ।'); return; }
+    if (!force && !isSendWindow()) {
+        logger.info('💳 Credit Reminder: এখন পাঠানোর সময় নয় (সময়-জানালা/ছুটির দিন) — বাদ।');
+        return;
+    }
+    running = true;
+    logger.info('\n💳 Smart Credit Reminder Job শুরু...');
 
     try {
-        // বাকি আছে এমন সব active কাস্টমার
-        const { rows: customers } = await query(`
-            SELECT
-                c.id, c.shop_name, c.owner_name, c.customer_code,
-                c.email, c.current_credit, c.credit_limit, c.tenant_id,
-                u.name_bn  AS sr_name,
-                u.id       AS sr_id,
-                u.manager_id,
-                cpt.redirect_id  AS portal_redirect_id
-            FROM customers c
-            LEFT JOIN customer_assignments ca ON ca.customer_id = c.id AND ca.is_active = true
-            LEFT JOIN users u ON ca.worker_id = u.id
-            LEFT JOIN customer_portal_tokens cpt ON c.id = cpt.customer_id
-                AND cpt.expires_at > NOW()
-            WHERE c.is_active = true
-              AND c.current_credit > 0
-              AND c.email IS NOT NULL
-              AND c.email != ''
-            ORDER BY c.current_credit DESC
-        `);
+        const { rows: customers } = await query(CANDIDATES_SQL);
+        logger.info(`📋 ${customers.length} জন কাস্টমারের ইনভয়েস-ভিত্তিক বাকি আছে`);
 
-        logger.info(`📋 ${customers.length} জন কাস্টমারের বাকি আছে`);
-
-        // ⚠️ FRONTEND_URL নয় — ওটা CORS-এর জন্য comma/wildcard ধারণ করতে পারে।
+        const now = Date.now();
         const FRONTEND_URL = getPublicAppUrl();
-        let emailSent = 0, pushSent = 0;
+        const skipped = {};
+        const stats = { whatsapp: 0, email: 0, inApp: 0, staffOnly: 0 };
+        const srDigest = new Map();       // srId -> { reminded: [], visit: [] }
+        const mgrDigest = new Map();      // managerId -> { reminded: n, visit: [] }
 
-        for (const customer of customers) {
-            const credit = parseFloat(customer.current_credit || 0).toLocaleString('bn-BD');
+        for (const c of customers) {
+            const amountDue   = parseFloat(c.amount_due || 0);
+            const oldestDays  = daysSince(c.oldest_invoice_at, now);
 
-            // ── Email to Customer ────────────────────────────
+            const decision = decideReminder({
+                amountDue,
+                oldestDueDays:        oldestDays ?? 0,
+                daysSinceLastPayment: daysSince(c.last_payment_at, now),
+                remindersInCycle:     c.reminders_in_cycle,
+                daysSinceLastReminder: daysSince(c.last_reminder_at, now),
+                snoozedUntil:         c.snoozed_until,
+                now: new Date(now),
+            });
+
+            if (!decision.send) { skipped[decision.reason] = (skipped[decision.reason] || 0) + 1; continue; }
+
+            const { stage, audience } = decision;
+
+            // ── ডাবল-সেন্ড রক্ষা: আগে "claim" লগ বসাও (একই কাস্টমারে ২০ ঘণ্টার মধ্যে অটো-লগ থাকলে বাদ) ──
+            let claimId = null;
             try {
-                // ✅ Fix 1: URL-এ redirect_id যাবে, token নয়
-                const portalLink = customer.portal_redirect_id
-                    ? `${FRONTEND_URL}/customer/portal?r=${customer.portal_redirect_id}`
-                    : null;
-
-                const { subject, html, text } = buildReminderEmail(customer, portalLink);
-                const result = await sendEmail(customer.email, subject, html, text, { type: 'credit_reminder', tenant_id: customer.tenant_id });
-                if (result.success) emailSent++;
+                const claim = await query(
+                    `INSERT INTO credit_reminder_logs
+                        (customer_id, sr_id, method, sent_at, tenant_id, stage, channel, amount_due, oldest_due_days, source)
+                     SELECT $1, $2, 'pending', NOW(), $3, $4, 'pending', $5, $6, 'auto'
+                     WHERE NOT EXISTS (
+                        SELECT 1 FROM credit_reminder_logs
+                        WHERE customer_id = $1 AND sent_at > NOW() - INTERVAL '20 hours'
+                     )
+                     RETURNING id`,
+                    [c.id, c.sr_id || null, c.tenant_id, stage, amountDue, oldestDays]
+                );
+                if (!claim.rows.length) { skipped.already_sent_today = (skipped.already_sent_today || 0) + 1; continue; }
+                claimId = claim.rows[0].id;
             } catch (e) {
-                logger.error(`❌ Email fail (${customer.shop_name}):`, e.message);
+                logger.error(`❌ Reminder claim fail (${c.shop_name}):`, e.message);
+                continue;
             }
 
-            // ── Push Notification to SR & Manager ───────────
-            try {
-                const userIds = [customer.sr_id, customer.manager_id].filter(Boolean);
+            const delivered = [];
 
-                if (userIds.length) {
-                    await sendPushToMany(userIds, {
-                        title: `💳 বাকি Reminder — ${customer.shop_name}`,
-                        body:  `${customer.owner_name}-এর বাকি: ৳${credit} — আজ collect করুন।`,
-                        type:  'credit_reminder',
-                        data:  {
-                            customer_id:   String(customer.id),
-                            customer_code: customer.customer_code,
-                            credit_amount: String(customer.current_credit),
+            if (audience === 'customer') {
+                const portalLink = c.portal_redirect_id
+                    ? `${FRONTEND_URL}/customer/portal?r=${c.portal_redirect_id}` : null;
+                const plan = channelPlan(stage);
+
+                for (const ch of plan.order) {
+                    if (plan.mode === 'first' && delivered.length) break;
+                    try {
+                        if (ch === 'whatsapp' && c.whatsapp && !isWhatsAppLikelyDown()) {
+                            const r = await sendPortalWhatsAppMessage(
+                                c.whatsapp, buildWhatsAppMessage(c, stage, oldestDays, portalLink), 'credit_reminder');
+                            if (r && r.success) { delivered.push('whatsapp'); stats.whatsapp++; }
+                        } else if (ch === 'email' && c.email) {
+                            const { subject, html, text } = buildReminderEmail(c, portalLink);
+                            const r = await sendEmail(c.email, subject, html, text,
+                                { type: 'credit_reminder', tenant_id: c.tenant_id });
+                            if (r && r.success) { delivered.push('email'); stats.email++; }
                         }
-                    });
-                    pushSent++;
+                    } catch (e) {
+                        logger.error(`❌ ${ch} fail (${c.shop_name}):`, e.message);
+                    }
                 }
-            } catch (e) {
-                logger.error(`❌ Push fail (${customer.shop_name}):`, e.message);
+
+                // In-app: ধাপ ২–৩-এ সবসময়; ধাপ ১-এ শুধু যদি অন্য কোনো চ্যানেলে পৌঁছানো না যায়
+                if (plan.inApp || !delivered.length) {
+                    try {
+                        await sendCustomerNotification(c.id, {
+                            title: stage === 1 ? '💳 বাকির স্মরণ' : '⚠️ বাকি পরিশোধের অনুরোধ',
+                            body:  buildInAppBody(c, stage),
+                            type:  'credit_reminder',
+                        });
+                        delivered.push('inapp'); stats.inApp++;
+                    } catch (e) {
+                        logger.error(`❌ In-app fail (${c.shop_name}):`, e.message);
+                    }
+                }
+            } else {
+                delivered.push('staff'); stats.staffOnly++;
             }
 
-            // ── In-App Notification to Customer ─────────────────
-            try {
-                await sendCustomerNotification(customer.id, {
-                    title: `⚠️ বাকি পরিশোধের অনুরোধ`,
-                    body:  `আপনার ${customer.shop_name} দোকানে ৳${credit} বাকি রয়েছে। অনুগ্রহ করে দ্রুত পরিশোধ করুন।`,
-                    type:  'credit_reminder',
-                });
-            } catch (e) {
-                logger.error(`❌ In-app notification fail (${customer.shop_name}):`, e.message);
+            // ── কোনো চ্যানেলে পৌঁছাতে না পারলে claim তুলে নাও, কাল আবার চেষ্টা হবে ──
+            if (!delivered.length) {
+                await query('DELETE FROM credit_reminder_logs WHERE id = $1', [claimId]).catch(() => {});
+                skipped.undeliverable = (skipped.undeliverable || 0) + 1;
+                continue;
+            }
+            const channel = delivered.filter(d => d !== 'inapp').join('+') || delivered.join('+');
+            await query(
+                `UPDATE credit_reminder_logs SET method = $2, channel = $2 WHERE id = $1`,
+                [claimId, channel]
+            ).catch(() => {});
+
+            // ── SR/Manager সারাংশের জন্য জমা ──
+            const entry = { name: c.shop_name, credit: c.current_credit };
+            const needsVisit = stage >= 3;
+            if (c.sr_id) {
+                const d = srDigest.get(c.sr_id) || { reminded: [], visit: [] };
+                (needsVisit ? d.visit : d.reminded).push(entry);
+                srDigest.set(c.sr_id, d);
+            }
+            if (c.manager_id) {
+                const d = mgrDigest.get(c.manager_id) || { reminded: 0, visit: [] };
+                if (needsVisit) d.visit.push(entry); else d.reminded++;
+                mgrDigest.set(c.manager_id, d);
             }
         }
 
-        logger.info(`✅ Credit Reminder সম্পন্ন — Email: ${emailSent}, Push: ${pushSent}`);
+        // ── SR/Manager-কে একটাই সারাংশ push (কাস্টমার-প্রতি নয়) ──
+        const top = (list) => list.slice(0, 3).map(e => `${e.name} (৳${bn(e.credit)})`).join(', ')
+            + (list.length > 3 ? ` +${list.length - 3}` : '');
 
+        for (const [srId, d] of srDigest) {
+            try {
+                const parts = [];
+                if (d.visit.length)    parts.push(`সরাসরি আদায়ে যান: ${top(d.visit)}`);
+                if (d.reminded.length) parts.push(`${d.reminded.length} জনকে রিমাইন্ডার গেছে`);
+                await sendPushToMany([srId], {
+                    title: '💳 আজকের বাকি আদায়',
+                    body:  parts.join(' • '),
+                    type:  'credit_reminder',
+                    data:  { kind: 'credit_digest' },
+                });
+            } catch (e) { logger.error('❌ SR digest push fail:', e.message); }
+        }
+        for (const [mgrId, d] of mgrDigest) {
+            try {
+                const parts = [];
+                if (d.visit.length) parts.push(`${d.visit.length} জনের কাছে সরাসরি আদায় দরকার: ${top(d.visit)}`);
+                if (d.reminded)     parts.push(`${d.reminded} জনকে রিমাইন্ডার গেছে`);
+                await sendPushToMany([mgrId], {
+                    title: '💳 বাকি রিমাইন্ডার সারাংশ',
+                    body:  parts.join(' • '),
+                    type:  'credit_reminder',
+                    data:  { kind: 'credit_digest' },
+                });
+            } catch (e) { logger.error('❌ Manager digest push fail:', e.message); }
+        }
+
+        logger.info(`✅ Credit Reminder সম্পন্ন — WhatsApp: ${stats.whatsapp}, Email: ${stats.email}, ` +
+                    `In-app: ${stats.inApp}, শুধু-স্টাফ: ${stats.staffOnly} | বাদ: ${JSON.stringify(skipped)}`);
     } catch (error) {
         logger.error('❌ Credit Reminder Job Error:', error.message);
+    } finally {
+        running = false;
     }
 };
 
 // ============================================================
-// SCHEDULE — প্রতিদিন রাত ১০:০০ (BD time)
+// SCHEDULE — প্রতিদিন সকাল ১১:০০ (ঢাকার সময়)
+// ⚠️ আগের কোডে কমেন্টে "রাত ১০টা" লেখা ছিল, কিন্তু `'0 16 * * *'` + timezone: 'Asia/Dhaka'
+//    মানে ঢাকার সময় বিকেল ৪টা — এজন্যই Email বিকেল ৪টায় যাচ্ছিল। cron-এর timezone দেওয়া
+//    থাকলে সংখ্যাটা ওই timezone-এরই ঘণ্টা, UTC নয়।
 // ============================================================
 const scheduleCreditReminderJob = () => {
-    // রাত ১০:০০ — Asia/Dhaka = UTC+6, তাই UTC ১৬:০০
-    cron.schedule('0 16 * * *', runCreditReminderJob, {
-        timezone: 'Asia/Dhaka'
-    });
-    logger.info('⏰ Credit Reminder Job: প্রতিদিন রাত ১০:০০ তে চলবে');
+    cron.schedule('0 11 * * *', () => runCreditReminderJob(), { timezone: 'Asia/Dhaka' });
+    logger.info('⏰ Smart Credit Reminder Job: প্রতিদিন সকাল ১১:০০ (ঢাকা) — যোগ্য কাস্টমারদের জন্য');
 };
 
 module.exports = { scheduleCreditReminderJob, runCreditReminderJob };

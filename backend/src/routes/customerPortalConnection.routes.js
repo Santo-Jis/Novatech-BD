@@ -6,6 +6,7 @@
 const express = require('express');
 const router  = express.Router();
 const { portalAuth } = require('../middlewares/portalAuthShared');
+const { getMyReminderSnoozes, snoozeMyReminder, cancelMyReminderSnooze } = require('../controllers/creditReminderSnooze.controller');
 
 const {
     getMyQrCode,
@@ -71,5 +72,10 @@ router.get('/all-return-requests', portalAuth, getAllCompanyReturnRequests); // 
 router.post('/return-request',    portalAuth, submitCompanyReturnRequest); // ✅ NEW (Session 19)
 router.get('/all-sr-returns',     portalAuth, getAllCompanySrReturnRecords); // ✅ NEW (Session 19)
 router.post('/switch',            portalAuth, switchCompany); // ✅ NEW (Session 11)
+
+// ✅ NEW — বাকি-রিমাইন্ডার "পরে পরিশোধ করব" (snooze)
+router.get('/reminder-snoozes',        portalAuth, getMyReminderSnoozes);
+router.post('/reminder-snooze',        portalAuth, snoozeMyReminder);
+router.post('/reminder-snooze/cancel', portalAuth, cancelMyReminderSnooze);
 
 module.exports = router;

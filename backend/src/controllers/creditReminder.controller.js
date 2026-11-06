@@ -4,6 +4,8 @@ const logger = require('../config/logger');
 // SR ম্যানুয়ালি একজন কাস্টমারকে বাকি reminder পাঠাবে
 // POST /api/portal/send-reminder/:customerId
 // ✅ Throttle: প্রতিদিন একই customer-কে সর্বোচ্চ ১ বার
+// ✅ চ্যানেল: WhatsApp আগে; না গেলে (বা নম্বর না থাকলে) Email। দুটোই ব্যর্থ হলে লগ বসে না,
+//    তাই SR আবার চেষ্টা করতে পারে। ম্যানুয়াল পাঠানোয় snooze/ন্যূনতম-বিরতি প্রযোজ্য নয় (SR-এর সিদ্ধান্তই চূড়ান্ত)।
 // ============================================================
 
 const { query }      = require('../config/db');
@@ -12,6 +14,7 @@ const { sendPushToMany } = require('../services/fcm.service');
 const { sendCustomerNotification } = require('./customerNotification.controller');
 const { getPublicAppUrl } = require('../config/publicAppUrl');
 const { notificationQueue, isQueueAvailable } = require('../config/queue');
+const { sendPortalWhatsAppMessage, isWhatsAppLikelyDown } = require('../services/portalWhatsapp.service');
 
 const sendCreditReminder = async (req, res) => {
     try {
@@ -77,8 +80,8 @@ const sendCreditReminder = async (req, res) => {
             return res.status(400).json({ success: false, message: 'এই কাস্টমারের কোনো বাকি নেই।' });
         }
 
-        if (!customer.email) {
-            return res.status(400).json({ success: false, message: 'কাস্টমারের email নেই।' });
+        if (!customer.email && !customer.whatsapp) {
+            return res.status(400).json({ success: false, message: 'কাস্টমারের email বা WhatsApp নম্বর কোনোটাই নেই।' });
         }
 
         // ⚠️ FRONTEND_URL নয় — ওটা CORS-এর জন্য comma/wildcard ধারণ করতে পারে।
@@ -182,44 +185,88 @@ const sendCreditReminder = async (req, res) => {
         // exponential backoff। Redis না থাকলে (isQueueAvailable() === false)
         // আগের সরাসরি-send আচরণেই fallback করি, যাতে Redis ছাড়া environment-এ
         // (যেমন local dev) ফিচারটা ভেঙে না যায়।
+        // ── WhatsApp আগে (বিনামূল্যে, বেশি পড়া হয়); না গেলে Email ──
+        const waMessage =
+            `আসসালামু আলাইকুম ${customer.owner_name || ''},\n` +
+            `${customer.shop_name}-এর ৳${credit} বাকি আছে। অনুগ্রহ করে দ্রুত পরিশোধ করুন।` +
+            (customer.sr_name ? `\nপ্রতিনিধি: ${customer.sr_name}` : '') +
+            (portalLink ? `\n\n🔗 বিস্তারিত দেখুন: ${portalLink}` : '') +
+            `\n\n— ZovoriX`;
+
+        let whatsappSent = false;
+        if (customer.whatsapp && !isWhatsAppLikelyDown()) {
+            try {
+                const wa = await sendPortalWhatsAppMessage(customer.whatsapp, waMessage, 'credit_reminder');
+                whatsappSent = !!(wa && wa.success);
+            } catch (e) {
+                logger.warn(`⚠️ Manual reminder WhatsApp ব্যর্থ (${customer.shop_name}): ${e.message}`);
+            }
+        }
+
         let queued = false;
         let emailResult = { success: true }; // direct-send path-এ override হবে
+        let channel;
 
-        if (isQueueAvailable()) {
-            await notificationQueue.add('credit-reminder-email', {
-                to: customer.email, subject: emailSubject, html, text: emailText, meta: emailMeta,
-                customerId: customer.id, managerId: customer.manager_id,
-                managerPushPayload, customerNotifyPayload,
-            }, {
-                attempts: 3,
-                backoff: { type: 'exponential', delay: 5000 },
-                removeOnComplete: { age: 86400 }, // ১ দিন পর কমপ্লিটেড job cleanup
-                removeOnFail: { age: 604800 },     // ৭ দিন পর ফেইলড job cleanup (debug-এর জন্য রাখা)
-            });
-            queued = true;
-        } else {
-            emailResult = await sendEmail(customer.email, emailSubject, html, emailText, emailMeta);
+        if (whatsappSent) {
+            channel = 'whatsapp';
+            // Email নয় (ডবল মেসেজ ও wallet-খরচ এড়াতে); ম্যানেজার push ও in-app আগের মতোই
             if (customer.manager_id) {
                 await sendPushToMany([customer.manager_id], managerPushPayload).catch(() => {});
             }
             await sendCustomerNotification(customer.id, customerNotifyPayload).catch(() => {});
+        } else if (customer.email) {
+            channel = 'email';
+            // ✅ Phase 1: sendEmail আগে এখানেই সরাসরি await হতো (request-কে block
+            // করতো, retry ছিল না)। এখন queue থাকলে queue করি -- 3 attempt,
+            // exponential backoff। Redis না থাকলে আগের সরাসরি-send আচরণেই fallback।
+            if (isQueueAvailable()) {
+                await notificationQueue.add('credit-reminder-email', {
+                    to: customer.email, subject: emailSubject, html, text: emailText, meta: emailMeta,
+                    customerId: customer.id, managerId: customer.manager_id,
+                    managerPushPayload, customerNotifyPayload,
+                }, {
+                    attempts: 3,
+                    backoff: { type: 'exponential', delay: 5000 },
+                    removeOnComplete: { age: 86400 }, // ১ দিন পর কমপ্লিটেড job cleanup
+                    removeOnFail: { age: 604800 },     // ৭ দিন পর ফেইলড job cleanup (debug-এর জন্য রাখা)
+                });
+                queued = true;
+            } else {
+                emailResult = await sendEmail(customer.email, emailSubject, html, emailText, emailMeta);
+                if (customer.manager_id) {
+                    await sendPushToMany([customer.manager_id], managerPushPayload).catch(() => {});
+                }
+                await sendCustomerNotification(customer.id, customerNotifyPayload).catch(() => {});
+            }
+        } else {
+            // WhatsApp-ই একমাত্র পথ ছিল এবং পৌঁছায়নি — লগ নয়, যাতে SR আবার চেষ্টা করতে পারে
+            return res.status(502).json({
+                success: false,
+                message: 'WhatsApp পাঠানো যায়নি আর কাস্টমারের email-ও নেই। একটু পরে আবার চেষ্টা করুন।',
+            });
         }
 
         // ✅ Log reminder — throttle check পাস করার পরেই insert (আগের মতোই,
         // queue করা মাত্রই লগ হয় — actual delivery-র জন্য অপেক্ষা করে না,
         // থ্রটল সিমান্টিক্স অপরিবর্তিত থাকে)
         await query(`
-            INSERT INTO credit_reminder_logs (customer_id, sr_id, method, sent_at, tenant_id) VALUES ($1, $2, 'email', NOW(), $3)
-        `, [customer.id, srId, req.tenantId]);
+            INSERT INTO credit_reminder_logs
+                (customer_id, sr_id, method, sent_at, tenant_id, channel, source, amount_due)
+            VALUES ($1, $2, $3, NOW(), $4, $3, 'manual', $5)
+        `, [customer.id, srId, channel, req.tenantId, customer.current_credit]);
 
         return res.json({
             success: true,
-            message: queued
-                ? `✅ ${customer.owner_name}-কে reminder পাঠানোর জন্য queue করা হয়েছে।`
-                : `✅ ${customer.owner_name}-কে Email reminder পাঠানো হয়েছে।`,
+            message: channel === 'whatsapp'
+                ? `✅ ${customer.owner_name}-কে WhatsApp-এ reminder পাঠানো হয়েছে।`
+                : queued
+                    ? `✅ ${customer.owner_name}-কে reminder পাঠানোর জন্য queue করা হয়েছে।`
+                    : `✅ ${customer.owner_name}-কে Email reminder পাঠানো হয়েছে।`,
             data: {
+                channel,
                 queued,
-                email_sent: emailResult.success,
+                whatsapp_sent: whatsappSent,
+                email_sent: channel === 'email' ? emailResult.success : false,
                 customer:   customer.shop_name,
                 credit:     customer.current_credit,
             }

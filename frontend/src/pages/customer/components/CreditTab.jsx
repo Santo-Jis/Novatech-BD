@@ -19,6 +19,7 @@ import CpButton from './ui/CpButton'
 import CpCard from './ui/CpCard'
 import CpInput from './ui/CpInput'
 import CompanyTag from './CompanyTag'
+import ReminderSnoozePanel from './ReminderSnoozePanel'
 import { fmt, fmtDate } from '../utils/helpers'
 
 const STATUS_LABEL = {
@@ -31,6 +32,7 @@ export default function CreditTab({ portalJWT }) {
   const [companies,     setCompanies]     = useState([])
   const [creditSummary, setCreditSummary] = useState([])
   const [requests,      setRequests]      = useState([])
+  const [snoozeMap,     setSnoozeMap]     = useState({}) // customer_id → { connection_id, snoozed_until }
 
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [requestsLoading, setRequestsLoading] = useState(true)
@@ -84,8 +86,22 @@ export default function CreditTab({ portalJWT }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // snooze অবস্থা আলাদা লোড — ব্যর্থ হলে (যেমন টেবিল নেই) চুপচাপ খালি, ক্রেডিট ট্যাব ভাঙে না
+  const loadSnoozes = useCallback(async () => {
+    try {
+      const res = await portalFetch('/portal/connections/reminder-snoozes', authHeader)
+      const map = {}
+      ;(res.data || []).forEach((r) => { map[r.customer_id] = r })
+      setSnoozeMap(map)
+    } catch {
+      setSnoozeMap({})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     loadCompanies()
+    loadSnoozes()
     loadCreditSummary()
     loadRequests()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -168,6 +184,13 @@ export default function CreditTab({ portalJWT }) {
                   />
                 </div>
                 <p className="text-[11px] text-cp-text-secondary">অবশিষ্ট সীমা: ৳{fmt(remaining)}</p>
+                {used > 0 && snoozeMap[cs.customer_id]?.connection_id && (
+                  <ReminderSnoozePanel
+                    connectionId={snoozeMap[cs.customer_id].connection_id}
+                    snoozedUntil={snoozeMap[cs.customer_id].snoozed_until}
+                    onChanged={loadSnoozes}
+                  />
+                )}
               </CpCard>
             )
           })
