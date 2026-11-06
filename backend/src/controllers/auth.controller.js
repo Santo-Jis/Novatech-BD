@@ -462,9 +462,9 @@ const forgotPassword = async (req, res) => {
             </div>
             <p style="color:#e74c3c;font-size:13px">⚠️ এই কোডটি <strong>১০ মিনিট</strong> পর্যন্ত কার্যকর। কাউকে শেয়ার করবেন না।</p>
             <div style="text-align:center;margin:20px 0">
-              <a href="https://zovorix-kqrn.vercel.app" style="background:#1e3a8a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">🚀 অ্যাপে যান</a>
+              <a href="https://zovorix.vercel.app" style="background:#1e3a8a;color:white;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">🚀 অ্যাপে যান</a>
             </div>
-            <p style="font-size:13px;color:#666;text-align:center"><a href="https://zovorix-kqrn.vercel.app" style="color:#1e3a8a">https://zovorix-kqrn.vercel.app</a></p>
+            <p style="font-size:13px;color:#666;text-align:center"><a href="https://zovorix.vercel.app" style="color:#1e3a8a">https://zovorix.vercel.app</a></p>
             <p>ধন্যবাদ,<br><strong>ZovoriX টিম</strong></p>
           </div>
         </div>`;

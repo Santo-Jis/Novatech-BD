@@ -91,7 +91,7 @@ const OPTIONAL = [
     { key: 'GOOGLE_MAPS_KEY',          feature: 'Google Maps' },
     { key: 'RENDER_EXTERNAL_URL',      feature: 'Keep-Alive Ping (Render)' },
     { key: 'FRONTEND_URL',             feature: 'CORS (default: localhost:3000) — comma/wildcard চলে, single link-এ ব্যবহার হয় না' },
-    { key: 'PUBLIC_APP_URL',           feature: 'Customer-facing লিংক (WhatsApp/Email/Invoice) — single clean URL, default: novatech-bd-kqrn.vercel.app' },
+    { key: 'PUBLIC_APP_URL',           feature: 'Customer-facing লিংক (WhatsApp/Email/Invoice) — single clean URL, default: zovorix.vercel.app' },
     { key: 'CLAUDE_API_KEY',           feature: 'AI Insights (Claude)' },
     // ✅ FIX (Phase 0): API_SECRET এখান থেকে সরিয়ে নিচে ৩.৬-এ নিজস্ব
     // ব্লকে নেওয়া হয়েছে — এটা শুধু presence-check প্রাপ্য একটা "feature
