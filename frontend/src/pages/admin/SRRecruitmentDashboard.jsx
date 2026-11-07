@@ -9,7 +9,7 @@ import {
   FiUsers, FiClock, FiCheckCircle, FiXCircle, FiEye,
   FiSearch, FiDownload, FiUser, FiPhone, FiMapPin,
   FiBook, FiBriefcase, FiStar, FiCalendar, FiMail,
-  FiChevronDown, FiChevronUp, FiAlertCircle, FiRefreshCw
+  FiChevronDown, FiChevronUp, FiAlertCircle, FiRefreshCw, FiLink
 } from 'react-icons/fi'
 
 
@@ -339,6 +339,30 @@ export default function SRRecruitmentDashboard() {
       .catch(() => {})
   }, [])
 
+  // APK (Capacitor) এ origin হয় https://localhost — তাই পাবলিক ডোমেইন ব্যবহার করা হচ্ছে
+  const PUBLIC_SITE = 'https://zovorix.com'
+  const getFullApplyLink = () => {
+    const origin = /^https?:\/\//.test(window.location.origin) &&
+      !/localhost|127\.0\.0\.1/.test(window.location.origin)
+      ? window.location.origin : PUBLIC_SITE
+    return `${origin}${applyHref}`
+  }
+  const shareApplyLink = async () => {
+    const url = getFullApplyLink()
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: 'SR নিয়োগ আবেদন', text: 'SR পদে আবেদন করতে লিংকে ক্লিক করুন', url })
+        return
+      }
+    } catch (e) { if (e?.name === 'AbortError') return }
+    try {
+      await navigator.clipboard.writeText(url)
+      toast.success('আবেদন লিংক কপি হয়েছে: ' + url)
+    } catch {
+      window.prompt('লিংকটি কপি করুন:', url)
+    }
+  }
+
   const fetchApps = async () => {
     setLoading(true)
     try {
@@ -399,10 +423,10 @@ export default function SRRecruitmentDashboard() {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" icon={<FiRefreshCw size={14}/>} onClick={fetchApps}>রিফ্রেশ</Button>
           <Button variant="outline" size="sm" icon={<FiDownload size={14}/>} onClick={exportCSV}>CSV Export</Button>
-          <a href={applyHref} target="_blank" rel="noreferrer"
+          <button type="button" onClick={shareApplyLink}
             className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition-all">
-            আবেদন লিংক
-          </a>
+            <FiLink size={13}/> আবেদন লিংক
+          </button>
         </div>
       </div>
 
