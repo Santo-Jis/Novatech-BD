@@ -51,6 +51,18 @@ jest.mock('../services/email.service', () => ({
     sendOTPEmail:     jest.fn().mockResolvedValue({ success: true }),
 }));
 
+// createCustomer শুরুতেই প্ল্যান-সীমা চেক করে (নিজস্ব query চালায়) — মক না করলে সেটা
+// মক-করা query-র প্রথম রেসপন্স খেয়ে ফেলে এবং নিচের সব mockResolvedValueOnce ক্রম এক ধাপ সরে যায়।
+jest.mock('../services/tenantLimits.service', () => ({
+    assertCustomerLimitAvailable: jest.fn().mockResolvedValue(undefined),
+}));
+
+// staff-created কাস্টমারের অটো-কানেকশন — নিজস্ব unit test আছে
+// (customerConnection.service.test.js); এখানে শুধু controller সঠিকভাবে ডাকে কিনা দেখা হয়।
+jest.mock('../services/customerConnection.service', () => ({
+    autoConnectStaffCreatedCustomer: jest.fn().mockResolvedValue({ status: 'connected', created: true }),
+}));
+
 jest.mock('../config/encryption', () => ({
     generateOTP: jest.fn().mockReturnValue('123456'),
 }));
@@ -69,6 +81,8 @@ const { uploadToCloudinary, generateCustomerCode } = require('../services/employ
 const { sendWelcomeEmail, sendOTPEmail } = require('../services/email.service');
 const { generateOTP } = require('../config/encryption');
 const { allocatePaymentSafe } = require('../services/paymentAllocation.service');
+const { autoConnectStaffCreatedCustomer } = require('../services/customerConnection.service');
+const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
 
 const {
     getCustomers,
@@ -133,6 +147,8 @@ beforeEach(() => {
     sendWelcomeEmail.mockResolvedValue({ success: true });
     sendOTPEmail.mockResolvedValue({ success: true });
     generateOTP.mockReturnValue('123456');
+    assertCustomerLimitAvailable.mockResolvedValue(undefined);
+    autoConnectStaffCreatedCustomer.mockResolvedValue({ status: 'connected', created: true });
 });
 
 // ════════════════════════════════════════════════════════════════
@@ -410,6 +426,55 @@ describe('createCustomer — নতুন কাস্টমার তৈরি'
         const assignSql = query.mock.calls[2][0];
         expect(assignSql).toContain('customer_assignments');
         expect(res.status).toHaveBeenCalledWith(201);
+    });
+
+    test('কাস্টমার তৈরির পর কোম্পানির সাথে অটো-কানেক্ট হয় (QR স্ক্যান ছাড়া)', async () => {
+        query
+            .mockResolvedValueOnce({ rows: [] })                                          // system_settings
+            .mockResolvedValueOnce({ rows: [{ ...sampleCustomer, id: 'new-cust-uuid' }] }) // INSERT customer
+            .mockResolvedValueOnce({ rows: [] });                                         // INSERT customer_assignments
+
+        const req = {
+            body: { shop_name: 'নতুন রিটেইলার', owner_name: 'করিম', route_id: 'route-uuid-1' },
+            user: workerUser,
+            tenantId: 'tenant-gadgetpoint',
+            file: null,
+        };
+        const res = mockRes();
+        await createCustomer(req, res);
+
+        expect(autoConnectStaffCreatedCustomer).toHaveBeenCalledWith(
+            'new-cust-uuid', 'tenant-gadgetpoint', workerUser.id
+        );
+        expect(res.status).toHaveBeenCalledWith(201);
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({
+                success: true,
+                connection: { status: 'connected', created: true },
+            })
+        );
+    });
+
+    test('অটো-কানেক্ট ব্যর্থ হলেও কাস্টমার তৈরি সফল (201), connection=null', async () => {
+        autoConnectStaffCreatedCustomer.mockRejectedValueOnce(new Error('person link failed'));
+        query
+            .mockResolvedValueOnce({ rows: [] })
+            .mockResolvedValueOnce({ rows: [{ ...sampleCustomer, id: 'new-cust-uuid' }] })
+            .mockResolvedValueOnce({ rows: [] });
+
+        const req = {
+            body: { shop_name: 'দোকান', owner_name: 'রহিম', route_id: 'route-uuid-1' },
+            user: workerUser,
+            tenantId: 'tenant-gadgetpoint',
+            file: null,
+        };
+        const res = mockRes();
+        await createCustomer(req, res);
+
+        expect(res.status).toHaveBeenCalledWith(201);
+        expect(res.json).toHaveBeenCalledWith(
+            expect.objectContaining({ success: true, connection: null })
+        );
     });
 
     test('photo file থাকলে Cloudinary upload call হয়', async () => {

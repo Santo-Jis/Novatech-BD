@@ -5,6 +5,7 @@ const { sendWelcomeEmail, sendOTPEmail } = require('../services/email.service');
 const { generateOTP } = require('../config/encryption');
 const { sendCustomerNotification } = require('./customerNotification.controller');
 const { assertCustomerLimitAvailable } = require('../services/tenantLimits.service');
+const { autoConnectStaffCreatedCustomer } = require('../services/customerConnection.service');
 const { updateCommissionRealtime } = require('../services/commission.service');
 const { firebaseNotify } = require('../services/firebase.notify');
 const { allocatePaymentSafe, parseSaleIds, assertSaleIdsBelongToCustomer } = require('../services/paymentAllocation.service');
@@ -429,6 +430,18 @@ const createCustomer = async (req, res) => {
             );
         }
 
+        // ✅ NEW: দোকান অ্যাপে যুক্ত হলো মানেই এই কোম্পানির সাথে কানেক্টেড —
+        // আলাদা QR স্ক্যান লাগবে না। best-effort: ব্যর্থ হলেও কাস্টমার তৈরি সফল থাকে
+        // (person_id পরে portal login-এর self-heal বা ব্যাকফিল SQL দিয়ে মিলবে)।
+        let connection = null;
+        try {
+            connection = await autoConnectStaffCreatedCustomer(
+                result.rows[0].id, req.tenantId, req.user.id
+            );
+        } catch (connErr) {
+            logger.warn(`⚠️ Auto-connect ব্যর্থ (customer ${result.rows[0].id}): ${connErr.message}`);
+        }
+
         // ✅ স্বাগতম Email পাঠাও (email থাকলে)
         if (email) {
             try {
@@ -454,7 +467,8 @@ const createCustomer = async (req, res) => {
         return res.status(201).json({
             success: true,
             message: `কাস্টমার তৈরি সফল। কোড: ${customerCode}`,
-            data: result.rows[0]
+            data: result.rows[0],
+            connection  // { status, created } বা null (auto-connect ব্যর্থ হলে)
         });
 
     } catch (error) {
