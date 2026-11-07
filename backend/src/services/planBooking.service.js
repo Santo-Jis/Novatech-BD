@@ -1,4 +1,5 @@
 const bcrypt  = require('bcryptjs');
+const { seedTenantSettings } = require('./tenantSettingsSeed');
 const crypto  = require('crypto');
 const { query, withTransaction } = require('../config/db');
 
@@ -302,13 +303,7 @@ const approveBooking = async (id, { reviewerLabel = 'super-admin-key', adminNote
         [tenant.id, booking.contact_name, booking.contact_email, booking.contact_phone, hashedPass]
       );
 
-      await client.query(
-        `INSERT INTO system_settings (tenant_id, key, value)
-         SELECT $1, key, value FROM system_settings
-         WHERE tenant_id = '00000000-0000-0000-0000-000000000001'
-         ON CONFLICT (tenant_id, key) DO NOTHING`,
-        [tenant.id]
-      );
+      await seedTenantSettings((sql, p) => client.query(sql, p), tenant.id);
 
       await upsertSeats(client, tenant.id, booking.requested_plan, seatCounts);
 

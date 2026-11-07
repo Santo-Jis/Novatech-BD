@@ -11,6 +11,7 @@
  */
 
 const { query } = require('../config/db');
+const { seedTenantSettings } = require('../services/tenantSettingsSeed');
 const bcrypt    = require('bcryptjs');
 const { clearTenantCache } = require('../middlewares/tenantResolver');
 const { maskApiKey, decrypt } = require('../config/encryption');
@@ -174,13 +175,7 @@ const createTenant = async (req, res) => {
     );
 
     // ৩. Default system_settings copy করো (default tenant থেকে)
-    await query(
-      `INSERT INTO system_settings (tenant_id, key, value)
-       SELECT $1, key, value FROM system_settings
-       WHERE tenant_id = '00000000-0000-0000-0000-000000000001'
-       ON CONFLICT (tenant_id, key) DO NOTHING`,
-      [tenant.id]
-    );
+    await seedTenantSettings(query, tenant.id);
 
     // ৪. Log
     await query(

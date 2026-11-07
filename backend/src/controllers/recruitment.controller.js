@@ -24,8 +24,22 @@ const getTenantContact = async (tenantId) => {
             `SELECT key, value FROM system_settings
               WHERE tenant_id = $1
                 AND key IN ('company_name','company_phone','company_email')`, [tenantId]);
+        // নতুন কোম্পানির settings-এ আগে default (Novatech)-এর মান কপি হয়ে যেত —
+        // default-এর হুবহু একই মান হলে সেটা "অসম্পাদিত কপি" ধরে বাদ দাও।
+        let defVals = {};
+        if (tenantId !== DEFAULT_TENANT_ID) {
+            const d = await query(
+                `SELECT key, value FROM system_settings
+                  WHERE tenant_id = $1
+                    AND key IN ('company_name','company_phone','company_email')`,
+                [DEFAULT_TENANT_ID]);
+            d.rows.forEach(r => { defVals[r.key] = String(r.value || '').trim(); });
+        }
         const set = {};
-        s.rows.forEach(r => { if (r.value && String(r.value).trim()) set[r.key] = String(r.value).trim(); });
+        s.rows.forEach(r => {
+            const v = r.value ? String(r.value).trim() : '';
+            if (v && v !== defVals[r.key]) set[r.key] = v;
+        });
         const row = t.rows[0] || {};
         out.name    = set.company_name  || row.company_name  || null;
         out.name_bn = row.company_name_bn || null;

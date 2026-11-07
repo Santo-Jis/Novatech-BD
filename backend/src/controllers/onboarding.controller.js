@@ -21,6 +21,7 @@
  */
 
 const bcrypt   = require('bcryptjs');
+const { seedTenantSettings } = require('../services/tenantSettingsSeed');
 const { query, withTransaction } = require('../config/db');
 
 // Slug valid কিনা চেক করো (company identifier, future branding/reporting-এ কাজে লাগবে)
@@ -243,13 +244,7 @@ const registerCompany = async (req, res) => {
       }
 
       // ৪. Default system_settings copy (default tenant থেকে)
-      await client.query(
-        `INSERT INTO system_settings (tenant_id, key, value)
-         SELECT $1, key, value FROM system_settings
-         WHERE tenant_id = '00000000-0000-0000-0000-000000000001'
-         ON CONFLICT (tenant_id, key) DO NOTHING`,
-        [newTenant.id]
-      );
+      await seedTenantSettings((sql, p) => client.query(sql, p), newTenant.id);
 
       // ৫. ওয়ালেট তৈরি (Phase 2, 26 July 2026) — ০ ব্যালেন্সে শুরু,
       // পরে Super Admin ম্যানুয়ালি রিচার্জ করে দেবে।
