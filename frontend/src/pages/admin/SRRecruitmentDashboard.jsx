@@ -331,6 +331,14 @@ export default function SRRecruitmentDashboard() {
   const [selected,    setSelected]    = useState(null)
   const LIMIT = 20
 
+  // ✅ নিজের কোম্পানির আবেদন লিংক (/apply/sr/:slug)
+  const [applyHref, setApplyHref] = useState('/apply/sr')
+  useEffect(() => {
+    api.get('/recruitment/apply-link')
+      .then(r => { const sl = r.data?.data?.slug; if (sl) setApplyHref(`/apply/sr/${sl}`) })
+      .catch(() => {})
+  }, [])
+
   const fetchApps = async () => {
     setLoading(true)
     try {
@@ -391,7 +399,7 @@ export default function SRRecruitmentDashboard() {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" icon={<FiRefreshCw size={14}/>} onClick={fetchApps}>রিফ্রেশ</Button>
           <Button variant="outline" size="sm" icon={<FiDownload size={14}/>} onClick={exportCSV}>CSV Export</Button>
-          <a href="/apply/sr" target="_blank"
+          <a href={applyHref} target="_blank" rel="noreferrer"
             className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition-all">
             আবেদন লিংক
           </a>

@@ -441,6 +441,7 @@ function AppWithPermissions() {
           {/* SR Application (recruitment form) — Customer APK ও SR APK কোনোটাতেই নেই */}
           {!IS_LIMITED_APP && (
             <Route path="/apply/sr" element={<SRApplicationForm />} />
+            <Route path="/apply/sr/:tenantSlug" element={<SRApplicationForm />} />
           )}
 
           {/* Start Trial — নতুন company self-signup — Customer APK ও SR APK-এ নেই */}

@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useParams } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import axios from 'axios'
 import toast from 'react-hot-toast'
@@ -595,6 +596,16 @@ function SuccessScreen({ appId }) {
 
 // ── MAIN ──────────────────────────────────────────────────────
 export default function SRApplicationForm() {
+  // ✅ /apply/sr/:tenantSlug — কোন কোম্পানির জন্য আবেদন
+  const { tenantSlug } = useParams()
+  const appliedKey = `sr_applied_${tenantSlug || 'default'}`
+  const [companyName, setCompanyName] = useState(null)
+  useEffect(() => {
+    if (!tenantSlug) return
+    axios.get(`${API_BASE}/api/recruitment/tenant/${encodeURIComponent(tenantSlug)}`)
+      .then(r => setCompanyName(r.data?.data?.company_name_bn || r.data?.data?.company_name || null))
+      .catch(() => toast.error('কোম্পানি পাওয়া যায়নি। লিংকটি যাচাই করুন।'))
+  }, [tenantSlug])
   const [step,         setStep]         = useState(1)
   const [loading,      setLoading]      = useState(false)
   const [submitted,    setSubmitted]    = useState(false)
@@ -622,7 +633,7 @@ export default function SRApplicationForm() {
   const prevStep = () => setStep(s => Math.max(s - 1, 1))
 
   const onSubmit = async (data) => {
-    if (localStorage.getItem('sr_applied')) {
+    if (localStorage.getItem(appliedKey)) {
       toast.error('এই ডিভাইস থেকে আগেই আবেদন করা হয়েছে।')
       return
     }
@@ -656,11 +667,12 @@ export default function SRApplicationForm() {
         else fd.append(k, v ?? '')
       })
       fd.append('device_id', deviceId)
+      if (tenantSlug) fd.append('tenant_slug', tenantSlug)
 
       const res = await axios.post(`${API_BASE}/api/recruitment/apply`, fd, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
-      localStorage.setItem('sr_applied', res.data?.data?.application_id)
+      localStorage.setItem(appliedKey, res.data?.data?.application_id)
       setAppId(res.data?.data?.application_id)
       setSubmitted(true)
     } catch (err) {
@@ -731,7 +743,7 @@ export default function SRApplicationForm() {
           </div>
           <div className="flex-1 min-w-0">
             <h1 className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight truncate">ZovoriX</h1>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">SR নিয়োগ আবেদন ফর্ম</p>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">SR নিয়োগ আবেদন ফর্ম{companyName ? ` — ${companyName}` : ''}</p>
           </div>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full text-[11px] font-bold flex-shrink-0">
             <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />

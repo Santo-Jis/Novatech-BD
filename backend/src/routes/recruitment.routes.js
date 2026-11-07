@@ -11,6 +11,8 @@ const {
     exportCSV,
     sendSROTP,
     confirmSROTP,
+    getPublicTenantInfo,
+    getApplyLink,
 } = require('../controllers/recruitment.controller');
 
 // Photo upload — memory storage (Cloudinary তে পাঠাবো)
@@ -29,9 +31,11 @@ const upload = multer({
 router.post('/verify-email/send',    sendSROTP);
 router.post('/verify-email/confirm', confirmSROTP);
 router.post('/apply', upload, submitApplication);
+router.get('/tenant/:slug', getPublicTenantInfo);
 
 // ── Admin only ────────────────────────────────────────────────
 router.get('/export',     auth, isAdmin, exportCSV);
+router.get('/apply-link', auth, isAdmin, getApplyLink);
 router.get('/',           auth, isAdmin, getApplications);
 router.get('/:id',        auth, isAdmin, getApplication);
 router.put('/:id/status', auth, isAdmin, updateStatus);

@@ -4,6 +4,12 @@ const { uploadToCloudinary } = require('../services/employee.service');
 const { generateOTP } = require('../config/encryption');
 const { sendSRApplicationOTPEmail, sendSRApplicationConfirmEmail, sendSRApplicationAdminNotifyEmail } = require('../services/email.service');
 const { query } = require('../config/db');
+const { getTenantBySlug, getTenantById } = require('../middlewares/tenantResolver');
+
+// ✅ Multi-tenant: প্রতিটি আবেদন একটি tenant (কোম্পানি)-এর।
+// tenant_id ছাড়া পুরোনো আবেদন DEFAULT tenant (Novatech)-এর ধরা হবে।
+const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
+const appTenantId = (a) => (a && a.tenant_id) || DEFAULT_TENANT_ID;
 
 // ── In-Memory OTP Store (SR Recruitment — public, no DB needed) ──
 // Key: email_lower → { otp, expiresAt, attempts }
@@ -115,13 +121,29 @@ exports.submitApplication = async (req, res) => {
         const db = getDB();
         const d  = req.body;
 
-        // Duplicate check by phone, NID এবং device_id
+        // ✅ Tenant resolve — ফর্ম লিংক /apply/sr/:tenantSlug থেকে slug আসে।
+        // slug না দিলে DEFAULT tenant (আগের আচরণ বজায় রাখতে)।
+        const slug = (d.tenant_slug || '').toString().trim().toLowerCase();
+        let tenantId = DEFAULT_TENANT_ID;
+        if (slug) {
+            const tenant = await getTenantBySlug(slug);
+            if (!tenant) {
+                return res.status(404).json({ success: false, message: 'কোম্পানি পাওয়া যায়নি। লিংকটি যাচাই করুন।' });
+            }
+            if (['suspended', 'cancelled'].includes(tenant.status)) {
+                return res.status(403).json({ success: false, message: 'এই কোম্পানি এখন আবেদন নিচ্ছে না।' });
+            }
+            tenantId = tenant.id;
+        }
+
+        // Duplicate check by phone, NID এবং device_id — শুধু একই tenant-এর ভেতরে
         const allSnap = await db.ref('sr_applications').once('value');
         let alreadyApplied = false;
         let nidUsed = false;
         let deviceUsed = false;
         allSnap.forEach(child => {
             const val = child.val();
+            if (!val || appTenantId(val) !== tenantId) return;
             if (val.phone === d.phone) alreadyApplied = true;
             if (d.nid && val.nid === d.nid) nidUsed = true;
             if (d.device_id && val.device_id === d.device_id) deviceUsed = true;
@@ -161,6 +183,7 @@ exports.submitApplication = async (req, res) => {
 
         const appData = {
             application_id,
+            tenant_id:        tenantId,
             name_bn:          d.name_bn        || null,
             name_en:          d.name_en        || null,
             father_name:      d.father_name    || null,
@@ -252,7 +275,9 @@ exports.submitApplication = async (req, res) => {
             const adminResult = await query(
                 `SELECT email FROM users
                  WHERE role = 'admin' AND status = 'active'
-                   AND email IS NOT NULL AND email != ''`
+                   AND tenant_id = $1
+                   AND email IS NOT NULL AND email != ''`,
+                [tenantId]
             );
             const adminEmails = adminResult.rows.map(r => r.email);
             if (adminEmails.length > 0) {
@@ -290,7 +315,8 @@ exports.getApplications = async (req, res) => {
         snap.forEach(child => {
             const val = child.val();
             // null বা object না হলে skip করো
-            if (val && typeof val === 'object') {
+            // ✅ শুধু নিজের tenant-এর আবেদন
+            if (val && typeof val === 'object' && appTenantId(val) === req.tenantId) {
                 apps.push({ _id: child.key, ...val });
             }
         });
@@ -344,7 +370,8 @@ exports.getApplication = async (req, res) => {
     try {
         const db   = getDB();
         const snap = await db.ref(`sr_applications/${req.params.id}`).once('value');
-        if (!snap.exists()) {
+        // ✅ অন্য tenant-এর আবেদন হলে 404 (existence leak এড়াতে)
+        if (!snap.exists() || appTenantId(snap.val()) !== req.tenantId) {
             return res.status(404).json({ success: false, message: 'আবেদন পাওয়া যায়নি।' });
         }
         res.json({ success: true, data: { _id: snap.key, ...snap.val() } });
@@ -361,7 +388,8 @@ exports.updateStatus = async (req, res) => {
         const ref = db.ref(`sr_applications/${req.params.id}`);
 
         const snap = await ref.once('value');
-        if (!snap.exists()) {
+        // ✅ অন্য tenant-এর আবেদন হলে 404
+        if (!snap.exists() || appTenantId(snap.val()) !== req.tenantId) {
             return res.status(404).json({ success: false, message: 'আবেদন পাওয়া যায়নি।' });
         }
 
@@ -402,7 +430,10 @@ exports.exportCSV = async (req, res) => {
         const snap = await db.ref('sr_applications').once('value');
 
         let apps = [];
-        snap.forEach(c => apps.push(c.val()));
+        snap.forEach(c => {
+            const v = c.val();
+            if (v && appTenantId(v) === req.tenantId) apps.push(v);
+        });
         apps.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
 
         const headers = [
@@ -441,5 +472,39 @@ exports.exportCSV = async (req, res) => {
         res.send(csv);
     } catch (err) {
         res.status(500).json({ success: false, message: 'Export করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ── GET /api/recruitment/tenant/:slug (Public) ────────────────
+// আবেদন ফর্মে কোম্পানির নাম দেখানোর জন্য — শুধু নিরীহ তথ্য ফেরত দেয়।
+exports.getPublicTenantInfo = async (req, res) => {
+    try {
+        const tenant = await getTenantBySlug(String(req.params.slug || '').toLowerCase());
+        if (!tenant || ['suspended', 'cancelled'].includes(tenant.status)) {
+            return res.status(404).json({ success: false, message: 'কোম্পানি পাওয়া যায়নি।' });
+        }
+        res.json({
+            success: true,
+            data: {
+                slug: tenant.slug,
+                company_name: tenant.company_name,
+                company_name_bn: tenant.company_name_bn || null,
+            },
+        });
+    } catch (err) {
+        logger.error('getPublicTenantInfo error:', err);
+        res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+// ── GET /api/recruitment/apply-link (Admin) ───────────────────
+// Admin-এর নিজের কোম্পানির আবেদন লিংকের slug।
+exports.getApplyLink = async (req, res) => {
+    try {
+        const tenant = await getTenantById(req.tenantId);
+        res.json({ success: true, data: { slug: tenant?.slug || null } });
+    } catch (err) {
+        logger.error('getApplyLink error:', err);
+        res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
