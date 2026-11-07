@@ -1039,8 +1039,11 @@ const sendSRApplicationOTPEmail = async (email, otp, applicantName, expiryMinute
 
 const sendSRApplicationConfirmEmail = async (email, applicantData, meta = {}) => {
     const { name, application_id, phone, district, created_at } = applicantData;
+    const brand        = applicantData.company_name || 'ZovoriX';
+    const contactPhone = applicantData.contact_phone || '';
+    const contactEmail = applicantData.contact_email || '';
 
-    const subject = `✅ আবেদন সফল হয়েছে — ${application_id} | ZovoriX`;
+    const subject = `✅ আবেদন সফল হয়েছে — ${application_id} | ${brand}`;
 
     const dateStr = new Date(created_at || Date.now()).toLocaleString('bn-BD', {
         timeZone: 'Asia/Dhaka',
@@ -1065,7 +1068,7 @@ const sendSRApplicationConfirmEmail = async (email, applicantData, meta = {}) =>
     <td style="background:linear-gradient(135deg,#1b5e20 0%,#2e7d32 100%);padding:32px 40px;text-align:center;">
       <div style="font-size:40px;margin-bottom:10px;">✅</div>
       <h1 style="color:#fff;margin:0;font-size:22px;font-weight:700;">আবেদন সফলভাবে জমা হয়েছে!</h1>
-      <p style="color:#a5d6a7;margin:6px 0 0;font-size:12px;letter-spacing:1px;">ZovoriX — SR নিয়োগ বিভাগ</p>
+      <p style="color:#a5d6a7;margin:6px 0 0;font-size:12px;letter-spacing:1px;">${brand} — SR নিয়োগ বিভাগ</p>
     </td>
   </tr>
 
@@ -1170,8 +1173,8 @@ const sendSRApplicationConfirmEmail = async (email, applicantData, meta = {}) =>
           <td style="background:#fff8e1;border-left:4px solid #f9a825;border-radius:0 8px 8px 0;padding:14px 18px;">
             <p style="color:#e65100;font-size:12px;font-weight:700;margin:0 0 4px;">📞 যোগাযোগ</p>
             <p style="color:#6d4c41;font-size:12px;margin:0;line-height:1.7;">
-              আবেদন সম্পর্কে জানতে: <strong>01836-191102</strong><br>
-              ইমেইল: <strong>inf.novatechbd@gmail.com</strong>
+              ${contactPhone ? `আবেদন সম্পর্কে জানতে: <strong>${contactPhone}</strong><br>` : ''}
+              ${contactEmail ? `ইমেইল: <strong>${contactEmail}</strong>` : ''}
             </p>
           </td>
         </tr>
@@ -1183,8 +1186,8 @@ const sendSRApplicationConfirmEmail = async (email, applicantData, meta = {}) =>
   <!-- FOOTER -->
   <tr>
     <td style="background:#f4f6f9;border-top:1px solid #e0e0e0;padding:18px 40px;text-align:center;">
-      <p style="color:#78909c;font-size:11.5px;margin:0 0 4px;font-weight:600;">ZovoriX (Ltd.)</p>
-      <p style="color:#b0bec5;font-size:10.5px;margin:0;">inf.novatechbd@gmail.com &nbsp;|&nbsp; বরিশাল সদর – ১২০০</p>
+      <p style="color:#78909c;font-size:11.5px;margin:0 0 4px;font-weight:600;">${brand}</p>
+      <p style="color:#b0bec5;font-size:10.5px;margin:0;">${contactEmail}</p>
       <p style="color:#cfd8dc;font-size:10px;margin:6px 0 0;">এই ইমেইলটি স্বয়ংক্রিয়ভাবে পাঠানো হয়েছে। সরাসরি রিপ্লাই করবেন না।</p>
     </td>
   </tr>
@@ -1195,7 +1198,7 @@ const sendSRApplicationConfirmEmail = async (email, applicantData, meta = {}) =>
 </body>
 </html>`;
 
-    const text = `আবেদন সফল! আবেদন নম্বর: ${application_id}\nনাম: ${name}\nমোবাইল: ${phone}\nজেলা: ${district}\nসময়: ${dateStr}\nযোগাযোগ: 01836-191102`;
+    const text = `আবেদন সফল! আবেদন নম্বর: ${application_id}\nনাম: ${name}\nমোবাইল: ${phone}\nজেলা: ${district}\nসময়: ${dateStr}\n${contactPhone ? `\nযোগাযোগ: ${contactPhone}` : ''}`;
     return sendEmail(email, subject, html, text, { type: 'sr_confirm', tenant_id: meta.tenant_id });
 };
 

@@ -11,6 +11,36 @@ const { getTenantBySlug, getTenantById } = require('../middlewares/tenantResolve
 const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0000-000000000001';
 const appTenantId = (a) => (a && a.tenant_id) || DEFAULT_TENANT_ID;
 
+// ✅ কোম্পানির যোগাযোগ তথ্য — admin "Settings → কোম্পানি তথ্য" (system_settings) থেকে,
+// না থাকলে tenants টেবিল থেকে। DEFAULT tenant-এর জন্য শেষ ভরসা পুরনো নম্বর।
+const LEGACY_DEFAULT_CONTACT = { phone: '01836-191102', email: 'inf.novatechbd@gmail.com' };
+const getTenantContact = async (tenantId) => {
+    const out = { name: null, name_bn: null, phone: null, email: null };
+    try {
+        const t = await query(
+            `SELECT company_name, company_name_bn, company_phone, company_email
+               FROM tenants WHERE id = $1`, [tenantId]);
+        const s = await query(
+            `SELECT key, value FROM system_settings
+              WHERE tenant_id = $1
+                AND key IN ('company_name','company_phone','company_email')`, [tenantId]);
+        const set = {};
+        s.rows.forEach(r => { if (r.value && String(r.value).trim()) set[r.key] = String(r.value).trim(); });
+        const row = t.rows[0] || {};
+        out.name    = set.company_name  || row.company_name  || null;
+        out.name_bn = row.company_name_bn || null;
+        out.phone   = set.company_phone || row.company_phone || null;
+        out.email   = set.company_email || row.company_email || null;
+    } catch (e) {
+        logger.warn('⚠️ getTenantContact:', e.message);
+    }
+    if (tenantId === DEFAULT_TENANT_ID) {
+        out.phone = out.phone || LEGACY_DEFAULT_CONTACT.phone;
+        out.email = out.email || LEGACY_DEFAULT_CONTACT.email;
+    }
+    return out;
+};
+
 // ── In-Memory OTP Store (SR Recruitment — public, no DB needed) ──
 // Key: email_lower → { otp, expiresAt, attempts }
 const _srOtpStore = new Map();
@@ -263,10 +293,14 @@ exports.submitApplication = async (req, res) => {
                 nid:            d.nid      || null,
                 created_at:     now,
             };
+            const contact = await getTenantContact(tenantId);
+            emailData.company_name  = contact.name_bn || contact.name || null;
+            emailData.contact_phone = contact.phone;
+            emailData.contact_email = contact.email;
 
             // আবেদনকারীকে Confirmation Email
             if (d.email) {
-                sendSRApplicationConfirmEmail(d.email, emailData).catch(err =>
+                sendSRApplicationConfirmEmail(d.email, emailData, { tenant_id: tenantId }).catch(err =>
                     logger.warn('⚠️ আবেদনকারী confirmation email ব্যর্থ:', err.message)
                 );
             }
@@ -281,7 +315,7 @@ exports.submitApplication = async (req, res) => {
             );
             const adminEmails = adminResult.rows.map(r => r.email);
             if (adminEmails.length > 0) {
-                sendSRApplicationAdminNotifyEmail(adminEmails, emailData).catch(err =>
+                sendSRApplicationAdminNotifyEmail(adminEmails, emailData, { tenant_id: tenantId }).catch(err =>
                     logger.warn('⚠️ Admin notification email ব্যর্থ:', err.message)
                 );
             }
@@ -476,19 +510,26 @@ exports.exportCSV = async (req, res) => {
 };
 
 // ── GET /api/recruitment/tenant/:slug (Public) ────────────────
-// আবেদন ফর্মে কোম্পানির নাম দেখানোর জন্য — শুধু নিরীহ তথ্য ফেরত দেয়।
+// আবেদন ফর্মে কোম্পানির নাম ও যোগাযোগ নম্বর দেখানোর জন্য।
+// slug = "_default" হলে DEFAULT tenant (slug ছাড়া /apply/sr লিংকের জন্য)।
 exports.getPublicTenantInfo = async (req, res) => {
     try {
-        const tenant = await getTenantBySlug(String(req.params.slug || '').toLowerCase());
+        const slug = String(req.params.slug || '').toLowerCase();
+        const tenant = slug === '_default'
+            ? await getTenantById(DEFAULT_TENANT_ID)
+            : await getTenantBySlug(slug);
         if (!tenant || ['suspended', 'cancelled'].includes(tenant.status)) {
             return res.status(404).json({ success: false, message: 'কোম্পানি পাওয়া যায়নি।' });
         }
+        const c = await getTenantContact(tenant.id);
         res.json({
             success: true,
             data: {
                 slug: tenant.slug,
-                company_name: tenant.company_name,
-                company_name_bn: tenant.company_name_bn || null,
+                company_name: c.name || tenant.company_name,
+                company_name_bn: c.name_bn,
+                contact_phone: c.phone,
+                contact_email: c.email,
             },
         });
     } catch (err) {

@@ -558,7 +558,7 @@ function InfoBox({ icon, color = 'amber', children }) {
 }
 
 // ── SUCCESS SCREEN ────────────────────────────────────────────
-function SuccessScreen({ appId }) {
+function SuccessScreen({ appId, phone }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center p-4">
       <div className="max-w-sm w-full text-center space-y-5">
@@ -583,9 +583,11 @@ function SuccessScreen({ appId }) {
             <p className="text-[11px] text-gray-400 mt-1.5">এই নম্বরটি সংরক্ষণ করুন</p>
           </div>
         )}
-        <InfoBox icon="📞" color="amber">
-          যোগাযোগ: <strong>01836-191102</strong> — WhatsApp / কল
-        </InfoBox>
+        {phone && (
+          <InfoBox icon="📞" color="amber">
+            যোগাযোগ: <strong>{phone}</strong> — WhatsApp / কল
+          </InfoBox>
+        )}
         <a href="/login" className="inline-flex items-center gap-1.5 text-[13px] text-gray-400 hover:text-red-600 transition-colors">
           <FiChevronLeft size={14} /> লগইন পেজে ফিরুন
         </a>
@@ -600,11 +602,16 @@ export default function SRApplicationForm() {
   const { tenantSlug } = useParams()
   const appliedKey = `sr_applied_${tenantSlug || 'default'}`
   const [companyName, setCompanyName] = useState(null)
+  const [contactPhone, setContactPhone] = useState('')
   useEffect(() => {
-    if (!tenantSlug) return
-    axios.get(`${API_BASE}/api/recruitment/tenant/${encodeURIComponent(tenantSlug)}`)
-      .then(r => setCompanyName(r.data?.data?.company_name_bn || r.data?.data?.company_name || null))
-      .catch(() => toast.error('কোম্পানি পাওয়া যায়নি। লিংকটি যাচাই করুন।'))
+    // slug না থাকলে DEFAULT কোম্পানি (_default)
+    axios.get(`${API_BASE}/api/recruitment/tenant/${encodeURIComponent(tenantSlug || '_default')}`)
+      .then(r => {
+        const d = r.data?.data || {}
+        setCompanyName(tenantSlug ? (d.company_name_bn || d.company_name || null) : null)
+        setContactPhone(d.contact_phone || '')
+      })
+      .catch(() => { if (tenantSlug) toast.error('কোম্পানি পাওয়া যায়নি। লিংকটি যাচাই করুন।') })
   }, [tenantSlug])
   const [step,         setStep]         = useState(1)
   const [loading,      setLoading]      = useState(false)
@@ -682,7 +689,7 @@ export default function SRApplicationForm() {
     }
   }
 
-  if (submitted) return <SuccessScreen appId={appId} />
+  if (submitted) return <SuccessScreen appId={appId} phone={contactPhone} />
 
   // ── OTP Screen ──
   if (showOTP) {
@@ -720,7 +727,7 @@ export default function SRApplicationForm() {
             />
           </div>
           <p className="text-center text-[12px] text-gray-400 mt-4">
-            সমস্যা হলে যোগাযোগ করুন: <strong>01836-191102</strong>
+            {contactPhone && <>সমস্যা হলে যোগাযোগ করুন: <strong>{contactPhone}</strong></>}
           </p>
         </div>
       </div>
@@ -742,8 +749,8 @@ export default function SRApplicationForm() {
             <span className="text-white font-bold text-sm">NT</span>
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight truncate">ZovoriX</h1>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">SR নিয়োগ আবেদন ফর্ম{companyName ? ` — ${companyName}` : ''}</p>
+            <h1 className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight truncate">{companyName || 'ZovoriX'}</h1>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">SR নিয়োগ আবেদন ফর্ম</p>
           </div>
           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full text-[11px] font-bold flex-shrink-0">
             <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
@@ -836,7 +843,7 @@ export default function SRApplicationForm() {
         </div>
 
         <p className="text-center text-[12px] text-gray-400 mt-5">
-          সমস্যা হলে যোগাযোগ করুন: <strong className="text-gray-600 dark:text-gray-300">01836-191102</strong>
+          {contactPhone && <>সমস্যা হলে যোগাযোগ করুন: <strong className="text-gray-600 dark:text-gray-300">{contactPhone}</strong></>}
         </p>
       </div>
     </div>
