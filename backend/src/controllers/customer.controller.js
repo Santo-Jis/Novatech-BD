@@ -8,6 +8,7 @@ const { assertCustomerLimitAvailable } = require('../services/tenantLimits.servi
 const { updateCommissionRealtime } = require('../services/commission.service');
 const { firebaseNotify } = require('../services/firebase.notify');
 const { allocatePaymentSafe, parseSaleIds, assertSaleIdsBelongToCustomer } = require('../services/paymentAllocation.service');
+const { denyWorkerOutsideTeam, denyWorkerOutsideTeamRoute } = require('../services/teamAccess.service');
 
 // ✅ FIX: UTC নয়, BD local date — commission.service.js/sales.controller.js-এর
 // getBDToday()-এর সাথে মিলবে (রাত ১২টা-ভোর ৬টা BD সময়ে UTC date এক দিন পিছিয়ে থাকে)
@@ -30,6 +31,9 @@ const getCustomers = async (req, res) => {
             page = 1, limit = 50
         } = req.query;
         const offset = (page - 1) * limit;
+
+        // SR শুধু নিজের ম্যানেজারের টিমের রুট দিয়ে কাস্টমার তালিকা আনতে পারবে
+        if (route_id && await denyWorkerOutsideTeamRoute(req, res, route_id)) return;
 
         let conditions = ['c.is_active = true'];
         let params = [req.tenantId];
@@ -272,6 +276,9 @@ const getCustomer = async (req, res) => {
         if (!uuidRegex.test(req.params.id)) {
             return res.status(400).json({ success: false, message: 'অবৈধ ID ফরম্যাট।' });
         }
+
+        // SR: টিমের বাইরের কাস্টমার নয়
+        if (await denyWorkerOutsideTeam(req, res, req.params.id)) return;
 
         const result = await query(
             `SELECT c.*,
@@ -583,6 +590,9 @@ const getCustomerHistory = async (req, res) => {
     try {
         const { id } = req.params;
 
+        // SR: একই ম্যানেজারের টিমের সব কাস্টমারের history দেখতে পারবে, অন্য টিমের নয়
+        if (await denyWorkerOutsideTeam(req, res, id)) return;
+
         // Manager শুধু নিজের রুটের customer এর history দেখতে পারবে
         if (req.user.role === 'manager') {
             const routeCheck = await query(
@@ -644,8 +654,40 @@ const getCustomerHistory = async (req, res) => {
 
         // কাস্টমারের বর্তমান তথ্য
         const customer = await query(
-            'SELECT shop_name, credit_limit, current_credit, credit_balance FROM customers WHERE id = $1',
-            [id]
+            'SELECT shop_name, credit_limit, current_credit, credit_balance FROM customers WHERE id = $1 AND tenant_id = $2',
+            [id, req.tenantId]
+        );
+
+        // রিটার্ন/রিপ্লেসমেন্ট ইতিহাস (১): কাস্টমার নিজে পোর্টাল থেকে যা চেয়েছে —
+        // সব status (pending/approved/rejected/completed)
+        const customerReturnRequests = await query(
+            `SELECT crr.id, crr.type, crr.invoice_number, crr.items,
+                    crr.total_return_value, crr.note, crr.status,
+                    crr.admin_note, crr.reviewed_at, crr.created_at,
+                    CASE crr.type
+                        WHEN 'replacement' THEN 'রিপ্লেসমেন্ট'
+                        ELSE 'পণ্য ফেরত'
+                    END AS type_bn
+             FROM customer_return_requests crr
+             WHERE crr.customer_id = $1
+             AND crr.tenant_id = $2
+             ORDER BY crr.created_at DESC
+             LIMIT 30`,
+            [id, req.tenantId]
+        );
+
+        // রিটার্ন/রিপ্লেসমেন্ট ইতিহাস (২): SR যা জমা দিয়েছে (কোন SR দিয়েছে সহ)
+        const srReturnRequests = await query(
+            `SELECT rr.id, rr.type, rr.sale_id, rr.items, rr.reason, rr.note,
+                    rr.total_value, rr.status, rr.review_note, rr.reviewed_at,
+                    rr.created_at, u.name_bn AS sr_name
+             FROM return_requests rr
+             JOIN users u ON u.id = rr.sr_id
+             WHERE rr.customer_id = $1
+             AND rr.tenant_id = $2
+             ORDER BY rr.created_at DESC
+             LIMIT 30`,
+            [id, req.tenantId]
         );
 
         return res.status(200).json({
@@ -654,7 +696,9 @@ const getCustomerHistory = async (req, res) => {
                 customer:       customer.rows[0],
                 sales:          sales.rows,
                 credit_payments: creditPayments.rows,
-                visits:         visits.rows
+                visits:         visits.rows,
+                customer_return_requests: customerReturnRequests.rows,
+                sr_return_requests:       srReturnRequests.rows
             }
         });
 
@@ -767,6 +811,10 @@ const collectCredit = async (req, res) => {
             }
         }
 
+        // SR: শুধু নিজের ম্যানেজারের টিমের কাস্টমার থেকে আদায় করতে পারবে (assignment বাধ্যতামূলক নয়)।
+        // আগে worker-এর কোনো চেকই ছিল না। FOR UPDATE lock নেওয়ার আগেই reject হোক।
+        if (await denyWorkerOutsideTeam(req, res, customerId)) return;
+
         // ঐচ্ছিক: SR নির্দিষ্ট ইনভয়েস বেছে দিলে সেগুলো আগে শোধ হবে (বাকিটা FIFO)।
         // অন্যের/শোধ-যোগ্য-নয় এমন ইনভয়েস হলে 400 — নিচের catch statusCode ধরে।
         const preferredSaleIds = await assertSaleIdsBelongToCustomer(query, {
@@ -784,8 +832,8 @@ const collectCredit = async (req, res) => {
 
             // FOR UPDATE: একই customer-এ concurrent request একসাথে ঢুকতে পারবে না
             const customer = await client.query(
-                'SELECT shop_name, current_credit FROM customers WHERE id = $1 FOR UPDATE',
-                [customerId]
+                'SELECT shop_name, current_credit FROM customers WHERE id = $1 AND tenant_id = $2 FOR UPDATE',
+                [customerId, req.tenantId]
             );
 
             if (customer.rows.length === 0) {
@@ -1238,7 +1286,9 @@ const updateVisitOrder = async (req, res) => {
 
 // ============================================================
 // GET /api/customers/my-return-requests
-// SR নিজের assigned customer-দের approved return/replacement দেখবে
+// SR নিজের ম্যানেজারের টিমের সব কাস্টমারের approved return/replacement দেখবে
+// (একই টিমের সব SR সব কাস্টমার দেখে — assignment access-control নয়)।
+// নিজের নামে assigned কাস্টমারও (টিমের বাইরে হলেও) থাকবে।
 // ============================================================
 const getMyPendingReturnRequests = async (req, res) => {
     try {
@@ -1274,9 +1324,14 @@ const getMyPendingReturnRequests = async (req, res) => {
              LEFT JOIN routes r ON r.id = c.route_id
              WHERE crr.status = 'approved'
                ${typeFilter}
-               AND c.id IN (
-                   SELECT customer_id FROM customer_assignments
-                   WHERE worker_id = $1 AND is_active = true
+               AND (
+                   c.id IN (
+                       SELECT customer_id FROM customer_assignments
+                       WHERE worker_id = $1 AND is_active = true
+                   )
+                   OR r.manager_id = (
+                       SELECT manager_id FROM users WHERE id = $1 AND tenant_id = $2
+                   )
                )
              AND crr.tenant_id = $2
              ORDER BY crr.reviewed_at DESC`,
@@ -1306,6 +1361,9 @@ const getCustomerCreditAlert = async (req, res) => {
         if (!uuidRegex.test(id)) {
             return res.status(400).json({ success: false, message: 'অবৈধ ID।' });
         }
+
+        // SR: টিমের বাইরের কাস্টমার নয়
+        if (await denyWorkerOutsideTeam(req, res, id)) return;
 
         const custResult = await query(
             `SELECT id, shop_name, owner_name, current_credit, credit_limit, credit_balance

@@ -311,6 +311,7 @@ export default function CustomerList() {
                 onNavigate={e => openGoogleMaps(e, c)}
                 onSendWhatsApp={() => sendPortalLinkToCustomer(c)}
                 onEdit={() => setEditModal(c)}
+                onHistory={() => navigate(`/worker/customers/${c._id || c.id}/history`)}
                 innerRef={el => { cardRefs.current[c.id] = el }}
               />
             )

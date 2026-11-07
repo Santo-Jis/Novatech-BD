@@ -596,7 +596,9 @@ describe('getCustomerHistory — ক্রয় ও বাকির ইতি�
             .mockResolvedValueOnce({ rows: [{ id: 'sale-1', sale_status: 'verified' }] }) // sales
             .mockResolvedValueOnce({ rows: [{ id: 'pay-1', amount: 500 }] })              // credit_payments
             .mockResolvedValueOnce({ rows: [{ id: 'vis-1' }] })                           // visits
-            .mockResolvedValueOnce({ rows: [{ shop_name: 'আলীর স্টোর', credit_limit: 5000 }] }); // customer info
+            .mockResolvedValueOnce({ rows: [{ shop_name: 'আলীর স্টোর', credit_limit: 5000 }] }) // customer info
+            .mockResolvedValueOnce({ rows: [{ id: 'crr-1', type: 'replacement' }] })          // customer_return_requests
+            .mockResolvedValueOnce({ rows: [{ id: 'rr-1', sr_name: 'এসআর আলী' }] });          // return_requests (SR)
 
         const req = { params: { id: 'cust-uuid-1' }, user: adminUser };
         const res = mockRes();
@@ -608,6 +610,8 @@ describe('getCustomerHistory — ক্রয় ও বাকির ইতি�
         expect(data).toHaveProperty('credit_payments');
         expect(data).toHaveProperty('visits');
         expect(data).toHaveProperty('customer');
+        expect(data.customer_return_requests).toHaveLength(1);
+        expect(data.sr_return_requests).toHaveLength(1);
     });
 
     test('Manager — অন্য রুটের customer history → 403', async () => {
@@ -626,7 +630,9 @@ describe('getCustomerHistory — ক্রয় ও বাকির ইতি�
             .mockResolvedValueOnce({ rows: [] }) // sales
             .mockResolvedValueOnce({ rows: [] }) // credit_payments
             .mockResolvedValueOnce({ rows: [] }) // visits
-            .mockResolvedValueOnce({ rows: [{ shop_name: 'দোকান' }] }); // customer
+            .mockResolvedValueOnce({ rows: [{ shop_name: 'দোকান' }] }) // customer
+            .mockResolvedValueOnce({ rows: [] }) // customer_return_requests
+            .mockResolvedValueOnce({ rows: [] }); // return_requests (SR)
 
         const req = { params: { id: 'cust-uuid-1' }, user: managerUser };
         const res = mockRes();
@@ -730,6 +736,8 @@ describe('collectCredit — বাকি আদায়', () => {
         const { withTransaction } = require('../config/db');
         // idempotency check — not duplicate
         query.mockResolvedValueOnce({ rows: [] });
+        // টিম-চেক (worker): কাস্টমার নিজের ম্যানেজারের টিমে আছে
+        query.mockResolvedValueOnce({ rows: [{}] });
         // withTransaction: client.query → customer not found
         withTransaction.mockImplementationOnce(async (cb) => {
             const mockClient = {
@@ -749,6 +757,8 @@ describe('collectCredit — বাকি আদায়', () => {
         const { withTransaction } = require('../config/db');
         // idempotency check — not duplicate
         query.mockResolvedValueOnce({ rows: [] });
+        // টিম-চেক (worker): কাস্টমার নিজের ম্যানেজারের টিমে আছে
+        query.mockResolvedValueOnce({ rows: [{}] });
         // withTransaction: amount > current_credit → throw
         withTransaction.mockImplementationOnce(async (cb) => {
             const mockClient = {
@@ -777,6 +787,8 @@ describe('collectCredit — বাকি আদায়', () => {
         const { withTransaction } = require('../config/db');
         // idempotency check — not duplicate
         query.mockResolvedValueOnce({ rows: [] });
+        // টিম-চেক (worker): কাস্টমার নিজের ম্যানেজারের টিমে আছে
+        query.mockResolvedValueOnce({ rows: [{}] });
         // withTransaction: success
         const mockClientQuery = jest.fn()
             .mockResolvedValueOnce({ rows: [{ shop_name: 'আলীর স্টোর', current_credit: '1000' }] })
@@ -813,6 +825,8 @@ describe('collectCredit — বাকি আদায়', () => {
         const { withTransaction } = require('../config/db');
         const SALE = '11111111-1111-4111-8111-111111111111';
         query.mockResolvedValueOnce({ rows: [] });                    // idempotency
+        // টিম-চেক (worker): কাস্টমার নিজের ম্যানেজারের টিমে আছে
+        query.mockResolvedValueOnce({ rows: [{}] });
         query.mockResolvedValueOnce({ rows: [{ id: SALE }] });        // assertSaleIdsBelongToCustomer
         withTransaction.mockImplementationOnce(async (cb) => {
             await cb({
@@ -844,6 +858,8 @@ describe('collectCredit — বাকি আদায়', () => {
         const { withTransaction } = require('../config/db');
         const SALE = '22222222-2222-4222-8222-222222222222';
         query.mockResolvedValueOnce({ rows: [] });   // idempotency
+        // টিম-চেক (worker): কাস্টমার নিজের ম্যানেজারের টিমে আছে
+        query.mockResolvedValueOnce({ rows: [{}] });
         query.mockResolvedValueOnce({ rows: [] });   // যাচাই: কোনো মিল নেই
         withTransaction.mockClear();
         const req = {
@@ -861,6 +877,8 @@ describe('collectCredit — বাকি আদায়', () => {
     test('ইনভয়েস-বরাদ্দ ব্যর্থ (null) হলেও আদায় সফল — 200', async () => {
         const { withTransaction } = require('../config/db');
         query.mockResolvedValueOnce({ rows: [] });
+        // টিম-চেক (worker): কাস্টমার নিজের ম্যানেজারের টিমে আছে
+        query.mockResolvedValueOnce({ rows: [{}] });
         allocatePaymentSafe.mockResolvedValueOnce(null); // allocatePaymentSafe ব্যর্থ হলে null দেয়, throw করে না
         withTransaction.mockImplementationOnce(async (cb) => {
             await cb({
@@ -885,6 +903,8 @@ describe('collectCredit — বাকি আদায়', () => {
         const { withTransaction } = require('../config/db');
         // idempotency check — not duplicate
         query.mockResolvedValueOnce({ rows: [] });
+        // টিম-চেক (worker): কাস্টমার নিজের ম্যানেজারের টিমে আছে
+        query.mockResolvedValueOnce({ rows: [{}] });
         // withTransaction: success
         withTransaction.mockImplementationOnce(async (cb) => {
             const mockClient = {

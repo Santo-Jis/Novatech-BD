@@ -28,6 +28,7 @@ const { updateCommissionRealtime } = require('../services/commission.service');
 const { firebaseNotify }           = require('../services/firebase.notify');
 const { allocatePaymentSafe, parseSaleIds, assertSaleIdsBelongToCustomer } = require('../services/paymentAllocation.service');
 const { sendCustomerNotification } = require('./customerNotification.controller');
+const { denyWorkerOutsideTeam }    = require('../services/teamAccess.service');
 
 // ✅ FIX: UTC নয়, BD local date — commission.service.js/sales.controller.js-এর
 // getBDToday()-এর সাথে মিলবে (রাত ১২টা-ভোর ৬টা BD সময়ে UTC date এক দিন পিছিয়ে থাকে)
@@ -304,6 +305,10 @@ const getMyCollections = async (req, res) => {
 const getCustomerCollections = async (req, res) => {
     try {
         const { customerId } = req.params;
+
+        // SR: শুধু নিজের ম্যানেজারের টিমের কাস্টমারের collection history
+        if (await denyWorkerOutsideTeam(req, res, customerId)) return;
+
         const limit          = parseInt(req.query.limit) || 20;
         const offset         = parseInt(req.query.offset) || 0;
 

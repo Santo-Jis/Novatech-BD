@@ -880,7 +880,15 @@ export default function VisitPage() {
             <h2 className="font-bold text-lg text-gray-800">{customer.shop_name}</h2>
             <p className="text-sm text-gray-500">{customer.owner_name}</p>
           </div>
-          <DistanceBadge distance={distance} />
+          <div className="flex flex-col items-end gap-2">
+            <DistanceBadge distance={distance} />
+            <button
+              onClick={() => navigate(`/worker/customers/${id}/history`)}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 active:scale-95 transition-transform"
+            >
+              🕘 ইতিহাস
+            </button>
+          </div>
         </div>
 
         <div className="mt-3 space-y-2">

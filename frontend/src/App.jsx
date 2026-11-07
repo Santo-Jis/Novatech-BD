@@ -179,6 +179,7 @@ const CustomerList     = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/wor
 const AddCustomer      = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/AddCustomer')) // ⬅️ নতুন — Phase 3 অংশ ২
 const ConnectCustomer  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/shared/ConnectCustomer'))
 const VisitPage        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/VisitPage'))
+const CustomerHistory  = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/CustomerHistory'))
 const SalesForm        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/SalesForm'))
 const OTPVerify        = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/OTPVerify'))
 const WorkerSettlement = IS_CUSTOMER_APP ? null : lazy(() => import('./pages/worker/Settlement'))
@@ -650,6 +651,7 @@ function AppWithPermissions() {
                 <Route path="customers/new"       element={<AddCustomer />} /> {/* ⬅️ নতুন — Phase 3 অংশ ২, আগে modal ছিল */}
                 <Route path="connect-customer"    element={<ConnectCustomer />} />
                 <Route path="visit/:id"          element={<VisitPage />} />
+                <Route path="customers/:id/history" element={<CustomerHistory />} />
                 <Route path="sales/:id"          element={<SalesForm />} />
                 <Route path="otp/:id"            element={<OTPVerify />} />
                 <Route path="settlement"         element={<WorkerSettlement />} />

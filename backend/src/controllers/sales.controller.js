@@ -20,6 +20,7 @@ const {
 const { loadInvoiceBranding } = require('../services/invoiceBranding.service');
 const { uploadToCloudinary } = require('../services/employee.service');
 const { sendCustomerNotification } = require('./customerNotification.controller');
+const { denyWorkerOutsideTeam } = require('../services/teamAccess.service');
 
 // Firebase নোটিফিকেশন
 const { firebaseNotify } = require('../services/firebase.notify');
@@ -1665,6 +1666,11 @@ const getSaleDetail = async (req, res) => {
 
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'বিক্রয় পাওয়া যায়নি।' });
+        }
+
+        // SR: নিজের sale অথবা নিজের ম্যানেজারের টিমের কাস্টমারের sale-ই দেখতে পারবে
+        if (req.user.role === 'worker' && result.rows[0].worker_id !== req.user.id) {
+            if (await denyWorkerOutsideTeam(req, res, result.rows[0].customer_id)) return;
         }
 
         return res.status(200).json({ success: true, data: result.rows[0] });

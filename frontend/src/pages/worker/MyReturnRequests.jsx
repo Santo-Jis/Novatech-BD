@@ -1,5 +1,5 @@
 // frontend/src/pages/worker/MyReturnRequests.jsx
-// Worker: আমার assigned customer-দের approved return/replacement তালিকা
+// Worker: আমার ম্যানেজারের টিমের সব customer-এর approved return/replacement তালিকা
 // API: GET /customers/my-return-requests?type=return|replacement
 
 import { useState, useEffect } from 'react'
@@ -113,7 +113,7 @@ export default function MyReturnRequests() {
           অনুমোদিত রিটার্ন
         </h2>
         <p style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>
-          আপনার assigned কাস্টমারদের approved ফেরত ও রিপ্লেসমেন্ট
+          আপনার টিমের কাস্টমারদের approved ফেরত ও রিপ্লেসমেন্ট
         </p>
       </div>
 
