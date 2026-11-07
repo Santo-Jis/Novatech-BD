@@ -5,11 +5,12 @@ import Badge from '../../components/ui/Badge'
 import Button from '../../components/ui/Button'
 import Input, { Select } from '../../components/ui/Input'
 import { Pagination } from '../../components/ui/Table'
+import RecruitmentFormSettings from './RecruitmentFormSettings'
 import {
   FiUsers, FiClock, FiCheckCircle, FiXCircle, FiEye,
   FiSearch, FiDownload, FiUser, FiPhone, FiMapPin,
   FiBook, FiBriefcase, FiStar, FiCalendar, FiMail,
-  FiChevronDown, FiChevronUp, FiAlertCircle, FiRefreshCw, FiLink
+  FiChevronDown, FiChevronUp, FiAlertCircle, FiRefreshCw, FiLink, FiSettings
 } from 'react-icons/fi'
 
 
@@ -329,6 +330,7 @@ export default function SRRecruitmentDashboard() {
   const [page,        setPage]        = useState(1)
   const [total,       setTotal]       = useState(0)
   const [selected,    setSelected]    = useState(null)
+  const [showFormSettings, setShowFormSettings] = useState(false)
   const LIMIT = 20
 
   // ✅ নিজের কোম্পানির আবেদন লিংক (/apply/sr/:slug)
@@ -424,6 +426,7 @@ export default function SRRecruitmentDashboard() {
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" icon={<FiRefreshCw size={14}/>} onClick={fetchApps}>রিফ্রেশ</Button>
           <Button variant="outline" size="sm" icon={<FiDownload size={14}/>} onClick={exportCSV}>CSV Export</Button>
+          <Button variant="outline" size="sm" icon={<FiSettings size={14}/>} onClick={() => setShowFormSettings(true)}>ফর্ম সেটিংস</Button>
           <button type="button" onClick={shareApplyLink}
             className="inline-flex items-center gap-2 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-semibold transition-all">
             <FiLink size={13}/> আবেদন লিংক
@@ -495,6 +498,13 @@ export default function SRRecruitmentDashboard() {
           </div>
         )}
       </div>
+
+      {/* ফর্ম সেটিংস (Admin-সম্পাদনযোগ্য লেখা) */}
+      <RecruitmentFormSettings
+        isOpen={showFormSettings}
+        onClose={() => setShowFormSettings(false)}
+        previewHref={getFullApplyLink()}
+      />
 
       {/* Detail Modal */}
       {selected && (

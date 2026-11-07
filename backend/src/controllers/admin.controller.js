@@ -3,6 +3,7 @@ const { encrypt } = require('../config/encryption');
 const logger = require('../config/logger');
 const walletService = require('../services/wallet.service');
 const billingService = require('../services/billing.service');
+const { RECRUITMENT_CONFIG_KEY } = require('../services/recruitmentFormConfig');
 
 // ============================================================
 // SETTINGS GROUPS — key গুলো বিভাগ অনুযায়ী ভাগ করা
@@ -103,9 +104,11 @@ const AUDIT_CATEGORIES = {
 
 const getSettings = async (req, res) => {
     try {
+        // recruitment_form_config নিজস্ব এডিটর (SR নিয়োগ → ফর্ম সেটিংস) থেকে বদলায়,
+        // সাধারণ Settings পেজে কাঁচা JSON হিসেবে দেখানো/বদলানো হবে না।
         const result = await query(
-            'SELECT id, key, value, description FROM system_settings WHERE tenant_id = $1 ORDER BY key',
-            [req.tenantId]
+            'SELECT id, key, value, description FROM system_settings WHERE tenant_id = $1 AND key <> $2 ORDER BY key',
+            [req.tenantId, RECRUITMENT_CONFIG_KEY]
         );
 
         // সংবেদনশীল keys মাস্ক করো (আপাতত tenant-level system_settings-এ
@@ -179,6 +182,9 @@ const updateSettings = async (req, res) => {
             // Super Admin-only (platform_settings) — tenant admin এই এন্ডপয়েন্ট
             // দিয়ে সরাসরি POST করলেও চুপচাপ স্কিপ করা হলো।
             if (PLATFORM_ONLY_KEY_PREFIXES.includes(setting.key)) continue;
+
+            // নিয়োগ ফর্ম config শুধু /api/recruitment/form-config দিয়ে (sanitize সহ) বদলাবে
+            if (setting.key === RECRUITMENT_CONFIG_KEY) continue;
 
             let value = setting.value;
 

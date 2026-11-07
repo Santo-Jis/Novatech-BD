@@ -13,6 +13,9 @@ const {
     confirmSROTP,
     getPublicTenantInfo,
     getApplyLink,
+    getFormConfig,
+    saveFormConfig,
+    resetFormConfig,
 } = require('../controllers/recruitment.controller');
 
 // Photo upload — memory storage (Cloudinary তে পাঠাবো)
@@ -36,6 +39,10 @@ router.get('/tenant/:slug', getPublicTenantInfo);
 // ── Admin only ────────────────────────────────────────────────
 router.get('/export',     auth, isAdmin, exportCSV);
 router.get('/apply-link', auth, isAdmin, getApplyLink);
+// ⚠️ '/:id' এর আগে থাকতে হবে, নইলে "form-config" id ধরা পড়বে
+router.get('/form-config',    auth, isAdmin, getFormConfig);
+router.put('/form-config',    auth, isAdmin, saveFormConfig);
+router.delete('/form-config', auth, isAdmin, resetFormConfig);
 router.get('/',           auth, isAdmin, getApplications);
 router.get('/:id',        auth, isAdmin, getApplication);
 router.put('/:id/status', auth, isAdmin, updateStatus);

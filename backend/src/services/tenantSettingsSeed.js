@@ -12,6 +12,8 @@ const DEFAULT_TENANT_ID = process.env.DEFAULT_TENANT_ID || '00000000-0000-0000-0
 const TENANT_OWN_KEYS = [
     'company_name', 'company_address', 'company_phone', 'company_email',
     'bkash_number', 'nagad_number',
+    // SR নিয়োগ ফর্মের লেখা (কর্মএলাকা, শর্তাবলী…) — কোম্পানি-নির্দিষ্ট, কপি হবে না
+    'recruitment_form_config',
 ];
 
 /**

@@ -5,6 +5,11 @@ const { generateOTP } = require('../config/encryption');
 const { sendSRApplicationConfirmEmail, sendSRApplicationAdminNotifyEmail } = require('../services/email.service');
 const { query } = require('../config/db');
 const { getTenantBySlug, getTenantById } = require('../middlewares/tenantResolver');
+const {
+    loadTenantConfig,
+    saveTenantConfig,
+    resetTenantConfig,
+} = require('../services/recruitmentFormConfig');
 
 // ✅ Multi-tenant: প্রতিটি আবেদন একটি tenant (কোম্পানি)-এর।
 // tenant_id ছাড়া পুরোনো আবেদন DEFAULT tenant (Novatech)-এর ধরা হবে।
@@ -120,8 +125,25 @@ exports.sendSROTP = async (req, res) => {
         _srOtpStore.set(key, { otp, expiresAt: Date.now() + 10 * 60 * 1000, sentAt: Date.now(), attempts: 0 });
 
         const name = (req.body.name || '').toString().trim() || 'আবেদনকারী';
+
+        // কোম্পানির নাম — ফর্ম লিংকের slug থেকে (না পেলে আগের মতো ZovoriX)
+        let companyLabel = 'ZovoriX';
+        try {
+            const slug = (req.body.tenant_slug || '').toString().trim().toLowerCase();
+            if (slug) {
+                const tenant = await getTenantBySlug(slug);
+                if (tenant) {
+                    const c = await getTenantContact(tenant.id);
+                    companyLabel = (c.name_bn || c.name || tenant.company_name || companyLabel)
+                        .toString().replace(/[*_~`\n\r]/g, ' ').trim().slice(0, 60) || companyLabel;
+                }
+            }
+        } catch (e) {
+            logger.warn('⚠️ OTP company name resolve:', e.message);
+        }
+
         const message =
-            `🔐 *ZovoriX SR নিয়োগ আবেদন*\n` +
+            `🔐 *${companyLabel} SR নিয়োগ আবেদন*\n` +
             `━━━━━━━━━━━━━━━━\n` +
             `প্রিয় ${name}, আপনার মোবাইল নম্বর যাচাইয়ের কোড:\n\n` +
             `*${otp}*\n\n` +
@@ -203,13 +225,9 @@ exports.submitApplication = async (req, res) => {
         const db = getDB();
         const d  = req.body;
 
-        // ✅ WhatsApp যাচাইয়ের প্রমাণ বাধ্যতামূলক (সার্ভার-সাইড)
         const localPhone = normalizeBDPhone(d.phone);
         if (!localPhone) {
             return res.status(400).json({ success: false, message: 'সঠিক বাংলাদেশি মোবাইল নম্বর দিন।' });
-        }
-        if (!d.verify_token || !phoneTokenValid(d.verify_token, localPhone)) {
-            return res.status(401).json({ success: false, message: 'মোবাইল নম্বর WhatsApp OTP দিয়ে যাচাই করুন।' });
         }
 
         // ✅ Tenant resolve — ফর্ম লিংক /apply/sr/:tenantSlug থেকে slug আসে।
@@ -225,6 +243,19 @@ exports.submitApplication = async (req, res) => {
                 return res.status(403).json({ success: false, message: 'এই কোম্পানি এখন আবেদন নিচ্ছে না।' });
             }
             tenantId = tenant.id;
+        }
+
+        // ✅ Admin-এর ফর্ম সেটিংস (সার্ভার-সাইড প্রয়োগ — ফ্রন্টএন্ড বাইপাস করলেও)
+        const formCfg = await loadTenantConfig(query, tenantId);
+        if (!formCfg.accepting) {
+            return res.status(403).json({ success: false, message: formCfg.closed_message });
+        }
+
+        // ✅ WhatsApp যাচাইয়ের প্রমাণ — Admin বন্ধ না করলে বাধ্যতামূলক
+        if (formCfg.require_otp) {
+            if (!d.verify_token || !phoneTokenValid(d.verify_token, localPhone)) {
+                return res.status(401).json({ success: false, message: 'মোবাইল নম্বর WhatsApp OTP দিয়ে যাচাই করুন।' });
+            }
         }
 
         // Duplicate check by phone, NID এবং device_id — শুধু একই tenant-এর ভেতরে
@@ -591,6 +622,7 @@ exports.getPublicTenantInfo = async (req, res) => {
                 company_name_bn: c.name_bn,
                 contact_phone: c.phone,
                 contact_email: c.email,
+                form_config: await loadTenantConfig(query, tenant.id),
             },
         });
     } catch (err) {
@@ -607,6 +639,57 @@ exports.getApplyLink = async (req, res) => {
         res.json({ success: true, data: { slug: tenant?.slug || null } });
     } catch (err) {
         logger.error('getApplyLink error:', err);
+        res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+// ── GET /api/recruitment/form-config (Admin) ──────────────────
+// Admin-এর কোম্পানির ফর্ম সেটিংস (সেভ না থাকলে default)।
+exports.getFormConfig = async (req, res) => {
+    try {
+        const config = await loadTenantConfig(query, req.tenantId);
+        res.json({ success: true, data: { config } });
+    } catch (err) {
+        logger.error('getFormConfig error:', err);
+        res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
+    }
+};
+
+// ── PUT /api/recruitment/form-config (Admin) ──────────────────
+// body: { config: {...} } — সার্ভারে sanitize হয়ে সেভ হয়।
+exports.saveFormConfig = async (req, res) => {
+    try {
+        const input = req.body && req.body.config;
+        if (!input || typeof input !== 'object' || Array.isArray(input)) {
+            return res.status(400).json({ success: false, message: 'config অবজেক্ট দিন।' });
+        }
+        const config = await saveTenantConfig(query, req.tenantId, req.user.id, input);
+
+        try {
+            await query(
+                `INSERT INTO audit_logs (user_id, action, table_name, new_value, tenant_id)
+                 VALUES ($1, 'UPDATE_RECRUITMENT_FORM', 'system_settings', $2, $3)`,
+                [req.user.id, JSON.stringify(config), req.tenantId]
+            );
+        } catch (auditErr) {
+            logger.warn('⚠️ recruitment form audit log ব্যর্থ:', auditErr.message);
+        }
+
+        res.json({ success: true, message: 'ফর্ম সেটিংস সংরক্ষিত হয়েছে।', data: { config } });
+    } catch (err) {
+        logger.error('saveFormConfig error:', err);
+        res.status(500).json({ success: false, message: 'সেটিংস সংরক্ষণে সমস্যা হয়েছে।' });
+    }
+};
+
+// ── DELETE /api/recruitment/form-config (Admin) ───────────────
+// কাস্টম সেটিংস মুছে ডিফল্টে ফেরা।
+exports.resetFormConfig = async (req, res) => {
+    try {
+        const config = await resetTenantConfig(query, req.tenantId);
+        res.json({ success: true, message: 'ডিফল্ট সেটিংসে ফেরানো হয়েছে।', data: { config } });
+    } catch (err) {
+        logger.error('resetFormConfig error:', err);
         res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };

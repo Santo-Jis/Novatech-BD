@@ -131,7 +131,7 @@ function maskPhone(phone) {
 }
 
 // ── Main Component ────────────────────────────────────────────
-export default function SRWhatsAppOTPVerify({ phone, name, onVerified, onBack }) {
+export default function SRWhatsAppOTPVerify({ phone, name, tenantSlug, onVerified, onBack }) {
   const [otp,       setOtp]       = useState('')
   const [sent,      setSent]      = useState(false)
   const [sending,   setSending]   = useState(false)
@@ -153,7 +153,7 @@ export default function SRWhatsAppOTPVerify({ phone, name, onVerified, onBack })
     setOtp('')
     setHasError(false)
     try {
-      await axios.post(`${API_BASE}/api/recruitment/verify-phone/send`, { phone, name: name || '' })
+      await axios.post(`${API_BASE}/api/recruitment/verify-phone/send`, { phone, name: name || '', tenant_slug: tenantSlug || '' })
       setSent(true)
       setTimerKey(k => k + 1)
       toast.success('OTP পাঠানো হয়েছে! WhatsApp চেক করুন 💬', { duration: 4000 })

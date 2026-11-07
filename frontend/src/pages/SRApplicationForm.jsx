@@ -10,6 +10,7 @@ import {
   FiStar, FiCalendar, FiHome
 } from 'react-icons/fi'
 import SRWhatsAppOTPVerify from '../components/SRWhatsAppOTPVerify'
+import { mergeFormConfig } from './recruitmentFormDefaults'
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/api$/, '')
 
@@ -90,7 +91,7 @@ const inputCls = `
 `
 
 // ── STEP 1: Personal ──────────────────────────────────────────
-function Step1({ register, errors, phoneVerified }) {
+function Step1({ register, errors, phoneVerified, requireOtp }) {
   return (
     <div className="space-y-4">
       <SectionTitle icon={FiUser} title="ব্যক্তিগত তথ্য" />
@@ -140,7 +141,7 @@ function Step1({ register, errors, phoneVerified }) {
         <Field
           label="WhatsApp মোবাইল নম্বর" required
           error={errors.phone?.message}
-          hint={phoneVerified ? null : 'আবেদন জমার আগে WhatsApp-এ OTP দিয়ে যাচাই করতে হবে'}
+          hint={(phoneVerified || !requireOtp) ? null : 'আবেদন জমার আগে WhatsApp-এ OTP দিয়ে যাচাই করতে হবে'}
         >
           <div className="relative">
             <input type="tel" inputMode="numeric"
@@ -183,7 +184,7 @@ function Step1({ register, errors, phoneVerified }) {
 }
 
 // ── STEP 2: Address ───────────────────────────────────────────
-function Step2({ register, errors }) {
+function Step2({ register, errors, addressNote }) {
   return (
     <div className="space-y-4">
       <SectionTitle icon={FiMapPin} title="ঠিকানা" />
@@ -209,9 +210,9 @@ function Step2({ register, errors }) {
             className={inputCls} placeholder="যেমন: বরিশাল সদর" />
         </Field>
       </div>
-      <InfoBox icon="📍" color="amber">
-        কর্মএলাকা: বরিশাল সদর ও আশেপাশের জেলায় কাজ করতে আগ্রহী প্রার্থীরা অগ্রাধিকার পাবেন।
-      </InfoBox>
+      {addressNote?.enabled && addressNote.text && (
+        <InfoBox icon="📍" color="amber">{addressNote.text}</InfoBox>
+      )}
     </div>
   )
 }
@@ -431,7 +432,7 @@ function Step5({ register, errors }) {
 }
 
 // ── STEP 6: Photo & Declaration ───────────────────────────────
-function Step6({ register, errors, photoPreview, setPhotoPreview }) {
+function Step6({ register, errors, photoPreview, setPhotoPreview, terms, declaration }) {
   const { onChange: rhfOnChange, ...photoRest } = register('photo', { required: 'ছবি আপলোড করা আবশ্যক' })
 
   const handlePhoto = (e) => {
@@ -485,30 +486,27 @@ function Step6({ register, errors, photoPreview, setPhotoPreview }) {
         </div>
       </div>
 
-      {/* Terms — FIXED: বেতন আলোচনা সাপেক্ষে, গ্রেস পিরিয়ড ৭ কর্মদিবস */}
-      <div className="rounded-2xl border border-gray-200 dark:border-slate-600 overflow-hidden">
-        <div className="bg-gray-50 dark:bg-slate-700/50 px-4 py-3 flex items-center gap-2 border-b border-gray-200 dark:border-slate-600">
-          <FiAward className="text-red-600" size={15} />
-          <p className="text-[12px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wide">চাকরির শর্তাবলী সারসংক্ষেপ</p>
+      {/* Terms — Admin-সম্পাদনযোগ্য (নিয়োগ → ফর্ম সেটিংস) */}
+      {terms?.enabled && terms.items?.length > 0 && (
+        <div className="rounded-2xl border border-gray-200 dark:border-slate-600 overflow-hidden">
+          <div className="bg-gray-50 dark:bg-slate-700/50 px-4 py-3 flex items-center gap-2 border-b border-gray-200 dark:border-slate-600">
+            <FiAward className="text-red-600" size={15} />
+            <p className="text-[12px] font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wide">{terms.title}</p>
+          </div>
+          <div className="p-4 space-y-2.5">
+            {terms.items.map((item, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <span className="text-base flex-shrink-0 mt-0.5">{item.icon}</span>
+                <p className="text-[13px] text-gray-600 dark:text-gray-400 leading-relaxed">{item.text}</p>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="p-4 space-y-2.5">
-          {[
-            { icon: '📅', text: 'প্রথম ৭ কর্মদিবস প্রশিক্ষণ পর্যায় — দৈনিক কমিশন ও TA/DA প্রযোজ্য' },
-            { icon: '💼', text: 'গ্রেস পিরিয়ড শেষে স্থায়ী নিয়োগ — বেতন আলোচনা সাপেক্ষে নির্ধারিত হবে' },
-            { icon: '📈', text: 'দৈনিক বিক্রয়ের উপর আকর্ষণীয় কমিশন সুবিধা' },
-            { icon: '🏆', text: 'পারফরম্যান্স অনুযায়ী পদোন্নতি ও বোনাসের সুযোগ' },
-          ].map((item, i) => (
-            <div key={i} className="flex items-start gap-3">
-              <span className="text-base flex-shrink-0 mt-0.5">{item.icon}</span>
-              <p className="text-[13px] text-gray-600 dark:text-gray-400 leading-relaxed">{item.text}</p>
-            </div>
-          ))}
-        </div>
-      </div>
+      )}
 
       {/* Declaration */}
       <div>
-        <p className="text-[13px] font-bold text-gray-700 dark:text-gray-300 mb-3">ঘোষণাপত্র</p>
+        <p className="text-[13px] font-bold text-gray-700 dark:text-gray-300 mb-3">{declaration?.title}</p>
         <label className={`
           flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all
           ${errors.declaration
@@ -520,10 +518,8 @@ function Step6({ register, errors, photoPreview, setPhotoPreview }) {
             {...register('declaration', { required: 'ঘোষণাপত্রে সম্মতি দিন' })}
             className="mt-0.5 w-4 h-4 rounded accent-red-600 flex-shrink-0"
           />
-          <p className="text-[12.5px] text-gray-600 dark:text-gray-400 leading-relaxed">
-            আমি ঘোষণা করছি যে এই ফর্মে প্রদত্ত সকল তথ্য সঠিক ও পূর্ণাঙ্গ। কোম্পানির সকল নিয়ম ও নীতিমালা
-            মেনে চলতে এবং প্রয়োজনে যেকোনো কর্মএলাকায় দায়িত্ব পালন করতে সম্মত। কোনো তথ্য মিথ্যা
-            প্রমাণিত হলে নিয়োগ তাৎক্ষণিকভাবে বাতিলযোগ্য।
+          <p className="text-[12.5px] text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-line">
+            {declaration?.text}
           </p>
         </label>
         {errors.declaration && (
@@ -563,7 +559,7 @@ function InfoBox({ icon, color = 'amber', children }) {
 }
 
 // ── SUCCESS SCREEN ────────────────────────────────────────────
-function SuccessScreen({ appId, phone }) {
+function SuccessScreen({ appId, phone, success }) {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center p-4">
       <div className="max-w-sm w-full text-center space-y-5">
@@ -576,9 +572,9 @@ function SuccessScreen({ appId, phone }) {
           </div>
         </div>
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-2">আবেদন সফলভাবে জমা হয়েছে!</h1>
-          <p className="text-[13px] text-gray-500 dark:text-gray-400 leading-relaxed">
-            আপনার আবেদন আমাদের নিয়োগ টিম পর্যালোচনা করবে। শীঘ্রই আপনার সাথে যোগাযোগ করা হবে।
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{success?.title}</h1>
+          <p className="text-[13px] text-gray-500 dark:text-gray-400 leading-relaxed whitespace-pre-line">
+            {success?.message}
           </p>
         </div>
         {appId && (
@@ -608,6 +604,9 @@ export default function SRApplicationForm() {
   const appliedKey = `sr_applied_${tenantSlug || 'default'}`
   const [companyName, setCompanyName] = useState(null)
   const [contactPhone, setContactPhone] = useState('')
+  // Admin-সম্পাদনযোগ্য লেখা/সেটিংস; cfgReady না হওয়া পর্যন্ত default-এর ঝলক এড়াতে লোডার
+  const [cfg, setCfg] = useState(() => mergeFormConfig(null))
+  const [cfgReady, setCfgReady] = useState(false)
   useEffect(() => {
     // slug না থাকলে DEFAULT কোম্পানি (_default)
     axios.get(`${API_BASE}/api/recruitment/tenant/${encodeURIComponent(tenantSlug || '_default')}`)
@@ -615,8 +614,10 @@ export default function SRApplicationForm() {
         const d = r.data?.data || {}
         setCompanyName(tenantSlug ? (d.company_name_bn || d.company_name || null) : null)
         setContactPhone(d.contact_phone || '')
+        setCfg(mergeFormConfig(d.form_config))
       })
       .catch(() => { if (tenantSlug) toast.error('কোম্পানি পাওয়া যায়নি। লিংকটি যাচাই করুন।') })
+      .finally(() => setCfgReady(true))
   }, [tenantSlug])
   const [step,         setStep]         = useState(1)
   const [loading,      setLoading]      = useState(false)
@@ -650,6 +651,8 @@ export default function SRApplicationForm() {
       toast.error('এই ডিভাইস থেকে আগেই আবেদন করা হয়েছে।')
       return
     }
+    // Admin OTP বন্ধ রাখলে সরাসরি জমা
+    if (!cfg.require_otp) { await doSubmit(data, ''); return }
     if (!phoneVerified || !verifyToken) {
       if (!data.phone) { toast.error('মোবাইল নম্বর দিন।'); setStep(1); return }
       setPendingSubmit(data)
@@ -697,7 +700,35 @@ export default function SRApplicationForm() {
     }
   }
 
-  if (submitted) return <SuccessScreen appId={appId} phone={contactPhone} />
+  const displayCompany = companyName || 'ZovoriX'
+
+  if (submitted) return <SuccessScreen appId={appId} phone={contactPhone} success={cfg.success} />
+
+  if (!cfgReady) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-900 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-red-600/20 border-t-red-600 rounded-full animate-spin" />
+      </div>
+    )
+  }
+
+  // ── আবেদন বন্ধ (Admin বন্ধ করেছেন) ──
+  if (!cfg.accepting) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center p-4">
+        <div className="max-w-sm w-full text-center space-y-4">
+          <div className="w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto">
+            <FiAlertCircle className="text-amber-500" size={38} />
+          </div>
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white">{displayCompany}</h1>
+          <p className="text-[13px] text-gray-500 dark:text-gray-400 leading-relaxed whitespace-pre-line">{cfg.closed_message}</p>
+          {contactPhone && (
+            <p className="text-[12px] text-gray-400">যোগাযোগ: <strong className="text-gray-600 dark:text-gray-300">{contactPhone}</strong></p>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   // ── OTP Screen ──
   if (showOTP) {
@@ -715,7 +746,7 @@ export default function SRApplicationForm() {
               <span className="text-white font-bold text-sm">NT</span>
             </div>
             <div>
-              <h1 className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight">ZovoriX</h1>
+              <h1 className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight">{displayCompany}</h1>
               <p className="text-[11px] text-gray-500">WhatsApp নম্বর যাচাই</p>
             </div>
             <div className="ml-auto">
@@ -730,6 +761,7 @@ export default function SRApplicationForm() {
             <SRWhatsAppOTPVerify
               phone={pendingSubmit?.phone || getValues('phone')}
               name={getValues('name_bn') || getValues('name_en') || ''}
+              tenantSlug={tenantSlug}
               onVerified={handleOTPVerified}
               onBack={() => { setShowOTP(false); setPendingSubmit(null) }}
             />
@@ -757,37 +789,45 @@ export default function SRApplicationForm() {
             <span className="text-white font-bold text-sm">NT</span>
           </div>
           <div className="flex-1 min-w-0">
-            <h1 className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight truncate">{companyName || 'ZovoriX'}</h1>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">SR নিয়োগ আবেদন ফর্ম</p>
+            <h1 className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight truncate">{displayCompany}</h1>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">{cfg.header.subtitle}</p>
           </div>
-          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full text-[11px] font-bold flex-shrink-0">
-            <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-            নিয়োগ চলছে
-          </span>
+          {cfg.header.status_badge && (
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full text-[11px] font-bold flex-shrink-0">
+              <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+              {cfg.header.status_badge}
+            </span>
+          )}
         </div>
       </div>
 
       <div className="max-w-2xl mx-auto px-4 py-5 pb-10">
 
-        {/* Job Info Banner */}
-        <div className="mb-5 rounded-2xl bg-gradient-to-r from-red-600 to-red-700 p-4 text-white shadow-lg shadow-red-600/20">
-          <p className="text-[11px] text-red-200 font-semibold uppercase tracking-wider mb-2">পদের বিবরণ</p>
-          <p className="text-[17px] font-bold mb-3">Sales Representative (SR)</p>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            <div className="bg-white/10 rounded-xl p-2.5">
-              <p className="text-red-200 text-[10px] mb-0.5">কোম্পানি</p>
-              <p className="font-bold text-[13px]">ZovoriX</p>
-            </div>
-            <div className="bg-white/10 rounded-xl p-2.5">
-              <p className="text-red-200 text-[10px] mb-0.5">কর্মএলাকা</p>
-              <p className="font-bold text-[13px]">বরিশাল</p>
-            </div>
-            <div className="bg-white/10 rounded-xl p-2.5 col-span-2 sm:col-span-1">
-              <p className="text-red-200 text-[10px] mb-0.5">বেতন</p>
-              <p className="font-bold text-[13px]">আলোচনা সাপেক্ষে</p>
+        {/* Job Info Banner — Admin-সম্পাদনযোগ্য */}
+        {cfg.job.show_banner && (
+          <div className="mb-5 rounded-2xl bg-gradient-to-r from-red-600 to-red-700 p-4 text-white shadow-lg shadow-red-600/20">
+            <p className="text-[11px] text-red-200 font-semibold uppercase tracking-wider mb-2">পদের বিবরণ</p>
+            <p className="text-[17px] font-bold mb-3">{cfg.job.title}</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="bg-white/10 rounded-xl p-2.5">
+                <p className="text-red-200 text-[10px] mb-0.5">কোম্পানি</p>
+                <p className="font-bold text-[13px]">{cfg.job.company || displayCompany}</p>
+              </div>
+              {cfg.job.work_area && (
+                <div className="bg-white/10 rounded-xl p-2.5">
+                  <p className="text-red-200 text-[10px] mb-0.5">কর্মএলাকা</p>
+                  <p className="font-bold text-[13px]">{cfg.job.work_area}</p>
+                </div>
+              )}
+              {cfg.job.salary && (
+                <div className="bg-white/10 rounded-xl p-2.5 col-span-2 sm:col-span-1">
+                  <p className="text-red-200 text-[10px] mb-0.5">বেতন</p>
+                  <p className="font-bold text-[13px]">{cfg.job.salary}</p>
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        )}
 
         {/* Form Card */}
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 p-5 sm:p-6">
@@ -795,12 +835,12 @@ export default function SRApplicationForm() {
 
           <form onSubmit={handleSubmit(onSubmit)}>
             <div className="min-h-[380px] animate-fade-in" key={step}>
-              {step === 1 && <Step1 register={register} errors={errors} phoneVerified={phoneVerified} />}
-              {step === 2 && <Step2 register={register} errors={errors} />}
+              {step === 1 && <Step1 register={register} errors={errors} phoneVerified={phoneVerified} requireOtp={cfg.require_otp} />}
+              {step === 2 && <Step2 register={register} errors={errors} addressNote={cfg.address_note} />}
               {step === 3 && <Step3 register={register} errors={errors} />}
               {step === 4 && <Step4 register={register} errors={errors} />}
               {step === 5 && <Step5 register={register} errors={errors} />}
-              {step === 6 && <Step6 register={register} errors={errors} photoPreview={photoPreview} setPhotoPreview={setPhotoPreview} />}
+              {step === 6 && <Step6 register={register} errors={errors} photoPreview={photoPreview} setPhotoPreview={setPhotoPreview} terms={cfg.terms} declaration={cfg.declaration} />}
             </div>
 
             {/* Navigation */}
@@ -841,9 +881,9 @@ export default function SRApplicationForm() {
                 >
                   {loading
                     ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    : phoneVerified ? <FiCheck size={15} strokeWidth={3} /> : <FiShield size={15} />
+                    : (phoneVerified || !cfg.require_otp) ? <FiCheck size={15} strokeWidth={3} /> : <FiShield size={15} />
                   }
-                  {loading ? 'জমা হচ্ছে...' : phoneVerified ? 'আবেদন জমা দিন' : 'যাচাই ও জমা দিন'}
+                  {loading ? 'জমা হচ্ছে...' : (phoneVerified || !cfg.require_otp) ? 'আবেদন জমা দিন' : 'যাচাই ও জমা দিন'}
                 </button>
               )}
             </div>
