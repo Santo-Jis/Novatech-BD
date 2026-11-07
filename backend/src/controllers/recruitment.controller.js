@@ -2,7 +2,7 @@ const logger = require('../config/logger');
 const { getDB } = require('../config/firebase');
 const { uploadToCloudinary } = require('../services/employee.service');
 const { generateOTP } = require('../config/encryption');
-const { sendSRApplicationOTPEmail, sendSRApplicationConfirmEmail, sendSRApplicationAdminNotifyEmail } = require('../services/email.service');
+const { sendSRApplicationConfirmEmail, sendSRApplicationAdminNotifyEmail } = require('../services/email.service');
 const { query } = require('../config/db');
 const { getTenantBySlug, getTenantById } = require('../middlewares/tenantResolver');
 
@@ -55,95 +55,133 @@ const getTenantContact = async (tenantId) => {
     return out;
 };
 
-// ── In-Memory OTP Store (SR Recruitment — public, no DB needed) ──
-// Key: email_lower → { otp, expiresAt, attempts }
-const _srOtpStore = new Map();
+// ── WhatsApp OTP (SR Recruitment — public) ───────────────────
+// আবেদনকারীর মোবাইল নম্বর WhatsApp OTP দিয়ে যাচাই হয়। ইমেইল এখন ঐচ্ছিক।
+// OTP in-memory রাখা হয় (১০ মিনিট)। যাচাই সফল হলে একটা সাইন করা
+// verify_token ফেরত যায় — /apply তে এই টোকেন ছাড়া আবেদন জমা হয় না,
+// ফলে ফ্রন্টএন্ড বাইপাস করে সরাসরি API কল করলেও যাচাই এড়ানো যাবে না।
+const jwt = require('jsonwebtoken');
+const {
+    sendPortalWhatsAppMessage,
+    formatPhoneForWhatsApp,
+    isWhatsAppLikelyDown,
+} = require('../services/portalWhatsapp.service');
 
-// ── POST /api/recruitment/verify-email/send (Public) ──────────
+// Key: 8801XXXXXXXXX → { otp, expiresAt, sentAt, attempts }
+const _srOtpStore = new Map();
+const BD_PHONE_RE = /^01[3-9]\d{8}$/;
+const VERIFY_TOKEN_TTL = '30m';
+
+// মেমরি লিক রোধ — মেয়াদ শেষ OTP পরিষ্কার
+setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of _srOtpStore) if (now > v.expiresAt) _srOtpStore.delete(k);
+}, 5 * 60 * 1000).unref();
+
+const normalizeBDPhone = (phone) => {
+    const raw = String(phone || '').replace(/\D/g, '');
+    const local = raw.startsWith('880') ? '0' + raw.slice(3) : raw;
+    return BD_PHONE_RE.test(local) ? local : null;
+};
+
+const signPhoneToken = (localPhone) => {
+    if (!process.env.JWT_PORTAL_SECRET) throw new Error('JWT_PORTAL_SECRET সেট নেই');
+    return jwt.sign({ phone: localPhone, purpose: 'sr_apply' },
+        process.env.JWT_PORTAL_SECRET, { expiresIn: VERIFY_TOKEN_TTL, algorithm: 'HS256' });
+};
+
+const phoneTokenValid = (token, localPhone) => {
+    try {
+        const p = jwt.verify(token, process.env.JWT_PORTAL_SECRET, { algorithms: ['HS256'] });
+        return p.purpose === 'sr_apply' && p.phone === localPhone;
+    } catch { return false; }
+};
+
+// ── POST /api/recruitment/verify-phone/send (Public) ──────────
 exports.sendSROTP = async (req, res) => {
     try {
-        const { email, name } = req.body;
-        if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            return res.status(400).json({ success: false, message: 'সঠিক ইমেইল ঠিকানা দিন।' });
+        const phone = normalizeBDPhone(req.body.phone);
+        if (!phone) {
+            return res.status(400).json({ success: false, message: 'সঠিক বাংলাদেশি মোবাইল নম্বর দিন।' });
         }
+        const key = formatPhoneForWhatsApp(phone);
 
-        const emailLower    = email.toLowerCase().trim();
-        const applicantName = (name || '').trim() || 'আবেদনকারী';
-
-        // Rate limit: একই email-এ ২ মিনিটের মধ্যে পুনরায় অনুরোধ রোধ
-        const existing = _srOtpStore.get(emailLower);
+        const existing = _srOtpStore.get(key);
         if (existing && (Date.now() - existing.sentAt) < 60_000) {
             const wait = Math.ceil((60_000 - (Date.now() - existing.sentAt)) / 1000);
-            return res.status(429).json({
-                success: false,
-                message: `অনুগ্রহ করে ${wait} সেকেন্ড অপেক্ষা করুন।`,
-            });
+            return res.status(429).json({ success: false, message: `অনুগ্রহ করে ${wait} সেকেন্ড অপেক্ষা করুন।` });
         }
 
-        const otp       = generateOTP(6);
-        const expiresAt = Date.now() + 10 * 60 * 1000; // 10 মিনিট
-
-        _srOtpStore.set(emailLower, { otp, expiresAt, sentAt: Date.now(), attempts: 0 });
-
-        const result = await sendSRApplicationOTPEmail(email, otp, applicantName, 10);
-
-        if (!result.success && !result.dev) {
-            _srOtpStore.delete(emailLower);
-            return res.status(500).json({ success: false, message: 'ইমেইল পাঠানো যায়নি। পরে চেষ্টা করুন।' });
+        if (isWhatsAppLikelyDown()) {
+            return res.status(503).json({ success: false, message: 'WhatsApp সেবা সাময়িক বন্ধ। কিছুক্ষণ পরে চেষ্টা করুন।' });
         }
 
-        return res.status(200).json({
-            success: true,
-            message: `OTP পাঠানো হয়েছে ${email}-এ।`,
-        });
+        const otp = generateOTP(6);
+        _srOtpStore.set(key, { otp, expiresAt: Date.now() + 10 * 60 * 1000, sentAt: Date.now(), attempts: 0 });
 
+        const name = (req.body.name || '').toString().trim() || 'আবেদনকারী';
+        const message =
+            `🔐 *ZovoriX SR নিয়োগ আবেদন*\n` +
+            `━━━━━━━━━━━━━━━━\n` +
+            `প্রিয় ${name}, আপনার মোবাইল নম্বর যাচাইয়ের কোড:\n\n` +
+            `*${otp}*\n\n` +
+            `⏱️ এই কোডটি ১০ মিনিট পর্যন্ত কার্যকর।\n` +
+            `কারো সাথে এই কোডটি শেয়ার করবেন না।\n` +
+            `━━━━━━━━━━━━━━━━`;
+
+        const result = await sendPortalWhatsAppMessage(phone, message, 'sr_apply_otp');
+        if (!result.success) {
+            _srOtpStore.delete(key);
+            logger.warn(`⚠️ SR WhatsApp OTP ব্যর্থ (${key}): ${result.reason}`);
+            const msg = result.reason === 'not_configured'
+                ? 'WhatsApp সেবা এখনো চালু করা হয়নি। অ্যাডমিনের সাথে যোগাযোগ করুন।'
+                : 'এই নম্বরে WhatsApp OTP পাঠানো যায়নি। নম্বরটি WhatsApp-এ চালু আছে কিনা দেখুন।';
+            return res.status(502).json({ success: false, message: msg });
+        }
+
+        return res.status(200).json({ success: true, message: 'WhatsApp-এ OTP পাঠানো হয়েছে।' });
     } catch (err) {
         logger.error('❌ sendSROTP:', err.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
     }
 };
 
-// ── POST /api/recruitment/verify-email/confirm (Public) ───────
+// ── POST /api/recruitment/verify-phone/confirm (Public) ───────
 exports.confirmSROTP = async (req, res) => {
     try {
-        const { email, otp } = req.body;
-        if (!email || !otp) {
-            return res.status(400).json({ success: false, message: 'ইমেইল ও OTP দিন।' });
+        const phone = normalizeBDPhone(req.body.phone);
+        const otp   = (req.body.otp || '').toString().trim();
+        if (!phone || !otp) {
+            return res.status(400).json({ success: false, message: 'মোবাইল নম্বর ও OTP দিন।' });
         }
-
-        const emailLower = email.toLowerCase().trim();
-        const record     = _srOtpStore.get(emailLower);
+        const key    = formatPhoneForWhatsApp(phone);
+        const record = _srOtpStore.get(key);
 
         if (!record) {
             return res.status(400).json({ success: false, message: 'OTP পাঠানো হয়নি। প্রথমে OTP পাঠান।' });
         }
-
-        // Max attempts (brute-force সুরক্ষা)
         if (record.attempts >= 5) {
-            _srOtpStore.delete(emailLower);
+            _srOtpStore.delete(key);
             return res.status(400).json({ success: false, message: 'বেশি ভুল চেষ্টা। নতুন OTP নিন।' });
         }
-
         if (Date.now() > record.expiresAt) {
-            _srOtpStore.delete(emailLower);
+            _srOtpStore.delete(key);
             return res.status(400).json({ success: false, message: 'OTP মেয়াদ শেষ হয়েছে। নতুন OTP নিন।' });
         }
-
-        if (record.otp !== otp.trim()) {
+        if (record.otp !== otp) {
             record.attempts += 1;
-            _srOtpStore.set(emailLower, record);
-            const left = 5 - record.attempts;
             return res.status(400).json({
                 success: false,
-                message: `OTP ভুল হয়েছে। আরও ${left}টি সুযোগ বাকি।`,
+                message: `OTP ভুল হয়েছে। আরও ${5 - record.attempts}টি সুযোগ বাকি।`,
             });
         }
 
-        // যাচাই সফল — মুছে ফেলো
-        _srOtpStore.delete(emailLower);
-
-        return res.status(200).json({ success: true, message: 'ইমেইল যাচাই সফল ✅' });
-
+        _srOtpStore.delete(key);
+        return res.status(200).json({
+            success: true,
+            message: 'মোবাইল নম্বর যাচাই সফল ✅',
+            data: { verify_token: signPhoneToken(phone) },
+        });
     } catch (err) {
         logger.error('❌ confirmSROTP:', err.message);
         return res.status(500).json({ success: false, message: 'সার্ভারে সমস্যা হয়েছে।' });
@@ -164,6 +202,15 @@ exports.submitApplication = async (req, res) => {
     try {
         const db = getDB();
         const d  = req.body;
+
+        // ✅ WhatsApp যাচাইয়ের প্রমাণ বাধ্যতামূলক (সার্ভার-সাইড)
+        const localPhone = normalizeBDPhone(d.phone);
+        if (!localPhone) {
+            return res.status(400).json({ success: false, message: 'সঠিক বাংলাদেশি মোবাইল নম্বর দিন।' });
+        }
+        if (!d.verify_token || !phoneTokenValid(d.verify_token, localPhone)) {
+            return res.status(401).json({ success: false, message: 'মোবাইল নম্বর WhatsApp OTP দিয়ে যাচাই করুন।' });
+        }
 
         // ✅ Tenant resolve — ফর্ম লিংক /apply/sr/:tenantSlug থেকে slug আসে।
         // slug না দিলে DEFAULT tenant (আগের আচরণ বজায় রাখতে)।

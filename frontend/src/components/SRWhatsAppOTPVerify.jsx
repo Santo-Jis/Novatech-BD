@@ -1,14 +1,14 @@
-// frontend/src/components/SREmailOTPVerify.jsx
+// frontend/src/components/SRWhatsAppOTPVerify.jsx
 // ─────────────────────────────────────────────────────────────
-// SR নিয়োগ ফর্মের জন্য Email OTP যাচাই Component
-// Public route: /api/recruitment/verify-email/send & confirm
+// SR নিয়োগ ফর্মের জন্য WhatsApp OTP যাচাই Component
+// Public route: /api/recruitment/verify-phone/send & confirm
 // ─────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
 import {
-  FiMail, FiShield, FiCheck, FiRefreshCw,
+  FiMessageCircle, FiShield, FiCheck, FiRefreshCw,
   FiArrowLeft, FiLock, FiAlertTriangle,
 } from 'react-icons/fi'
 
@@ -123,16 +123,15 @@ function CountdownTimer({ seconds, onEnd }) {
   )
 }
 
-// ── Email Masker: abc***@gmail.com ────────────────────────────
-function maskEmail(email) {
-  const [user, domain] = email.split('@')
-  if (!domain) return email
-  const visible = user.slice(0, Math.min(3, user.length))
-  return `${visible}${'*'.repeat(Math.max(2, user.length - 3))}@${domain}`
+// ── Phone Masker: 017****5678 ─────────────────────────────────
+function maskPhone(phone) {
+  const p = String(phone || '')
+  if (p.length < 7) return p
+  return `${p.slice(0, 3)}****${p.slice(-4)}`
 }
 
 // ── Main Component ────────────────────────────────────────────
-export default function SREmailOTPVerify({ email, name, onVerified, onBack }) {
+export default function SRWhatsAppOTPVerify({ phone, name, onVerified, onBack }) {
   const [otp,       setOtp]       = useState('')
   const [sent,      setSent]      = useState(false)
   const [sending,   setSending]   = useState(false)
@@ -148,16 +147,16 @@ export default function SREmailOTPVerify({ email, name, onVerified, onBack }) {
   useEffect(() => { sendOTP() }, [])
 
   const sendOTP = async () => {
-    if (!email) return
+    if (!phone) return
     setSending(true)
     setCanResend(false)
     setOtp('')
     setHasError(false)
     try {
-      await axios.post(`${API_BASE}/api/recruitment/verify-email/send`, { email, name: name || '' })
+      await axios.post(`${API_BASE}/api/recruitment/verify-phone/send`, { phone, name: name || '' })
       setSent(true)
       setTimerKey(k => k + 1)
-      toast.success('OTP পাঠানো হয়েছে! ইনবক্স চেক করুন 📧', { duration: 4000 })
+      toast.success('OTP পাঠানো হয়েছে! WhatsApp চেক করুন 💬', { duration: 4000 })
     } catch (err) {
       const msg = err.response?.data?.message || 'OTP পাঠানো যায়নি'
       toast.error(msg)
@@ -178,10 +177,11 @@ export default function SREmailOTPVerify({ email, name, onVerified, onBack }) {
     setVerifying(true)
     setHasError(false)
     try {
-      await axios.post(`${API_BASE}/api/recruitment/verify-email/confirm`, { email, otp: clean })
+      const res = await axios.post(`${API_BASE}/api/recruitment/verify-phone/confirm`, { phone, otp: clean })
+      const token = res.data?.data?.verify_token
       setVerified(true)
-      toast.success('ইমেইল যাচাই সম্পন্ন! ✅', { duration: 3000 })
-      setTimeout(() => onVerified(), 1000)
+      toast.success('মোবাইল নম্বর যাচাই সম্পন্ন! ✅', { duration: 3000 })
+      setTimeout(() => onVerified(token), 1000)
     } catch (err) {
       const msg = err.response?.data?.message || 'OTP ভুল হয়েছে'
       toast.error(msg)
@@ -207,7 +207,7 @@ export default function SREmailOTPVerify({ email, name, onVerified, onBack }) {
           </div>
         </div>
         <div className="text-center">
-          <p className="text-lg font-bold text-gray-800">ইমেইল যাচাই সম্পন্ন!</p>
+          <p className="text-lg font-bold text-gray-800">মোবাইল নম্বর যাচাই সম্পন্ন!</p>
           <p className="text-sm text-gray-500 mt-1">আবেদন জমা দেওয়া হচ্ছে...</p>
         </div>
         <div className="flex gap-1.5 mt-2">
@@ -220,7 +220,7 @@ export default function SREmailOTPVerify({ email, name, onVerified, onBack }) {
     )
   }
 
-  const maskedEmail = maskEmail(email)
+  const maskedPhone = maskPhone(phone)
   const isLoading   = sending || verifying
 
   return (
@@ -231,7 +231,7 @@ export default function SREmailOTPVerify({ email, name, onVerified, onBack }) {
         {/* Animated Icon */}
         <div className="relative inline-flex mb-4">
           <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-red-500 to-red-700 flex items-center justify-center shadow-lg shadow-red-500/30">
-            <FiMail className="text-2xl text-white" />
+            <FiMessageCircle className="text-2xl text-white" />
           </div>
           <div className="absolute -top-1 -right-1 w-6 h-6 bg-amber-400 rounded-full flex items-center justify-center shadow animate-pulse">
             <FiLock className="text-white text-xs" />
@@ -239,17 +239,17 @@ export default function SREmailOTPVerify({ email, name, onVerified, onBack }) {
         </div>
 
         <h2 className="text-lg font-bold text-gray-800 dark:text-white">
-          ইমেইল যাচাই করুন
+          WhatsApp নম্বর যাচাই করুন
         </h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
-          নিচের ইমেইলে একটি <span className="font-semibold text-red-600">৬ সংখ্যার OTP</span> কোড পাঠানো হয়েছে
+          নিচের নম্বরের WhatsApp-এ একটি <span className="font-semibold text-red-600">৬ সংখ্যার OTP</span> কোড পাঠানো হয়েছে
         </p>
 
-        {/* Email Badge */}
+        {/* Phone Badge */}
         <div className="mt-3 inline-flex items-center gap-2 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-800/40 rounded-xl px-4 py-2.5">
-          <FiMail className="text-red-500 flex-shrink-0" size={14} />
+          <FiMessageCircle className="text-red-500 flex-shrink-0" size={14} />
           <span className="text-red-700 dark:text-red-300 font-semibold text-sm tracking-wide">
-            {maskedEmail}
+            {maskedPhone}
           </span>
         </div>
       </div>
@@ -298,7 +298,7 @@ export default function SREmailOTPVerify({ email, name, onVerified, onBack }) {
             ) : (
               <>
                 <FiShield size={16} />
-                ইমেইল যাচাই করুন
+                নম্বর যাচাই করুন
               </>
             )}
           </button>
@@ -329,9 +329,9 @@ export default function SREmailOTPVerify({ email, name, onVerified, onBack }) {
             <p className="text-xs font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
               💡 কোড পাচ্ছেন না?
             </p>
-            <p className="text-xs text-blue-600 dark:text-blue-400">• Spam বা Promotions ফোল্ডার চেক করুন</p>
+            <p className="text-xs text-blue-600 dark:text-blue-400">• নম্বরটিতে WhatsApp চালু আছে কিনা দেখুন</p>
             <p className="text-xs text-blue-600 dark:text-blue-400">• OTP ১০ মিনিট পর্যন্ত কার্যকর থাকবে</p>
-            <p className="text-xs text-blue-600 dark:text-blue-400">• সঠিক ইমেইল দিয়েছেন কিনা নিশ্চিত করুন</p>
+            <p className="text-xs text-blue-600 dark:text-blue-400">• সঠিক নম্বর দিয়েছেন কিনা নিশ্চিত করুন</p>
           </div>
 
           {/* ── Back Button ── */}
@@ -343,7 +343,7 @@ export default function SREmailOTPVerify({ email, name, onVerified, onBack }) {
                 justify-center gap-2 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
             >
               <FiArrowLeft size={14} />
-              ইমেইল পরিবর্তন করুন
+              নম্বর পরিবর্তন করুন
             </button>
           )}
         </>

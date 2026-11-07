@@ -9,7 +9,7 @@ import {
   FiChevronLeft, FiAlertCircle, FiShield, FiAward,
   FiStar, FiCalendar, FiHome
 } from 'react-icons/fi'
-import SREmailOTPVerify from '../components/SREmailOTPVerify'
+import SRWhatsAppOTPVerify from '../components/SRWhatsAppOTPVerify'
 
 const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:5000').replace(/\/api$/, '')
 
@@ -90,7 +90,7 @@ const inputCls = `
 `
 
 // ── STEP 1: Personal ──────────────────────────────────────────
-function Step1({ register, errors, emailVerified }) {
+function Step1({ register, errors, phoneVerified }) {
   return (
     <div className="space-y-4">
       <SectionTitle icon={FiUser} title="ব্যক্তিগত তথ্য" />
@@ -137,40 +137,45 @@ function Step1({ register, errors, emailVerified }) {
             minLength: { value: 10, message: 'সঠিক NID নম্বর দিন' }
           })} className={inputCls} placeholder="জাতীয় পরিচয়পত্র নম্বর" />
         </Field>
-        <Field label="মোবাইল নম্বর" required error={errors.phone?.message}>
-          <input {...register('phone', {
-            required: 'মোবাইল নম্বর দিন',
-            pattern: { value: /^01[3-9]\d{8}$/, message: 'সঠিক বাংলাদেশি মোবাইল নম্বর দিন' }
-          })} className={inputCls} placeholder="01XXXXXXXXX" />
-        </Field>
-
-        {/* Email with OTP badge */}
         <Field
-          label="ইমেইল ঠিকানা" required
-          error={errors.email?.message}
-          hint={emailVerified ? null : 'আবেদন জমার আগে OTP দিয়ে যাচাই করতে হবে'}
+          label="WhatsApp মোবাইল নম্বর" required
+          error={errors.phone?.message}
+          hint={phoneVerified ? null : 'আবেদন জমার আগে WhatsApp-এ OTP দিয়ে যাচাই করতে হবে'}
         >
           <div className="relative">
-            <input type="email"
-              {...register('email', {
-                required: 'ইমেইল ঠিকানা দিন',
-                pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'সঠিক ইমেইল দিন' },
+            <input type="tel" inputMode="numeric"
+              {...register('phone', {
+                required: 'মোবাইল নম্বর দিন',
+                pattern: { value: /^01[3-9]\d{8}$/, message: 'সঠিক বাংলাদেশি মোবাইল নম্বর দিন' }
               })}
-              className={inputCls + (emailVerified ? ' pr-10 border-emerald-400 bg-emerald-50/50' : '')}
-              placeholder="example@gmail.com"
-              readOnly={emailVerified}
-            />
-            {emailVerified && (
+              className={inputCls + (phoneVerified ? ' pr-10 border-emerald-400 bg-emerald-50/50' : '')}
+              placeholder="01XXXXXXXXX"
+              readOnly={phoneVerified} />
+            {phoneVerified && (
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-emerald-600">
                 <FiCheck size={16} strokeWidth={3} />
               </span>
             )}
           </div>
-          {emailVerified && (
+          {phoneVerified && (
             <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-semibold">
-              <FiShield size={11} /> ইমেইল যাচাই সম্পন্ন
+              <FiShield size={11} /> WhatsApp নম্বর যাচাই সম্পন্ন
             </div>
           )}
+        </Field>
+
+        {/* Email — ঐচ্ছিক (যাচাই লাগে না) */}
+        <Field
+          label="ইমেইল ঠিকানা (ঐচ্ছিক)"
+          error={errors.email?.message}
+          hint="দিলে আবেদনের নিশ্চিতকরণ ইমেইলে পাবেন"
+        >
+          <input type="email"
+            {...register('email', {
+              pattern: { value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/, message: 'সঠিক ইমেইল দিন' },
+            })}
+            className={inputCls}
+            placeholder="example@gmail.com" />
         </Field>
       </div>
     </div>
@@ -619,7 +624,8 @@ export default function SRApplicationForm() {
   const [appId,        setAppId]        = useState(null)
   const [photoPreview, setPhotoPreview] = useState(null)
   const [showOTP,      setShowOTP]      = useState(false)
-  const [emailVerified,setEmailVerified]= useState(false)
+  const [phoneVerified,setPhoneVerified]= useState(false)
+  const [verifyToken,  setVerifyToken]  = useState('')
   const [pendingSubmit,setPendingSubmit]= useState(null)
 
   const { register, handleSubmit, trigger, getValues, formState: { errors } } = useForm({ mode: 'onBlur' })
@@ -644,22 +650,23 @@ export default function SRApplicationForm() {
       toast.error('এই ডিভাইস থেকে আগেই আবেদন করা হয়েছে।')
       return
     }
-    if (!emailVerified) {
-      if (!data.email) { toast.error('ইমেইল ঠিকানা দিন।'); setStep(1); return }
+    if (!phoneVerified || !verifyToken) {
+      if (!data.phone) { toast.error('মোবাইল নম্বর দিন।'); setStep(1); return }
       setPendingSubmit(data)
       setShowOTP(true)
       return
     }
-    await doSubmit(data)
+    await doSubmit(data, verifyToken)
   }
 
-  const handleOTPVerified = async () => {
-    setEmailVerified(true)
+  const handleOTPVerified = async (token) => {
+    setPhoneVerified(true)
+    setVerifyToken(token)
     setShowOTP(false)
-    if (pendingSubmit) await doSubmit(pendingSubmit)
+    if (pendingSubmit) await doSubmit(pendingSubmit, token)
   }
 
-  const doSubmit = async (data) => {
+  const doSubmit = async (data, token = verifyToken) => {
     setLoading(true)
     try {
       const deviceId = btoa([
@@ -674,6 +681,7 @@ export default function SRApplicationForm() {
         else fd.append(k, v ?? '')
       })
       fd.append('device_id', deviceId)
+      fd.append('verify_token', token || '')
       if (tenantSlug) fd.append('tenant_slug', tenantSlug)
 
       const res = await axios.post(`${API_BASE}/api/recruitment/apply`, fd, {
@@ -708,7 +716,7 @@ export default function SRApplicationForm() {
             </div>
             <div>
               <h1 className="text-[13px] font-bold text-gray-900 dark:text-white leading-tight">ZovoriX</h1>
-              <p className="text-[11px] text-gray-500">ইমেইল যাচাই</p>
+              <p className="text-[11px] text-gray-500">WhatsApp নম্বর যাচাই</p>
             </div>
             <div className="ml-auto">
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-full text-[11px] font-bold">
@@ -719,8 +727,8 @@ export default function SRApplicationForm() {
         </div>
         <div className="w-full max-w-md mt-20">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 p-6">
-            <SREmailOTPVerify
-              email={pendingSubmit?.email || getValues('email')}
+            <SRWhatsAppOTPVerify
+              phone={pendingSubmit?.phone || getValues('phone')}
               name={getValues('name_bn') || getValues('name_en') || ''}
               onVerified={handleOTPVerified}
               onBack={() => { setShowOTP(false); setPendingSubmit(null) }}
@@ -787,7 +795,7 @@ export default function SRApplicationForm() {
 
           <form onSubmit={handleSubmit(onSubmit)}>
             <div className="min-h-[380px] animate-fade-in" key={step}>
-              {step === 1 && <Step1 register={register} errors={errors} emailVerified={emailVerified} />}
+              {step === 1 && <Step1 register={register} errors={errors} phoneVerified={phoneVerified} />}
               {step === 2 && <Step2 register={register} errors={errors} />}
               {step === 3 && <Step3 register={register} errors={errors} />}
               {step === 4 && <Step4 register={register} errors={errors} />}
@@ -833,9 +841,9 @@ export default function SRApplicationForm() {
                 >
                   {loading
                     ? <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    : emailVerified ? <FiCheck size={15} strokeWidth={3} /> : <FiShield size={15} />
+                    : phoneVerified ? <FiCheck size={15} strokeWidth={3} /> : <FiShield size={15} />
                   }
-                  {loading ? 'জমা হচ্ছে...' : emailVerified ? 'আবেদন জমা দিন' : 'যাচাই ও জমা দিন'}
+                  {loading ? 'জমা হচ্ছে...' : phoneVerified ? 'আবেদন জমা দিন' : 'যাচাই ও জমা দিন'}
                 </button>
               )}
             </div>

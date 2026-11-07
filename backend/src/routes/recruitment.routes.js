@@ -27,9 +27,9 @@ const upload = multer({
 }).single('photo');
 
 // ── Public (লগিন ছাড়া) ───────────────────────────────────────
-// Email OTP যাচাই (SR আবেদনের আগে) — auth ছাড়া কারণ এটি public form
-router.post('/verify-email/send',    sendSROTP);
-router.post('/verify-email/confirm', confirmSROTP);
+// WhatsApp OTP যাচাই (SR আবেদনের আগে) — auth ছাড়া কারণ এটি public form
+router.post('/verify-phone/send',    sendSROTP);
+router.post('/verify-phone/confirm', confirmSROTP);
 router.post('/apply', upload, submitApplication);
 router.get('/tenant/:slug', getPublicTenantInfo);
 
