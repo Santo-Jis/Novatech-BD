@@ -1,6 +1,15 @@
 <!DOCTYPE html>
 <html lang="bn">
   <head>
+    <script>
+      // '#' ছাড়া লিংক (যেমন /apply/sr/slug) খুললে HashRouter-এর ফরম্যাটে নিয়ে যায়
+      (function () {
+        var p = location.pathname;
+        if (!location.hash && /^\/apply\/sr(\/|$)/.test(p)) {
+          location.replace('/#' + p + location.search);
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
     <meta name="theme-color" content="#0F1B2E" />

@@ -340,12 +340,13 @@ export default function SRRecruitmentDashboard() {
   }, [])
 
   // APK (Capacitor) এ origin হয় https://localhost — তাই পাবলিক ডোমেইন ব্যবহার করা হচ্ছে
-  const PUBLIC_SITE = 'https://zovorix.com'
+  const PUBLIC_SITE = 'https://zovorix.vercel.app'
   const getFullApplyLink = () => {
     const origin = /^https?:\/\//.test(window.location.origin) &&
       !/localhost|127\.0\.0\.1/.test(window.location.origin)
       ? window.location.origin : PUBLIC_SITE
-    return `${origin}${applyHref}`
+    // অ্যাপ HashRouter ব্যবহার করে — তাই লিংকে /#/ থাকতে হবে
+    return `${origin}/#${applyHref}`
   }
   const shareApplyLink = async () => {
     const url = getFullApplyLink()
