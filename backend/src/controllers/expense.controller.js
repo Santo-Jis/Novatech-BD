@@ -78,6 +78,20 @@ const submitExpense = async (req, res) => {
         const mCost = parseFloat(misc_cost);
         const total = tCost + fCost + mCost;
 
+        // ── ন্যূনতম যাচাই (সার্ভার-সাইড) ────────────────────────────────
+        // আগে শুধু ফর্মের বাটন বন্ধ থাকত; সরাসরি API কল/পুরোনো অ্যাপে ০-খরচ ও
+        // ধরনহীন রিপোর্ট ঢুকে যেত (ম্যানেজার "যানবাহন —, ৳০" দেখতেন)।
+        const VALID_TRANSPORT = ['rickshaw', 'bus', 'cng', 'bike', 'own_vehicle', 'other'];
+        if (![tCost, fCost, mCost].every(Number.isFinite) || tCost < 0 || fCost < 0 || mCost < 0) {
+            return res.status(400).json({ success: false, message: 'খরচের পরিমাণ সঠিক নয় (ঋণাত্মক বা অসংখ্যা মান)।' });
+        }
+        if (total <= 0) {
+            return res.status(400).json({ success: false, message: 'অন্তত একটি খরচের পরিমাণ ০-এর বেশি দিতে হবে।' });
+        }
+        if (!transport_type || !VALID_TRANSPORT.includes(transport_type)) {
+            return res.status(400).json({ success: false, message: 'যানবাহনের ধরন বেছে নিন।' });
+        }
+
         // Validation
         if (tCost > transportLimit) {
             return res.status(400).json({
@@ -449,7 +463,11 @@ const updateExpense = async (req, res) => {
         }
 
         // reuse submitExpense logic — redirect করো body তে date দিয়ে
-        req.body.report_date = existing.rows[0].report_date;
+        // ⚠️ pg DATE কলাম JS Date অবজেক্ট হিসেবে ফেরত আসে; submitExpense স্ট্রিং
+        // (YYYY-MM-DD) আশা করে ও `date + 'T00:00:00'` জোড়ে। Date সরাসরি দিলে
+        // "Invalid Date" হয়ে SR কখনোই নিজের রিপোর্ট edit করতে পারত না।
+        const rd = existing.rows[0].report_date;
+        req.body.report_date = rd instanceof Date ? rd.toISOString().slice(0, 10) : String(rd).slice(0, 10);
         return submitExpense(req, res);
 
     } catch (error) {

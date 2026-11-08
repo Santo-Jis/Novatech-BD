@@ -250,7 +250,9 @@ export default function ExpenseApprovals() {
                 <div className="flex gap-2 mt-3 pt-3 border-t border-dashed border-gray-100 dark:border-slate-700">
                   <button
                     onClick={() => { setSelected(r); setNote(''); handleReviewQuick(r.id, 'approved') }}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl text-xs font-bold hover:bg-green-100 transition-colors"
+                    disabled={parseFloat(r.total_amount || 0) <= 0}
+                    title={parseFloat(r.total_amount || 0) <= 0 ? 'খরচ ০ — অনুমোদনযোগ্য নয়' : undefined}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-xl text-xs font-bold hover:bg-green-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <FiCheckCircle size={13} /> অনুমোদন
                   </button>
@@ -301,8 +303,8 @@ export default function ExpenseApprovals() {
             <div className="grid grid-cols-2 gap-3">
               <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl">
                 <p className="text-xs text-blue-500 font-semibold mb-1">যানবাহন</p>
-                <p className="text-sm font-bold text-gray-800 dark:text-white">
-                  {TRANSPORT_LABELS[selected.transport_type] || '—'}
+                <p className={`text-sm font-bold ${TRANSPORT_LABELS[selected.transport_type] ? 'text-gray-800 dark:text-white' : 'text-amber-600'}`}>
+                  {TRANSPORT_LABELS[selected.transport_type] || 'ধরন দেওয়া হয়নি'}
                 </p>
               </div>
               <div className="p-3 bg-primary/5 rounded-xl">
@@ -329,6 +331,11 @@ export default function ExpenseApprovals() {
                   </div>
                 )
               ))}
+              {parseFloat(selected.total_amount || 0) <= 0 && (
+                <p className="text-xs text-amber-700 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3">
+                  ⚠️ এই রিপোর্টে কোনো খরচের পরিমাণ নেই (মোট ৳০)। অনুমোদনের কিছু নেই — SR-কে সঠিকভাবে আবার জমা দিতে বলুন; রিপোর্টটি বাতিল করতে পারেন।
+                </p>
+              )}
               {selected.misc_note && (
                 <p className="text-xs text-gray-500 italic px-1">অন্যান্য: {selected.misc_note}</p>
               )}
@@ -376,7 +383,7 @@ export default function ExpenseApprovals() {
                   </button>
                   <button
                     onClick={() => handleReview('approved')}
-                    disabled={saving}
+                    disabled={saving || parseFloat(selected.total_amount || 0) <= 0}
                     className="flex-1 flex items-center justify-center gap-2 py-3 bg-green-500 text-white rounded-xl font-bold text-sm disabled:opacity-50 hover:bg-green-600 transition-colors"
                   >
                     {saving
