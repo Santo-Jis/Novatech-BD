@@ -811,10 +811,17 @@ const getAllCompanySummary = async (req, res) => {
         const result = await query(
             `SELECT
                  c.id AS customer_id, c.customer_code, c.credit_limit, c.current_credit,
+                 c.current_credit AS outstanding_credit,
                  c.is_verified,
                  t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url,
-                 u.name_bn AS assigned_sr_name, u.phone AS assigned_sr_phone,
-                 u.employee_code AS assigned_sr_code,
+                 -- ✅ FIX: একজন কাস্টমারের একাধিক সক্রিয় SR থাকলে আগে LEFT JOIN
+                 -- প্রতি SR-এ একটা করে সারি বানাত (কোম্পানি ডুপ্লিকেট + গ্র্যান্ড-টোটাল
+                 -- দ্বিগুণ)। এখন SR-রা একটা অ্যারেতে; সারি প্রতি-কোম্পানি একটাই।
+                 -- আগের ফিল্ড (assigned_sr_*) প্রথম SR দিয়ে বজায় — পুরনো ক্লায়েন্ট না ভাঙতে।
+                 COALESCE(srs.list, '[]'::json)          AS assigned_srs,
+                 srs.first_name                          AS assigned_sr_name,
+                 srs.first_phone                         AS assigned_sr_phone,
+                 srs.first_code                          AS assigned_sr_code,
                  COALESCE(monthly.total_invoices, 0) AS monthly_total_invoices,
                  COALESCE(monthly.total_purchase, 0) AS monthly_total_purchase,
                  COALESCE(monthly.total_cash, 0)     AS monthly_total_cash,
@@ -826,8 +833,19 @@ const getAllCompanySummary = async (req, res) => {
              FROM customer_company_connections ccc
              JOIN customers c ON c.id = ccc.customer_id
              JOIN tenants t   ON t.id = ccc.tenant_id
-             LEFT JOIN customer_assignments ca ON ca.customer_id = c.id AND ca.is_active = true
-             LEFT JOIN users u ON u.id = ca.worker_id
+             LEFT JOIN LATERAL (
+                 SELECT
+                     json_agg(json_build_object(
+                         'id', u.id, 'name', u.name_bn,
+                         'phone', u.phone, 'code', u.employee_code
+                     ) ORDER BY ca.assigned_at ASC, u.id)             AS list,
+                     (array_agg(u.name_bn       ORDER BY ca.assigned_at ASC, u.id))[1] AS first_name,
+                     (array_agg(u.phone         ORDER BY ca.assigned_at ASC, u.id))[1] AS first_phone,
+                     (array_agg(u.employee_code ORDER BY ca.assigned_at ASC, u.id))[1] AS first_code
+                 FROM customer_assignments ca
+                 JOIN users u ON u.id = ca.worker_id
+                 WHERE ca.customer_id = c.id AND ca.is_active = true
+             ) srs ON true
              LEFT JOIN LATERAL (
                  SELECT
                      COUNT(*)                        AS total_invoices,

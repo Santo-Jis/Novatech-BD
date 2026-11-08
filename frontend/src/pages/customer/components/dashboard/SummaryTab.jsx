@@ -69,7 +69,12 @@ export default function SummaryTab({ portalJWT }) {
     overall_total_invoices: acc.overall_total_invoices + (Number(co.overall_total_invoices) || 0),
     overall_total_cash:     acc.overall_total_cash     + (Number(co.overall_total_cash) || 0),
     overall_total_credit:   acc.overall_total_credit   + (Number(co.overall_total_credit) || 0),
-  }), EMPTY_TOTALS)
+    // ✅ FIX: "মোট বাকি" = এখনো পরিশোধ হয়নি এমন আসল বকেয়া (customers.current_credit),
+    // নিচের কোম্পানি-ব্রেকডাউনের "বাকি" এর সাথে মিলে। আগে এটা শুধু OTP-যাচাইকৃত
+    // ইনভয়েসের credit_used যোগফল (জীবনকালে নেওয়া মোট বাকি) দেখাত — ফলে ওপরে ৳০
+    // আর নিচে ৳৮৬,৪৫০ এমন অসামঞ্জস্য হতো।
+    outstanding_credit:     acc.outstanding_credit     + (Number(co.outstanding_credit ?? co.current_credit) || 0),
+  }), { ...EMPTY_TOTALS, outstanding_credit: 0 })
 
   const multi = companies.length > 1
 
@@ -111,9 +116,18 @@ export default function SummaryTab({ portalJWT }) {
               হালকা/লাইট চিপ এই গাঢ় গ্রেডিয়েন্ট কার্ডে পড়া যাবে না;
               সাদা টেক্সট লেবেলই এখানে বেশি স্পষ্ট। */}
           <div className="flex flex-col gap-2">
-            {companies.filter(co => co.assigned_sr_name).map((co) => (
+            {companies.flatMap((co) => {
+              // একাধিক সক্রিয় SR থাকলে সবাইকে দেখাও; পুরনো সার্ভার রেসপন্সে assigned_srs না থাকলে
+              // আগের একক-SR ফিল্ডে ফলব্যাক
+              const srs = Array.isArray(co.assigned_srs) && co.assigned_srs.length > 0
+                ? co.assigned_srs
+                : (co.assigned_sr_name
+                    ? [{ id: co.assigned_sr_code, name: co.assigned_sr_name, phone: co.assigned_sr_phone, code: co.assigned_sr_code }]
+                    : [])
+              return srs.map((sr) => ({ co, sr }))
+            }).map(({ co, sr }) => (
               <div
-                key={co.tenant_id}
+                key={`${co.tenant_id}-${sr.id || sr.code || sr.name}`}
                 className="rounded-2xl px-4 py-3.5 flex items-center gap-3 bg-gradient-to-br from-cp-trust-700 to-cp-trust-900 shadow-lg shadow-cp-trust-900/20"
               >
                 <div className="w-11 h-11 rounded-2xl bg-white/[0.18] flex items-center justify-center text-xl flex-shrink-0">🧑‍💼</div>
@@ -122,12 +136,12 @@ export default function SummaryTab({ portalJWT }) {
                     <p className="text-[9px] text-white/70 font-bold uppercase tracking-wider truncate">{companyName(co)}</p>
                   )}
                   <p className="text-[9px] text-white/55 font-bold uppercase tracking-wider">আপনার বিক্রয় প্রতিনিধি</p>
-                  <p className="text-sm text-white font-bold mt-0.5 truncate">{co.assigned_sr_name}</p>
-                  {co.assigned_sr_code && <p className="text-[10px] text-white/50 mt-0.5">কোড: {co.assigned_sr_code}</p>}
+                  <p className="text-sm text-white font-bold mt-0.5 truncate">{sr.name}</p>
+                  {sr.code && <p className="text-[10px] text-white/50 mt-0.5">কোড: {sr.code}</p>}
                 </div>
-                {co.assigned_sr_phone && (
+                {sr.phone && (
                   <a
-                    href={`tel:${co.assigned_sr_phone}`}
+                    href={`tel:${sr.phone}`}
                     className="no-underline bg-white/[0.18] rounded-xl px-3.5 py-2.5 flex flex-col items-center gap-0.5 flex-shrink-0"
                   >
                     <span className="text-xl">📞</span>
@@ -162,7 +176,7 @@ export default function SummaryTab({ portalJWT }) {
               <StatCard label="মোট কেনাকাটা" value={`৳${fmt(grand.overall_total_purchase)}`} tone="text" />
               <StatCard label="মোট ইনভয়েস"  value={grand.overall_total_invoices}             tone="trust" />
               <StatCard label="মোট নগদ"      value={`৳${fmt(grand.overall_total_cash)}`}      tone="success" />
-              <StatCard label="মোট বাকি"     value={`৳${fmt(grand.overall_total_credit)}`}    tone="danger" />
+              <StatCard label="মোট বাকি"     value={`৳${fmt(grand.outstanding_credit)}`}     tone="danger" />
             </div>
           </div>
 
