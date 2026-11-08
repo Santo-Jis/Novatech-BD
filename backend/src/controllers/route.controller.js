@@ -1,5 +1,6 @@
 const logger = require('../config/logger');
-const { query } = require('../config/db');
+const { query, withTransaction } = require('../config/db');
+const { sendPushToMany } = require('../services/fcm.service');
 const { getDB } = require('../config/firebase');
 
 // ============================================================
@@ -405,24 +406,29 @@ const getLiveRouteStatus = async (req, res) => {
 };
 
 // ============================================================
-// GET PENDING ROUTES
+// GET PENDING ROUTE REQUESTS
 // GET /api/routes/pending/list
-// Admin: pending অনুমোদনের অপেক্ষায় থাকা রুট তালিকা
+// SR-দের পাঠানো নতুন-রুট আবেদনের তালিকা (route_requests, status = pending)।
+//   Admin → পুরো tenant;  Manager/Supervisor → শুধু নিজের টিমের SR-দের আবেদন (checkTeamAccess)
+// ফিল্ডের নাম আগের মতোই (id, name, description, status, requested_at, requested_by_name),
+// তাই ফ্রন্টএন্ডের তালিকা-দেখানো অংশ বদলাতে হয় না।
 // ============================================================
 
 const getPendingRoutes = async (req, res) => {
     try {
         const result = await query(
-            `SELECT r.id, r.name, r.description, r.status,
-                    r.created_at  AS requested_at,
-                    u.name_bn     AS requested_by_name
-             FROM routes r
-             LEFT JOIN users u ON u.id = r.manager_id
-             WHERE (r.status = 'pending' OR r.status IS NULL)
-               AND r.is_active = true
-               AND r.tenant_id = $1
-             ORDER BY r.created_at DESC`,
-            [req.tenantId]
+            `SELECT rr.id, rr.route_name AS name, rr.description, rr.status,
+                    rr.created_at   AS requested_at,
+                    u.id            AS requested_by_id,
+                    u.name_bn       AS requested_by_name,
+                    u.employee_code AS requested_by_code
+             FROM route_requests rr
+             JOIN users u ON u.id = rr.requested_by
+             WHERE rr.status = 'pending'
+               AND rr.tenant_id = $1
+               AND ($2::uuid IS NULL OR u.manager_id = $2::uuid)
+             ORDER BY rr.created_at DESC`,
+            [req.tenantId, req.teamFilter || null]
         );
 
         return res.status(200).json({ success: true, data: result.rows });
@@ -465,6 +471,166 @@ const requestRoute = async (req, res) => {
     } catch (error) {
         logger.error('❌ Request Route Error:', error.message);
         return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
+// SR-এর রুট আবেদন: অনুমোদন / বাতিল (Admin / Manager)
+// PUT /api/routes/requests/:id/approve
+// PUT /api/routes/requests/:id/reject      body: { note? }
+//
+// অনুমোদন একই transaction-এ: (১) নতুন রুট তৈরি, (২) আবেদনকারী SR-কে ওই রুটে অ্যাসাইন,
+// (৩) আবেদন 'approved' চিহ্নিত (কে, কখন)। কোনো ধাপ ব্যর্থ হলে সবই rollback।
+// রুটের manager_id = SR-এর নিজের ম্যানেজার (SR টিমের রুটই দেখে — getWorkerRoutes দেখুন)।
+// Manager শুধু নিজের টিমের SR-এর আবেদন নিষ্পত্তি করতে পারে; Admin পুরো tenant-এর।
+// ============================================================
+
+class RouteRequestError extends Error {
+    constructor(httpStatus, message) { super(message); this.httpStatus = httpStatus; }
+}
+
+const loadPendingRequestForReview = async (client, req) => {
+    const rq = await client.query(
+        `SELECT rr.id, rr.route_name, rr.description, rr.status, rr.requested_by, rr.created_at,
+                u.name_bn AS sr_name, u.status AS sr_status, u.role AS sr_role,
+                u.manager_id AS sr_manager_id
+         FROM route_requests rr
+         JOIN users u ON u.id = rr.requested_by
+         WHERE rr.id = $1 AND rr.tenant_id = $2
+         FOR UPDATE OF rr`,
+        [req.params.id, req.tenantId]
+    );
+    if (rq.rows.length === 0) throw new RouteRequestError(404, 'আবেদন পাওয়া যায়নি।');
+
+    const r = rq.rows[0];
+    if (r.status !== 'pending') {
+        const done = r.status === 'approved' ? 'অনুমোদিত' : 'বাতিল';
+        throw new RouteRequestError(409, `এই আবেদন ইতিমধ্যে ${done} হয়েছে।`);
+    }
+    if (req.user.role === 'manager' && r.sr_manager_id !== req.user.id) {
+        throw new RouteRequestError(403, 'এই SR আপনার টিমের নয়।');
+    }
+
+    const me = await client.query('SELECT name_bn FROM users WHERE id = $1', [req.user.id]);
+    r.reviewer_name = me.rows[0]?.name_bn || req.user.name_bn || 'Admin';
+    return r;
+};
+
+const reviewNote = (req) =>
+    (typeof req.body?.note === 'string' && req.body.note.trim()) ? req.body.note.trim().slice(0, 500) : null;
+
+const notifySR = (srId, payload) => {
+    Promise.resolve()
+        .then(() => sendPushToMany([srId], { type: 'route_request', ...payload }))
+        .catch((e) => logger.warn('⚠️ Route request push ব্যর্থ:', e.message));
+};
+
+const sendReviewError = (res, error, label) => {
+    if (error instanceof RouteRequestError) {
+        return res.status(error.httpStatus).json({ success: false, message: error.message });
+    }
+    logger.error(`❌ ${label} Error:`, error.message);
+    return res.status(500).json({ success: false, message: 'সমস্যা হয়েছে, আবার চেষ্টা করুন।' });
+};
+
+const approveRouteRequest = async (req, res) => {
+    try {
+        const note = reviewNote(req);
+
+        const out = await withTransaction(async (client) => {
+            const r = await loadPendingRequestForReview(client, req);
+
+            if (r.sr_role !== 'worker' || r.sr_status !== 'active') {
+                throw new RouteRequestError(409, 'আবেদনকারী SR এখন সক্রিয় নন। আবেদনটি বাতিল করুন।');
+            }
+            if (!r.sr_manager_id) {
+                throw new RouteRequestError(409,
+                    'এই SR কোনো ম্যানেজারের টিমে নেই। আগে টিমে যুক্ত করুন, নইলে SR রুটটি দেখতে পাবে না।');
+            }
+
+            const dup = await client.query(
+                `SELECT 1 FROM routes
+                 WHERE tenant_id = $1 AND manager_id = $2 AND is_active = true
+                   AND lower(btrim(name)) = lower(btrim($3))
+                 LIMIT 1`,
+                [req.tenantId, r.sr_manager_id, r.route_name]
+            );
+            if (dup.rows.length) {
+                throw new RouteRequestError(409,
+                    `"${r.route_name}" নামে রুট এই টিমে আগে থেকেই আছে। আবেদনটি বাতিল করুন।`);
+            }
+
+            const route = await client.query(
+                `INSERT INTO routes (name, manager_id, description, tenant_id, requested_by, requested_at)
+                 VALUES ($1, $2, $3, $4, $5, $6)
+                 RETURNING id, name`,
+                [r.route_name.trim(), r.sr_manager_id, r.description, req.tenantId, r.requested_by, r.created_at]
+            );
+
+            // রুট-লেভেল assignment (customer_id IS NULL) — assignWorkerToRoute-এর মতোই।
+            // নতুন রুটে এখনো কাস্টমার নেই, তাই শুধু এই একটা সারিই লাগে।
+            await client.query(
+                `INSERT INTO customer_assignments (worker_id, route_id, assigned_by, tenant_id)
+                 VALUES ($1, $2, $3, $4)
+                 ON CONFLICT (worker_id, route_id) WHERE customer_id IS NULL
+                 DO UPDATE SET is_active = true, assigned_at = NOW()`,
+                [r.requested_by, route.rows[0].id, req.user.id, req.tenantId]
+            );
+
+            await client.query(
+                `UPDATE route_requests
+                 SET status = 'approved', reviewed_by = $2, reviewed_by_name = $3,
+                     review_note = $4, reviewed_at = NOW(), updated_at = NOW()
+                 WHERE id = $1`,
+                [r.id, req.user.id, r.reviewer_name, note]
+            );
+
+            return { route: route.rows[0], r };
+        });
+
+        notifySR(out.r.requested_by, {
+            title: '✅ রুট অনুমোদিত',
+            body:  `"${out.route.name}" রুটটি অনুমোদিত হয়েছে এবং আপনাকে অ্যাসাইন করা হয়েছে।`,
+            data:  { kind: 'route_request_approved', route_id: out.route.id },
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: `"${out.route.name}" অনুমোদিত — ${out.r.sr_name}-কে রুটে অ্যাসাইন করা হয়েছে।`,
+            data: { route_id: out.route.id, worker_id: out.r.requested_by },
+        });
+
+    } catch (error) {
+        return sendReviewError(res, error, 'Approve Route Request');
+    }
+};
+
+const rejectRouteRequest = async (req, res) => {
+    try {
+        const note = reviewNote(req);
+
+        const r = await withTransaction(async (client) => {
+            const row = await loadPendingRequestForReview(client, req);
+            await client.query(
+                `UPDATE route_requests
+                 SET status = 'rejected', reviewed_by = $2, reviewed_by_name = $3,
+                     review_note = $4, reviewed_at = NOW(), updated_at = NOW()
+                 WHERE id = $1`,
+                [row.id, req.user.id, row.reviewer_name, note]
+            );
+            return row;
+        });
+
+        notifySR(r.requested_by, {
+            title: '❌ রুট আবেদন বাতিল',
+            body:  `"${r.route_name}" রুটের আবেদন বাতিল হয়েছে।${note ? ` কারণ: ${note}` : ''}`,
+            data:  { kind: 'route_request_rejected' },
+        });
+
+        return res.status(200).json({ success: true, message: `"${r.route_name}" আবেদন বাতিল করা হয়েছে।` });
+
+    } catch (error) {
+        return sendReviewError(res, error, 'Reject Route Request');
     }
 };
 
@@ -592,6 +758,8 @@ module.exports = {
     getRouteCustomers,
     getLiveRouteStatus,
     getPendingRoutes,
+    approveRouteRequest,
+    rejectRouteRequest,
     requestRoute,
     getMyRouteRequests,
     getWorkerRoutes,

@@ -93,8 +93,8 @@ export default function PendingApprovals() {
   const approveRoute = async (id, name) => {
     setProcessing(p => ({ ...p, [id]: true }))
     try {
-      await api.put('/routes/' + id, { status: 'approved', is_active: true })
-      toast.success('Route approved: ' + name)
+      const res = await api.put('/routes/requests/' + id + '/approve')
+      toast.success(res.data?.message || ('Route approved: ' + name))
       setRoutes(prev => prev.filter(r => r.id !== id))
     } catch (err) {
       toast.error(err.response?.data?.message || 'Error')
@@ -106,8 +106,8 @@ export default function PendingApprovals() {
   const rejectRoute = async (id, name) => {
     setProcessing(p => ({ ...p, [id]: true }))
     try {
-      await api.put('/routes/' + id, { status: 'rejected', is_active: false })
-      toast.success('Route rejected: ' + name)
+      const res = await api.put('/routes/requests/' + id + '/reject')
+      toast.success(res.data?.message || ('Route rejected: ' + name))
       setRoutes(prev => prev.filter(r => r.id !== id))
     } catch (err) {
       toast.error(err.response?.data?.message || 'Error')

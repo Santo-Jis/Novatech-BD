@@ -669,21 +669,21 @@ export function ManagerRoutes() {
   const approve = async (id, name) => {
     setProcessing(p => ({ ...p, [id]: 'approving' }))
     try {
-      await api.put(`/routes/${id}`, { status: 'approved', is_active: true })
-      toast.success(`"${name}" অনুমোদন হয়েছে ✅`)
+      const res = await api.put(`/routes/requests/${id}/approve`)
+      toast.success(res.data?.message || `"${name}" অনুমোদন হয়েছে ✅`)
       setPending(prev => prev.filter(r => r.id !== id))
       load()  // active list রিফ্রেশ
-    } catch { toast.error('অনুমোদনে সমস্যা হয়েছে।') }
+    } catch (err) { toast.error(err.response?.data?.message || 'অনুমোদনে সমস্যা হয়েছে।') }
     finally { setProcessing(p => ({ ...p, [id]: undefined })) }
   }
 
   const reject = async (id, name) => {
     setProcessing(p => ({ ...p, [id]: 'rejecting' }))
     try {
-      await api.put(`/routes/${id}`, { status: 'rejected', is_active: false })
-      toast.success(`"${name}" বাতিল করা হয়েছে।`)
+      const res = await api.put(`/routes/requests/${id}/reject`)
+      toast.success(res.data?.message || `"${name}" বাতিল করা হয়েছে।`)
       setPending(prev => prev.filter(r => r.id !== id))
-    } catch { toast.error('বাতিলে সমস্যা হয়েছে।') }
+    } catch (err) { toast.error(err.response?.data?.message || 'বাতিলে সমস্যা হয়েছে।') }
     finally { setProcessing(p => ({ ...p, [id]: undefined })) }
   }
 

@@ -14,6 +14,8 @@ const {
     getRouteCustomers,
     getLiveRouteStatus,
     getPendingRoutes,
+    approveRouteRequest,
+    rejectRouteRequest,
     requestRoute,
     getMyRouteRequests,
     getWorkerRoutes,
@@ -26,7 +28,11 @@ router.post('/request',      auth, isWorker,     requestRoute);
 
 // ── Management routes ─────────────────────────────────────────
 router.get('/live-status',   auth, isManagement, checkTeamAccess, getLiveRouteStatus);
-router.get('/pending/list',  auth, isManagement, getPendingRoutes);
+router.get('/pending/list',  auth, isManagement, checkTeamAccess, getPendingRoutes);
+
+// ✅ SR-এর রুট আবেদন — অনুমোদন (রুট তৈরি + SR অ্যাসাইন) / বাতিল
+router.put('/requests/:id/approve', auth, canCreateRoute, approveRouteRequest);
+router.put('/requests/:id/reject',  auth, canCreateRoute, rejectRouteRequest);
 
 router.get('/',              auth, isManagement, checkTeamAccess, getRoutes);
 router.post('/',             auth, canCreateRoute,                createRoute);

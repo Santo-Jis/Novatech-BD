@@ -269,7 +269,15 @@ const CANDIDATES_SQL = `
 `;
 
 const DAY_MS = 86400000;
-const daysSince = (ts, now) => (ts ? Math.floor((now - new Date(ts)) / DAY_MS) : null);
+// ক্যালেন্ডার-দিন (ঢাকা) হিসাবে ব্যবধান। ২৪-ঘণ্টার টুকরো গুনলে এক রান ও পরের রানের মধ্যে
+// কয়েক সেকেন্ডের পার্থক্যে "৭ দিন" আসলে ৬ দিন ২৩:৫৯ হয়ে যেত, আর রিমাইন্ডার একদিন পিছিয়ে যেত।
+const dhakaDay = (d) => new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date(d));
+const daysSince = (ts, now) => {
+    if (!ts) return null;
+    return Math.round((Date.parse(`${dhakaDay(now)}T00:00:00Z`) - Date.parse(`${dhakaDay(ts)}T00:00:00Z`)) / DAY_MS);
+};
 
 // ============================================================
 // MAIN JOB
