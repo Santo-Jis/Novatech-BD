@@ -297,8 +297,8 @@ const updateBatchStatus = async (req, res) => {
                 // (সাপ্লায়ারকে ফেরত সাধারণত ক্রেডিট/রিপ্লেসমেন্টে সমাধান হয়, তাই সরাসরি লস নয়)
                 if (action === 'written_off' && valueImpact > 0) {
                     const expenseRes = await client.query(
-                        `INSERT INTO expenses (user_id, expense_type, amount, date, note, created_by, tenant_id)
-                         VALUES ($1, $2, $3, CURRENT_DATE, $4, $5, $6)
+                        `INSERT INTO expenses (user_id, expense_type, amount, date, note, created_by, tenant_id, source)
+                         VALUES ($1, $2, $3, CURRENT_DATE, $4, $5, $6, 'batch_writeoff')
                          RETURNING id`,
                         [
                             req.user.id, 'ব্যাচ রাইট-অফ (মেয়াদোত্তীর্ণ/ক্ষতিগ্রস্ত স্টক)', valueImpact,

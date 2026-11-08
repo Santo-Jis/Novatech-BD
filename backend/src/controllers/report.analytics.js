@@ -195,7 +195,11 @@ const getMonthlyArchive = async (req, res) => {
                     COALESCE(SUM(cash_received), 0)     AS cash_collected,
                     COALESCE(SUM(credit_used), 0)       AS credit_given,
                     COALESCE(SUM(replacement_value), 0) AS replacement,
-                    COALESCE(SUM(vat_amount), 0)        AS total_vat
+                    -- sales_transactions.vat_amount কলাম কখনো লেখা হয় না (সবসময় ০);
+                    -- তাই items JSON-এর প্রতি-ইউনিট vat_amount × qty থেকে হিসাব।
+                    COALESCE(SUM((SELECT SUM((i->>'qty')::numeric * COALESCE((i->>'vat_amount')::numeric, 0))
+                                  FROM jsonb_array_elements(
+                                      CASE WHEN jsonb_typeof(items) = 'array' THEN items ELSE '[]'::jsonb END) i)), 0) AS total_vat
                  FROM sales_transactions
                  WHERE EXTRACT(YEAR FROM date) = $1
                    AND EXTRACT(MONTH FROM date) = $2

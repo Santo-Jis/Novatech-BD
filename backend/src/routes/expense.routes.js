@@ -10,6 +10,12 @@ const {
     reviewExpense,
     updateExpense
 } = require('../controllers/expense.controller');
+const {
+    listCompanyExpenses,
+    createCompanyExpense,
+    updateCompanyExpense,
+    deleteCompanyExpense
+} = require('../controllers/companyExpense.controller');
 
 // ============================================================
 // SR Routes (worker)
@@ -60,5 +66,13 @@ router.patch('/:id/review',
     allowRoles('admin', 'manager', 'supervisor', 'asm', 'rsm', 'accountant'),
     reviewExpense
 );
+
+// ============================================================
+// কোম্পানির সাধারণ খরচ (ভাড়া, বিদ্যুৎ ইত্যাদি) — Admin / Accountant
+// ============================================================
+router.get('/company',        auth, allowRoles('admin', 'accountant'), listCompanyExpenses);
+router.post('/company',       auth, allowRoles('admin', 'accountant'), createCompanyExpense);
+router.put('/company/:id',    auth, allowRoles('admin', 'accountant'), updateCompanyExpense);
+router.delete('/company/:id', auth, allowRoles('admin', 'accountant'), deleteCompanyExpense);
 
 module.exports = router;

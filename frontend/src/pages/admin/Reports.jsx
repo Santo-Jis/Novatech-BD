@@ -117,8 +117,9 @@ export default function AdminReports() {
   ['মোট বিক্রয়', `৳${parseInt(revenue.gross_sales).toLocaleString()}`, 'text-secondary'],
             ['ভ্যাট', `৳${parseInt(revenue.vat || 0).toLocaleString()}`, 'text-amber-600'],
             ['ডিসকাউন্ট', `৳${parseInt(revenue.discount || 0).toLocaleString()}`, 'text-orange-500'],
+            ['পণ্যের ক্রয়মূল্য (COGS)', `৳${parseInt(data.cogs?.total_cogs || 0).toLocaleString()}`, 'text-blue-600'],
             ['মোট খরচ', `৳${parseInt(expenses.total_expenses).toLocaleString()}`, 'text-red-600'],
-            ['বেতন+কমিশন', `৳${parseInt((payroll.total_salary || 0) + (payroll.total_commission || 0)).toLocaleString()}`, 'text-purple-600'],
+            ['বেতন+কমিশন', `৳${parseInt(payroll.total_cost ?? ((payroll.total_salary || 0) + (payroll.total_commission || 0))).toLocaleString()}`, 'text-purple-600'],
           ].map(([label, val, cls]) => (
             <Card key={label} className="text-center">
               <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
@@ -129,12 +130,17 @@ export default function AdminReports() {
         <Card title="মুনাফার সারসংক্ষেপ">
           <div className="space-y-3">
             {[
-              ['মোট আয়', revenue.gross_sales, false],
+              ['মোট বিক্রয় (ভ্যাট সহ)', revenue.gross_sales, false],
               ['(-) ডিসকাউন্ট', revenue.discount || 0, true],
-              ['(+) ভ্যাট', revenue.vat || 0, false],
-              ['নেট বিক্রয়', revenue.net_sales, false, true],
+              ['(-) রিপ্লেসমেন্ট', revenue.replacement_value || 0, true],
+              ['নেট বিক্রয় (ভ্যাট সহ)', revenue.net_sales, false, true],
+              ['(-) ভ্যাট ও ট্যাক্স (সরকারের প্রাপ্য)', revenue.vat_tax ?? revenue.vat ?? 0, true],
+              ['ভ্যাট-ট্যাক্স বাদে বিক্রয়', revenue.net_sales_ex_vat ?? revenue.net_sales, false, true],
+              ['(-) সেলস রিটার্ন', data.returns?.total_value || 0, true],
+              ['(-) পণ্যের ক্রয়মূল্য (COGS)', data.cogs?.total_cogs || 0, true],
+              ['গ্রস মুনাফা', summary.gross_profit, false, true],
               ['(-) পরিচালন খরচ', expenses.total_expenses, true],
-              ['(-) বেতন ও কমিশন', (payroll.total_salary || 0) + (payroll.total_commission || 0), true],
+              ['(-) বেতন ও কমিশন', payroll.total_cost ?? ((payroll.total_salary || 0) + (payroll.total_commission || 0)), true],
             ].map(([label, val, neg, bold]) => (
               <div key={label} className={`flex justify-between py-1.5 border-b border-gray-100 dark:border-slate-700 text-sm ${bold ? 'font-bold' : ''}`}>
                 <span className="text-gray-600 dark:text-gray-300">{label}</span>
@@ -152,6 +158,25 @@ export default function AdminReports() {
             </div>
           </div>
         </Card>
+        {data.cogs?.lines_without_cost > 0 && (
+          <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3">
+            ⚠️ {data.cogs.lines_without_cost}টি বিক্রয় লাইনের পণ্যে ক্রয়মূল্য (cost price) দেওয়া নেই, তাই ওগুলোর COGS ০ ধরা হয়েছে — মুনাফা আসলের চেয়ে বেশি দেখাতে পারে।
+            {data.cogs.products_without_cost?.length > 0 && <> পণ্য: <b>{data.cogs.products_without_cost.join(', ')}</b>। পণ্যের পেজে cost price দিলেই এই রিপোর্ট ঠিক হয়ে যাবে।</>}
+          </p>
+        )}
+        <div className="text-xs text-gray-400 space-y-1">
+          <p>
+            বেতন ও কমিশন <b>প্রাপ্য (accrual)</b> ভিত্তিতে ধরা হয়েছে — পরিশোধ না হলেও এই সময়ের বেতন খরচে আসে
+            ({payroll.staff_count || 0} জন কর্মী ও ম্যানেজার; এই সময়ে আসলে পরিশোধিত ৳{parseInt(payroll.net_paid || 0).toLocaleString()})।
+            {payroll.manager_cost > 0 && <> এর মধ্যে ম্যানেজারদের বেতন ৳{parseInt(payroll.manager_cost).toLocaleString()}।</>}
+            হাজিরা কর্তন বেশি হলে কারও বেতন ০-র নিচে নামে না।
+          </p>
+          <p>
+            COGS বিক্রয়ের সময়ের ক্রয়মূল্যে সংরক্ষিত, তাই পরে ক্রয়মূল্য বদলালেও পুরোনো মুনাফা বদলায় না।
+            সেলস রিটার্ন ভ্যাট-ট্যাক্স বাদে ধরা হয়েছে। রিটার্নে নষ্ট/মেয়াদোত্তীর্ণ পণ্যের খরচ ক্ষতি হিসেবেই থাকে; গ্রাহক-পোর্টালের রিটার্নে COGS ফেরত ধরা হয় না।
+          </p>
+          <p>গ্রাহকের বকেয়া কর্তন খরচ হিসেবে ধরা হয়নি।</p>
+        </div>
       </div>
     )
   }

@@ -77,6 +77,7 @@ const navGroups = [
     icon: <FiBarChart2 />,
     items: [
       { path: '/admin/reports',     icon: <FiBarChart2 />, label: 'রিপোর্ট' },
+      { path: '/admin/company-expenses', icon: <FiDollarSign />, label: 'খরচের হিসাব' },
       { path: '/admin/ai-insights', icon: <FiCpu />,       label: 'AI বিশ্লেষণ' },
       { path: '/admin/audit-logs', icon: <FiShield />,    label: 'অডিট লগ' },
       { path: '/admin/wallet',     icon: <FiCreditCard />, label: 'ওয়ালেট' },

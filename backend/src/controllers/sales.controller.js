@@ -369,6 +369,29 @@ const createSale = async (req, res) => {
             }
         }
 
+        // ── COGS snapshot: বিক্রয়ের মুহূর্তের ক্রয়মূল্য ইনভয়েসে সংরক্ষণ ───
+        // পরে products.cost_price বদলালেও পুরোনো বিক্রয়ের COGS (এবং মুনাফা) যেন
+        // বদলে না যায়। ফ্রি গিফট লাইনও ধরা হয় (ওগুলোর খরচ কোম্পানিরই)।
+        // এটা ব্যর্থ হলেও বিক্রয় আটকাবে না — তখন P&L পুরোনো fallback
+        // (products.cost_price) ব্যবহার করবে।
+        try {
+            const costIds = [...new Set(processedItems.map(i => i.product_id).filter(Boolean))];
+            if (costIds.length > 0) {
+                const costRes = await query(
+                    'SELECT id, cost_price FROM products WHERE id = ANY($1::uuid[]) AND tenant_id = $2',
+                    [costIds, req.tenantId]
+                );
+                const costMap = Object.fromEntries(
+                    costRes.rows.map(r => [r.id, parseFloat(r.cost_price) || 0])
+                );
+                for (const it of processedItems) {
+                    it.unit_cost = costMap[it.product_id] ?? 0;
+                }
+            }
+        } catch (costErr) {
+            logger.error('[Sale] cost snapshot failed, continuing without unit_cost:', costErr.message);
+        }
+
         // Credit Balance সমন্বয়
         // discountAmount এখন দুই উৎসের যোগফল: promotionDiscount (উপরে
         // হিসাব হয়েছে) + creditBalanceUsed। credit balance প্রয়োগ হয়

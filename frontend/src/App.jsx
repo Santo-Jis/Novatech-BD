@@ -114,6 +114,7 @@ const AdminEmployees         = IS_LIMITED_APP ? null : lazy(() => import('./page
 const EmployeeForm           = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/EmployeeForm'))
 const PendingApprovals       = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/PendingApprovals'))
 const AdminReports           = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/Reports'))
+const AdminCompanyExpenses  = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/CompanyExpenses'))
 const CommissionPayment      = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/CommissionPayment'))
 const SalaryPayment          = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/SalaryPayment'))
 const AIInsights             = IS_LIMITED_APP ? null : lazy(() => import('./pages/admin/AIInsights'))
@@ -559,6 +560,7 @@ function AppWithPermissions() {
                 <Route path="employees/:id"     element={<EmployeeForm />} />
                 <Route path="pending"           element={<PendingApprovals />} />
                 <Route path="reports"           element={<AdminReports />} />
+                <Route path="company-expenses"  element={<AdminCompanyExpenses />} />
                 <Route path="commission-pay"    element={<CommissionPayment />} />
                 <Route path="salary-pay"        element={<SalaryPayment />} />
                 <Route path="ai-insights"       element={<AIInsights />} />

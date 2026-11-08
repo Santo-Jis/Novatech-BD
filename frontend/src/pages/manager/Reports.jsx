@@ -275,11 +275,13 @@ export default function ManagerReports() {
             <Card title="লাভ-ক্ষতির হিসাব">
               <div className="space-y-3">
                 {[
-                  { label: 'মোট বিক্রয়',     value: data.total_revenue,  color: 'text-green-600', bg: 'bg-green-50' },
-                  { label: 'মোট COGS',        value: data.total_cogs,     color: 'text-blue-600',  bg: 'bg-blue-50' },
-                  { label: 'গ্রস মুনাফা',     value: data.gross_profit,   color: 'text-emerald-600', bg: 'bg-emerald-50' },
-                  { label: 'মোট খরচ',         value: data.total_expenses, color: 'text-red-600',   bg: 'bg-red-50' },
-                  { label: 'নেট মুনাফা',      value: data.net_profit,     color: parseFloat(data.net_profit) >= 0 ? 'text-emerald-700' : 'text-red-700', bg: 'bg-gray-100' },
+                  { label: 'বিক্রয় (ভ্যাট-ট্যাক্স বাদে)', value: data.revenue?.net_sales_ex_vat,  color: 'text-green-600', bg: 'bg-green-50' },
+                  { label: 'সেলস রিটার্ন',    value: data.returns?.total_value,       color: 'text-orange-600', bg: 'bg-orange-50' },
+                  { label: 'মোট COGS',        value: data.cogs?.total_cogs,           color: 'text-blue-600',  bg: 'bg-blue-50' },
+                  { label: 'গ্রস মুনাফা',     value: data.summary?.gross_profit,      color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                  { label: 'মোট খরচ',         value: data.expenses?.total_expenses,   color: 'text-red-600',   bg: 'bg-red-50' },
+                  { label: 'বেতন ও কমিশন',    value: data.payroll?.total_cost,        color: 'text-purple-600', bg: 'bg-purple-50' },
+                  { label: 'নেট মুনাফা',      value: data.summary?.net_profit,        color: parseFloat(data.summary?.net_profit) >= 0 ? 'text-emerald-700' : 'text-red-700', bg: 'bg-gray-100' },
                 ].map(item => (
                   <div key={item.label} className={`flex justify-between items-center p-3 ${item.bg} rounded-xl`}>
                     <p className="text-sm text-gray-600">{item.label}</p>

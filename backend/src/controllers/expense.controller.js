@@ -256,8 +256,9 @@ const getTeamExpenses = async (req, res) => {
 
         const { status, date_from, date_to, worker_id } = req.query;
 
-        const params  = [];
-        const filters = [];
+        // ✅ সবসময় নিজের কোম্পানির (tenant) ডেটাতেই সীমাবদ্ধ
+        const params  = [req.tenantId];
+        const filters = ['er.tenant_id = $1'];
 
         // Admin/accountant সব দেখতে পারবে; manager শুধু নিজের team
         if (!['admin', 'accountant'].includes(role)) {
@@ -334,8 +335,8 @@ const reviewExpense = async (req, res) => {
             `SELECT er.*, u.manager_id
              FROM expense_reports er
              JOIN users u ON u.id = er.worker_id
-             WHERE er.id = $1`,
-            [id]
+             WHERE er.id = $1 AND er.tenant_id = $2`,
+            [id, req.tenantId]
         );
 
         if (expRes.rows.length === 0) {
@@ -361,16 +362,53 @@ const reviewExpense = async (req, res) => {
             });
         }
 
-        const result = await query(
-            `UPDATE expense_reports SET
-                status      = $1,
-                reviewed_by = $2,
-                review_note = $3,
-                reviewed_at = NOW()
-             WHERE id = $4
-             RETURNING *`,
-            [status, reviewerId, review_note || null, id]
-        );
+        // ✅ Approve হলে expenses টেবিলেও entry যাবে (P&L/Ledger/Dashboard-এ আসার জন্য)।
+        // একই transaction-এ, যাতে একটা ব্যর্থ হলে অন্যটাও rollback হয়।
+        const result = await withTransaction(async (client) => {
+            const upd = await client.query(
+                `UPDATE expense_reports SET
+                    status      = $1,
+                    reviewed_by = $2,
+                    review_note = $3,
+                    reviewed_at = NOW()
+                 WHERE id = $4 AND tenant_id = $5 AND status = 'pending'
+                 RETURNING *`,
+                [status, reviewerId, review_note || null, id, req.tenantId]
+            );
+            if (upd.rows.length === 0) return upd;   // অন্য কেউ আগেই review করেছে
+
+            if (status === 'approved') {
+                const r = upd.rows[0];
+                const total = parseFloat(r.transport_cost || 0)
+                            + parseFloat(r.food_cost || 0)
+                            + parseFloat(r.misc_cost || 0);
+                if (total > 0) {
+                    const parts = [];
+                    if (parseFloat(r.transport_cost) > 0) parts.push(`যাতায়াত: ${r.transport_cost}`);
+                    if (parseFloat(r.food_cost) > 0)      parts.push(`খাবার: ${r.food_cost}`);
+                    if (parseFloat(r.misc_cost) > 0)      parts.push(`বিবিধ: ${r.misc_cost}`);
+                    if (r.misc_note)                      parts.push(r.misc_note);
+
+                    await client.query(
+                        `INSERT INTO expenses
+                            (user_id, expense_type, amount, date, note, created_by, tenant_id, expense_report_id, source)
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'sr_report')
+                         ON CONFLICT (expense_report_id) WHERE expense_report_id IS NOT NULL
+                         DO NOTHING`,
+                        [r.worker_id, 'SR খরচ (যাতায়াত/খাবার/বিবিধ)', total, r.report_date,
+                         parts.join(' | '), reviewerId, req.tenantId, r.id]
+                    );
+                }
+            }
+            return upd;
+        });
+
+        if (result.rows.length === 0) {
+            return res.status(409).json({
+                success: false,
+                message: 'এই রিপোর্ট ইতিমধ্যে review হয়ে গেছে।'
+            });
+        }
 
         return res.json({
             success: true,
@@ -444,8 +482,9 @@ const getExpenseReport = async (req, res) => {
              LEFT JOIN users rv  ON rv.id  = er.reviewed_by
              WHERE EXTRACT(YEAR  FROM er.report_date) = $1
                AND EXTRACT(MONTH FROM er.report_date) = $2
+               AND er.tenant_id = $3
              ORDER BY er.report_date DESC, u.name_bn ASC`,
-            [y, m]
+            [y, m, req.tenantId]
         );
 
         // Summary তৈরি করো
