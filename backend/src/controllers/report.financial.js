@@ -195,9 +195,10 @@ const getPLStatement = async (req, res) => {
                 params
             ),
             // ── ৭. সেলস রিটার্ন (completed, type='return') ──────────────
-            // • আয় থেকে বাদ যায় রিটার্নের *VAT/ট্যাক্স-বাদে* মূল্য: item.subtotal
-            //   (VAT-সহ) ÷ (১ + (পণ্যের vat% + tax%)/১০০)। রিটার্নের item-এ হার
-            //   সংরক্ষিত থাকে না, তাই পণ্যের বর্তমান হার ব্যবহার।
+            // • আয় থেকে বাদ যায় রিটার্নের *VAT/ট্যাক্স-বাদে* মূল্য। অগ্রাধিকার:
+            //   ১) item.subtotal_ex_vat — রিটার্ন তৈরির সময় সংরক্ষিত (সবচেয়ে নির্ভুল)
+            //   ২) item.subtotal ÷ (১ + সংরক্ষিত vat_rate + tax_rate)
+            //   ৩) পুরোনো রিটার্ন (এই snapshot চালুর আগের): পণ্যের বর্তমান হার দিয়ে fallback
             // • COGS ফেরত শুধু বিক্রয়যোগ্য পণ্যের (SR রিটার্নে reason damaged/expired
             //   ছাড়া); নষ্ট/মেয়াদোত্তীর্ণের খরচ ক্ষতি হিসেবেই থাকে।
             // • গ্রাহক-পোর্টালের রিটার্নে reason নেই, তাই রক্ষণশীলভাবে COGS ফেরত ধরা হয় না।
@@ -216,8 +217,10 @@ const getPLStatement = async (req, res) => {
                     JOIN users u ON u.id = rr.sr_id
                     CROSS JOIN LATERAL (
                         SELECT COALESCE(SUM(COALESCE((i->>'subtotal')::numeric, 0)), 0) AS gross_value,
-                               COALESCE(SUM(COALESCE((i->>'subtotal')::numeric, 0)
-                                            / (1 + (COALESCE(p.vat, 0) + COALESCE(p.tax, 0)) / 100)), 0) AS ex_value,
+                               COALESCE(SUM(COALESCE((i->>'subtotal_ex_vat')::numeric,
+                                   COALESCE((i->>'subtotal')::numeric, 0)
+                                   / (1 + (COALESCE((i->>'vat_rate')::numeric, p.vat, 0)
+                                         + COALESCE((i->>'tax_rate')::numeric, p.tax, 0)) / 100))), 0) AS ex_value,
                                COALESCE(SUM((i->>'qty')::numeric * COALESCE(p.cost_price, 0)), 0)      AS cost_all
                         FROM jsonb_array_elements(CASE WHEN jsonb_typeof(rr.items) = 'array' THEN rr.items ELSE '[]'::jsonb END) i
                         LEFT JOIN products p ON p.id::text = i->>'product_id' AND p.tenant_id = rr.tenant_id
@@ -233,8 +236,10 @@ const getPLStatement = async (req, res) => {
                     JOIN customers c ON c.id = crr.customer_id
                     CROSS JOIN LATERAL (
                         SELECT COALESCE(SUM(COALESCE((i->>'subtotal')::numeric, 0)), 0) AS gross_value,
-                               COALESCE(SUM(COALESCE((i->>'subtotal')::numeric, 0)
-                                            / (1 + (COALESCE(p.vat, 0) + COALESCE(p.tax, 0)) / 100)), 0) AS ex_value
+                               COALESCE(SUM(COALESCE((i->>'subtotal_ex_vat')::numeric,
+                                   COALESCE((i->>'subtotal')::numeric, 0)
+                                   / (1 + (COALESCE((i->>'vat_rate')::numeric, p.vat, 0)
+                                         + COALESCE((i->>'tax_rate')::numeric, p.tax, 0)) / 100))), 0) AS ex_value
                         FROM jsonb_array_elements(CASE WHEN jsonb_typeof(crr.items) = 'array' THEN crr.items ELSE '[]'::jsonb END) i
                         LEFT JOIN products p ON p.id::text = i->>'product_id' AND p.tenant_id = crr.tenant_id
                     ) y

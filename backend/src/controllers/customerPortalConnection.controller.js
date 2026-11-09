@@ -1440,6 +1440,13 @@ const submitCompanyReturnRequest = async (req, res) => {
                 qty:          parseInt(item.qty),
                 unit_price:   unitPrice,
                 subtotal,
+                // ✅ হিসাবের snapshot (বিস্তারিত: return.controller.js) — মূল্য যে হার দিয়ে
+                // বানানো হলো সেই হার ও ভ্যাট-বাদে মূল্য সংরক্ষণ।
+                vat_rate:        prod ? (parseFloat(prod.vat) || 0) : 0,
+                tax_rate:        prod ? (parseFloat(prod.tax) || 0) : 0,
+                subtotal_ex_vat: prod
+                    ? parseFloat(((parseFloat(prod.price) || 0) * parseInt(item.qty)).toFixed(2))
+                    : 0,
                 reason:       item.reason.trim(),
             };
         });

@@ -98,6 +98,12 @@ const submitReturn = async (req, res) => {
                 qty:          parseInt(item.qty),
                 unit_price:   finalPrice,
                 subtotal,
+                // ✅ হিসাবের snapshot: মূল্য (unit_price/subtotal) যে হার দিয়ে বানানো হলো
+                // সেই VAT/ট্যাক্স হার ও ভ্যাট-বাদে মূল্য সংরক্ষণ — পরে পণ্যের হার বদলালেও
+                // P&L-এ রিটার্নের ভ্যাট-বাদ ঠিক থাকবে।
+                vat_rate:        parseFloat(prod.vat) || 0,
+                tax_rate:        parseFloat(prod.tax) || 0,
+                subtotal_ex_vat: parseFloat(((parseFloat(prod.price) || 0) * parseInt(item.qty)).toFixed(2)),
                 reason:       item.reason || reason
             });
         }
