@@ -273,7 +273,7 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
                 doc.fontSize(8).font(F)
                    .text(item.product_name, 40, yPos, { width: 100 });
                 doc.text(`${item.qty} × ৳${item.price}`, 140, yPos, { width: 40 });
-                doc.text(`৳${subtotal.toLocaleString('bn-BD')}`, 185, yPos, { width: 58, align: 'right' });
+                doc.text(item.is_free_gift ? 'ফ্রি (গিফট)' : `৳${subtotal.toLocaleString('bn-BD')}`, 185, yPos, { width: 58, align: 'right' });
                 const sub = itemSubtitle(branding.itemMeta, item.product_id);
                 if (sub) {
                     // নাম লম্বা হয়ে একাধিক লাইন নিলেও সাব-লাইন নামের নিচেই বসে
@@ -314,8 +314,14 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
             };
 
             addSummaryRow('মোট',                    `৳${sale.total_amount.toLocaleString('bn-BD')}`);
-            if (sale.discount_amount > 0) {
-                addSummaryRow('ছাড় (ব্যালেন্স)',   `-৳${sale.discount_amount}`);
+            // discount_amount = প্রমোশন ছাড় + ক্রেডিট ব্যালেন্স ব্যবহার — আলাদা করে দেখাও
+            const _credUsed  = parseFloat(sale.credit_balance_used) || 0;
+            const _promoOff  = Math.max(0, (parseFloat(sale.discount_amount) || 0) - _credUsed);
+            if (_promoOff > 0) {
+                addSummaryRow('প্রমোশন ছাড়',      `-৳${_promoOff}`);
+            }
+            if (_credUsed > 0) {
+                addSummaryRow('ছাড় (ব্যালেন্স)',   `-৳${_credUsed}`);
             }
             addSummaryRow('পরিশোধযোগ্য',            `৳${sale.net_amount.toLocaleString('bn-BD')}`, true);
 
@@ -366,7 +372,9 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
 
 const getInvoiceWhatsAppMessage = (sale, customer, worker, items, companyName = null) => {
     const itemsList = items
-        .map(i => `• ${i.product_name}: ${i.qty} × ৳${i.price} = ৳${i.qty * i.price}`)
+        .map(i => i.is_free_gift
+            ? `• 🎁 ${i.product_name}: ${i.qty} পিস = ফ্রি`
+            : `• ${i.product_name}: ${i.qty} × ৳${i.price} = ৳${i.qty * i.price}`)
         .join('\n');
 
     const replacementList = sale.replacement_items?.length > 0
@@ -385,7 +393,7 @@ const getInvoiceWhatsAppMessage = (sale, customer, worker, items, companyName = 
 ━━━━━━━━━━━━━━━━━━
 ${itemsList}${replacementList}
 ━━━━━━━━━━━━━━━━━━
-💰 মোট: ৳${sale.total_amount}${sale.discount_amount > 0 ? `\n💳 ক্রেডিট ব্যালেন্স থেকে: -৳${sale.discount_amount}` : ''}${sale.replacement_value > 0 ? `\n↩️ রিপ্লেসমেন্ট: -৳${sale.replacement_value}` : ''}${sale.credit_balance_added > 0 ? `\n✅ ব্যালেন্সে জমা: +৳${sale.credit_balance_added}` : ''}
+💰 মোট: ৳${sale.total_amount}${(() => { const c = parseFloat(sale.credit_balance_used) || 0; const p = Math.max(0, (parseFloat(sale.discount_amount) || 0) - c); return (p > 0 ? `\n🎟️ প্রমোশন ছাড়: -৳${p}` : '') + (c > 0 ? `\n💳 ক্রেডিট ব্যালেন্স থেকে: -৳${c}` : ''); })()}${sale.replacement_value > 0 ? `\n↩️ রিপ্লেসমেন্ট: -৳${sale.replacement_value}` : ''}${sale.credit_balance_added > 0 ? `\n✅ ব্যালেন্সে জমা: +৳${sale.credit_balance_added}` : ''}
 💳 পেমেন্ট: ${(sale.payment_method === 'credit' && parseFloat(sale.cash_received) > 0) ? 'আংশিক (নগদ + বাকি)' : paymentLabels[sale.payment_method]}${(sale.payment_method === 'credit' && parseFloat(sale.cash_received) > 0) ? `
 💵 নগদ প্রাপ্ত: ৳${sale.cash_received}
 📋 বাকি: ৳${sale.credit_used}` : ''}

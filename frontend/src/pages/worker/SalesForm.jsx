@@ -719,7 +719,10 @@ export default function SalesForm() {
           product_id: p.id, product_name: p.name, qty: selected[p.id],
           price: calcFinalPrice(p),
           subtotal: calcFinalPrice(p) * selected[p.id]
-        }))
+        })).concat(
+          // সার্ভারের যোগ করা ফ্রি গিফট লাইন (buy_x_get_y / টার্গেট গিফট) ইনভয়েসেও দেখাও
+          (res.data.data.items || []).filter(i => i.is_free_gift)
+        )
       })
 
       navigate(`/worker/otp/${res.data.data.sale_id}`)

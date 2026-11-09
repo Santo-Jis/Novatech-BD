@@ -247,7 +247,7 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {})
         return `<tr>
           <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;">${i.product_name}${itemSubtitle(itemMeta, i.product_id) ? `<br><span style="color:#888;font-size:11px;">${escapeHtml(itemSubtitle(itemMeta, i.product_id))}</span>` : ''}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#555;font-size:13px;text-align:center;">${i.qty} × ৳${(i.price || 0).toLocaleString('bn-BD')}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;text-align:right;font-weight:bold;">৳${subtotal.toLocaleString('bn-BD')}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;text-align:right;font-weight:bold;">${i.is_free_gift ? '🎁 ফ্রি' : '৳' + subtotal.toLocaleString('bn-BD')}</td>
         </tr>`;
     }).join('');
 
@@ -330,10 +330,15 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {})
               <td style="color:#555;font-size:13px;padding:4px 0;">মোট পরিমাণ</td>
               <td style="color:#333;font-size:13px;text-align:right;padding:4px 0;">৳${(sale.total_amount || 0).toLocaleString('bn-BD')}</td>
             </tr>
-            ${(sale.discount_amount > 0) ? `<tr>
-              <td style="color:#555;font-size:13px;padding:4px 0;">ক্রেডিট ব্যালেন্স ছাড়</td>
-              <td style="color:#e53935;font-size:13px;text-align:right;padding:4px 0;">-৳${(sale.discount_amount || 0).toLocaleString('bn-BD')}</td>
-            </tr>` : ''}
+            ${(() => {
+              const c = parseFloat(sale.credit_balance_used) || 0;
+              const p = Math.max(0, (parseFloat(sale.discount_amount) || 0) - c);
+              const row = (label, v) => `<tr>
+              <td style="color:#555;font-size:13px;padding:4px 0;">${label}</td>
+              <td style="color:#e53935;font-size:13px;text-align:right;padding:4px 0;">-৳${v.toLocaleString('bn-BD')}</td>
+            </tr>`;
+              return (p > 0 ? row('🎟️ প্রমোশন ছাড়', p) : '') + (c > 0 ? row('ক্রেডিট ব্যালেন্স ছাড়', c) : '');
+            })()}
             <tr><td colspan="2"><hr style="border:none;border-top:1px solid #ddd;margin:8px 0;"></td></tr>
             <tr>
               <td style="color:#1a73e8;font-size:15px;font-weight:bold;padding:4px 0;">পরিশোধযোগ্য মোট</td>
@@ -392,7 +397,7 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
         return `<tr>
           <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;">${i.product_name}${itemSubtitle(itemMeta, i.product_id) ? `<br><span style="color:#888;font-size:11px;">${escapeHtml(itemSubtitle(itemMeta, i.product_id))}</span>` : ''}</td>
           <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#555;font-size:13px;text-align:center;">${i.qty} × ৳${(i.price || 0).toLocaleString('bn-BD')}</td>
-          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;text-align:right;font-weight:bold;">৳${subtotal.toLocaleString('bn-BD')}</td>
+          <td style="padding:8px 12px;border-bottom:1px solid #f0f0f0;color:#333;font-size:13px;text-align:right;font-weight:bold;">${i.is_free_gift ? '🎁 ফ্রি' : '৳' + subtotal.toLocaleString('bn-BD')}</td>
         </tr>`;
     }).join('');
 
@@ -505,10 +510,15 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
               <td style="color:#555;font-size:13px;padding:4px 0;">মোট পরিমাণ</td>
               <td style="color:#333;font-size:13px;text-align:right;padding:4px 0;">৳${(sale.total_amount || 0).toLocaleString('bn-BD')}</td>
             </tr>
-            ${(sale.discount_amount > 0) ? `<tr>
-              <td style="color:#555;font-size:13px;padding:4px 0;">ক্রেডিট ব্যালেন্স ছাড়</td>
-              <td style="color:#e53935;font-size:13px;text-align:right;padding:4px 0;">-৳${(sale.discount_amount || 0).toLocaleString('bn-BD')}</td>
-            </tr>` : ''}
+            ${(() => {
+              const c = parseFloat(sale.credit_balance_used) || 0;
+              const p = Math.max(0, (parseFloat(sale.discount_amount) || 0) - c);
+              const row = (label, v) => `<tr>
+              <td style="color:#555;font-size:13px;padding:4px 0;">${label}</td>
+              <td style="color:#e53935;font-size:13px;text-align:right;padding:4px 0;">-৳${v.toLocaleString('bn-BD')}</td>
+            </tr>`;
+              return (p > 0 ? row('🎟️ প্রমোশন ছাড়', p) : '') + (c > 0 ? row('ক্রেডিট ব্যালেন্স ছাড়', c) : '');
+            })()}
             <tr><td colspan="2"><hr style="border:none;border-top:1px solid #ddd;margin:8px 0;"></td></tr>
             <tr>
               <td style="color:#1a73e8;font-size:15px;font-weight:bold;padding:4px 0;">পরিশোধযোগ্য মোট</td>

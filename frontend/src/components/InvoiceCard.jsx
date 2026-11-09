@@ -102,7 +102,9 @@ export default function InvoiceCard({ sale, customer, worker, onShare, onDownloa
                 <p style={{ fontWeight:600, color:'#1f2937', fontSize:'0.88rem' }}>{item.product_name}</p>
                 <p style={{ color:'#9ca3af', fontSize:'0.72rem', marginTop:1 }}>{item.qty} × ৳{parseFloat(item.price).toLocaleString()}</p>
               </div>
-              <p style={{ fontWeight:700, color:'#1f2937', fontSize:'0.9rem' }}>৳{parseFloat(item.subtotal || item.qty * item.price).toLocaleString()}</p>
+              {item.is_free_gift
+                ? <p style={{ fontWeight:700, color:'#059669', fontSize:'0.85rem' }}>🎁 ফ্রি</p>
+                : <p style={{ fontWeight:700, color:'#1f2937', fontSize:'0.9rem' }}>৳{parseFloat(item.subtotal || item.qty * item.price).toLocaleString()}</p>}
             </div>
           ))}
         </div>
@@ -135,16 +137,45 @@ export default function InvoiceCard({ sale, customer, worker, onShare, onDownloa
             <span style={{ fontWeight:600 }}>৳{parseFloat(sale.total_amount || 0).toLocaleString()}</span>
           </div>
 
-          {sale.discount_amount > 0 && (
-            <div style={{
-              display:'flex', justifyContent:'space-between', fontSize:'0.83rem',
-              color:'#059669', background:'#ecfdf5', borderRadius:8,
-              padding:'6px 10px', margin:'2px -4px'
-            }}>
-              <span style={{ fontWeight:600 }}>💳 ক্রেডিট ব্যালেন্স থেকে কাটা</span>
-              <span style={{ fontWeight:700 }}>-৳{parseFloat(sale.discount_amount).toLocaleString()}</span>
-            </div>
-          )}
+          {/* প্রমোশন ছাড় = মোট ছাড় − ক্রেডিট ব্যালেন্স ব্যবহার (DB-তে দুটো একসাথে discount_amount-এ জমা হয়) */}
+          {(() => {
+            const credUsed = parseFloat(sale.credit_balance_used) || 0
+            const promoOff = Math.max(0, (parseFloat(sale.discount_amount) || 0) - credUsed)
+            const promoNames = (sale.applied_promotions || []).map(a => a.name).filter(Boolean).join(', ')
+            const gifts = (sale.items || []).filter(i => i.is_free_gift)
+            return (
+              <>
+                {promoOff > 0 && (
+                  <div style={{
+                    display:'flex', justifyContent:'space-between', fontSize:'0.83rem',
+                    color:'#7c3aed', background:'#f5f3ff', borderRadius:8,
+                    padding:'6px 10px', margin:'2px -4px'
+                  }}>
+                    <span style={{ fontWeight:600 }}>🎟️ প্রমোশন ছাড়{promoNames ? ` (${promoNames})` : ''}</span>
+                    <span style={{ fontWeight:700 }}>-৳{promoOff.toLocaleString()}</span>
+                  </div>
+                )}
+                {gifts.length > 0 && (
+                  <div style={{
+                    fontSize:'0.8rem', color:'#059669', background:'#ecfdf5', borderRadius:8,
+                    padding:'6px 10px', margin:'2px -4px', fontWeight:600
+                  }}>
+                    🎁 ফ্রি গিফট: {gifts.map(g => `${g.product_name} × ${g.qty}`).join(', ')}
+                  </div>
+                )}
+                {credUsed > 0 && (
+                  <div style={{
+                    display:'flex', justifyContent:'space-between', fontSize:'0.83rem',
+                    color:'#059669', background:'#ecfdf5', borderRadius:8,
+                    padding:'6px 10px', margin:'2px -4px'
+                  }}>
+                    <span style={{ fontWeight:600 }}>💳 ক্রেডিট ব্যালেন্স থেকে কাটা</span>
+                    <span style={{ fontWeight:700 }}>-৳{credUsed.toLocaleString()}</span>
+                  </div>
+                )}
+              </>
+            )
+          })()}
 
           {sale.replacement_value > 0 && (
             <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.83rem', color:'#d97706' }}>

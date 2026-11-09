@@ -105,9 +105,11 @@ export default function InvoiceCard({ sale, company }) {
                 <span style={{ fontSize: 12, color: '#374151' }}>
                   {item.product_name} × {item.qty}
                 </span>
-                <span style={{ fontSize: 12, fontWeight: 600, color: '#111827', fontFamily: 'Inter, system-ui' }}>
-                  ৳{fmt(item.subtotal)}
-                </span>
+                {item.is_free_gift
+                  ? <span style={{ fontSize: 12, fontWeight: 700, color: '#059669' }}>🎁 ফ্রি</span>
+                  : <span style={{ fontSize: 12, fontWeight: 600, color: '#111827', fontFamily: 'Inter, system-ui' }}>
+                      ৳{fmt(item.subtotal)}
+                    </span>}
               </div>
             ))}
           </div>
@@ -122,14 +124,30 @@ export default function InvoiceCard({ sale, company }) {
             </div>
 
             {/* ছাড় */}
-            {parseFloat(sale.discount_amount) > 0 && (
-              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 12, color: '#059669' }}>ছাড়</span>
-                <span style={{ fontSize: 12, color: '#059669', fontWeight: 600, fontFamily: 'Inter, system-ui' }}>
-                  − ৳{fmt(sale.discount_amount)}
-                </span>
-              </div>
-            )}
+            {(() => {
+              const credUsed = parseFloat(sale.credit_balance_used) || 0
+              const promoOff = Math.max(0, (parseFloat(sale.discount_amount) || 0) - credUsed)
+              return (
+                <>
+                  {promoOff > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 12, color: '#7c3aed' }}>🎟️ প্রমোশন ছাড়</span>
+                      <span style={{ fontSize: 12, color: '#7c3aed', fontWeight: 600, fontFamily: 'Inter, system-ui' }}>
+                        − ৳{fmt(promoOff)}
+                      </span>
+                    </div>
+                  )}
+                  {credUsed > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 12, color: '#059669' }}>ক্রেডিট ব্যালেন্স ছাড়</span>
+                      <span style={{ fontSize: 12, color: '#059669', fontWeight: 600, fontFamily: 'Inter, system-ui' }}>
+                        − ৳{fmt(credUsed)}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )
+            })()}
 
             {/* রিপ্লেসমেন্ট */}
             {parseFloat(sale.replacement_value) > 0 && (
