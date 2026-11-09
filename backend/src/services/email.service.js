@@ -4,6 +4,7 @@ const walletService = require('./wallet.service');
 const { getPublicAppUrl } = require('../config/publicAppUrl');
 const { renderEmailLayout } = require('./emailTemplates');
 const { loadInvoiceBranding, itemSubtitle, escapeHtml } = require('./invoiceBranding.service');
+const { getDueRows, fmt: fmtDue } = require('./invoiceDue.util');
 // nodemailer বাদ — Render SMTP block করে, তাই Brevo HTTP API ব্যবহার করা হচ্ছে
 
 // ============================================================
@@ -234,6 +235,21 @@ const sendOTPEmail = async (email, otp, shopName, expiryMinutes = 10, verifyToke
 // INVOICE EMAIL TEMPLATE
 // ============================================================
 
+// ইনভয়েস ইমেইলে "বাকির হিসাব" সারি — স্ন্যাপশট (previous_due/closing_due) না থাকলে (পুরনো ইনভয়েস) খালি
+const dueRowsHTML = (sale) => {
+    const rows = getDueRows(sale);
+    const cash = parseFloat(sale?.due_payment) > 0
+        ? `<tr><td style="color:#777;font-size:12px;padding:3px 0;">বাকি বাবদ নগদ প্রাপ্ত</td><td style="color:#2e7d32;font-size:12px;text-align:right;padding:3px 0;">৳${fmtDue(sale.due_payment)}</td></tr>`
+        : '';
+    if (!rows.length) return cash;
+    const body = rows.map(r => r.bold
+        ? `<tr><td style="color:#c62828;font-size:13px;font-weight:bold;padding:5px 0 0;">${r.label}</td><td style="color:#c62828;font-size:14px;font-weight:bold;text-align:right;padding:5px 0 0;">${r.value}</td></tr>`
+        : `<tr><td style="color:#777;font-size:12px;padding:3px 0;">${r.label}</td><td style="color:#333;font-size:12px;text-align:right;padding:3px 0;">${r.value}</td></tr>`
+    ).join('');
+    return cash + `<tr><td colspan="2"><hr style="border:none;border-top:1px dashed #ccc;margin:8px 0 4px;"></td></tr>` +
+           `<tr><td colspan="2" style="color:#555;font-size:11px;font-weight:bold;padding:0 0 3px;">📒 বাকির হিসাব</td></tr>` + body;
+};
+
 const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {}) => {
     const { company, itemMeta } = await loadInvoiceBranding({ sale, worker, customer, items, meta });
     const companyLine = [company.address, company.phone].filter(Boolean).map(escapeHtml).join(' | ');
@@ -350,6 +366,7 @@ const sendInvoiceEmail = async (email, sale, customer, worker, items, meta = {})
             </tr>
             ${sale.cash_received > 0 ? `<tr><td style="color:#777;font-size:12px;padding:3px 0;">নগদ প্রাপ্ত</td><td style="color:#2e7d32;font-size:12px;text-align:right;padding:3px 0;">৳${sale.cash_received}</td></tr>` : ''}
             ${sale.credit_used > 0 ? `<tr><td style="color:#777;font-size:12px;padding:3px 0;">বাকি দেওয়া হয়েছে</td><td style="color:#e65100;font-size:12px;text-align:right;padding:3px 0;">৳${sale.credit_used}</td></tr>` : ''}
+            ${dueRowsHTML(sale)}
           </table>
         </td></tr>
       </table>
@@ -530,6 +547,7 @@ const sendOTPWithInvoiceEmail = async (email, otp, expiryMinutes = 10, sale, cus
             </tr>
             ${sale.cash_received > 0 ? `<tr><td style="color:#777;font-size:12px;padding:3px 0;">নগদ প্রাপ্ত</td><td style="color:#2e7d32;font-size:12px;text-align:right;padding:3px 0;">৳${sale.cash_received}</td></tr>` : ''}
             ${sale.credit_used > 0 ? `<tr><td style="color:#777;font-size:12px;padding:3px 0;">বাকি দেওয়া হয়েছে</td><td style="color:#e65100;font-size:12px;text-align:right;padding:3px 0;">৳${sale.credit_used}</td></tr>` : ''}
+            ${dueRowsHTML(sale)}
           </table>
         </td></tr>
       </table>

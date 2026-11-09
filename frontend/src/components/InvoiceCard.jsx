@@ -201,6 +201,39 @@ export default function InvoiceCard({ sale, customer, worker, onShare, onDownloa
             <span style={{ fontWeight:700, color:'#0f172a', fontSize:'0.95rem' }}>পরিশোধযোগ্য</span>
             <span style={{ fontWeight:800, color:'#1e3a8a', fontSize:'1.15rem' }}>৳{parseFloat(sale.net_amount || 0).toLocaleString()}</span>
           </div>
+
+          {/* ── বাকির হিসাব: আগের বাকি + এই ইনভয়েস − আজকের বাকি আদায় = এখনকার মোট বাকি ──
+              স্ন্যাপশট না থাকলে (পুরনো ইনভয়েস) এই অংশ দেখায় না। */}
+          {sale.previous_due !== null && sale.previous_due !== undefined &&
+           sale.closing_due  !== null && sale.closing_due  !== undefined &&
+           (parseFloat(sale.previous_due) > 0 || parseFloat(sale.closing_due) > 0 || parseFloat(sale.due_payment) > 0) && (
+            <div style={{ marginTop:6, paddingTop:10, borderTop:'1.5px dashed #cbd5e1', display:'flex', flexDirection:'column', gap:6 }}>
+              <p style={{ fontSize:'0.65rem', fontWeight:700, color:'#9ca3af', letterSpacing:'1px', textTransform:'uppercase' }}>📒 বাকির হিসাব</p>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.83rem', color:'#4b5563' }}>
+                <span>আগের বাকি</span>
+                <span style={{ fontWeight:600 }}>৳{parseFloat(sale.previous_due).toLocaleString()}</span>
+              </div>
+              {parseFloat(sale.credit_used) > 0 && (
+                <div style={{ display:'flex', justifyContent:'space-between', fontSize:'0.83rem', color:'#4b5563' }}>
+                  <span>+ এই ইনভয়েসের বাকি</span>
+                  <span style={{ fontWeight:600 }}>৳{parseFloat(sale.credit_used).toLocaleString()}</span>
+                </div>
+              )}
+              {parseFloat(sale.due_payment) > 0 && (
+                <div style={{
+                  display:'flex', justifyContent:'space-between', fontSize:'0.83rem',
+                  color:'#059669', background:'#ecfdf5', borderRadius:8, padding:'6px 10px', margin:'2px -4px'
+                }}>
+                  <span style={{ fontWeight:600 }}>💵 বাকি আদায় (আজ)</span>
+                  <span style={{ fontWeight:700 }}>-৳{parseFloat(sale.due_payment).toLocaleString()}</span>
+                </div>
+              )}
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <span style={{ fontWeight:700, color:'#b91c1c', fontSize:'0.9rem' }}>এখনকার মোট বাকি</span>
+                <span style={{ fontWeight:800, color:'#b91c1c', fontSize:'1.05rem' }}>৳{parseFloat(sale.closing_due).toLocaleString()}</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

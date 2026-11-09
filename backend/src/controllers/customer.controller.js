@@ -9,6 +9,7 @@ const { autoConnectStaffCreatedCustomer } = require('../services/customerConnect
 const { updateCommissionRealtime } = require('../services/commission.service');
 const { firebaseNotify } = require('../services/firebase.notify');
 const { allocatePaymentSafe, parseSaleIds, assertSaleIdsBelongToCustomer } = require('../services/paymentAllocation.service');
+const { sendCollectionReceipt } = require('../services/collectionReceipt.service');
 const { denyWorkerOutsideTeam, denyWorkerOutsideTeamRoute } = require('../services/teamAccess.service');
 
 // ✅ FIX: UTC নয়, BD local date — commission.service.js/sales.controller.js-এর
@@ -838,6 +839,7 @@ const collectCredit = async (req, res) => {
         });
 
         let remainingCredit;
+        let receiptCtx = null; // রসিদ পাঠানোর জন্য (transaction শেষে ব্যবহার হবে)
 
         // ─── Transaction: READ + INSERT একসাথে, race condition সম্ভব নয় ────────────
         // SELECT ... FOR UPDATE — row lock নেয়, concurrent request queue-এ পড়ে।
@@ -873,7 +875,7 @@ const collectCredit = async (req, res) => {
 
             // এই আদায় কোন ইনভয়েসগুলোর বাকি শোধ করল তা রেকর্ড (FIFO)। best-effort (SAVEPOINT) —
             // ফেল করলেও আদায়/ট্রিগার-কমানো আটকায় না। দেখো services/paymentAllocation.service.js
-            await allocatePaymentSafe(client, {
+            const allocPlan = await allocatePaymentSafe(client, {
                 tenantId:   req.tenantId,
                 customerId,
                 paymentId:  paymentInsert.rows[0].id,
@@ -883,6 +885,11 @@ const collectCredit = async (req, res) => {
             });
 
             remainingCredit = Math.max(0, currentCredit - parseFloat(amount));
+            receiptCtx = {
+                paymentId:   paymentInsert.rows[0].id,
+                previousDue: currentCredit,
+                allocations: allocPlan?.allocations || [],
+            };
         });
 
         // ✅ FIX: বাকি আদায় হলো (এই পথেও) — commission-যোগ্য।
@@ -913,9 +920,29 @@ const collectCredit = async (req, res) => {
             type:  'payment_received',
         }).catch(e => logger.error('[CollectCredit] Notification error:', e.message));
 
+        // ✅ পণ্য ছাড়া শুধু বাকি দিলেও কাস্টমার এখন রসিদ (PDF) পায় — WhatsApp, না হলে ইমেইল।
+        // transaction-এর বাইরে, fire-and-forget: ব্যর্থ হলেও আদায় আটকায় না।
+        let receiptNo = null;
+        if (receiptCtx) {
+            const { buildReceiptNo } = require('../services/collectionReceipt.service');
+            receiptNo = buildReceiptNo(receiptCtx.paymentId);
+            sendCollectionReceipt({
+                tenantId:     req.tenantId,
+                customerId,
+                paymentId:    receiptCtx.paymentId,
+                amount,
+                paymentMode:  'cash',
+                previousDue:  receiptCtx.previousDue,
+                remainingDue: remainingCredit,
+                allocations:  receiptCtx.allocations,
+                collector:    req.user,
+            }).catch(e => logger.error('[CollectCredit] Receipt error:', e.message));
+        }
+
         return res.status(200).json({
             success: true,
-            message: `৳${amount} বাকি আদায় সফল।`
+            message: `৳${amount} বাকি আদায় সফল।`,
+            receipt_no: receiptNo,
         });
 
     } catch (error) {

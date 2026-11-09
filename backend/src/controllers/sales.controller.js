@@ -30,6 +30,7 @@ const { updateCommissionRealtime, getDailyCommissionableSales, getWorkerRateOver
 
 // WhatsApp Invoice Image
 const { sendInvoiceWhatsApp } = require('../services/invoiceWhatsapp.service');
+const { allocatePaymentSafe } = require('../services/paymentAllocation.service');
 
 // ─── Bangladesh Timezone Helper (UTC+6) ───────────────────────────────────────
 // settlement.controller.js-এর মতোই এক helper।
@@ -168,6 +169,8 @@ const createSale = async (req, res) => {
             replacement_items,
             use_credit_balance,  // কাস্টমারের জমা ব্যালেন্স ব্যবহার
             cash_received: partialCashInput, // আংশিক পেমেন্ট: payment_method='credit' + এই অঙ্ক নগদ নেওয়া হলো, বাকিটা বাকি
+            due_payment: duePaymentInput,    // নগদ বিক্রির সাথে বাড়তি টাকা: বিলের বেশি যা দিল, সেটা পুরনো বাকি থেকে কাটা হবে
+            cash_given: cashGivenInput,      // বিকল্প: কাস্টমার মোট কত নগদ দিল — সার্ভার নিজেই (cash_given − বিল) বের করে বাকি থেকে কাটে
             idempotency_key,     // Offline duplicate প্রতিরোধ
             promo_code,          // ← নতুন (Phase ২): SR/কাস্টমার-এর দেওয়া কোড, থাকলে
         } = req.body;
@@ -457,6 +460,45 @@ const createSale = async (req, res) => {
             cashReceived = netAmount;
         }
 
+        // ── বিলের বেশি নগদ → পুরনো বাকি থেকে কাটা ──────────────────────
+        // উদাহরণ: বাকি ৫০০০, ১০০০ টাকার পণ্য নিয়ে ১৫০০ নগদ দিল → ১০০০ বিল, বাকি ৫০০ আদায়,
+        // নতুন বাকি ৪৫০০। বাড়তি অংশটা আলাদা `collections` এন্ট্রি হয় (SR-এর সাধারণ বাকি-আদায়ের
+        // মতোই settlement/commission/ইনভয়েস-বরাদ্দে ঢোকে)।
+        // শুধু 'cash' পদ্ধতিতে — বাকি/আংশিক বিক্রিতে "বিলের বেশি" ধারণাটাই অর্থহীন।
+        let duePayment = 0;
+        const hasCashGiven = cashGivenInput !== undefined && cashGivenInput !== null && cashGivenInput !== '';
+        const hasDuePayInput = duePaymentInput !== undefined && duePaymentInput !== null && duePaymentInput !== '';
+
+        // cash_given: SR শুধু "মোট কত নগদ পেলাম" লেখে; বিল সার্ভারেই চূড়ান্ত হয় (প্রমো/VAT সহ),
+        // তাই বাড়তি অংশ সার্ভারে বের করাই নিরাপদ — ফ্রন্টএন্ডের হিসাবের সাথে পয়সার গরমিল হয় না।
+        if (hasCashGiven && !hasDuePayInput && payment_method === 'cash') {
+            const given = Number(cashGivenInput);
+            if (!Number.isFinite(given) || given < 0) {
+                return res.status(400).json({ success: false, message: 'নগদ প্রাপ্তির পরিমাণ সঠিক নয়।' });
+            }
+            if (given + 0.009 < netAmount) {
+                return res.status(400).json({
+                    success: false,
+                    message: `নগদ ৳${given.toLocaleString()} মোট বিল ৳${netAmount.toLocaleString()} এর কম। কিছু বাকি রাখতে চাইলে "আংশিক" পদ্ধতি নিন।`
+                });
+            }
+            duePayment = Math.round(Math.max(0, given - netAmount) * 100) / 100;
+        } else if (hasDuePayInput) {
+            const dp = Number(duePaymentInput);
+            if (!Number.isFinite(dp) || dp < 0) {
+                return res.status(400).json({ success: false, message: 'বাকি আদায়ের পরিমাণ সঠিক নয়।' });
+            }
+            if (dp > 0) {
+                if (payment_method !== 'cash') {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'বাকি আদায় শুধু "নগদ" বিক্রির সাথে নেওয়া যায়।'
+                    });
+                }
+                duePayment = Math.round(dp * 100) / 100;
+            }
+        }
+
         // Invoice নম্বর
         const invoiceNumber = await generateInvoiceNumber();
 
@@ -498,23 +540,38 @@ const createSale = async (req, res) => {
             // Fix: FOR UPDATE দিয়ে customer row lock করে fresh data নিয়ে
             //      চূড়ান্ত credit check করা হচ্ছে।
             //      অন্য transaction এই row-এ পৌঁছালে lock ছাড়া পর্যন্ত wait করবে।
-            if (payment_method === 'credit') {
-                const lockedCustomer = await client.query(
-                    `SELECT current_credit, credit_limit
-                     FROM customers
-                     WHERE id = $1
-                       AND tenant_id = $2
-                     FOR UPDATE`,
-                    [customer_id, req.tenantId]
+            // ✅ এখন সব পদ্ধতিতেই lock নেওয়া হয় (আগে শুধু 'credit'-এ) — কারণ ইনভয়েসে
+            // "আগের বাকি" স্ন্যাপশট রাখতে এবং বাকি-কাটার সময় consistent মান পড়তে হয়।
+            const lockedCustomer = await client.query(
+                `SELECT current_credit, credit_limit
+                 FROM customers
+                 WHERE id = $1
+                   AND tenant_id = $2
+                 FOR UPDATE`,
+                [customer_id, req.tenantId]
+            );
+
+            if (lockedCustomer.rows.length === 0) {
+                throw Object.assign(
+                    new Error('CUSTOMER_NOT_FOUND'),
+                    { statusCode: 404, clientMessage: 'কাস্টমার পাওয়া যায়নি।' }
                 );
+            }
 
-                if (lockedCustomer.rows.length === 0) {
-                    throw Object.assign(
-                        new Error('CUSTOMER_NOT_FOUND'),
-                        { statusCode: 404, clientMessage: 'কাস্টমার পাওয়া যায়নি।' }
-                    );
-                }
+            // বিক্রির ঠিক আগের বাকি (trg_sale_credit চলার আগে) — ইনভয়েস স্ন্যাপশটের জন্য
+            const previousDue = parseFloat(lockedCustomer.rows[0].current_credit) || 0;
 
+            if (duePayment > previousDue + 0.009) {
+                throw Object.assign(
+                    new Error('DUE_PAYMENT_EXCEEDS'),
+                    {
+                        statusCode: 400,
+                        clientMessage: `বাকি আদায় ৳${previousDue.toLocaleString()} এর বেশি হতে পারবে না (এই কাস্টমারের মোট বাকি ৳${previousDue.toLocaleString()})।`
+                    }
+                );
+            }
+
+            if (payment_method === 'credit') {
                 const freshCust    = lockedCustomer.rows[0];
                 const finalCredit  = parseFloat(freshCust.current_credit) + creditUsed;
 
@@ -812,7 +869,68 @@ const createSale = async (req, res) => {
                 );
             }
 
-            return result.rows[0];
+            // ─── বিলের বেশি নগদ → পুরনো বাকি থেকে কাটা ───────────────────
+            // createCollection-এর সাথে হুবহু একই ধাপ: collections এন্ট্রি (settlement ও commission-এ
+            // ঢোকে) → current_credit কমানো → ইনভয়েসে FIFO বরাদ্দ। একই transaction, তাই বিক্রি
+            // rollback হলে এটাও rollback।
+            if (duePayment > 0) {
+                const colInsert = await client.query(
+                    `INSERT INTO collections (sr_id, customer_id, amount, payment_mode,
+                        note, status, created_at, tenant_id, idempotency_key, balance_applied)
+                     VALUES ($1, $2, $3, 'cash', $4, 'pending', NOW(), $5, $6, true)
+                     RETURNING id`,
+                    [
+                        req.user.id, customer_id, duePayment,
+                        `বিক্রির সাথে বাকি আদায় — Invoice: ${invoiceNumber}`,
+                        req.tenantId,
+                        idempotency_key ? `${idempotency_key}:due` : null,
+                    ]
+                );
+
+                await client.query(
+                    `UPDATE customers
+                     SET current_credit = GREATEST(0, current_credit - $1),
+                         updated_at     = NOW()
+                     WHERE id = $2 AND tenant_id = $3`,
+                    [duePayment, customer_id, req.tenantId]
+                );
+
+                // best-effort (SAVEPOINT) — ব্যর্থ হলেও বিক্রি/বাকি-কাটা আটকায় না
+                await allocatePaymentSafe(client, {
+                    tenantId:   req.tenantId,
+                    customerId: customer_id,
+                    paymentId:  colInsert.rows[0].id,
+                    source:     'collection',
+                    amount:     duePayment,
+                });
+            }
+
+            // ─── ইনভয়েস স্ন্যাপশট: আগের বাকি / বাকি-কাটা / এখনকার মোট বাকি ──
+            // trigger ও উপরের কাটা — দুটোর পরে customers থেকেই আসল মান পড়ি।
+            const afterCust = await client.query(
+                'SELECT current_credit FROM customers WHERE id = $1 AND tenant_id = $2',
+                [customer_id, req.tenantId]
+            );
+            const closingDue = parseFloat(afterCust.rows[0]?.current_credit) || 0;
+            const snapshot = { previous_due: previousDue, due_payment: duePayment, closing_due: closingDue };
+
+            // best-effort: migration_invoice_due_snapshot.sql না চললেও বিক্রি আটকাবে না
+            await client.query('SAVEPOINT invoice_due_snapshot');
+            try {
+                await client.query(
+                    `UPDATE sales_transactions
+                     SET previous_due = $1, due_payment = $2, closing_due = $3
+                     WHERE id = $4 AND tenant_id = $5`,
+                    [previousDue, duePayment, closingDue, result.rows[0].id, req.tenantId]
+                );
+                await client.query('RELEASE SAVEPOINT invoice_due_snapshot');
+            } catch (snapErr) {
+                await client.query('ROLLBACK TO SAVEPOINT invoice_due_snapshot');
+                await client.query('RELEASE SAVEPOINT invoice_due_snapshot');
+                logger.warn(`[Sale] due snapshot সেভ হয়নি (migration_invoice_due_snapshot.sql চালানো হয়েছে?): ${snapErr.message}`);
+            }
+
+            return { ...result.rows[0], ...snapshot };
         });
 
         // OTP + Invoice একসাথে একটাই Email/SMS
@@ -854,14 +972,17 @@ const createSale = async (req, res) => {
         );
 
         // ✅ কাস্টমারকে নতুন invoice notification দাও
+        const dueNote = saleResult.due_payment > 0
+            ? ` | বাকি আদায় ৳${Number(saleResult.due_payment).toLocaleString('bn-BD')}, এখনকার বাকি ৳${Number(saleResult.closing_due).toLocaleString('bn-BD')}`
+            : (saleResult.closing_due > 0 ? ` | মোট বাকি ৳${Number(saleResult.closing_due).toLocaleString('bn-BD')}` : '');
         sendCustomerNotification(customer_id, {
             title: '🧾 নতুন ইনভয়েস',
-            body:  payment_method === 'credit' && cashReceived > 0
+            body:  (payment_method === 'credit' && cashReceived > 0
                 ? `Invoice ${invoiceNumber} — মোট: ৳${netAmount.toLocaleString('bn-BD')} (নগদ ৳${cashReceived.toLocaleString('bn-BD')}, বাকি ৳${creditUsed.toLocaleString('bn-BD')})`
                 : `Invoice ${invoiceNumber} — মোট: ৳${netAmount.toLocaleString('bn-BD')} (${
                     payment_method === 'cash'   ? 'নগদ' :
                     payment_method === 'credit' ? 'বাকি' : 'মিশ্র'
-                })`,
+                })`) + dueNote,
             type:  'new_invoice',
         }).catch(e => logger.error('[Sale] Invoice notification error:', e.message));
 
@@ -952,6 +1073,9 @@ const createSale = async (req, res) => {
                 })),
                 credit_balance_used:  creditBalanceUsed,
                 credit_balance_added: creditBalanceAdded,
+                previous_due:         saleResult.previous_due,
+                due_payment:          saleResult.due_payment,
+                closing_due:          saleResult.closing_due,
                 verify_link:       `${getPublicAppUrl()}/verify/${saleResult.verify_token}`,
                 whatsapp_link:     `https://wa.me/${(() => { const r = cust.whatsapp?.replace(/\D/g, '') || ''; return r.startsWith('880') ? r : '880' + r.replace(/^0/, ''); })()}?text=${encodeURIComponent(waLink)}`
             }
@@ -961,7 +1085,7 @@ const createSale = async (req, res) => {
         logger.error('❌ Create Sale Error:', error.message);
 
         // Known business errors — transaction-এর ভেতর থেকে throw হওয়া
-        const knownErrors = ['ORDER_UNAVAILABLE', 'CREDIT_LIMIT_EXCEEDED', 'CUSTOMER_NOT_FOUND', 'PROMOTION_UNAVAILABLE', 'INSUFFICIENT_SR_STOCK'];
+        const knownErrors = ['ORDER_UNAVAILABLE', 'CREDIT_LIMIT_EXCEEDED', 'CUSTOMER_NOT_FOUND', 'PROMOTION_UNAVAILABLE', 'INSUFFICIENT_SR_STOCK', 'DUE_PAYMENT_EXCEEDS'];
         if (knownErrors.includes(error.message)) {
             return res.status(error.statusCode || 400).json({
                 success: false,

@@ -12,6 +12,7 @@ const { sendOTPEmail, sendOTPWithInvoiceEmail, sendInvoiceEmail } = require('./e
 const { getPublicAppUrl } = require('../config/publicAppUrl');
 const whatsappGateway = require('./whatsappGateway.service');
 const { loadInvoiceBranding, itemSubtitle } = require('./invoiceBranding.service');
+const { getDueRows, fmt: fmtMoney } = require('./invoiceDue.util');
 
 // ─── WhatsApp Verify Link via Baileys ──────────────────────
 // ⚠️ FRONTEND_URL নয় — ওটা CORS-এর জন্য comma/wildcard ধারণ করতে পারে (server.js দেখুন)।
@@ -210,7 +211,10 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
 
     return new Promise((resolve, reject) => {
         try {
-            const doc    = new PDFDocument({ margin: 40, size: [283, 600] }); // Receipt size
+            // Receipt size — পণ্য ও বাকির সারি বাড়লে পেজ ২-তে না গড়াতে উচ্চতা সারির সংখ্যা ধরে বাড়ে
+            const dueRowCount = getDueRows(sale).length;
+            const pageH       = 600 + Math.max(0, (items || []).length - 3) * 22 + (dueRowCount ? dueRowCount * 16 + 30 : 0);
+            const doc         = new PDFDocument({ margin: 40, size: [283, pageH] });
             const chunks = [];
 
             doc.on('data', chunk => chunks.push(chunk));
@@ -334,13 +338,28 @@ const generateInvoicePDF = async (sale, customer, worker, items) => {
                     : paymentLabels[sale.payment_method]);
 
             if (sale.cash_received > 0) {
-                addSummaryRow('নগদ প্রাপ্ত', `৳${sale.cash_received}`);
+                addSummaryRow('নগদ প্রাপ্ত (বিল)', `৳${sale.cash_received}`);
+            }
+            if (parseFloat(sale.due_payment) > 0) {
+                addSummaryRow('বাকি বাবদ নগদ প্রাপ্ত', `৳${fmtMoney(sale.due_payment)}`);
             }
             if (sale.credit_used > 0) {
                 addSummaryRow('বাকি দেওয়া হয়েছে', `৳${sale.credit_used}`);
             }
             if (sale.credit_balance_added > 0) {
                 addSummaryRow('ক্রেডিট ব্যালেন্স যোগ', `৳${sale.credit_balance_added}`);
+            }
+
+            // ── বাকির হিসাব (স্ন্যাপশট থেকে; পুরনো ইনভয়েসে থাকে না) ──
+            const dueRows = getDueRows(sale);
+            if (dueRows.length > 0) {
+                doc.moveDown(0.1);
+                doc.moveTo(40, doc.y).lineTo(243, doc.y).dash(3).stroke();
+                doc.undash();
+                doc.moveDown(0.3);
+                doc.fontSize(8).font(FB).text('বাকির হিসাব', 40, doc.y, { width: 203 });
+                doc.moveDown(0.2);
+                dueRows.forEach(r => addSummaryRow(r.label, r.value, !!r.bold));
             }
 
             // OTP যাচাই
@@ -384,6 +403,16 @@ const getInvoiceWhatsAppMessage = (sale, customer, worker, items, companyName = 
 
     const paymentLabels = { cash: 'নগদ', credit: 'বাকি', replacement: 'রিপ্লেসমেন্ট' };
 
+    // বাকির হিসাব — স্ন্যাপশট না থাকলে (পুরনো ইনভয়েস) কিছুই যোগ হয় না
+    const dueRowsWA = getDueRows(sale);
+    const dueBlock  = dueRowsWA.length
+        ? '\n━━━━━━━━━━━━━━━━━━\n📒 *বাকির হিসাব*\n' +
+          dueRowsWA.map(r => r.bold ? `🔴 *${r.label}: ${r.value}*` : `${r.label}: ${r.value}`).join('\n')
+        : '';
+    const dueCashLine = parseFloat(sale.due_payment) > 0
+        ? `\n💵 বাকি বাবদ নগদ প্রাপ্ত: ৳${fmtMoney(sale.due_payment)}`
+        : '';
+
     return `🧾 *ZovoriX Invoice*
 ━━━━━━━━━━━━━━━━━━
 📋 Invoice: *${sale.invoice_number}*
@@ -397,7 +426,7 @@ ${itemsList}${replacementList}
 💳 পেমেন্ট: ${(sale.payment_method === 'credit' && parseFloat(sale.cash_received) > 0) ? 'আংশিক (নগদ + বাকি)' : paymentLabels[sale.payment_method]}${(sale.payment_method === 'credit' && parseFloat(sale.cash_received) > 0) ? `
 💵 নগদ প্রাপ্ত: ৳${sale.cash_received}
 📋 বাকি: ৳${sale.credit_used}` : ''}
-✅ পরিশোধযোগ্য: *৳${sale.net_amount}*
+✅ পরিশোধযোগ্য: *৳${sale.net_amount}*${dueCashLine}${dueBlock}
 ━━━━━━━━━━━━━━━━━━
 _${companyName || 'ZovoriX'}_`;
 };

@@ -263,6 +263,8 @@ export default function SalesForm() {
   const [paymentMethod, setPaymentMethod] = useState('cash')
   // আংশিক পেমেন্ট: 'partial' শুধু UI-র অপশন — server-এ payment_method='credit' + cash_received যায়
   const [cashNow, setCashNow] = useState('')
+  // নগদ বিক্রিতে কাস্টমার বিলের বেশি দিলে: মোট কত নগদ দিল (ঐচ্ছিক) — বাড়তিটা পুরনো বাকি থেকে কাটা হয়
+  const [cashGiven, setCashGiven] = useState('')
   const [useCreditBalance, setUseCreditBalance] = useState(false)
   const [promoPreview, setPromoPreview] = useState(null) // ← নতুন: /promotions/calculate-এর ফলাফল
   const [promoSnapshot, setPromoSnapshot] = useState(null)   // অফলাইন প্রমোশন হিসাবের ক্যাশ
@@ -544,6 +546,17 @@ export default function SalesForm() {
   const dueAmount     = paymentMethod === 'credit' ? netAmount
                       : paymentMethod === 'partial' ? Math.max(0, netAmount - cashNowNum) : 0
 
+  // ── নগদ বিক্রির সাথে বাকি আদায় ─────────────────────────────
+  // উদাহরণ: বাকি ৫০০০, বিল ১০০০, কাস্টমার দিল ১৫০০ → ৫০০ বাকি থেকে কাটা, নতুন বাকি ৪৫০০।
+  // সার্ভারই চূড়ান্ত বিল ধরে বাড়তি বের করে (cash_given পাঠাই) — এটা শুধু SR-কে হিসাব দেখানোর জন্য।
+  const existingDue    = parseFloat(customer?.current_credit || 0)
+  const cashGivenNum   = paymentMethod === 'cash' ? (parseFloat(cashGiven) || 0) : 0
+  const hasCashGiven   = paymentMethod === 'cash' && cashGiven !== '' && cashGivenNum > 0
+  const extraCash      = hasCashGiven ? Math.max(0, cashGivenNum - netAmount) : 0
+  const cashGivenShort = hasCashGiven && cashGivenNum + 0.009 < netAmount
+  const extraTooMuch   = extraCash > existingDue + 0.009
+  const cashGivenValid = !hasCashGiven || (!cashGivenShort && !extraTooMuch)
+
   const canCredit = isCreditType &&
     parseFloat(customer?.current_credit || 0) + dueAmount <= parseFloat(customer?.credit_limit || 0)
 
@@ -604,6 +617,13 @@ export default function SalesForm() {
       return
     }
 
+    if (!cashGivenValid) {
+      toast.error(cashGivenShort
+        ? 'কাস্টমারের দেওয়া নগদ মোট বিলের কম। বিল পুরো দিলে ঘরটা ফাঁকা রাখুন, কম দিলে "আংশিক" পদ্ধতি নিন।'
+        : `বাড়তি নগদ বাকির (৳${existingDue.toLocaleString()}) চেয়ে বেশি হতে পারবে না।`)
+      return
+    }
+
     if (isCreditType && !canCredit && !needsApproval) {
       toast.error('ক্রেডিট লিমিট পার হবে। পেমেন্ট পদ্ধতি পরিবর্তন করুন।')
       return
@@ -637,6 +657,7 @@ export default function SalesForm() {
             items,
             payment_method:     paymentMethod === 'partial' ? 'credit' : paymentMethod,
             cash_received:      paymentMethod === 'partial' ? cashNowNum : undefined,
+            cash_given:         hasCashGiven ? cashGivenNum : undefined, // বিলের বেশি নগদ → সার্ভার বাকি থেকে কাটে
             replacement_items:  replacementItems,
             use_credit_balance: useCreditBalance,
             promo_code:         promoCode || undefined, // অফলাইনে লেখা প্রমো কোড sync-এ যাবে
@@ -698,6 +719,7 @@ export default function SalesForm() {
         items,
         payment_method:     paymentMethod === 'partial' ? 'credit' : paymentMethod,
         cash_received:      paymentMethod === 'partial' ? cashNowNum : undefined,
+        cash_given:         hasCashGiven ? cashGivenNum : undefined, // বিলের বেশি নগদ → সার্ভার বাকি থেকে কাটে
         replacement_items:  replacementItems,
         use_credit_balance: useCreditBalance,
         receipt_photo:      receiptPhotoUrl || undefined,
@@ -1290,6 +1312,36 @@ export default function SalesForm() {
                 </div>
               </button>
             ))}
+
+            {paymentMethod === 'cash' && existingDue > 0 && (
+              <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50/60 p-4 space-y-2">
+                <label className="text-xs font-semibold text-gray-700">
+                  কাস্টমার বিলের বেশি দিলে — মোট কত নগদ পেলেন? (ঐচ্ছিক)
+                </label>
+                <input
+                  type="number" inputMode="decimal" min="0" value={cashGiven}
+                  onChange={e => setCashGiven(e.target.value)}
+                  placeholder={`বিল ৳${netAmount.toLocaleString('en', { maximumFractionDigits: 2 })} — বেশি দিলে অঙ্কটা লিখুন`}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white"
+                />
+                <p className="text-[11px] text-gray-500">
+                  এই কাস্টমারের আগের বাকি ৳{existingDue.toLocaleString('en', { maximumFractionDigits: 2 })}। বিলের বেশি টাকাটা বাকি থেকে কাটা যাবে।
+                </p>
+                {hasCashGiven && cashGivenValid && (
+                  <div className="rounded-xl bg-white border border-emerald-200 px-3 py-2 space-y-1 text-xs">
+                    <div className="flex justify-between"><span className="text-gray-600">🧾 এই বিল</span><span className="font-semibold">৳{netAmount.toLocaleString('en', { maximumFractionDigits: 2 })}</span></div>
+                    <div className="flex justify-between"><span className="text-emerald-700">💵 বাকি বাবদ আদায়</span><span className="font-semibold text-emerald-700">৳{extraCash.toLocaleString('en', { maximumFractionDigits: 2 })}</span></div>
+                    <div className="flex justify-between border-t border-gray-100 pt-1"><span className="text-red-700 font-semibold">📒 নতুন মোট বাকি</span><span className="font-bold text-red-700">৳{Math.max(0, existingDue - extraCash).toLocaleString('en', { maximumFractionDigits: 2 })}</span></div>
+                  </div>
+                )}
+                {cashGivenShort && (
+                  <p className="text-[11px] text-red-600">নগদ মোট বিলের কম। কম দিলে "আংশিক" পদ্ধতি নিন, বিল পুরো দিলে ঘরটা ফাঁকা রাখুন।</p>
+                )}
+                {extraTooMuch && (
+                  <p className="text-[11px] text-red-600">বাড়তি ৳{extraCash.toLocaleString()} কাস্টমারের মোট বাকির (৳{existingDue.toLocaleString()}) চেয়ে বেশি।</p>
+                )}
+              </div>
+            )}
 
             {paymentMethod === 'partial' && (
               <div className="rounded-2xl border-2 border-primary/30 bg-primary/5 p-4 space-y-2">

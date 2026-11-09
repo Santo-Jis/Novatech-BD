@@ -28,6 +28,7 @@ const { updateCommissionRealtime } = require('../services/commission.service');
 const { firebaseNotify }           = require('../services/firebase.notify');
 const { allocatePaymentSafe, parseSaleIds, assertSaleIdsBelongToCustomer } = require('../services/paymentAllocation.service');
 const { sendCustomerNotification } = require('./customerNotification.controller');
+const { sendCollectionReceipt, buildReceiptNo } = require('../services/collectionReceipt.service');
 const { denyWorkerOutsideTeam }    = require('../services/teamAccess.service');
 
 // ✅ FIX: UTC নয়, BD local date — commission.service.js/sales.controller.js-এর
@@ -153,6 +154,8 @@ const createCollection = async (req, res) => {
         // Admin/accountant-এর verify এখন শুধু settlement-এ টাকা মেলানোর নিশ্চিতকরণ।
         let collection;
         let remainingCredit;
+        let previousDue = null;
+        let allocations = [];
 
         await withTransaction(async (client) => {
             const cust = await client.query(
@@ -216,7 +219,8 @@ const createCollection = async (req, res) => {
             remainingCredit = parseFloat(upd.rows[0].current_credit || 0);
 
             // কোন ইনভয়েসের বাকি শোধ হলো (FIFO বা SR-এর বাছাই)। best-effort (SAVEPOINT)।
-            await allocatePaymentSafe(client, {
+            previousDue = currentDue;
+            const allocPlan = await allocatePaymentSafe(client, {
                 tenantId:         req.tenantId,
                 customerId:       customer_id,
                 paymentId:        collection.id,
@@ -224,6 +228,7 @@ const createCollection = async (req, res) => {
                 amount:           parsedAmount,
                 preferredSaleIds: targetSaleIds.length ? targetSaleIds : undefined,
             });
+            allocations = allocPlan?.allocations || [];
         });
 
         // ✅ কাস্টমারকে পেমেন্ট নোটিফিকেশন (transaction-এর বাইরে, ব্যর্থ হলে আদায় আটকায় না)
@@ -235,10 +240,25 @@ const createCollection = async (req, res) => {
             type:  'payment_received',
         }).catch(e => console.error('[Collection] Notification error:', e.message));
 
+        // ✅ কাস্টমারকে রসিদ (PDF) — WhatsApp, না হলে ইমেইল। fire-and-forget, ব্যর্থ হলে আদায় আটকায় না।
+        sendCollectionReceipt({
+            tenantId:     req.tenantId,
+            customerId:   customer_id,
+            paymentId:    collection.id,
+            amount:       parsedAmount,
+            paymentMode:  payment_mode,
+            previousDue,
+            remainingDue: remainingCredit,
+            allocations,
+            collector:    req.user,
+            createdAt:    collection.created_at,
+        }).catch(e => console.error('[Collection] Receipt error:', e.message));
+
         return res.status(201).json({
             message: `৳${parsedAmount.toLocaleString()} বাকি আদায় রেকর্ড হয়েছে`,
             data:    collection,
             remaining_credit: remainingCredit,
+            receipt_no: buildReceiptNo(collection.id, collection.created_at),
         });
 
     } catch (err) {
