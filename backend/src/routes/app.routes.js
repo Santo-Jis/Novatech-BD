@@ -43,9 +43,9 @@ const CUSTOMER_APP_VERSION = {
 // SR_VERSION_CODE — এই comment টি রাখো, workflow grep করে এটা দিয়ে
 // (baseline 0 রাখা হয়েছে — build-sr-apk.yml প্রথমবার চললে ১-এ bump হয়ে
 //  versionName '1.0.1' হবে; Customer-এর মতোই versionCode == versionName-এর শেষ অংশ)
-const SR_VERSION_CODE = 30
-const SR_VERSION_NAME = '1.0.30'
-const SR_GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/download/sr-v1.0.30/sr-release.apk'
+const SR_VERSION_CODE = 31
+const SR_VERSION_NAME = '1.0.31'
+const SR_GITHUB_APK_URL = 'https://github.com/Santo-Jis/Novatech-BD/releases/download/sr-v1.0.31/sr-release.apk'
 
 const SR_APP_VERSION = {
   versionCode: SR_VERSION_CODE,
