@@ -14,6 +14,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { FiArrowLeft, FiChevronDown, FiChevronUp, FiRefreshCw } from 'react-icons/fi'
 import api from '../../api/axios'
+import toast from 'react-hot-toast'
 
 // ── ছোট helper ────────────────────────────────────────────────
 const taka = (n) => `৳${Math.round(parseFloat(n) || 0).toLocaleString('bn-BD')}`
@@ -109,6 +110,24 @@ function SaleRow({ s }) {
 function PaymentRow({ p }) {
   const isCollection = p.source === 'collection'
   const st = isCollection ? COLLECTION_STATUS[p.status] : null
+  const [sending, setSending] = useState(false)
+  // বাতিল (rejected) আদায়ের রসিদ হয় না
+  const canResend = !!p.id && p.status !== 'rejected'
+
+  // কাস্টমারকে রসিদ (PDF) আবার পাঠায় — WhatsApp, না হলে ইমেইল
+  const resendReceipt = async () => {
+    if (sending) return
+    setSending(true)
+    try {
+      const res = await api.post(`/collections/${p.source}/${p.id}/resend-receipt`)
+      toast.success(res.data?.message || 'রসিদ পাঠানো হয়েছে।')
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'রসিদ পাঠানো যায়নি।')
+    } finally {
+      setSending(false)
+    }
+  }
+
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3">
       <div className="flex items-start justify-between gap-2">
@@ -129,6 +148,16 @@ function PaymentRow({ p }) {
           {st && <div className="mt-1"><Badge cls={st.color}>{st.label}</Badge></div>}
         </div>
       </div>
+      {canResend && (
+        <button
+          type="button"
+          onClick={resendReceipt}
+          disabled={sending}
+          className="mt-2 w-full text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-xl py-2 disabled:opacity-60"
+        >
+          {sending ? 'পাঠানো হচ্ছে…' : '🧾 রসিদ আবার পাঠান'}
+        </button>
+      )}
     </div>
   )
 }
@@ -260,11 +289,11 @@ export default function CustomerHistory() {
   // পেমেন্ট = পুরনো credit_payments + নতুন collections, নতুন আগে
   const payments = useMemo(() => {
     const a = (data?.credit_payments || []).map(p => ({
-      key: `cp-${p.id}`, source: 'credit_payment', amount: p.amount, created_at: p.created_at,
+      key: `cp-${p.id}`, id: p.id, source: 'credit_payment', amount: p.amount, created_at: p.created_at,
       by: p.collected_by_name, note: p.notes,
     }))
     const b = collections.map(c => ({
-      key: `col-${c.id}`, source: 'collection', amount: c.amount, created_at: c.created_at,
+      key: `col-${c.id}`, id: c.id, source: 'collection', amount: c.amount, created_at: c.created_at,
       by: c.sr_name, note: c.note, payment_mode: c.payment_mode, status: c.status,
     }))
     return [...a, ...b].sort((x, y) => new Date(y.created_at) - new Date(x.created_at))

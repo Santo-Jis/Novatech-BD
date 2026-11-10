@@ -109,8 +109,8 @@ const generateCollectionReceiptPDF = (r) => new Promise((resolve, reject) => {
         doc.fontSize(8).font(FB).text('বাকির হিসাব', 40, doc.y, { width: 203 });
         doc.moveDown(0.2);
         if (r.previousDue !== null && r.previousDue !== undefined) row('আগের বাকি', `৳${fmt(r.previousDue)}`);
-        row('− এই পেমেন্ট', `৳${fmt(r.amount)}`);
-        row('এখনকার মোট বাকি', `৳${fmt(r.remainingDue)}`, true);
+        if (!r.remainingIsCurrent) row('− এই পেমেন্ট', `৳${fmt(r.amount)}`);
+        row(r.remainingIsCurrent ? 'বর্তমান মোট বাকি' : 'এই পেমেন্টের পর বাকি', `৳${fmt(r.remainingDue)}`, true);
 
         if (invs.length > 0) {
             dash();
@@ -137,7 +137,7 @@ const generateCollectionReceiptPDF = (r) => new Promise((resolve, reject) => {
 const receiptCaption = (r) =>
     `🧾 পেমেন্ট রসিদ ${r.receiptNo}\n` +
     `💰 গ্রহণ: ৳${fmt(r.amount)}\n` +
-    `📒 এখনকার বাকি: ৳${fmt(r.remainingDue)}`;
+    `📒 ${r.remainingIsCurrent ? 'বর্তমান বাকি' : 'পেমেন্টের পর বাকি'}: ৳${fmt(r.remainingDue)}`;
 
 // ─── Email ───────────────────────────────────────────────────
 const buildReceiptHTML = (r) => {
@@ -160,7 +160,7 @@ const buildReceiptHTML = (r) => {
     ${tr('পেমেন্ট পদ্ধতি', escapeHtml(MODE_LABELS[r.paymentMode] || r.paymentMode || 'নগদ'))}
     ${tr('গ্রহণ করা টাকা', `৳${fmt(r.amount)}`, false)}
     ${r.previousDue !== null && r.previousDue !== undefined ? tr('আগের বাকি', `৳${fmt(r.previousDue)}`) : ''}
-    ${tr('এখনকার মোট বাকি', `৳${fmt(r.remainingDue)}`, true)}
+    ${tr(r.remainingIsCurrent ? 'বর্তমান মোট বাকি' : 'এই পেমেন্টের পর বাকি', `৳${fmt(r.remainingDue)}`, true)}
   </table>
   ${invs ? `<p style="margin:14px 0 4px;font-size:12px;color:#555;font-weight:bold;">যে ইনভয়েসের বাকি শোধ হলো:</p><ul style="margin:0;padding-left:18px;font-size:13px;">${invs}</ul>` : ''}
 </td></tr>
@@ -179,6 +179,7 @@ const buildReceiptHTML = (r) => {
  * @param {string} [p.paymentMode='cash']
  * @param {number|null} [p.previousDue]  আদায়ের আগের বাকি (জানা থাকলে)
  * @param {number} p.remainingDue        আদায়ের পরের বাকি
+ * @param {boolean} [p.remainingIsCurrent]  true হলে remainingDue আদায়ের সময়ের নয়, "বর্তমান" বাকি (পুরনো আদায়ের resend)
  * @param {Array<{sale_id:string}>} [p.allocations]  FIFO বরাদ্দ (allocatePaymentSafe-এর ফল)
  * @param {object} [p.collector]         req.user (name_bn, employee_code)
  * @param {Date|string} [p.createdAt]
@@ -225,6 +226,7 @@ const sendCollectionReceipt = async (p) => {
             paymentMode:   p.paymentMode || 'cash',
             previousDue:   p.previousDue === undefined ? null : p.previousDue,
             remainingDue:  parseFloat(p.remainingDue) || 0,
+            remainingIsCurrent: !!p.remainingIsCurrent, // পুরনো আদায়ের resend: আদায়ের সময়ের স্ন্যাপশট নেই, আজকের বাকি দেখানো হচ্ছে
             invoiceNumbers,
             collectorName: collectorName(p.collector),
             collectorCode: p.collector?.employee_code || null,
@@ -281,7 +283,30 @@ const sendCollectionReceipt = async (p) => {
     }
 };
 
+/**
+ * আদায়ের মুহূর্তের বাকি স্ন্যাপশট (due_before / due_after) সেভ করে — resend-এর জন্য।
+ * কলারের transaction-এর ভেতরে চলে; SAVEPOINT-এ, তাই migration_receipt_snapshot.sql
+ * না চললেও আদায়/বিক্রি আটকায় না (শুধু warning লগ)।
+ * table হোয়াইটলিস্টেড — SQL-এ সরাসরি বসে।
+ */
+const saveReceiptSnapshotSafe = async (client, { table, id, tenantId, dueBefore, dueAfter }) => {
+    if (!['collections', 'credit_payments'].includes(table)) return;
+    await client.query('SAVEPOINT receipt_snapshot');
+    try {
+        await client.query(
+            `UPDATE ${table} SET due_before = $1, due_after = $2 WHERE id = $3 AND tenant_id = $4`,
+            [dueBefore, dueAfter, id, tenantId]
+        );
+        await client.query('RELEASE SAVEPOINT receipt_snapshot');
+    } catch (e) {
+        await client.query('ROLLBACK TO SAVEPOINT receipt_snapshot');
+        await client.query('RELEASE SAVEPOINT receipt_snapshot');
+        logger.warn(`[Receipt] স্ন্যাপশট সেভ হয়নি (migration_receipt_snapshot.sql চালানো হয়েছে?): ${e.message}`);
+    }
+};
+
 module.exports = {
+    saveReceiptSnapshotSafe,
     buildReceiptNo,
     generateCollectionReceiptPDF,
     sendCollectionReceipt,

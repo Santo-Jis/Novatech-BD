@@ -565,6 +565,7 @@ const getAllCompanyInvoices = async (req, res) => {
             `SELECT st.id, st.invoice_number, st.items, st.total_amount,
                     st.discount_amount, st.net_amount, st.payment_method,
                     st.cash_received, st.credit_used, st.replacement_value,
+                    st.previous_due, st.due_payment, st.closing_due,
                     st.created_at,
                     u.name_bn AS sr_name,
                     t.id AS tenant_id, t.company_name, t.company_name_bn, t.logo_url,

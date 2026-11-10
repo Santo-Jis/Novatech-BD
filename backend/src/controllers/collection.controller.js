@@ -28,7 +28,7 @@ const { updateCommissionRealtime } = require('../services/commission.service');
 const { firebaseNotify }           = require('../services/firebase.notify');
 const { allocatePaymentSafe, parseSaleIds, assertSaleIdsBelongToCustomer } = require('../services/paymentAllocation.service');
 const { sendCustomerNotification } = require('./customerNotification.controller');
-const { sendCollectionReceipt, buildReceiptNo } = require('../services/collectionReceipt.service');
+const { sendCollectionReceipt, buildReceiptNo, saveReceiptSnapshotSafe } = require('../services/collectionReceipt.service');
 const { denyWorkerOutsideTeam }    = require('../services/teamAccess.service');
 
 // ✅ FIX: UTC নয়, BD local date — commission.service.js/sales.controller.js-এর
@@ -220,6 +220,10 @@ const createCollection = async (req, res) => {
 
             // কোন ইনভয়েসের বাকি শোধ হলো (FIFO বা SR-এর বাছাই)। best-effort (SAVEPOINT)।
             previousDue = currentDue;
+            await saveReceiptSnapshotSafe(client, {
+                table: 'collections', id: collection.id, tenantId: req.tenantId,
+                dueBefore: currentDue, dueAfter: remainingCredit,
+            });
             const allocPlan = await allocatePaymentSafe(client, {
                 tenantId:         req.tenantId,
                 customerId:       customer_id,
@@ -529,7 +533,134 @@ const getSettlementCollectionSummary = async (req, res) => {
     }
 };
 
+
+// ============================================================
+// POST /api/collections/:source/:id/resend-receipt
+//   source = 'collection' (collections টেবিল) | 'credit_payment' (পুরনো credit_payments)
+//
+// কাস্টমারকে বাকি-আদায়ের রসিদ (PDF) আবার পাঠায় — WhatsApp, না হলে ইমেইল।
+// রসিদ নম্বর একই থাকে (id থেকে নির্ধারিত)। আদায়ের সময়ের বাকি দেখায় (স্ন্যাপশট থাকলে);
+// পুরনো আদায়ে স্ন্যাপশট নেই → "বর্তমান বাকি" দেখায়।
+// অ্যাক্সেস: worker (টিমের কাস্টমার), manager (নিজের রুটের), admin/accountant (পুরো tenant)।
+// স্প্যাম ঠেকাতে একই আদায়ের রসিদ ৩০ সেকেন্ডে একবারই।
+// ============================================================
+const UUID_RE_LOCAL = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const RESEND_COOLDOWN_MS = 30 * 1000;
+const lastResend = new Map();   // key → timestamp (একক instance-এ যথেষ্ট; ব্যর্থ হলে শুধু সুরক্ষা কমে)
+
+const resendReceipt = async (req, res) => {
+    try {
+        const { source, id } = req.params;
+        if (!['collection', 'credit_payment'].includes(source) || !UUID_RE_LOCAL.test(String(id))) {
+            return res.status(400).json({ success: false, message: 'অনুরোধ সঠিক নয়।' });
+        }
+
+        const isCol = source === 'collection';
+        const rowRes = await query(
+            isCol
+                ? `SELECT id, customer_id, amount, payment_mode, status, created_at,
+                          sr_id AS collector_id, due_before, due_after
+                     FROM collections WHERE id = $1 AND tenant_id = $2`
+                : `SELECT id, customer_id, amount, 'cash' AS payment_mode, NULL AS status, created_at,
+                          COALESCE(collected_by, worker_id) AS collector_id, due_before, due_after
+                     FROM credit_payments WHERE id = $1 AND tenant_id = $2`,
+            [id, req.tenantId]
+        ).catch(async (e) => {
+            // migration_receipt_snapshot.sql না চললে স্ন্যাপশট ছাড়াই চলুক
+            if (!/due_before|due_after/.test(e.message)) throw e;
+            return query(
+                isCol
+                    ? `SELECT id, customer_id, amount, payment_mode, status, created_at, sr_id AS collector_id,
+                              NULL::numeric AS due_before, NULL::numeric AS due_after
+                         FROM collections WHERE id = $1 AND tenant_id = $2`
+                    : `SELECT id, customer_id, amount, 'cash' AS payment_mode, NULL AS status, created_at,
+                              COALESCE(collected_by, worker_id) AS collector_id,
+                              NULL::numeric AS due_before, NULL::numeric AS due_after
+                         FROM credit_payments WHERE id = $1 AND tenant_id = $2`,
+                [id, req.tenantId]
+            );
+        });
+
+        const pay = rowRes.rows[0];
+        if (!pay) return res.status(404).json({ success: false, message: 'আদায়ের রেকর্ড পাওয়া যায়নি।' });
+        if (pay.status === 'rejected') {
+            return res.status(400).json({ success: false, message: 'বাতিল হওয়া আদায়ের রসিদ পাঠানো যায় না।' });
+        }
+
+        // ── অ্যাক্সেস ──
+        if (req.user.role === 'worker') {
+            if (await denyWorkerOutsideTeam(req, res, pay.customer_id)) return;
+        } else if (req.user.role === 'manager') {
+            const ok = await query(
+                `SELECT 1 FROM customers c JOIN routes r ON r.id = c.route_id
+                  WHERE c.id = $1 AND c.tenant_id = $2 AND r.manager_id = $3`,
+                [pay.customer_id, req.tenantId, req.user.id]
+            );
+            if (ok.rows.length === 0) {
+                return res.status(403).json({ success: false, message: 'এই কাস্টমার আপনার রুটে নেই।' });
+            }
+        }
+
+        // ── cooldown ──
+        const key = `${req.tenantId}:${source}:${id}`;
+        const now = Date.now();
+        if (now - (lastResend.get(key) || 0) < RESEND_COOLDOWN_MS) {
+            return res.status(429).json({ success: false, message: 'রসিদ এইমাত্র পাঠানো হয়েছে। কিছুক্ষণ পর আবার চেষ্টা করুন।' });
+        }
+
+        // ── রসিদের উপাদান ──
+        const hasSnapshot = pay.due_after !== null && pay.due_after !== undefined;
+        let remainingDue = hasSnapshot ? parseFloat(pay.due_after) : null;
+        if (remainingDue === null) {
+            const c = await query('SELECT current_credit FROM customers WHERE id = $1 AND tenant_id = $2',
+                [pay.customer_id, req.tenantId]);
+            remainingDue = parseFloat(c.rows[0]?.current_credit) || 0;
+        }
+
+        const alloc = await query(
+            `SELECT sale_id FROM payment_allocations
+              WHERE payment_source = $1 AND payment_id = $2 AND tenant_id = $3`,
+            [source, id, req.tenantId]
+        );
+        const collector = pay.collector_id
+            ? (await query('SELECT name_bn, employee_code FROM users WHERE id = $1', [pay.collector_id])).rows[0]
+            : null;
+
+        const result = await sendCollectionReceipt({
+            tenantId:     req.tenantId,
+            customerId:   pay.customer_id,
+            paymentId:    pay.id,
+            amount:       pay.amount,
+            paymentMode:  pay.payment_mode || 'cash',
+            previousDue:  pay.due_before !== null && pay.due_before !== undefined ? parseFloat(pay.due_before) : null,
+            remainingDue,
+            remainingIsCurrent: !hasSnapshot,
+            allocations:  alloc.rows,
+            collector,
+            createdAt:    pay.created_at,
+        });
+
+        if (result.success) {
+            lastResend.set(key, now);
+            if (lastResend.size > 5000) lastResend.clear();   // মেমরি সীমিত রাখতে
+            const via = result.channel === 'whatsapp' ? 'WhatsApp-এ' : 'ইমেইলে';
+            return res.json({ success: true, message: `রসিদ ${via} পাঠানো হয়েছে।`, channel: result.channel, receipt_no: result.receiptNo });
+        }
+        if (result.reason === 'no_contact') {
+            return res.status(422).json({ success: false, message: 'কাস্টমারের WhatsApp নম্বর বা ইমেইল নেই — রসিদ পাঠানো যায়নি।' });
+        }
+        if (result.reason === 'customer_not_found') {
+            return res.status(404).json({ success: false, message: 'কাস্টমার পাওয়া যায়নি।' });
+        }
+        return res.status(502).json({ success: false, message: 'রসিদ পাঠানো যায়নি। একটু পরে আবার চেষ্টা করুন।' });
+    } catch (err) {
+        console.error('[resendReceipt]', err);
+        return res.status(500).json({ success: false, message: 'রসিদ পাঠাতে সমস্যা হয়েছে।' });
+    }
+};
+
 module.exports = {
+    resendReceipt,
     upload,                          // multer middleware (routes-এ ব্যবহার)
     createCollection,
     getMyCollections,

@@ -31,6 +31,7 @@ const { updateCommissionRealtime, getDailyCommissionableSales, getWorkerRateOver
 // WhatsApp Invoice Image
 const { sendInvoiceWhatsApp } = require('../services/invoiceWhatsapp.service');
 const { allocatePaymentSafe } = require('../services/paymentAllocation.service');
+const { saveReceiptSnapshotSafe } = require('../services/collectionReceipt.service');
 
 // ─── Bangladesh Timezone Helper (UTC+6) ───────────────────────────────────────
 // settlement.controller.js-এর মতোই এক helper।
@@ -894,6 +895,12 @@ const createSale = async (req, res) => {
                      WHERE id = $2 AND tenant_id = $3`,
                     [duePayment, customer_id, req.tenantId]
                 );
+
+                // resend-এর জন্য আদায়ের মুহূর্তের বাকি (best-effort)
+                await saveReceiptSnapshotSafe(client, {
+                    table: 'collections', id: colInsert.rows[0].id, tenantId: req.tenantId,
+                    dueBefore: previousDue, dueAfter: Math.max(0, previousDue - duePayment),
+                });
 
                 // best-effort (SAVEPOINT) — ব্যর্থ হলেও বিক্রি/বাকি-কাটা আটকায় না
                 await allocatePaymentSafe(client, {

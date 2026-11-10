@@ -219,6 +219,38 @@ export default function InvoiceCard({ sale, company }) {
                 </span>
               </div>
             )}
+
+            {/* ── বাকির হিসাব (বিক্রির সময়ের স্ন্যাপশট; পুরনো ইনভয়েসে থাকে না) ── */}
+            {sale.previous_due !== null && sale.previous_due !== undefined &&
+             sale.closing_due  !== null && sale.closing_due  !== undefined &&
+             (parseFloat(sale.previous_due) > 0 || parseFloat(sale.closing_due) > 0 || parseFloat(sale.due_payment) > 0) && (
+              <div style={{ borderTop: '1px dashed #CBD5E1', marginTop: 8, paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: '#6B7280' }}>📒 বাকির হিসাব</span>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: 12, color: '#4B5563' }}>আগের বাকি</span>
+                  <span style={{ fontSize: 12, color: '#374151', fontWeight: 600, fontFamily: 'Inter, system-ui' }}>৳{fmt(sale.previous_due)}</span>
+                </div>
+                {parseFloat(sale.credit_used) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 12, color: '#4B5563' }}>+ এই ইনভয়েসের বাকি</span>
+                    <span style={{ fontSize: 12, color: '#374151', fontWeight: 600, fontFamily: 'Inter, system-ui' }}>৳{fmt(sale.credit_used)}</span>
+                  </div>
+                )}
+                {parseFloat(sale.due_payment) > 0 && (
+                  <div style={{
+                    display: 'flex', justifyContent: 'space-between',
+                    background: '#ECFDF5', borderRadius: 8, padding: '6px 10px',
+                  }}>
+                    <span style={{ fontSize: 12, color: '#059669', fontWeight: 600 }}>💵 বাকি আদায় (আজ)</span>
+                    <span style={{ fontSize: 12, color: '#059669', fontWeight: 700, fontFamily: 'Inter, system-ui' }}>-৳{fmt(sale.due_payment)}</span>
+                  </div>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: '#B91C1C' }}>এখনকার মোট বাকি</span>
+                  <span style={{ fontSize: 14, fontWeight: 800, color: '#B91C1C', fontFamily: 'Inter, system-ui' }}>৳{fmt(sale.closing_due)}</span>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

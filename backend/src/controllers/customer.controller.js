@@ -9,7 +9,7 @@ const { autoConnectStaffCreatedCustomer } = require('../services/customerConnect
 const { updateCommissionRealtime } = require('../services/commission.service');
 const { firebaseNotify } = require('../services/firebase.notify');
 const { allocatePaymentSafe, parseSaleIds, assertSaleIdsBelongToCustomer } = require('../services/paymentAllocation.service');
-const { sendCollectionReceipt } = require('../services/collectionReceipt.service');
+const { sendCollectionReceipt, saveReceiptSnapshotSafe } = require('../services/collectionReceipt.service');
 const { denyWorkerOutsideTeam, denyWorkerOutsideTeamRoute } = require('../services/teamAccess.service');
 
 // ✅ FIX: UTC নয়, BD local date — commission.service.js/sales.controller.js-এর
@@ -885,6 +885,10 @@ const collectCredit = async (req, res) => {
             });
 
             remainingCredit = Math.max(0, currentCredit - parseFloat(amount));
+            await saveReceiptSnapshotSafe(client, {
+                table: 'credit_payments', id: paymentInsert.rows[0].id, tenantId: req.tenantId,
+                dueBefore: currentCredit, dueAfter: remainingCredit,
+            });
             receiptCtx = {
                 paymentId:   paymentInsert.rows[0].id,
                 previousDue: currentCredit,

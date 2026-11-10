@@ -16,6 +16,23 @@ const WEEKDAYS_BN = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', '
 const taka = (n) => '৳' + parseInt(n || 0).toLocaleString('en-IN')
 const pct  = (n) => `${Math.min(100, Math.round(n || 0))}%`
 
+// ─── বাকির হিসাব: আগের বাকি + এই ইনভয়েসের বাকি − আজকের বাকি-আদায় = এখনকার মোট বাকি ───
+// স্ন্যাপশট (previous_due/closing_due) না থাকলে (পুরনো ইনভয়েস) কিছুই দেখায় না।
+const dueSummaryRows = (s) => {
+  if (s.previous_due === null || s.previous_due === undefined) return []
+  if (s.closing_due  === null || s.closing_due  === undefined) return []
+  const prev = parseFloat(s.previous_due) || 0
+  const cu   = parseFloat(s.credit_used)  || 0
+  const dp   = parseFloat(s.due_payment)  || 0
+  const cl   = parseFloat(s.closing_due)  || 0
+  if (prev <= 0 && cl <= 0 && dp <= 0 && cu <= 0) return []
+  const rows = [['📒 আগের বাকি', taka(prev)]]
+  if (cu > 0) rows.push(['+ এই ইনভয়েসের বাকি', taka(cu)])
+  if (dp > 0) rows.push(['💵 বাকি আদায় (আজ)', `- ${taka(dp)}`])
+  rows.push(['এখনকার মোট বাকি', taka(cl)])
+  return rows
+}
+
 // ─── এই ইনভয়েস থেকে কমিশন (API: sale.commission — আনুমানিক, দিনের রেটে) ───
 const isFullDue = (sale) =>
   sale.payment_method === 'credit' && !(parseFloat(sale.cash_received) > 0)
@@ -167,6 +184,7 @@ function SaleDetailModal({ sale, onClose }) {
           sale.discount_amount > 0 && ['ক্রেডিট ব্যালেন্স ব্যবহার', `- ${taka(sale.discount_amount)}`],
           sale.replacement_value > 0 && ['রিপ্লেসমেন্ট মূল্য', `- ${taka(sale.replacement_value)}`],
           ['নিট পরিমাণ', taka(sale.net_amount)],
+          ...dueSummaryRows(sale),
           (sale.commission !== null && sale.commission !== undefined) && [
             'এই বিক্রিতে কমিশন',
             isFullDue(sale)

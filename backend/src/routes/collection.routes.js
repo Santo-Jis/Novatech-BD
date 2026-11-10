@@ -14,6 +14,7 @@ const {
     getCustomerCollections,
     verifyCollection,
     getSettlementCollectionSummary,
+    resendReceipt,
 } = require('../controllers/collection.controller');
 
 // ── SR: বাকি আদায় এন্ট্রি ─────────────────────────────────────
@@ -60,6 +61,15 @@ router.patch(
     auth,
     allowRoles('admin', 'accountant'),
     verifyCollection
+);
+
+// ── কাস্টমারকে বাকি-আদায়ের রসিদ আবার পাঠানো ────────────────
+// :source = collection | credit_payment (পুরনো আদায়)
+router.post(
+    '/:source/:id/resend-receipt',
+    auth,
+    allowRoles('worker', 'manager', 'admin', 'accountant'),
+    resendReceipt
 );
 
 module.exports = router;
