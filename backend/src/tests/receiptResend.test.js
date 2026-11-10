@@ -185,3 +185,22 @@ describe('saveReceiptSnapshotSafe (আসল ফাইল)', () => {
         expect(client.query).not.toHaveBeenCalled();
     });
 });
+
+describe('getCustomerCollections — SQL-এ অস্তিত্বহীন "employees" টেবিল নেই (রিগ্রেশন)', () => {
+    const { getCustomerCollections } = require('../controllers/collection.controller');
+
+    test('SR-এর নাম users টেবিল থেকে আসে (LEFT JOIN users), employees থেকে নয়', async () => {
+        query.mockReset();
+        query.mockResolvedValue({ rows: [] });
+        const res = mkRes();
+        await getCustomerCollections({
+            params: { customerId: '11111111-1111-1111-1111-111111111111' },
+            query: {}, user: { id: 'a1', role: 'admin' }, tenantId: 't1',
+        }, res);
+        const sqls = query.mock.calls.map(c => String(c[0]));
+        const colSql = sqls.find(q => q.includes('FROM collections col'));
+        expect(colSql).toBeTruthy();
+        expect(colSql).not.toMatch(/\bemployees\b/);
+        expect(colSql).toMatch(/LEFT JOIN users\s+e ON e\.id = col\.sr_id/);
+    });
+});

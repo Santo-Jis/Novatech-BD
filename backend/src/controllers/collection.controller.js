@@ -336,13 +336,15 @@ const getCustomerCollections = async (req, res) => {
         const limit          = parseInt(req.query.limit) || 20;
         const offset         = parseInt(req.query.offset) || 0;
 
+        // ✅ FIX: আগে এখানে JOIN ছিল এমন একটা টেবিলে যা ডেটাবেসে নেই (relation does not exist → 500),
+        // ফলে কাস্টমারের হিস্ট্রিতে আদায়ের তালিকা কখনো আসত না। SR-রা `users` টেবিলে থাকে।
         const result = await query(
             `SELECT
                col.*,
                e.name_bn  AS sr_name,
                e.employee_code
              FROM collections col
-             JOIN employees   e ON e.id = col.sr_id
+             LEFT JOIN users  e ON e.id = col.sr_id
              WHERE col.customer_id = $1
              AND col.tenant_id = $4
              ORDER BY col.created_at DESC
