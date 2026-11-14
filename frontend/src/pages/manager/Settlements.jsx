@@ -202,7 +202,7 @@ export default function ManagerSettlements() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50">
-                    {['পণ্য', 'নেওয়া', 'বিক্রি', 'রিপ্লেস', 'ফেরত', 'ঘাটতি', 'মূল্য'].map(h => (
+                    {['পণ্য', 'হাতে ছিল', 'বিক্রি*', 'রিপ্লেসে পাওয়া*', 'ফেরত', 'কাল রাখা', 'ঘাটতি', 'ঘাটতি মূল্য'].map(h => (
                       <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600">{h}</th>
                     ))}
                   </tr>
@@ -215,6 +215,7 @@ export default function ManagerSettlements() {
                       <td className="px-3 py-2 text-secondary">{item.sold_qty}</td>
                       <td className="px-3 py-2 text-purple-600">{item.replacement_qty}</td>
                       <td className="px-3 py-2">{item.returned_qty}</td>
+                      <td className="px-3 py-2 text-blue-600">{item.carry_forward_qty || 0}</td>
                       <td className="px-3 py-2">
                         {item.shortage_qty > 0
                           ? <span className="text-red-600 font-bold">{item.shortage_qty}</span>
@@ -229,6 +230,11 @@ export default function ManagerSettlements() {
                 </tbody>
               </table>
             </div>
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              <b>ঘাটতি = হাতে ছিল − ফেরত − কাল রাখা।</b> "হাতে ছিল" হলো জমা দেওয়ার সময় SR-এর স্টক লেজারের ব্যালেন্স —
+              বিক্রি আগেই বাদ গেছে, আর রিপ্লেস/রিটার্নে কাস্টমারের কাছ থেকে পাওয়া পণ্য যোগ হয়েছে।
+              *বিক্রি ও রিপ্লেস কলাম শুধু তথ্য (হিসাবের সময়সীমায়), ঘাটতিতে আলাদা বাদ যায় না।
+            </p>
 
             <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
               <Button variant="ghost" onClick={() => setModal(null)}>বন্ধ করুন</Button>
