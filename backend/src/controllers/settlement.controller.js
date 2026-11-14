@@ -5,6 +5,7 @@ const logger = require('../config/logger');
 const { sendPushNotification } = require('../services/fcm.service');
 const { addLedgerEntry } = require('./ledger.controller');
 const { addDuesLedgerEntry } = require('../services/dues.service'); // ← নতুন: dues mutation-এর একমাত্র জায়গা
+const { getTodayCashBreakdown } = require('../services/settlementCash.service'); // ✅ সিস্টেম নগদ হিসাবের একমাত্র উৎস
 
 // ─── নগদ পার্থক্যের সীমা ─────────────────────────────────────────────────────
 // ⚠️  SYNC: এই মান frontend/src/pages/worker/Settlement.jsx-এর
@@ -126,24 +127,29 @@ const createSettlement = async (req, res) => {
         const priceMap = {};
         priceRes.rows.forEach(r => { priceMap[String(r.product_id)] = r; });
 
-        // ─── আজকের বিক্রয় ডাটা ─────────────────────────────
-        const salesData = await query(
-            `SELECT
-                COALESCE(SUM(total_amount), 0)        AS total_sales,
-                COALESCE(SUM(cash_received), 0)       AS cash_collected,
-                COALESCE(SUM(credit_used), 0)         AS credit_given,
-                COALESCE(SUM(replacement_value), 0)   AS replacement_value,
-                COALESCE(SUM(credit_balance_used), 0) AS old_credit_collected
-             FROM sales_transactions
-             WHERE worker_id = $1 AND date = $2
-             AND tenant_id = $3`,
-            [workerId, today, req.tenantId]
-        );
-
-        const sales      = salesData.rows[0];
-        const systemCash = parseFloat(sales.cash_collected) || 0;
-        const srCash     = parseFloat(srCashInput)          || 0;
-        const cashDifference = srCash - systemCash;
+        // ─── আজকের বিক্রয় ও নগদ ডাটা ───────────────────────
+        // সিস্টেম নগদ = বিক্রির নগদ + বাকি আদায়ের নগদ (collections + credit_payments)।
+        // ✅ SR আগের দিন(গুলো)র হিসাব না দিলে সেগুলোও এই জমায় একসাথে আসে (carry-over)।
+        // আগে শুধু sales_transactions.cash_received ধরা হতো — বাকি আদায় বাদ পড়ত।
+        // রিপ্লেসমেন্ট/রিটার্নের মূল্য cash_received-এ আগেই বাদ গেছে (দেখো settlementCash.service.js)।
+        const cashInfo   = await getTodayCashBreakdown({
+            workerId, tenantId: req.tenantId, date: today
+        });
+        const sales      = {
+            total_sales:          cashInfo.total_sales,
+            credit_given:         cashInfo.credit_given,
+            replacement_value:    cashInfo.replacement_value,
+            old_credit_collected: cashInfo.old_credit_collected,
+        };
+        const systemCash = cashInfo.system_cash;
+        // হিসাবের সময়সীমার শুরু (এই তারিখ বাদ) — আগের জমা না থাকলে সীমাহীন
+        const windowFrom = cashInfo.window_from_at || '1900-01-01T00:00:00Z';
+        const carriedCash = cashInfo.carried_cash || 0;
+        const srCash     = parseFloat(srCashInput) || 0;
+        if (srCash < 0) {
+            return res.status(400).json({ success: false, message: 'নগদ জমার পরিমাণ ঋণাত্মক হতে পারে না।' });
+        }
+        const cashDifference = Math.round((srCash - systemCash) * 100) / 100;
 
         // ─── Bulk sold + replaced qty ────────────────────────
         const soldBulkRes = await query(
@@ -151,12 +157,12 @@ const createSettlement = async (req, res) => {
                     COALESCE(SUM((item->>'qty')::int), 0) AS qty
              FROM sales_transactions,
                   jsonb_array_elements(COALESCE(items, '[]'::jsonb)) AS item
-             WHERE worker_id = $1 AND date = $2
+             WHERE worker_id = $1 AND created_at > $2::timestamptz AND date <= $5::date
                AND (item->>'product_id') = ANY($3)
              AND tenant_id = $4
              GROUP BY (item->>'product_id')`,
-            [workerId, today, allProductIds.length > 0 ? allProductIds : ['__none__'],
-                req.tenantId]
+            [workerId, windowFrom, allProductIds.length > 0 ? allProductIds : ['__none__'],
+                req.tenantId, today]
         );
 
         const replacedBulkRes = await query(
@@ -164,10 +170,12 @@ const createSettlement = async (req, res) => {
                     COALESCE(SUM((item->>'qty')::int), 0) AS qty
              FROM sales_transactions,
                   jsonb_array_elements(COALESCE(replacement_items, '[]'::jsonb)) AS item
-             WHERE worker_id = $1 AND date = $2
+             WHERE worker_id = $1 AND created_at > $2::timestamptz AND date <= $5::date
                AND (item->>'product_id') = ANY($3)
+               AND tenant_id = $4
              GROUP BY (item->>'product_id')`,
-            [workerId, today, allProductIds.length > 0 ? allProductIds : ['__none__']]
+            [workerId, windowFrom, allProductIds.length > 0 ? allProductIds : ['__none__'],
+                req.tenantId, today]
         );
 
         const soldMap     = {};
@@ -211,8 +219,17 @@ const createSettlement = async (req, res) => {
                 : null;
             const carryQty = parseInt(carryItem?.qty) || 0;
 
-            // ঘাটতি = হাতে ছিল - (বিক্রি + রিপ্লেস + ফেরত + carry forward)
-            const accountedFor = soldQty + replacedQty + returnedQty + carryQty;
+            // ঘাটতি = হাতে আছে − (ফেরত + carry forward)
+            //
+            // ⚠️ takenQty = sr_stock_ledger-এর বর্তমান ব্যালেন্স, যেখানে —
+            //   • আজকের বিক্রি আগেই বাদ গেছে (sale_out, direction −1)
+            //   • রিপ্লেসমেন্টে কাস্টমারের কাছ থেকে নেওয়া পণ্য যোগ হয়েছে (order_in, +1)
+            //   • কাস্টমার রিটার্ন complete হলে পণ্য যোগ হয়েছে (order_in, +1)
+            // শেষ দুটো পণ্য এখন SR-এর হাতে — তাই সেগুলো গুদামে ফেরত বা carry না দিলে ঘাটতি।
+            // আগে এখান থেকে soldQty ও replacedQty আবার বাদ দেওয়া হতো (দুইবার বাদ):
+            // ফলে বিক্রির সমান পণ্য আর রিপ্লেসমেন্টে পাওয়া পণ্য লুকানো যেত।
+            // soldQty/replacedQty এখন শুধু রিপোর্টে তথ্য হিসেবে থাকে।
+            const accountedFor = returnedQty + carryQty;
             const shortageQty  = Math.max(0, takenQty - accountedFor);
 
             const priceInfo      = priceMap[pid];
@@ -341,7 +358,10 @@ const createSettlement = async (req, res) => {
         // ─── Manager কে Firebase নোটিফিকেশন ────────────────
         if (req.user.manager_id) {
             const hasCashMismatch = Math.abs(cashDifference) > 1;
-            let message = `✅ ${req.user.name_bn} হিসাব জমা দিয়েছে।`;
+            const carryNote = carriedCash > 0
+                ? ` (আগের ${cashInfo.carried_days.length} দিনের ৳${Math.round(carriedCash)} সহ)`
+                : '';
+            let message = `✅ ${req.user.name_bn} হিসাব জমা দিয়েছে।${carryNote}`;
             if (totalShortageValue > 0 && hasCashMismatch) {
                 message = `⚠️ ${req.user.name_bn} — ৳${totalShortageValue} পণ্য ঘাটতি + ৳${Math.abs(cashDifference).toFixed(0)} নগদ পার্থক্য।`;
             } else if (totalShortageValue > 0) {
@@ -382,7 +402,9 @@ const createSettlement = async (req, res) => {
                 total_sales:     sales.total_sales,
                 cash_collected:  srCash,
                 cash_difference: cashDifference,
-                system_cash:     systemCash
+                system_cash:     systemCash,
+                carried_cash:    carriedCash,
+                carried_days:    cashInfo.carried_days || []
             }
         });
 
@@ -917,6 +939,26 @@ const getSettlementDetail = async (req, res) => {
 };
 
 // ============================================================
+// GET TODAY'S CASH BREAKDOWN (সিস্টেম নগদ হিসাব)
+// GET /api/settlements/today-cash
+// Settlement স্ক্রিনের "সিস্টেম হিসাব" — createSettlement যে মান দিয়ে মেলায়, হুবহু সেটাই।
+// ============================================================
+
+const getTodayCash = async (req, res) => {
+    try {
+        const data = await getTodayCashBreakdown({
+            workerId: req.user.id,
+            tenantId: req.tenantId,
+            date:     getBDToday(),
+        });
+        return res.status(200).json({ success: true, data });
+    } catch (error) {
+        logger.error('❌ Today Cash Error:', error.message);
+        return res.status(500).json({ success: false, message: 'নগদের হিসাব আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // GET TODAY'S SETTLEMENT PREVIEW (product-wise sold qty)
 // GET /api/settlements/today-preview
 // ============================================================
@@ -1170,5 +1212,6 @@ module.exports = {
     payShortage,
     getAllSettlements,
     getSettlementDetail,
-    getTodayPreview
+    getTodayPreview,
+    getTodayCash
 };

@@ -18,7 +18,8 @@ const {
     payShortage,
     getAllSettlements,
     getSettlementDetail,
-    getTodayPreview
+    getTodayPreview,
+    getTodayCash
 } = require('../controllers/settlement.controller');
 
 // ============================================================
@@ -69,6 +70,13 @@ router.get('/today-preview',
     auth,
     allowRoles('worker'),
     getTodayPreview
+);
+
+// আজকের সিস্টেম নগদ হিসাব (বিক্রির নগদ + বাকি আদায়) — /:id এর আগে রাখতে হবে
+router.get('/today-cash',
+    auth,
+    allowRoles('worker'),
+    getTodayCash
 );
 
 // একটি settlement এর বিস্তারিত

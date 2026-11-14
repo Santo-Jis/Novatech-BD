@@ -18,12 +18,24 @@ jest.mock('axios', () => ({
 jest.mock('../services/fcm.service',          () => ({ sendPushNotification: jest.fn().mockResolvedValue({}) }));
 jest.mock('../services/firebase.notify',      () => ({ firebaseNotify:       jest.fn().mockResolvedValue({}) }));
 jest.mock('../controllers/ledger.controller', () => ({ addLedgerEntry:       jest.fn().mockResolvedValue({}) }));
+// collection.controller → commission.service → tenantScopedDb প্রথমেই DB_SSL_CA চায়; unit test-এ DB লাগে না
+jest.mock('../controllers/collection.controller', () => ({ submitCollectionsWithSettlement: jest.fn() }));
+jest.mock('../services/settlementCash.service', () => ({ getTodayCashBreakdown: jest.fn() }));
 
 // ─── Imports ──────────────────────────────────────────────────
 const { query, withTransaction } = require('../config/db');
 const { firebaseNotify }       = require('../services/firebase.notify');
 const { sendPushNotification } = require('../services/fcm.service');
 const { addLedgerEntry }       = require('../controllers/ledger.controller');
+const { getTodayCashBreakdown } = require('../services/settlementCash.service');
+
+// সিস্টেম নগদ ব্রেকডাউনের টেস্ট-ডাবল (বিক্রির নগদ + বাকি আদায়)
+const cashBreakdown = (o = {}) => ({
+    total_sales: 0, credit_given: 0, replacement_value: 0, old_credit_collected: 0,
+    sales_cash: 0, due_collected_cash: 0, non_cash_collected: 0, system_cash: 0,
+    window_from: null, carried_cash: 0, carried_days: [], today_cash: 0,
+    ...o,
+});
 const {
     createSettlement,
     approveSettlement,
@@ -56,6 +68,7 @@ beforeEach(() => {
     firebaseNotify.mockResolvedValue({});
     sendPushNotification.mockResolvedValue({});
     addLedgerEntry.mockResolvedValue({});
+    getTodayCashBreakdown.mockResolvedValue(cashBreakdown());
 
     // ─── DB mock defaults ────────────────────────────────────
     // query-এর default: { rows: [] } — mockResolvedValueOnce দিয়ে override করা যাবে
@@ -100,14 +113,39 @@ describe('createSettlement — হিসাব জমার নিয়ম', ()
         );
     });
 
-    test('৳৫০০+ পার্থক্যে কারণ ছাড়া 422', async () => {
+    // সাধারণ চেইন: existing → orders → ledger → price (তারপর sold/replaced bulk default {rows:[]})
+    const baseQueries = ({ ledger = [], price = [], sold = [], replaced = [] } = {}) => {
         query
-            .mockResolvedValueOnce({ rows: [] })   // existing settlement check
-            .mockResolvedValueOnce({ rows: [] })   // ordersResult (reference only)
-            .mockResolvedValueOnce({ rows: [] })   // ledgerRes (no products in hand)
-            .mockResolvedValueOnce({ rows: [] })   // priceRes
-            .mockResolvedValueOnce({ rows: [{ total_sales: 5000, cash_collected: 5000, credit_given: 0, replacement_value: 0, old_credit_collected: 0 }] }); // salesData
-            // soldBulkRes / replacedBulkRes fall back to the beforeEach default { rows: [] }
+            .mockResolvedValueOnce({ rows: [] })       // existing settlement check
+            .mockResolvedValueOnce({ rows: [] })       // ordersResult (reference only)
+            .mockResolvedValueOnce({ rows: ledger })   // ledgerRes
+            .mockResolvedValueOnce({ rows: price })    // priceRes
+            .mockResolvedValueOnce({ rows: sold })     // soldBulkRes
+            .mockResolvedValueOnce({ rows: replaced });// replacedBulkRes
+    };
+
+    const captureInsert = () => {
+        const captured = {};
+        withTransaction.mockImplementation(async (cb) => {
+            const client = {
+                query: jest.fn().mockImplementation(async (sql, params) => {
+                    if (sql.includes('INSERT INTO daily_settlements')) {
+                        captured.shortageValue    = params[10];
+                        captured.cashCollected    = params[5];
+                        captured.cashDifference   = params[6];
+                        return { rows: [{ id: 200 }] };
+                    }
+                    return { rows: [] };
+                }),
+            };
+            return await cb(client);
+        });
+        return captured;
+    };
+
+    test('৳৫০০+ পার্থক্যে কারণ ছাড়া 422', async () => {
+        getTodayCashBreakdown.mockResolvedValue(cashBreakdown({ total_sales: 5000, sales_cash: 5000, system_cash: 5000 }));
+        baseQueries();
 
         const res = mockRes();
         await createSettlement({
@@ -122,12 +160,8 @@ describe('createSettlement — হিসাব জমার নিয়ম', ()
     });
 
     test('৳৫০০+ পার্থক্যে কারণ দিলে সফল', async () => {
-        query
-            .mockResolvedValueOnce({ rows: [] })   // existing settlement check
-            .mockResolvedValueOnce({ rows: [] })   // ordersResult (reference only)
-            .mockResolvedValueOnce({ rows: [] })   // ledgerRes
-            .mockResolvedValueOnce({ rows: [] })   // priceRes
-            .mockResolvedValueOnce({ rows: [{ total_sales: 5000, cash_collected: 5000, credit_given: 0, replacement_value: 0, old_credit_collected: 0 }] }); // salesData
+        getTodayCashBreakdown.mockResolvedValue(cashBreakdown({ total_sales: 5000, sales_cash: 5000, system_cash: 5000 }));
+        baseQueries();
 
         const res = mockRes();
         await createSettlement({
@@ -140,89 +174,162 @@ describe('createSettlement — হিসাব জমার নিয়ম', ()
     });
 
     test('৳৫০০ এর কম পার্থক্যে কারণ ছাড়াও সফল', async () => {
-        query
-            .mockResolvedValueOnce({ rows: [] })   // existing settlement check
-            .mockResolvedValueOnce({ rows: [] })   // ordersResult (reference only)
-            .mockResolvedValueOnce({ rows: [] })   // ledgerRes
-            .mockResolvedValueOnce({ rows: [] })   // priceRes
-            .mockResolvedValueOnce({ rows: [{ total_sales: 5000, cash_collected: 5000, credit_given: 0, replacement_value: 0, old_credit_collected: 0 }] }); // salesData
+        getTodayCashBreakdown.mockResolvedValue(cashBreakdown({ total_sales: 5000, sales_cash: 5000, system_cash: 5000 }));
+        baseQueries();
 
         const res = mockRes();
-        await createSettlement({
-            body: { cash_collected: 5300 },
-            user: workerUser,
-        }, res);
+        await createSettlement({ body: { cash_collected: 5300 }, user: workerUser }, res);
 
         expect(res.status).toHaveBeenCalledWith(201);
     });
 
-    test('ঘাটতি সঠিক হিসাব হচ্ছে', async () => {
-        // shortage হিসাব এখন ledger balance + price lookup থেকে হয় (আগে orders থেকে হতো,
-        // কমেন্ট: "✅ FIX: taken_qty এখন orders থেকে নয়, ledger balance থেকে")
-        query
-            .mockResolvedValueOnce({ rows: [] })   // existing settlement check
-            .mockResolvedValueOnce({ rows: [] })   // ordersResult (reference only, শুধু order_id সংরক্ষণে ব্যবহার হয়)
-            .mockResolvedValueOnce({ rows: [{ product_id: 'product-a', product_name: 'পণ্য-A', in_hand_qty: 10 }] }) // ledgerRes — taken_qty=10
-            .mockResolvedValueOnce({ rows: [{ product_id: 'product-a', product_name: 'পণ্য-A', effective_price: 500 }] }) // priceRes
-            .mockResolvedValueOnce({ rows: [{ total_sales: 3000, cash_collected: 3000, credit_given: 0, replacement_value: 1000, old_credit_collected: 0 }] }) // salesData
-            .mockResolvedValueOnce({ rows: [{ product_id: 'product-a', qty: '6' }] })  // soldBulkRes
-            .mockResolvedValueOnce({ rows: [{ product_id: 'product-a', qty: '2' }] }); // replacedBulkRes
-
-        let capturedShortageValue;
-        withTransaction.mockImplementation(async (cb) => {
-            const client = {
-                query: jest.fn().mockImplementation(async (sql, params) => {
-                    if (sql.includes('INSERT INTO daily_settlements')) {
-                        capturedShortageValue = params[10];
-                        return { rows: [{ id: 200 }] };
-                    }
-                    return { rows: [] };
-                }),
-            };
-            return await cb(client);
-        });
+    test('ঋণাত্মক নগদ জমা দিলে 400', async () => {
+        query.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] })
+             .mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] });
 
         const res = mockRes();
-        await createSettlement({
-            body: { cash_collected: 3000, returned_items: [] },
-            user: workerUser,
-        }, res);
+        await createSettlement({ body: { cash_collected: -50 }, user: workerUser }, res);
 
-        // taken_qty(10) − (sold 6 + replaced 2) = 2 ঘাটতি × ৳500 = ৳1000
-        expect(capturedShortageValue).toBe(1000);
+        expect(res.status).toHaveBeenCalledWith(400);
     });
 
-    test('সব পণ্য বিক্রয় হলে shortage = 0', async () => {
-        query
-            .mockResolvedValueOnce({ rows: [] })   // existing settlement check
-            .mockResolvedValueOnce({ rows: [] })   // ordersResult (reference only)
-            .mockResolvedValueOnce({ rows: [{ product_id: 'product-b', product_name: 'পণ্য-B', in_hand_qty: 5 }] }) // ledgerRes — taken_qty=5
-            .mockResolvedValueOnce({ rows: [{ product_id: 'product-b', product_name: 'পণ্য-B', effective_price: 200 }] }) // priceRes
-            .mockResolvedValueOnce({ rows: [{ total_sales: 1000, cash_collected: 1000, credit_given: 0, replacement_value: 0, old_credit_collected: 0 }] }) // salesData
-            .mockResolvedValueOnce({ rows: [{ product_id: 'product-b', qty: '5' }] })  // soldBulkRes — সব ৫টাই বিক্রি হয়েছে
-            .mockResolvedValueOnce({ rows: [] }); // replacedBulkRes
+    // ── সিস্টেম নগদ = বিক্রির নগদ + বাকি আদায় ───────────────────
+    test('বাকি আদায় সিস্টেম নগদে ধরা হয় — বিক্রি ৩০০০ + আদায় ১২০০ জমা দিলে পার্থক্য ০', async () => {
+        getTodayCashBreakdown.mockResolvedValue(cashBreakdown({
+            total_sales: 3000, sales_cash: 3000, due_collected_cash: 1200, system_cash: 4200,
+        }));
+        baseQueries();
+        const captured = captureInsert();
 
-        let capturedShortageValue;
-        withTransaction.mockImplementation(async (cb) => {
-            const client = {
-                query: jest.fn().mockImplementation(async (sql, params) => {
-                    if (sql.includes('INSERT INTO daily_settlements')) {
-                        capturedShortageValue = params[10];
-                        return { rows: [{ id: 201 }] };
-                    }
-                    return { rows: [] };
-                }),
-            };
-            return await cb(client);
-        });
+        const res = mockRes();
+        await createSettlement({ body: { cash_collected: 4200 }, user: workerUser }, res);
+
+        expect(res.status).toHaveBeenCalledWith(201);
+        expect(captured.cashDifference).toBe(0);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ system_cash: 4200, cash_difference: 0 }),
+        }));
+    });
+
+    test('আগের দিনের হিসাব না দিলে পরের জমায় একসাথে ধরা হয় (carry-over)', async () => {
+        // ১১ ও ১২ নভেম্বরের ৳৫৫০০ + আজকের ৳২০০০ = ৳৭৫০০
+        getTodayCashBreakdown.mockResolvedValue(cashBreakdown({
+            window_from: '2026-11-10', sales_cash: 6000, due_collected_cash: 1500, system_cash: 7500,
+            carried_cash: 5500,
+            carried_days: [{ date: '2026-11-11', cash: 2500 }, { date: '2026-11-12', cash: 3000 }],
+        }));
+        baseQueries();
+        const captured = captureInsert();
+
+        const res = mockRes();
+        await createSettlement({ body: { cash_collected: 7500 }, user: workerUser }, res);
+
+        expect(res.status).toHaveBeenCalledWith(201);
+        expect(captured.cashDifference).toBe(0);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ system_cash: 7500, carried_cash: 5500 }),
+        }));
+    });
+
+    test('শুধু আজকের নগদ দিলে আগের দিনের জমে থাকা টাকা নগদ ঘাটতি হিসেবে ধরা পড়ে', async () => {
+        getTodayCashBreakdown.mockResolvedValue(cashBreakdown({
+            window_from: '2026-11-10', sales_cash: 4000, system_cash: 4000, carried_cash: 2500,
+            carried_days: [{ date: '2026-11-11', cash: 2500 }],
+        }));
+        baseQueries();
+        const captured = captureInsert();
 
         const res = mockRes();
         await createSettlement({
-            body: { cash_collected: 1000 },
+            body: { cash_collected: 1500, mismatch_explanation: 'আগের দিনের টাকা পরে দেব' },
             user: workerUser,
         }, res);
 
-        expect(capturedShortageValue).toBe(0);
+        expect(captured.cashDifference).toBe(-2500);
+    });
+
+    test('আদায়ের নগদ লুকালে (শুধু বিক্রির নগদ দিলে) নগদ কম ধরা পড়ে', async () => {
+        getTodayCashBreakdown.mockResolvedValue(cashBreakdown({
+            total_sales: 3000, sales_cash: 3000, due_collected_cash: 400, system_cash: 3400,
+        }));
+        baseQueries();
+        const captured = captureInsert();
+
+        const res = mockRes();
+        await createSettlement({ body: { cash_collected: 3000 }, user: workerUser }, res);
+
+        expect(captured.cashDifference).toBe(-400);
+    });
+
+    test('রিপ্লেসমেন্ট বিল থেকে আগেই বাদ — সিস্টেম নগদ থেকে দ্বিতীয়বার কাটা হয় না', async () => {
+        // বিক্রি ৪০০০, রিপ্লেসমেন্ট ১০০০ → নেট বিল ৩০০০ → cash_received ৩০০০ (service সেটাই দেয়)
+        getTodayCashBreakdown.mockResolvedValue(cashBreakdown({
+            total_sales: 4000, replacement_value: 1000, sales_cash: 3000, system_cash: 3000,
+        }));
+        baseQueries();
+        const captured = captureInsert();
+
+        const res = mockRes();
+        await createSettlement({ body: { cash_collected: 3000 }, user: workerUser }, res);
+
+        expect(captured.cashDifference).toBe(0);
+    });
+
+    // ── পণ্য ঘাটতি: লেজারের ব্যালেন্স ইতিমধ্যে বিক্রি-বাদ, রিপ্লেস/রিটার্ন-যোগ ──
+    test('ঘাটতি সঠিক হিসাব হচ্ছে — হাতে ১০, ফেরত ০, কাল ০ → ১০টাই ঘাটতি (৳৫০০০)', async () => {
+        baseQueries({
+            ledger:   [{ product_id: 'product-a', product_name: 'পণ্য-A', in_hand_qty: 10 }],
+            price:    [{ product_id: 'product-a', product_name: 'পণ্য-A', effective_price: 500 }],
+            sold:     [{ product_id: 'product-a', qty: '6' }],
+            replaced: [{ product_id: 'product-a', qty: '2' }],
+        });
+        const captured = captureInsert();
+
+        const res = mockRes();
+        await createSettlement({ body: { cash_collected: 0, returned_items: [] }, user: workerUser }, res);
+
+        // বিক্রি (৬) ও রিপ্লেস (২) লেজারে আগেই হিসাব হয়েছে — আবার বাদ যাবে না
+        expect(captured.shortageValue).toBe(5000);
+    });
+
+    test('রিপ্লেসমেন্টে কাস্টমারের কাছ থেকে নেওয়া পণ্য গুদামে ফেরত না দিলে ঘাটতি', async () => {
+        // ধরা যাক SR ২টি রিপ্লেসমেন্ট পণ্য নিয়েছে; হাতে মোট ৩ (১ নতুন স্টকের + ২ রিপ্লেসের)
+        baseQueries({
+            ledger:   [{ product_id: 'product-c', product_name: 'পণ্য-C', in_hand_qty: 3 }],
+            price:    [{ product_id: 'product-c', product_name: 'পণ্য-C', effective_price: 100 }],
+            replaced: [{ product_id: 'product-c', qty: '2' }],
+        });
+        const captured = captureInsert();
+
+        const res = mockRes();
+        // ১টা ফেরত দিল — বাকি ২টা (রিপ্লেসে পাওয়া) হিসাবহীন
+        await createSettlement({
+            body: { cash_collected: 0, returned_items: [{ product_id: 'product-c', qty: 1 }] },
+            user: workerUser,
+        }, res);
+
+        expect(captured.shortageValue).toBe(200);
+    });
+
+    test('হাতের সব পণ্য ফেরত/কাল রাখলে shortage = 0 (রিপ্লেস/রিটার্নের পণ্যসহ)', async () => {
+        baseQueries({
+            ledger: [{ product_id: 'product-b', product_name: 'পণ্য-B', in_hand_qty: 5 }],
+            price:  [{ product_id: 'product-b', product_name: 'পণ্য-B', effective_price: 200 }],
+            sold:   [{ product_id: 'product-b', qty: '5' }],
+        });
+        const captured = captureInsert();
+
+        const res = mockRes();
+        await createSettlement({
+            body: {
+                cash_collected: 0,
+                returned_items:      [{ product_id: 'product-b', qty: 3 }],
+                carry_forward_items: [{ product_id: 'product-b', qty: 2 }],
+            },
+            user: workerUser,
+        }, res);
+
+        expect(captured.shortageValue).toBe(0);
     });
 });
 

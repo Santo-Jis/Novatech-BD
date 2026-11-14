@@ -482,12 +482,14 @@ const verifyCollection = async (req, res) => {
 // Settlement submit হলে সেই দিনের pending collections → submitted
 // settlement.controller.js থেকে call করতে হবে
 // ─────────────────────────────────────────────────────────────
+// ✅ আজ পর্যন্ত সব pending আদায় জমা হয় — আগের দিনে হিসাব না দিয়ে থাকলে সেগুলোও এই settlement-এ যায়
+// (ঠিক যেটা সিস্টেম নগদ হিসাবে ধরা হয়েছে, settlementCash.service.js)
 const submitCollectionsWithSettlement = async (client, sr_id, settlement_id, date) => {
     await client.query(
         `UPDATE collections
          SET status = 'submitted', settlement_id = $3
          WHERE sr_id = $1
-           AND created_at::date = $2::date
+           AND (created_at AT TIME ZONE 'Asia/Dhaka')::date <= $2::date
            AND status = 'pending'`,
         [sr_id, date, settlement_id]
     );
@@ -500,12 +502,14 @@ const submitCollectionsWithSettlement = async (client, sr_id, settlement_id, dat
 const getSettlementCollectionSummary = async (req, res) => {
     try {
         const sr_id = req.user.id;
-        const today = new Date().toISOString().split('T')[0];
+        // ✅ BD তারিখ (UTC+6) — আগে UTC তারিখ ছিল, রাত ১২টা–ভোর ৬টায় আগের দিনের আদায় দেখাত
+        const today = new Date(Date.now() + 6 * 60 * 60 * 1000).toISOString().split('T')[0];
 
+        // collections (বিক্রির সাথে নেওয়া বাকি আদায় সহ)
         const result = await query(
             `SELECT
                COUNT(*)::int                     AS count,
-               COALESCE(SUM(amount), 0)::numeric AS total_cash,
+               COALESCE(SUM(amount), 0)::numeric AS total_amount,
                COALESCE(
                  SUM(CASE WHEN payment_mode = 'cash'   THEN amount ELSE 0 END), 0
                )::numeric AS cash_amount,
@@ -521,13 +525,42 @@ const getSettlementCollectionSummary = async (req, res) => {
              FROM collections col
              JOIN customers c ON c.id = col.customer_id
              WHERE col.sr_id = $1
-               AND col.created_at::date = $2
-               AND col.status IN ('pending', 'submitted')
+               AND (col.created_at AT TIME ZONE 'Asia/Dhaka')::date <= $2::date
+               AND col.status = 'pending'
              AND col.tenant_id = $3`,
             [sr_id, today, req.tenantId]
         );
 
-        return res.json({ data: result.rows[0] });
+        // পুরনো পথের আদায় (credit_payments) — আগে এখানে আসতই না
+        const cp = await query(
+            `SELECT cp.id, c.shop_name, cp.amount, 'cash' AS payment_mode
+               FROM credit_payments cp
+               JOIN customers c ON c.id = cp.customer_id
+              WHERE COALESCE(cp.collected_by, cp.worker_id) = $1
+                AND (cp.created_at AT TIME ZONE 'Asia/Dhaka')::date <= $2::date
+                AND cp.created_at > COALESCE(
+                      (SELECT MAX(ds.created_at) FROM daily_settlements ds
+                        WHERE ds.worker_id = $1 AND ds.tenant_id = $3), TIMESTAMPTZ '1900-01-01')
+                AND (cp.payment_method IS NULL OR cp.payment_method = 'cash')
+                AND cp.tenant_id = $3
+              ORDER BY cp.created_at DESC`,
+            [sr_id, today, req.tenantId]
+        );
+
+        const row      = result.rows[0];
+        const cpItems  = cp.rows;
+        const cpAmount = cpItems.reduce((a, r) => a + (parseFloat(r.amount) || 0), 0);
+
+        const data = {
+            ...row,
+            count:        (row.count || 0) + cpItems.length,
+            cash_amount:  (parseFloat(row.cash_amount) || 0) + cpAmount,
+            // total_cash নামটা ফ্রন্টএন্ড ব্যবহার করে — এখন শুধু নগদ (আগে cheque/bkash-ও মিশে যেত)
+            total_cash:   (parseFloat(row.cash_amount) || 0) + cpAmount,
+            items:        [...(row.items || []), ...cpItems],
+        };
+
+        return res.json({ data });
 
     } catch (err) {
         console.error('getSettlementCollectionSummary error:', err);

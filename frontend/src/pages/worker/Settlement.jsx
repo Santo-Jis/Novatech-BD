@@ -66,7 +66,7 @@ function SellBar({ sold, taken }) {
 
 // প্রতিটি পণ্যের return + carry forward row
 function ItemRow({ item, returnedQty, carryQty, onReturn, onCarry }) {
-  const avail     = Math.max(0, item.taken_qty - item.sold_qty - item.replacement_qty)
+  const avail     = Math.max(0, item.taken_qty) // হাতে যা আছে — সবটাই ফেরত বা কাল রাখতে হবে
   const used      = returnedQty + carryQty
   const remaining = Math.max(0, avail - used)
   const maxRet    = Math.max(0, avail - carryQty)
@@ -85,7 +85,7 @@ function ItemRow({ item, returnedQty, carryQty, onReturn, onCarry }) {
             <span className="text-[10px] bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">হাতে {item.taken_qty}</span>
             <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded-full">বিক্রি {item.sold_qty}</span>
             {item.replacement_qty > 0 &&
-              <span className="text-[10px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">রিপ্লেস {item.replacement_qty}</span>}
+              <span className="text-[10px] bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">রিপ্লেসে পাওয়া {item.replacement_qty}</span>}
           </div>
         </div>
 
@@ -107,7 +107,7 @@ function ItemRow({ item, returnedQty, carryQty, onReturn, onCarry }) {
 
       {avail === 0 ? (
         <p className="text-xs text-emerald-600 bg-emerald-50 rounded-xl px-3 py-2 text-center">
-          ✅ সব বিক্রি / রিপ্লেস হয়েছে
+          ✅ হাতে কিছু নেই
         </p>
       ) : (
         <>
@@ -190,6 +190,8 @@ export default function Settlement() {
   const [alreadySubmitted,     setAlreadySubmitted]     = useState(false)
   const [submittedData,        setSubmittedData]        = useState(null)
   const [colSummary,           setColSummary]           = useState(null)
+  const [cashInfo,             setCashInfo]             = useState(null) // সার্ভারের সিস্টেম নগদ ব্রেকডাউন
+  const [salesCashToday,       setSalesCashToday]       = useState(0)    // শুধু আজকের বিক্রির নগদ (কার্ডের জন্য)
 
   const today     = getBDToday()
   const dateLabel = getBDDateLabel()
@@ -197,12 +199,13 @@ export default function Settlement() {
   useEffect(() => {
     const load = async () => {
       try {
-        const [settRes, salesRes, stockRes, previewRes, colRes] = await Promise.allSettled([
+        const [settRes, salesRes, stockRes, previewRes, colRes, cashRes] = await Promise.allSettled([
           api.get('/settlements/my'),
           api.get('/sales/today-summary'),
           api.get('/ledger/stock'),
           api.get('/settlements/today-preview'),
           api.get('/collections/settlement-summary'),
+          api.get('/settlements/today-cash'),
         ])
 
         // আজকের settlement আছে কিনা — BD date দিয়ে check
@@ -216,9 +219,16 @@ export default function Settlement() {
 
         if (salesRes.status === 'fulfilled') {
           const s = salesRes.value.data.data?.sales || {}
-          setTodayCash(parseFloat(s.cash_received || 0))
+          setTodayCash(parseFloat(s.cash_received || 0))   // fallback — নিচে সার্ভারের মান দিয়ে বদলায়
+          setSalesCashToday(parseFloat(s.cash_received || 0))
           setTodaySales(parseFloat(s.total_amount  || 0))
           setTodayCredit(parseFloat(s.credit_given || 0))
+        }
+
+        // ✅ সিস্টেম হিসাব = বিক্রির নগদ + বাকি আদায়ের নগদ — জমার সময় সার্ভার ঠিক এই মানই মেলায়
+        if (cashRes.status === 'fulfilled') {
+          const c = cashRes.value.data.data
+          if (c) { setCashInfo(c); setTodayCash(parseFloat(c.system_cash || 0)) }
         }
 
         const previewItems = previewRes.status === 'fulfilled'
@@ -270,7 +280,9 @@ export default function Settlement() {
     const items = stockItems.map(item => {
       const ret     = returnedQtys[item.product_id] || 0
       const carry   = carryQtys[item.product_id]    || 0
-      const accounted = item.sold_qty + item.replacement_qty + ret + carry
+      // taken_qty = লেজারের বর্তমান ব্যালেন্স: বিক্রি আগেই বাদ, রিপ্লেস/রিটার্নে পাওয়া পণ্য যোগ।
+      // তাই বিক্রি/রিপ্লেস আবার বাদ দেওয়া হয় না — যা হাতে আছে তা ফেরত বা কাল রাখতে হবে।
+      const accounted = ret + carry
       const shortage  = Math.max(0, item.taken_qty - accounted)
       const sVal      = Math.round(shortage * item.price * 100) / 100
       totalShortageVal += sVal
@@ -419,7 +431,7 @@ export default function Settlement() {
         <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">আজকের বিক্রয়</p>
         <div className="grid grid-cols-3 gap-2">
           <StatCard label="মোট বিক্রয়" value={taka(todaySales)}  color="text-secondary" bg="bg-secondary/5" />
-          <StatCard label="নগদ সংগ্রহ" value={taka(todayCash)}   color="text-primary"   bg="bg-primary/5" />
+          <StatCard label="নগদ বিক্রি" value={taka(salesCashToday)}   color="text-primary"   bg="bg-primary/5" />
           <StatCard label="বাকি দেওয়া"  value={taka(todayCredit)} color="text-amber-600" bg="bg-amber-50" />
         </div>
         {/* Sell performance bar */}
@@ -435,7 +447,7 @@ export default function Settlement() {
       {colSummary?.count > 0 && (
         <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4 flex items-center justify-between">
           <div>
-            <p className="text-xs text-emerald-600 font-bold">💰 আজকের বাকি আদায়</p>
+            <p className="text-xs text-emerald-600 font-bold">💰 বাকি আদায় (জমা দেওয়া বাকি)</p>
             <p className="text-[10px] text-emerald-500 mt-0.5">{colSummary.count}টি দোকান</p>
           </div>
           <p className="text-lg font-extrabold text-emerald-700">{taka(colSummary.total_cash)}</p>
@@ -469,7 +481,7 @@ export default function Settlement() {
                 <span className="text-[10px] text-blue-600 font-medium">🔵 আজকে ফেরত → গুদামে দিচ্ছেন</span>
                 <span className="text-[10px] text-violet-600 font-medium">🟣 কাল রাখছি → আগামীকাল বিক্রি করবেন</span>
               </div>
-              <p className="text-[10px] text-gray-400 mt-0.5">হিসাব না হওয়া পণ্য ঘাটতি হিসেবে যাবে</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">হাতে থাকা সব পণ্য (রিপ্লেস/রিটার্নে কাস্টমারের কাছ থেকে নেওয়া পণ্যসহ) ফেরত বা কাল রাখতে হবে — হিসাব না হলে ঘাটতি যাবে</p>
             </div>
           </div>
 
@@ -510,6 +522,49 @@ export default function Settlement() {
             <p className="text-sm font-extrabold text-primary">{taka(todayCash)}</p>
           </div>
         </div>
+
+        {cashInfo?.carried_cash > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-amber-800 flex items-center gap-1.5">
+                <FiAlertTriangle size={12} /> আগের {cashInfo.carried_days.length} দিনের হিসাব জমা বাকি
+              </p>
+              <p className="text-xs font-extrabold text-amber-800">{taka(cashInfo.carried_cash)}</p>
+            </div>
+            <div className="space-y-0.5">
+              {cashInfo.carried_days.map(d => (
+                <div key={d.date} className="flex justify-between text-[11px] text-amber-700">
+                  <span>{new Date(d.date + 'T00:00:00').toLocaleDateString('bn-BD', { day: 'numeric', month: 'long' })}</span>
+                  <span className="font-semibold">{taka(d.cash)}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-amber-600">
+              এগুলো আজকের সাথে একসাথে জমা হবে — সিস্টেম হিসাবে ধরা আছে
+            </p>
+          </div>
+        )}
+
+        {cashInfo && (
+          <div className="bg-gray-50 rounded-xl px-3 py-2 space-y-1">
+            <div className="flex justify-between text-[11px] text-gray-500">
+              <span>বিক্রির নগদ{cashInfo.carried_cash > 0 ? ' (সব দিন মিলিয়ে)' : ''}</span><span className="font-semibold">{taka(cashInfo.sales_cash)}</span>
+            </div>
+            <div className="flex justify-between text-[11px] text-gray-500">
+              <span>বাকি আদায় (নগদ)</span><span className="font-semibold">{taka(cashInfo.due_collected_cash)}</span>
+            </div>
+            {cashInfo.non_cash_collected > 0 && (
+              <p className="text-[10px] text-gray-400 pt-1 border-t border-gray-100">
+                চেক/বিকাশ/নগদে আদায় {taka(cashInfo.non_cash_collected)} — হাতের নগদে ধরা হয়নি
+              </p>
+            )}
+            {cashInfo.replacement_value > 0 && (
+              <p className="text-[10px] text-gray-400">
+                রিপ্লেসমেন্ট {taka(cashInfo.replacement_value)} বিল থেকে আগেই বাদ — নগদে আলাদা কাটা হয়নি
+              </p>
+            )}
+          </div>
+        )}
 
         <input
           type="number" inputMode="numeric"
