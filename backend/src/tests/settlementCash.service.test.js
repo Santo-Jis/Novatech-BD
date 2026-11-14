@@ -7,7 +7,7 @@
 
 jest.mock('../config/db', () => ({ query: jest.fn() }));
 
-const { getTodayCashBreakdown } = require('../services/settlementCash.service');
+const { getTodayCashBreakdown, getStockSummary } = require('../services/settlementCash.service');
 
 // কলের ক্রম: lastSettled → বিক্রি → collections → credit_payments → আগের দিনের ভাঙা হিসাব
 const mkDb = ({ sales = {}, col = {}, cp = {}, last = null, lastAt = '2026-11-10T11:00:00Z', carry = [] } = {}) => ({
@@ -130,5 +130,48 @@ describe('জমা-না-দেওয়া দিনের হিসাব �
         expect(r.carried_cash).toBe(0);
         expect(r.carried_days).toEqual([]);
         expect(r.today_cash).toBe(800);
+    });
+});
+
+
+describe('getStockSummary — পণ্যের প্রবাহ ও মূল্য', () => {
+    const mk = (ledger, orderPrices = [], productPrices = []) => ({
+        query: jest.fn()
+            .mockResolvedValueOnce({ rows: ledger })
+            .mockResolvedValueOnce({ rows: orderPrices })
+            .mockResolvedValueOnce({ rows: productPrices }),
+    });
+
+    test('হিসাব মেলে: আগের হাতে + নেওয়া + কাস্টমার-পাওয়া − বিক্রি − ফেরত/ঘাটতি = এখন হাতে', async () => {
+        // পণ্য A: আগে ২ ছিল, নেওয়া ১০, রিপ্লেসে পাওয়া ১, বিক্রি ৬, ফেরত ২ → এখন ৫
+        const db = mk(
+            [{ product_id: 'A', in_hand: '5', net_window: '3', taken: '10', customer_in: '1', sold: '6' }],
+            [{ product_id: 'A', price: '100' }]
+        );
+        const r = await getStockSummary({ workerId: 'w1', tenantId: 't1', fromAt: '2026-11-10T11:00:00Z', db });
+        expect(r.opening).toEqual({ qty: 2, value: 200 });
+        expect(r.taken).toEqual({ qty: 10, value: 1000 });
+        expect(r.customer_in).toEqual({ qty: 1, value: 100 });
+        expect(r.sold).toEqual({ qty: 6, value: 600 });
+        expect(r.out).toEqual({ qty: 2, value: 200 });
+        expect(r.in_hand).toEqual({ qty: 5, value: 500 });
+        expect(r.opening.qty + r.taken.qty + r.customer_in.qty - r.sold.qty - r.out.qty).toBe(r.in_hand.qty);
+    });
+
+    test('অর্ডারের দাম না থাকলে পণ্যের বিক্রয়মূল্য ব্যবহার হয়', async () => {
+        const db = mk(
+            [{ product_id: 'B', in_hand: '4', net_window: '4', taken: '4', customer_in: '0', sold: '0' }],
+            [],
+            [{ id: 'B', price: '250' }]
+        );
+        const r = await getStockSummary({ workerId: 'w1', tenantId: 't1', db });
+        expect(r.in_hand.value).toBe(1000);
+    });
+
+    test('লেজারে কিছু না থাকলে সব শূন্য', async () => {
+        const db = { query: jest.fn().mockResolvedValueOnce({ rows: [] }) };
+        const r = await getStockSummary({ workerId: 'w1', tenantId: 't1', db });
+        expect(r.in_hand).toEqual({ qty: 0, value: 0 });
+        expect(db.query).toHaveBeenCalledTimes(1);
     });
 });

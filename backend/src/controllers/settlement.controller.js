@@ -5,7 +5,7 @@ const logger = require('../config/logger');
 const { sendPushNotification } = require('../services/fcm.service');
 const { addLedgerEntry } = require('./ledger.controller');
 const { addDuesLedgerEntry } = require('../services/dues.service'); // ← নতুন: dues mutation-এর একমাত্র জায়গা
-const { getTodayCashBreakdown } = require('../services/settlementCash.service'); // ✅ সিস্টেম নগদ হিসাবের একমাত্র উৎস
+const { getTodayCashBreakdown, getStockSummary } = require('../services/settlementCash.service'); // ✅ সিস্টেম নগদ হিসাবের একমাত্র উৎস
 
 // ─── নগদ পার্থক্যের সীমা ─────────────────────────────────────────────────────
 // ⚠️  SYNC: এই মান frontend/src/pages/worker/Settlement.jsx-এর
@@ -951,7 +951,16 @@ const getTodayCash = async (req, res) => {
             tenantId: req.tenantId,
             date:     getBDToday(),
         });
-        return res.status(200).json({ success: true, data });
+        // পণ্যের প্রবাহ (মূল্যসহ) — শুধু দেখানোর জন্য; ব্যর্থ হলেও নগদের হিসাব আটকাবে না
+        let stock = null;
+        try {
+            stock = await getStockSummary({
+                workerId: req.user.id, tenantId: req.tenantId, fromAt: data.window_from_at,
+            });
+        } catch (e) {
+            logger.error('❌ Stock Summary Error:', e.message);
+        }
+        return res.status(200).json({ success: true, data: { ...data, stock } });
     } catch (error) {
         logger.error('❌ Today Cash Error:', error.message);
         return res.status(500).json({ success: false, message: 'নগদের হিসাব আনতে সমস্যা হয়েছে।' });

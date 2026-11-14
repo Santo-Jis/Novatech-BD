@@ -195,4 +195,85 @@ const getTodayCashBreakdown = async ({ workerId, tenantId, date, db }) => {
     };
 };
 
-module.exports = { getTodayCashBreakdown, getLastSettlement, BD_TZ };
+
+/**
+ * পণ্যের প্রবাহ (stock statement) — সর্বশেষ জমার পর থেকে এখন পর্যন্ত, মূল্যসহ।
+ *
+ *   আগের হাতে ছিল + নেওয়া + (রিপ্লেস/রিটার্নে কাস্টমার থেকে পাওয়া) − বিক্রি − (ফেরত/ঘাটতি) = এখন হাতে
+ *
+ * মূল্য = SR-এর সর্বশেষ approved অর্ডারের দাম (settlement-এর ঘাটতি যে দামে ধরা হয় সেটাই);
+ * অর্ডারে না থাকলে পণ্যের বর্তমান বিক্রয়মূল্য। শুধু দেখানোর জন্য — হিসাবে প্রভাব নেই।
+ */
+const getStockSummary = async ({ workerId, tenantId, fromAt, db }) => {
+    const run  = db ? (sql, params) => db.query(sql, params) : defaultQuery;
+    const from = fromAt || NO_LOWER_BOUND;
+
+    const led = await run(
+        `SELECT product_id,
+                SUM(qty * direction)                                                        AS in_hand,
+                COALESCE(SUM(qty * direction) FILTER (WHERE created_at > $2::timestamptz), 0) AS net_window,
+                COALESCE(SUM(qty) FILTER (WHERE created_at > $2::timestamptz AND txn_type = 'order_in'
+                                           AND COALESCE(reference_type, '') IN ('order', 'manual')), 0) AS taken,
+                COALESCE(SUM(qty) FILTER (WHERE created_at > $2::timestamptz AND txn_type = 'order_in'
+                                           AND COALESCE(reference_type, '') NOT IN ('order', 'manual')), 0) AS customer_in,
+                COALESCE(SUM(qty) FILTER (WHERE created_at > $2::timestamptz AND txn_type = 'sale_out'), 0) AS sold
+           FROM sr_stock_ledger
+          WHERE worker_id = $1::uuid
+          GROUP BY product_id`,
+        [workerId, from]
+    );
+
+    const rows = led.rows.filter(r =>
+        num(r.in_hand) !== 0 || num(r.net_window) !== 0 || num(r.taken) !== 0 ||
+        num(r.customer_in) !== 0 || num(r.sold) !== 0);
+
+    const empty = { qty: 0, value: 0 };
+    if (rows.length === 0) {
+        return { opening: empty, taken: empty, customer_in: empty, sold: empty, out: empty, in_hand: empty };
+    }
+
+    const ids = rows.map(r => String(r.product_id));
+
+    // দাম: সর্বশেষ approved order → না থাকলে products.price
+    const orderPrice = await run(
+        `SELECT DISTINCT ON ((item->>'product_id')::uuid)
+                (item->>'product_id')::uuid AS product_id,
+                COALESCE((item->>'final_price')::numeric, (item->>'price')::numeric, 0) AS price
+           FROM orders o,
+                jsonb_array_elements(CASE WHEN jsonb_typeof(o.items::jsonb) = 'array'
+                                          THEN o.items::jsonb ELSE '[]'::jsonb END) AS item
+          WHERE o.worker_id = $1::uuid AND o.status = 'approved' AND o.tenant_id = $3
+            AND (item->>'product_id')::uuid = ANY($2::uuid[])
+          ORDER BY (item->>'product_id')::uuid, o.approved_at DESC`,
+        [workerId, ids, tenantId]
+    );
+    const prodPrice = await run(
+        `SELECT id, price FROM products WHERE id = ANY($1::uuid[]) AND tenant_id = $2`,
+        [ids, tenantId]
+    );
+    const price = {};
+    prodPrice.rows.forEach(r => { price[String(r.id)] = num(r.price); });
+    orderPrice.rows.forEach(r => { if (num(r.price) > 0) price[String(r.product_id)] = num(r.price); });
+
+    const acc = { opening: { ...empty }, taken: { ...empty }, customer_in: { ...empty },
+                  sold: { ...empty }, out: { ...empty }, in_hand: { ...empty } };
+    const add = (k, qty, p) => { acc[k].qty += qty; acc[k].value += qty * p; };
+
+    for (const r of rows) {
+        const p        = price[String(r.product_id)] || 0;
+        const inHand   = num(r.in_hand);
+        const net      = num(r.net_window);
+        const taken    = num(r.taken);
+        const custIn   = num(r.customer_in);
+        const sold     = num(r.sold);
+        const opening  = inHand - net;
+        // ফেরত/ঘাটতি/অন্য সব বাদ = নেওয়া + কাস্টমার-পাওয়া − বিক্রি − নেট (যাতে হিসাব সবসময় মেলে)
+        const out      = taken + custIn - sold - net;
+        add('opening', opening, p); add('taken', taken, p); add('customer_in', custIn, p);
+        add('sold', sold, p);       add('out', out, p);     add('in_hand', inHand, p);
+    }
+    for (const k of Object.keys(acc)) acc[k].value = Math.round(acc[k].value * 100) / 100;
+    return acc;
+};
+
+module.exports = { getTodayCashBreakdown, getLastSettlement, getStockSummary, BD_TZ };

@@ -64,6 +64,67 @@ function SellBar({ sold, taken }) {
   )
 }
 
+// হিসাবের বিবরণ — পণ্যের প্রবাহ (পরিমাণ + মূল্য) ও টাকার সারাংশ
+function StatementCard({ cash, stock, shortage, fromLabel }) {
+  if (!cash && !stock) return null
+  const rows = stock ? [
+    { label: 'আগের হাতে ছিল',            d: stock.opening,     show: stock.opening.qty !== 0 },
+    { label: 'এই পর্যন্ত নেওয়া পণ্য',     d: stock.taken,       show: true },
+    { label: 'রিপ্লেস/রিটার্নে পাওয়া',    d: stock.customer_in, show: stock.customer_in.qty !== 0 },
+    { label: 'বিক্রি হয়েছে',             d: stock.sold,        show: true, sign: '−' },
+    { label: 'ফেরত / ঘাটতি (আগের জমায়)', d: stock.out,         show: stock.out.qty !== 0, sign: '−' },
+  ].filter(r => r.show) : []
+
+  return (
+    <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">হিসাবের বিবরণ</p>
+        {fromLabel && <p className="text-[10px] text-gray-400">{fromLabel}</p>}
+      </div>
+
+      {stock && (
+        <div className="rounded-xl border border-gray-100 overflow-hidden">
+          <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 bg-gray-50 px-3 py-1.5 text-[10px] font-bold text-gray-400">
+            <span>পণ্য</span><span className="text-right w-10">পিস</span><span className="text-right w-20">মূল্য</span>
+          </div>
+          {rows.map(r => (
+            <div key={r.label} className="grid grid-cols-[1fr_auto_auto] gap-x-3 px-3 py-1.5 text-[11px] border-t border-gray-50">
+              <span className="text-gray-600">{r.label}</span>
+              <span className="text-right w-10 text-gray-700 font-semibold">{r.sign || ''}{r.d.qty}</span>
+              <span className="text-right w-20 text-gray-700 font-semibold">{r.sign || ''}{taka(r.d.value)}</span>
+            </div>
+          ))}
+          <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 px-3 py-2 text-xs border-t border-gray-100 bg-primary/5">
+            <span className="font-bold text-primary">বর্তমানে হাতে আছে</span>
+            <span className="text-right w-10 font-extrabold text-primary">{stock.in_hand.qty}</span>
+            <span className="text-right w-20 font-extrabold text-primary">{taka(stock.in_hand.value)}</span>
+          </div>
+        </div>
+      )}
+
+      {cash && (
+        <div className="space-y-1">
+          <div className="flex justify-between text-[11px] text-gray-500">
+            <span>মোট বিক্রয়</span><span className="font-semibold text-gray-700">{taka(cash.total_sales)}</span>
+          </div>
+          <div className="flex justify-between text-[11px] text-gray-500">
+            <span>বাকি দেওয়া</span><span className="font-semibold text-amber-600">{taka(cash.credit_given)}</span>
+          </div>
+          {cash.replacement_value > 0 && (
+            <div className="flex justify-between text-[11px] text-gray-500">
+              <span>রিপ্লেসমেন্ট (বিল থেকে বাদ)</span><span className="font-semibold text-purple-600">{taka(cash.replacement_value)}</span>
+            </div>
+          )}
+          <div className="flex justify-between text-[11px] text-gray-500">
+            <span>ঘাটতি (বর্তমান হিসাবে)</span>
+            <span className={`font-semibold ${shortage > 0 ? 'text-red-600' : 'text-emerald-600'}`}>{taka(shortage)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // প্রতিটি পণ্যের return + carry forward row
 function ItemRow({ item, returnedQty, carryQty, onReturn, onCarry }) {
   const avail     = Math.max(0, item.taken_qty) // হাতে যা আছে — সবটাই ফেরত বা কাল রাখতে হবে
@@ -394,6 +455,13 @@ export default function Settlement() {
   // ─── Main Form ───────────────────────────────────────────
   const hasItems          = stockItems.length > 0
   const totalShortage     = livePreview.totalShortageVal
+  // হিসাবের সময়সীমার (আগের জমা-না-দেওয়া দিনসহ) মোট — সার্ভার থেকে; না পেলে শুধু আজকেরটা
+  const periodSales   = cashInfo ? cashInfo.total_sales  : todaySales
+  const periodCash    = cashInfo ? cashInfo.sales_cash   : salesCashToday
+  const periodCredit  = cashInfo ? cashInfo.credit_given : todayCredit
+  const periodFrom    = cashInfo?.carried_days?.length
+    ? new Date(cashInfo.carried_days[0].date + 'T00:00:00').toLocaleDateString('bn-BD', { day: 'numeric', month: 'long' })
+    : null
   const hasShortage       = totalShortage > 0
   const hasCashMismatch   = livePreview.cashMismatch && cashAmount !== ''
   const hasCashBlocked    = livePreview.cashBlocked  && cashAmount !== ''
@@ -428,11 +496,11 @@ export default function Settlement() {
 
       {/* ─── Section 1: আজকের বিক্রয় ─── */}
       <div className="bg-white rounded-2xl p-4 shadow-sm space-y-3">
-        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">আজকের বিক্রয়</p>
+        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">{periodFrom ? `বিক্রয় (${periodFrom} থেকে আজ)` : 'আজকের বিক্রয়'}</p>
         <div className="grid grid-cols-3 gap-2">
-          <StatCard label="মোট বিক্রয়" value={taka(todaySales)}  color="text-secondary" bg="bg-secondary/5" />
-          <StatCard label="নগদ বিক্রি" value={taka(salesCashToday)}   color="text-primary"   bg="bg-primary/5" />
-          <StatCard label="বাকি দেওয়া"  value={taka(todayCredit)} color="text-amber-600" bg="bg-amber-50" />
+          <StatCard label="মোট বিক্রয়" value={taka(periodSales)}  color="text-secondary" bg="bg-secondary/5" />
+          <StatCard label="নগদ বিক্রি" value={taka(periodCash)}   color="text-primary"   bg="bg-primary/5" />
+          <StatCard label="বাকি দেওয়া"  value={taka(periodCredit)} color="text-amber-600" bg="bg-amber-50" />
         </div>
         {/* Sell performance bar */}
         {hasItems && (
@@ -453,6 +521,9 @@ export default function Settlement() {
           <p className="text-lg font-extrabold text-emerald-700">{taka(colSummary.total_cash)}</p>
         </div>
       )}
+
+      {/* ─── হিসাবের বিবরণ (পণ্যের প্রবাহ + মূল্য) ─── */}
+      <StatementCard cash={cashInfo} stock={cashInfo?.stock} shortage={totalShortage} fromLabel={periodFrom ? `${periodFrom} থেকে আজ` : null} />
 
       {/* ─── Section 2: পণ্যের হিসাব ─── */}
       {hasItems && (
@@ -705,7 +776,7 @@ export default function Settlement() {
           {/* Final summary */}
           <div className="grid grid-cols-3 gap-2">
             <StatCard label="নগদ জমা"   value={taka(livePreview.enteredCash)} color="text-primary"   bg="bg-primary/5" />
-            <StatCard label="বাকি দেওয়া" value={taka(todayCredit)}            color="text-amber-600" bg="bg-amber-50" />
+            <StatCard label="বাকি দেওয়া" value={taka(periodCredit)}           color="text-amber-600" bg="bg-amber-50" />
             <StatCard label="মোট ঘাটতি" value={taka(totalShortage)}
               color={hasShortage ? 'text-red-600' : 'text-emerald-600'}
               bg={hasShortage ? 'bg-red-50' : 'bg-emerald-50'} />
