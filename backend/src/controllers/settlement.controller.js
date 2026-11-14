@@ -219,18 +219,20 @@ const createSettlement = async (req, res) => {
                 : null;
             const carryQty = parseInt(carryItem?.qty) || 0;
 
-            // ঘাটতি = হাতে আছে − (ফেরত + carry forward)
+            // ✅ যা ফেরত দেওয়া হয়নি তা SR-এর হাতেই থাকা স্টক — ঘাটতি নয়।
             //
-            // ⚠️ takenQty = sr_stock_ledger-এর বর্তমান ব্যালেন্স, যেখানে —
-            //   • আজকের বিক্রি আগেই বাদ গেছে (sale_out, direction −1)
-            //   • রিপ্লেসমেন্টে কাস্টমারের কাছ থেকে নেওয়া পণ্য যোগ হয়েছে (order_in, +1)
-            //   • কাস্টমার রিটার্ন complete হলে পণ্য যোগ হয়েছে (order_in, +1)
-            // শেষ দুটো পণ্য এখন SR-এর হাতে — তাই সেগুলো গুদামে ফেরত বা carry না দিলে ঘাটতি।
-            // আগে এখান থেকে soldQty ও replacedQty আবার বাদ দেওয়া হতো (দুইবার বাদ):
-            // ফলে বিক্রির সমান পণ্য আর রিপ্লেসমেন্টে পাওয়া পণ্য লুকানো যেত।
-            // soldQty/replacedQty এখন শুধু রিপোর্টে তথ্য হিসেবে থাকে।
-            const accountedFor = returnedQty + carryQty;
-            const shortageQty  = Math.max(0, takenQty - accountedFor);
+            // takenQty = sr_stock_ledger-এর বর্তমান ব্যালেন্স (বিক্রি আগেই বাদ; রিপ্লেস/রিটার্নে
+            // কাস্টমারের কাছ থেকে পাওয়া পণ্য যোগ)। SR ফেরত বা carry না লিখলেও পণ্যটা তার কাছেই
+            // আছে, তাই বাকিটা স্বয়ংক্রিয়ভাবে carry forward ধরা হয় — লেজারে কোনো এন্ট্রি পড়ে না,
+            // পরের দিন "হাতে" পরিমাণে আপনাআপনি আসে।
+            //
+            // ঘাটতি এখন শুধু যেখানে প্রমাণ আছে: গুদাম গুনে সংখ্যা কম পেলে
+            // (settlement_return_receipts → discrepancy → manager charge/waive)।
+            // আগে ফেরত/carry না লিখলেই পুরো হাতের পণ্য ঘাটতি হয়ে SR-এর বকেয়ায় যেত।
+            const declaredQty  = returnedQty + carryQty;
+            const autoCarryQty = Math.max(0, takenQty - declaredQty);
+            const finalCarry   = carryQty + autoCarryQty;
+            const shortageQty  = 0;
 
             const priceInfo      = priceMap[pid];
             const effectivePrice = parseFloat(priceInfo?.effective_price || 0);
@@ -244,7 +246,8 @@ const createSettlement = async (req, res) => {
                 sold_qty:          soldQty,
                 replacement_qty:   replacedQty,
                 returned_qty:      returnedQty,
-                carry_forward_qty: carryQty,
+                carry_forward_qty: finalCarry,      // SR-এর ঘোষণা + স্বয়ংক্রিয় (ফেরত না দেওয়া অংশ)
+                auto_carry_qty:    autoCarryQty,    // এর মধ্যে SR নিজে লেখেনি, সিস্টেম ধরেছে
                 shortage_qty:      shortageQty,
                 shortage_value:    shortageValue,
                 price:             effectivePrice

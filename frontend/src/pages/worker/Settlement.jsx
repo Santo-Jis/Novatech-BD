@@ -72,7 +72,7 @@ function StatementCard({ cash, stock, shortage, fromLabel }) {
     { label: 'এই পর্যন্ত নেওয়া পণ্য',     d: stock.taken,       show: true },
     { label: 'রিপ্লেস/রিটার্নে পাওয়া',    d: stock.customer_in, show: stock.customer_in.qty !== 0 },
     { label: 'বিক্রি হয়েছে',             d: stock.sold,        show: true, sign: '−' },
-    { label: 'ফেরত / ঘাটতি (আগের জমায়)', d: stock.out,         show: stock.out.qty !== 0, sign: '−' },
+    { label: 'ফেরত (আগের জমায়)',          d: stock.out,         show: stock.out.qty !== 0, sign: '−' },
   ].filter(r => r.show) : []
 
   return (
@@ -215,7 +215,7 @@ function ItemRow({ item, returnedQty, carryQty, onReturn, onCarry }) {
           {/* Remaining warning */}
           {remaining > 0 && used > 0 && (
             <p className="text-[10px] text-amber-600 bg-amber-50 rounded-xl px-3 py-1.5 mt-2 text-center">
-              ⚠️ {remaining} পিস এখনো হিসাব হয়নি — ঘাটতি ধরা হবে
+              ℹ️ বাকি {remaining} পিস আপনার হাতেই থাকবে (স্টক হিসেবে)
             </p>
           )}
         </>
@@ -342,13 +342,15 @@ export default function Settlement() {
       const ret     = returnedQtys[item.product_id] || 0
       const carry   = carryQtys[item.product_id]    || 0
       // taken_qty = লেজারের বর্তমান ব্যালেন্স: বিক্রি আগেই বাদ, রিপ্লেস/রিটার্নে পাওয়া পণ্য যোগ।
-      // তাই বিক্রি/রিপ্লেস আবার বাদ দেওয়া হয় না — যা হাতে আছে তা ফেরত বা কাল রাখতে হবে।
-      const accounted = ret + carry
-      const shortage  = Math.max(0, item.taken_qty - accounted)
-      const sVal      = Math.round(shortage * item.price * 100) / 100
+      // যা ফেরত দেওয়া হয়নি তা SR-এর হাতেই থাকা স্টক (স্বয়ংক্রিয় carry) — ঘাটতি নয়।
+      // সার্ভারও একই নিয়মে ধরে; ঘাটতি শুধু গুদাম গুনে কম পেলে হয়।
+      const remainder = Math.max(0, item.taken_qty - ret - carry)
+      const shortage  = 0
+      const sVal      = 0
       totalShortageVal += sVal
       totalShortageQty += shortage
-      return { ...item, returned_qty: ret, carry_forward_qty: carry, shortage_qty: shortage, shortage_value: sVal }
+      return { ...item, returned_qty: ret, carry_forward_qty: carry + remainder, auto_carry_qty: remainder,
+               shortage_qty: shortage, shortage_value: sVal }
     })
     const enteredCash = parseFloat(cashAmount || 0)
     const cashDiff    = enteredCash - todayCash
@@ -540,8 +542,8 @@ export default function Settlement() {
                 ? <span className="text-xs font-bold text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-xl">
                     ⚠️ {taka(totalShortage)} ঘাটতি
                   </span>
-                : livePreview.totalShortageQty === 0 && Object.values(returnedQtys).some(v => v > 0) || Object.values(carryQtys).some(v => v > 0)
-                ? <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-xl">✅ সব হিসাব হয়েছে</span>
+                : Object.values(returnedQtys).some(v => v > 0) || Object.values(carryQtys).some(v => v > 0)
+                ? <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-xl">✅ হিসাব ঠিক আছে</span>
                 : null
               }
             </div>
@@ -552,7 +554,7 @@ export default function Settlement() {
                 <span className="text-[10px] text-blue-600 font-medium">🔵 আজকে ফেরত → গুদামে দিচ্ছেন</span>
                 <span className="text-[10px] text-violet-600 font-medium">🟣 কাল রাখছি → আগামীকাল বিক্রি করবেন</span>
               </div>
-              <p className="text-[10px] text-gray-400 mt-0.5">হাতে থাকা সব পণ্য (রিপ্লেস/রিটার্নে কাস্টমারের কাছ থেকে নেওয়া পণ্যসহ) ফেরত বা কাল রাখতে হবে — হিসাব না হলে ঘাটতি যাবে</p>
+              <p className="text-[10px] text-gray-400 mt-0.5">যা গুদামে ফেরত দেবেন না তা আপনার হাতেই স্টক হিসেবে থাকবে (রিপ্লেস/রিটার্নে পাওয়া পণ্যসহ)। গুদামে গোনার পর কম পেলে তবেই ঘাটতি ধরা হবে</p>
             </div>
           </div>
 
@@ -745,7 +747,7 @@ export default function Settlement() {
               <table className="w-full text-xs">
                 <thead>
                   <tr className="bg-gray-50">
-                    {['পণ্য','হাতে','বিক্রি','ফেরত','কাল','ঘাটতি'].map(h => (
+                    {['পণ্য','হাতে','বিক্রি','ফেরত','হাতে থাকবে'].map(h => (
                       <th key={h} className="px-2 py-2.5 text-left font-bold text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -757,15 +759,8 @@ export default function Settlement() {
                       <td className="px-2 py-2 text-gray-500">{item.taken_qty}</td>
                       <td className="px-2 py-2 text-emerald-600 font-bold">{item.sold_qty}</td>
                       <td className="px-2 py-2 text-blue-600">{item.returned_qty}</td>
-                      <td className="px-2 py-2 text-violet-600">{item.carry_forward_qty}</td>
-                      <td className="px-2 py-2">
-                        {item.shortage_qty > 0
-                          ? <span className="text-red-600 font-extrabold leading-none">
-                              {item.shortage_qty}<br/>
-                              <span className="text-[9px]">{taka(item.shortage_value)}</span>
-                            </span>
-                          : <span className="text-emerald-500 font-bold">✅</span>}
-                      </td>
+                      <td className="px-2 py-2 text-violet-600 font-bold">{item.carry_forward_qty}</td>
+
                     </tr>
                   ))}
                 </tbody>

@@ -275,60 +275,85 @@ describe('createSettlement — হিসাব জমার নিয়ম', ()
         expect(captured.cashDifference).toBe(0);
     });
 
-    // ── পণ্য ঘাটতি: লেজারের ব্যালেন্স ইতিমধ্যে বিক্রি-বাদ, রিপ্লেস/রিটার্ন-যোগ ──
-    test('ঘাটতি সঠিক হিসাব হচ্ছে — হাতে ১০, ফেরত ০, কাল ০ → ১০টাই ঘাটতি (৳৫০০০)', async () => {
+    // ── পণ্য: ফেরত না দেওয়া অংশ SR-এর হাতের স্টক (carry), ঘাটতি নয় ──
+    const captureItems = () => {
+        const captured = {};
+        withTransaction.mockImplementation(async (cb) => {
+            const client = {
+                query: jest.fn().mockImplementation(async (sql, params) => {
+                    if (sql.includes('INSERT INTO daily_settlements')) {
+                        captured.shortageValue = params[10];
+                        captured.itemsJson     = params.find(p => typeof p === 'string' && p.includes('carry_forward_qty'));
+                        return { rows: [{ id: 200 }] };
+                    }
+                    return { rows: [] };
+                }),
+            };
+            return await cb(client);
+        });
+        return captured;
+    };
+
+    test('কিছু ফেরত/carry না লিখলে হাতের সব পণ্য স্টক হিসেবে থাকে — ঘাটতি ০, বকেয়া নেই', async () => {
         baseQueries({
             ledger:   [{ product_id: 'product-a', product_name: 'পণ্য-A', in_hand_qty: 10 }],
             price:    [{ product_id: 'product-a', product_name: 'পণ্য-A', effective_price: 500 }],
             sold:     [{ product_id: 'product-a', qty: '6' }],
             replaced: [{ product_id: 'product-a', qty: '2' }],
         });
-        const captured = captureInsert();
+        const captured = captureItems();
 
         const res = mockRes();
         await createSettlement({ body: { cash_collected: 0, returned_items: [] }, user: workerUser }, res);
 
-        // বিক্রি (৬) ও রিপ্লেস (২) লেজারে আগেই হিসাব হয়েছে — আবার বাদ যাবে না
-        expect(captured.shortageValue).toBe(5000);
+        expect(res.status).toHaveBeenCalledWith(201);
+        expect(captured.shortageValue).toBe(0);
+        const items = JSON.parse(captured.itemsJson);
+        expect(items[0].carry_forward_qty).toBe(10);   // পুরোটাই হাতে থাকছে
+        expect(items[0].auto_carry_qty).toBe(10);
+        expect(items[0].shortage_qty).toBe(0);
+        // হাতে থাকা পণ্যের জন্য লেজারে কোনো return_out পড়েনি
+        expect(addLedgerEntry).not.toHaveBeenCalled();
     });
 
-    test('রিপ্লেসমেন্টে কাস্টমারের কাছ থেকে নেওয়া পণ্য গুদামে ফেরত না দিলে ঘাটতি', async () => {
-        // ধরা যাক SR ২টি রিপ্লেসমেন্ট পণ্য নিয়েছে; হাতে মোট ৩ (১ নতুন স্টকের + ২ রিপ্লেসের)
+    test('আংশিক ফেরত: ১০টির ৩টি ফেরত — বাকি ৭টি হাতে থাকে, শুধু ফেরতের লেজার এন্ট্রি', async () => {
         baseQueries({
-            ledger:   [{ product_id: 'product-c', product_name: 'পণ্য-C', in_hand_qty: 3 }],
-            price:    [{ product_id: 'product-c', product_name: 'পণ্য-C', effective_price: 100 }],
-            replaced: [{ product_id: 'product-c', qty: '2' }],
+            ledger: [{ product_id: 'product-c', product_name: 'পণ্য-C', in_hand_qty: 10 }],
+            price:  [{ product_id: 'product-c', product_name: 'পণ্য-C', effective_price: 100 }],
         });
-        const captured = captureInsert();
+        const captured = captureItems();
 
         const res = mockRes();
-        // ১টা ফেরত দিল — বাকি ২টা (রিপ্লেসে পাওয়া) হিসাবহীন
         await createSettlement({
-            body: { cash_collected: 0, returned_items: [{ product_id: 'product-c', qty: 1 }] },
+            body: { cash_collected: 0, returned_items: [{ product_id: 'product-c', qty: 3 }] },
             user: workerUser,
         }, res);
 
-        expect(captured.shortageValue).toBe(200);
+        const items = JSON.parse(captured.itemsJson);
+        expect(items[0].returned_qty).toBe(3);
+        expect(items[0].carry_forward_qty).toBe(7);
+        expect(items[0].shortage_qty).toBe(0);
+        expect(captured.shortageValue).toBe(0);
+        expect(addLedgerEntry).toHaveBeenCalledTimes(1);
+        expect(addLedgerEntry).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ qty: 3, txn_type: 'return_out' }));
     });
 
-    test('হাতের সব পণ্য ফেরত/কাল রাখলে shortage = 0 (রিপ্লেস/রিটার্নের পণ্যসহ)', async () => {
+    test('SR নিজে carry লিখলে সেটাও ধরা হয়, বাকিটা স্বয়ংক্রিয়', async () => {
         baseQueries({
             ledger: [{ product_id: 'product-b', product_name: 'পণ্য-B', in_hand_qty: 5 }],
             price:  [{ product_id: 'product-b', product_name: 'পণ্য-B', effective_price: 200 }],
-            sold:   [{ product_id: 'product-b', qty: '5' }],
         });
-        const captured = captureInsert();
+        const captured = captureItems();
 
         const res = mockRes();
         await createSettlement({
-            body: {
-                cash_collected: 0,
-                returned_items:      [{ product_id: 'product-b', qty: 3 }],
-                carry_forward_items: [{ product_id: 'product-b', qty: 2 }],
-            },
+            body: { cash_collected: 0, carry_forward_items: [{ product_id: 'product-b', qty: 2 }] },
             user: workerUser,
         }, res);
 
+        const items = JSON.parse(captured.itemsJson);
+        expect(items[0].carry_forward_qty).toBe(5);
+        expect(items[0].auto_carry_qty).toBe(3);
         expect(captured.shortageValue).toBe(0);
     });
 });
