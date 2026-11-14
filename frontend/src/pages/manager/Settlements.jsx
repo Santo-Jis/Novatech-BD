@@ -7,6 +7,7 @@ import Modal from '../../components/ui/Modal'
 import Input from '../../components/ui/Input'
 import toast from 'react-hot-toast'
 import { FiCheck, FiAlertTriangle, FiEye, FiDollarSign, FiLock } from 'react-icons/fi'
+import SettlementBreakdown from './SettlementBreakdown'
 
 export default function ManagerSettlements() {
   const [settlements, setSettlements] = useState([])
@@ -235,6 +236,9 @@ export default function ManagerSettlements() {
               বিক্রি আগেই বাদ গেছে, আর রিপ্লেস/রিটার্নে কাস্টমারের কাছ থেকে পাওয়া পণ্য যোগ হয়েছে।
               *বিক্রি ও রিপ্লেস কলাম শুধু তথ্য (হিসাবের সময়সীমায়), ঘাটতিতে আলাদা বাদ যায় না।
             </p>
+
+            {/* বিস্তারিত হিসাব: নগদের উৎস, দিনভিত্তিক, দোকানভিত্তিক, পণ্যের প্রবাহ, রিপ্লেস, রিটার্ন রসিদ */}
+            <SettlementBreakdown breakdown={detail.breakdown} />
 
             <div className="flex justify-end gap-3 pt-2 border-t border-gray-200">
               <Button variant="ghost" onClick={() => setModal(null)}>বন্ধ করুন</Button>

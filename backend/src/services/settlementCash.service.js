@@ -204,23 +204,29 @@ const getTodayCashBreakdown = async ({ workerId, tenantId, date, db }) => {
  * মূল্য = SR-এর সর্বশেষ approved অর্ডারের দাম (settlement-এর ঘাটতি যে দামে ধরা হয় সেটাই);
  * অর্ডারে না থাকলে পণ্যের বর্তমান বিক্রয়মূল্য। শুধু দেখানোর জন্য — হিসাবে প্রভাব নেই।
  */
-const getStockSummary = async ({ workerId, tenantId, fromAt, db }) => {
+const getStockSummary = async ({ workerId, tenantId, fromAt, toAt, db }) => {
     const run  = db ? (sql, params) => db.query(sql, params) : defaultQuery;
     const from = fromAt || NO_LOWER_BOUND;
+    // toAt (বাদ): পুরনো settlement-এর সময় দেখাতে — তখনকার হাতের পণ্য। settlement-এর নিজের
+    // ফেরত/ঘাটতির লেজার এন্ট্রি একই লেনদেনের সময়ে বসে, তাই `<` দিয়ে সেগুলো বাদ থাকে।
+    const to   = toAt || '9999-12-31T00:00:00Z';
 
     const led = await run(
         `SELECT product_id,
-                SUM(qty * direction)                                                        AS in_hand,
-                COALESCE(SUM(qty * direction) FILTER (WHERE created_at > $2::timestamptz), 0) AS net_window,
-                COALESCE(SUM(qty) FILTER (WHERE created_at > $2::timestamptz AND txn_type = 'order_in'
+                COALESCE(SUM(qty * direction) FILTER (WHERE created_at < $3::timestamptz), 0) AS in_hand,
+                COALESCE(SUM(qty * direction) FILTER (WHERE created_at > $2::timestamptz AND created_at < $3::timestamptz), 0) AS net_window,
+                COALESCE(SUM(qty) FILTER (WHERE created_at > $2::timestamptz AND created_at < $3::timestamptz
+                                           AND txn_type = 'order_in'
                                            AND COALESCE(reference_type, '') IN ('order', 'manual')), 0) AS taken,
-                COALESCE(SUM(qty) FILTER (WHERE created_at > $2::timestamptz AND txn_type = 'order_in'
+                COALESCE(SUM(qty) FILTER (WHERE created_at > $2::timestamptz AND created_at < $3::timestamptz
+                                           AND txn_type = 'order_in'
                                            AND COALESCE(reference_type, '') NOT IN ('order', 'manual')), 0) AS customer_in,
-                COALESCE(SUM(qty) FILTER (WHERE created_at > $2::timestamptz AND txn_type = 'sale_out'), 0) AS sold
+                COALESCE(SUM(qty) FILTER (WHERE created_at > $2::timestamptz AND created_at < $3::timestamptz
+                                           AND txn_type = 'sale_out'), 0) AS sold
            FROM sr_stock_ledger
           WHERE worker_id = $1::uuid
           GROUP BY product_id`,
-        [workerId, from]
+        [workerId, from, to]
     );
 
     const rows = led.rows.filter(r =>
@@ -276,4 +282,146 @@ const getStockSummary = async ({ workerId, tenantId, fromAt, db }) => {
     return acc;
 };
 
-module.exports = { getTodayCashBreakdown, getLastSettlement, getStockSummary, BD_TZ };
+
+/**
+ * ম্যানেজারের "হিসাবের বিস্তারিত" — একটি settlement-এর পুরো সময়সীমার (আগের জমার পর থেকে এই জমা পর্যন্ত)
+ * নগদের উৎস, দিনভিত্তিক ভাঙা, দোকানভিত্তিক বাকি/আদায়, রিপ্লেসমেন্ট, পণ্যের প্রবাহ ও রিটার্ন রসিদ।
+ * শুধু পড়ার জন্য — কোনো হিসাব বদলায় না।
+ */
+const getSettlementBreakdown = async ({ settlement, tenantId, db }) => {
+    const run = db ? (sql, params) => db.query(sql, params) : defaultQuery;
+    const S   = settlement;
+
+    const prev = await run(
+        `SELECT created_at FROM daily_settlements
+          WHERE worker_id = $1 AND tenant_id = $2 AND created_at < $3 AND id <> $4
+          ORDER BY created_at DESC LIMIT 1`,
+        [S.worker_id, tenantId, S.created_at, S.id]
+    );
+    const fromAt = prev.rows[0]?.created_at || null;
+    const from   = fromAt || NO_LOWER_BOUND;
+
+    const [salesQ, colQ, cpQ, rrQ, stock] = await Promise.all([
+        run(
+            `SELECT TO_CHAR(st.date, 'YYYY-MM-DD') AS day, st.customer_id, c.shop_name, st.invoice_number,
+                    st.total_amount, st.cash_received, st.credit_used, st.replacement_value, st.replacement_items
+               FROM sales_transactions st
+               LEFT JOIN customers c ON c.id = st.customer_id
+              WHERE st.worker_id = $1 AND st.tenant_id = $2
+                AND st.created_at > $3::timestamptz AND st.created_at <= $4::timestamptz
+              ORDER BY st.date, st.created_at`,
+            [S.worker_id, tenantId, from, S.created_at]
+        ),
+        run(
+            `SELECT TO_CHAR((col.created_at AT TIME ZONE '${BD_TZ}')::date, 'YYYY-MM-DD') AS day,
+                    col.customer_id, c.shop_name, col.amount, col.payment_mode, col.status
+               FROM collections col
+               LEFT JOIN customers c ON c.id = col.customer_id
+              WHERE col.settlement_id = $1 AND col.tenant_id = $2
+              ORDER BY col.created_at`,
+            [S.id, tenantId]
+        ),
+        run(
+            `SELECT TO_CHAR((cp.created_at AT TIME ZONE '${BD_TZ}')::date, 'YYYY-MM-DD') AS day,
+                    cp.customer_id, c.shop_name, cp.amount
+               FROM credit_payments cp
+               LEFT JOIN customers c ON c.id = cp.customer_id
+              WHERE COALESCE(cp.collected_by, cp.worker_id) = $1 AND cp.tenant_id = $2
+                AND cp.created_at > $3::timestamptz AND cp.created_at <= $4::timestamptz
+                AND (cp.payment_method IS NULL OR cp.payment_method = 'cash')
+              ORDER BY cp.created_at`,
+            [S.worker_id, tenantId, from, S.created_at]
+        ),
+        run(
+            `SELECT product_name, qty_claimed, qty_received, status, discrepancy_note,
+                    resolution, resolution_note, price
+               FROM settlement_return_receipts
+              WHERE settlement_id = $1 AND tenant_id = $2
+              ORDER BY created_at`,
+            [S.id, tenantId]
+        ),
+        getStockSummary({ workerId: S.worker_id, tenantId, fromAt, toAt: S.created_at, db }),
+    ]);
+
+    // ── দিনভিত্তিক ও দোকানভিত্তিক ──────────────────────────
+    const days = {}, shops = {};
+    const day  = (d) => (days[d]  = days[d]  || { date: d, sales_total: 0, sales_cash: 0, credit_given: 0,
+                                                   collections_cash: 0, collections_non_cash: 0, replacement_value: 0, invoices: 0 });
+    const shop = (id, name) => (shops[id || name || '-'] = shops[id || name || '-'] ||
+                    { customer_id: id, shop_name: name || 'অজানা', sales_total: 0, credit_given: 0, collected_cash: 0, collected_non_cash: 0, invoices: 0 });
+
+    const replacements = [];
+    for (const r of salesQ.rows) {
+        const d = day(r.day), sh = shop(r.customer_id, r.shop_name);
+        d.sales_total += num(r.total_amount);  d.sales_cash += num(r.cash_received);
+        d.credit_given += num(r.credit_used);  d.replacement_value += num(r.replacement_value); d.invoices += 1;
+        sh.sales_total += num(r.total_amount); sh.credit_given += num(r.credit_used); sh.invoices += 1;
+        if (num(r.replacement_value) > 0) {
+            const items = Array.isArray(r.replacement_items) ? r.replacement_items : [];
+            replacements.push({
+                date: r.day, shop_name: r.shop_name || 'অজানা', invoice_number: r.invoice_number,
+                value: num(r.replacement_value),
+                items: items.map(i => ({ name: i.product_name || i.name || '—', qty: num(i.qty || i.quantity) })),
+            });
+        }
+    }
+    for (const r of colQ.rows) {
+        const d = day(r.day), sh = shop(r.customer_id, r.shop_name);
+        if (r.payment_mode === 'cash') { d.collections_cash += num(r.amount); sh.collected_cash += num(r.amount); }
+        else                           { d.collections_non_cash += num(r.amount); sh.collected_non_cash += num(r.amount); }
+    }
+    for (const r of cpQ.rows) {
+        const d = day(r.day), sh = shop(r.customer_id, r.shop_name);
+        d.collections_cash += num(r.amount); sh.collected_cash += num(r.amount);
+    }
+
+    const round = (n) => Math.round(n * 100) / 100;
+    const dayRows  = Object.values(days).sort((a, b) => a.date.localeCompare(b.date))
+        .map(d => ({ ...d, total_cash: round(d.sales_cash + d.collections_cash) }));
+    const shopRows = Object.values(shops)
+        .sort((a, b) => (b.credit_given + b.collected_cash) - (a.credit_given + a.collected_cash));
+
+    const sum = (rows, k) => round(rows.reduce((a, r) => a + r[k], 0));
+    const salesCash = sum(dayRows, 'sales_cash');
+    const colCash   = sum(dayRows, 'collections_cash');
+    const srCash    = num(S.cash_collected);
+    const diff      = num(S.cash_difference);
+
+    // ── পণ্য: জমার সময়ে হাতের পণ্য কোথায় গেল ────────────────
+    const items = Array.isArray(S.items_taken) ? S.items_taken : [];
+    const split = { returned: { qty: 0, value: 0 }, carry: { qty: 0, value: 0 }, shortage: { qty: 0, value: 0 } };
+    for (const it of items) {
+        const p = num(it.price);
+        split.returned.qty += num(it.returned_qty);       split.returned.value += num(it.returned_qty) * p;
+        split.carry.qty    += num(it.carry_forward_qty);  split.carry.value    += num(it.carry_forward_qty) * p;
+        split.shortage.qty += num(it.shortage_qty);       split.shortage.value += num(it.shortage_qty) * p;
+    }
+    for (const k of Object.keys(split)) split[k].value = round(split[k].value);
+
+    return {
+        window: { from_at: fromAt, to_at: S.created_at, days: dayRows.length },
+        cash: {
+            sr_cash:              srCash,
+            recorded_system_cash: round(srCash - diff),     // জমার সময় সার্ভার যা ধরেছিল
+            difference:           diff,
+            sales_cash:           salesCash,
+            collections_cash:     colCash,
+            non_cash_collected:   sum(dayRows, 'collections_non_cash'),
+            credit_given:         sum(dayRows, 'credit_given'),
+            sales_total:          sum(dayRows, 'sales_total'),
+            replacement_value:    sum(dayRows, 'replacement_value'),
+        },
+        days:           dayRows,
+        shops:          shopRows.map(r => ({ ...r, sales_total: round(r.sales_total), credit_given: round(r.credit_given),
+                                             collected_cash: round(r.collected_cash), collected_non_cash: round(r.collected_non_cash) })),
+        replacements,
+        stock:          { ...stock, ...split },
+        return_receipts: rrQ.rows.map(r => ({
+            product_name: r.product_name, qty_claimed: num(r.qty_claimed), qty_received: r.qty_received == null ? null : num(r.qty_received),
+            status: r.status, discrepancy_note: r.discrepancy_note, resolution: r.resolution, resolution_note: r.resolution_note,
+            value: round(num(r.price) * num(r.qty_claimed)),
+        })),
+    };
+};
+
+module.exports = { getTodayCashBreakdown, getLastSettlement, getStockSummary, getSettlementBreakdown, BD_TZ };

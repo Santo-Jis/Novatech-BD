@@ -5,7 +5,7 @@ const logger = require('../config/logger');
 const { sendPushNotification } = require('../services/fcm.service');
 const { addLedgerEntry } = require('./ledger.controller');
 const { addDuesLedgerEntry } = require('../services/dues.service'); // ← নতুন: dues mutation-এর একমাত্র জায়গা
-const { getTodayCashBreakdown, getStockSummary } = require('../services/settlementCash.service'); // ✅ সিস্টেম নগদ হিসাবের একমাত্র উৎস
+const { getTodayCashBreakdown, getStockSummary, getSettlementBreakdown } = require('../services/settlementCash.service'); // ✅ সিস্টেম নগদ হিসাবের একমাত্র উৎস
 
 // ─── নগদ পার্থক্যের সীমা ─────────────────────────────────────────────────────
 // ⚠️  SYNC: এই মান frontend/src/pages/worker/Settlement.jsx-এর
@@ -924,11 +924,21 @@ const getSettlementDetail = async (req, res) => {
             [req.params.id, req.tenantId]
         );
 
+        // বিস্তারিত ভাঙা (নগদের উৎস, দিনভিত্তিক, দোকানভিত্তিক, পণ্যের প্রবাহ…) — শুধু দেখানোর জন্য;
+        // ব্যর্থ হলেও মূল বিস্তারিত আটকাবে না
+        let breakdown = null;
+        try {
+            breakdown = await getSettlementBreakdown({ settlement, tenantId: req.tenantId });
+        } catch (e) {
+            logger.error('❌ Settlement Breakdown Error:', e.message);
+        }
+
         return res.status(200).json({
             success: true,
             data: {
                 settlement:        settlement,
-                shortage_payments: shortagePayments.rows
+                shortage_payments: shortagePayments.rows,
+                breakdown
             }
         });
 
