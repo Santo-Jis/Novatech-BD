@@ -11,10 +11,14 @@ const {
     updateExpense
 } = require('../controllers/expense.controller');
 const {
+    receiptUpload,
     listCompanyExpenses,
     createCompanyExpense,
     updateCompanyExpense,
-    deleteCompanyExpense
+    deleteCompanyExpense,
+    listCategories, createCategory, updateCategory, deleteCategory,
+    listRecurring, createRecurring, updateRecurring, deleteRecurring,
+    listPrepaid, createPrepaid, deletePrepaid, getBudgets, setBudget
 } = require('../controllers/companyExpense.controller');
 
 // ============================================================
@@ -70,9 +74,29 @@ router.patch('/:id/review',
 // ============================================================
 // কোম্পানির সাধারণ খরচ (ভাড়া, বিদ্যুৎ ইত্যাদি) — Admin / Accountant
 // ============================================================
-router.get('/company',        auth, allowRoles('admin', 'accountant'), listCompanyExpenses);
-router.post('/company',       auth, allowRoles('admin', 'accountant'), createCompanyExpense);
-router.put('/company/:id',    auth, allowRoles('admin', 'accountant'), updateCompanyExpense);
-router.delete('/company/:id', auth, allowRoles('admin', 'accountant'), deleteCompanyExpense);
+const fin = [auth, allowRoles('admin', 'accountant')];
+
+// ক্যাটাগরি ও নির্দিষ্ট মাসিক খরচ — '/company/:id'-এর আগে রাখা হয়েছে
+router.get('/company/categories',        ...fin, listCategories);
+router.post('/company/categories',       ...fin, createCategory);
+router.put('/company/categories/:id',    ...fin, updateCategory);
+router.delete('/company/categories/:id', ...fin, deleteCategory);
+
+router.get('/company/recurring',         ...fin, listRecurring);
+router.post('/company/recurring',        ...fin, createRecurring);
+router.put('/company/recurring/:id',     ...fin, updateRecurring);
+router.delete('/company/recurring/:id',  ...fin, deleteRecurring);
+
+router.get('/company/prepaid',           ...fin, listPrepaid);
+router.post('/company/prepaid',          ...fin, receiptUpload, createPrepaid);
+router.delete('/company/prepaid/:id',    ...fin, deletePrepaid);
+
+router.get('/company/budgets',           ...fin, getBudgets);
+router.put('/company/budgets',           ...fin, setBudget);
+
+router.get('/company',        ...fin, listCompanyExpenses);
+router.post('/company',       ...fin, receiptUpload, createCompanyExpense);
+router.put('/company/:id',    ...fin, receiptUpload, updateCompanyExpense);
+router.delete('/company/:id', ...fin, deleteCompanyExpense);
 
 module.exports = router;
