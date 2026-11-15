@@ -28,7 +28,7 @@ const getPLStatement = async (req, res) => {
             params.push(req.teamFilter);
         }
 
-        const [salesData, vatData, cogsData, expenseData, payrollData, paidData, missingCostData, returnsData] = await Promise.all([
+        const [salesData, vatData, cogsData, expenseData, payrollData, paidData, missingCostData, returnsData, landedData] = await Promise.all([
             // ── ১. বিক্রয় ────────────────────────────────────────────
             query(
                 `SELECT
@@ -124,7 +124,8 @@ const getPLStatement = async (req, res) => {
                  w AS (
                     SELECT u.id, u.role, u.basic_salary
                     FROM users u
-                    WHERE u.role IN ('worker', 'manager') AND u.tenant_id = $3 ${teamCond}
+                    WHERE (u.role IN ('worker', 'manager') OR (u.role = 'admin' AND COALESCE(u.basic_salary, 0) > 0))
+                      AND u.tenant_id = $3 ${teamCond}
                       AND (u.status = 'active' OR EXISTS (
                             SELECT 1 FROM salary_payments s2
                             WHERE s2.worker_id = u.id AND s2.tenant_id = $3
@@ -251,6 +252,16 @@ const getPLStatement = async (req, res) => {
                           : ''}
                  ) t`,
                 params
+            ),
+            // ── ৮. আমদানি/পরিবহন (landed) খরচ যা এখনো cost_price-এ বসানো হয়নি ──
+            // apply-landed-cost না চাপলে এই খরচ COGS-এ যায় না → মুনাফা বেশি দেখায়।
+            // খরচে যোগ করলে প্রয়োগ হওয়া খরচের সাথে double-count হতো, তাই আলাদা সতর্কতা হিসেবে।
+            query(
+                `SELECT COALESCE(SUM(c.amount_bdt), 0) AS amount, COUNT(DISTINCT c.purchase_order_id) AS po_count
+                 FROM purchase_order_costs c
+                 WHERE c.tenant_id = $3 AND c.applied_at IS NULL
+                   AND c.created_at::date BETWEEN $1 AND $2`,
+                [from, to, req.tenantId]
             )
         ]);
 
@@ -317,6 +328,8 @@ const getPLStatement = async (req, res) => {
                     gross_cogs:         grossCogs,
                     total_cogs:         totalCogs,            // রিটার্নের খরচ ফেরতের পরে
                     lines_without_cost: parseInt(cogs.lines_without_cost),
+                    unapplied_landed_cost: num(landedData.rows[0].amount),      // COGS-এ এখনো যায়নি
+                    unapplied_landed_cost_po_count: parseInt(landedData.rows[0].po_count),
                     products_without_cost: missingCostData.rows.map(r => r.name)
                 },
                 expenses: { breakdown: expRows, total_expenses: totalExpenses },

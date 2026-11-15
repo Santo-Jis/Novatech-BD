@@ -235,6 +235,11 @@ const applyLandedCost = async (req, res) => {
                     new_cost_price: item.landed_unit_cost,
                 });
             }
+            await client.query(
+                `UPDATE purchase_order_costs SET applied_at = NOW()
+                 WHERE purchase_order_id = $1 AND tenant_id = $2 AND applied_at IS NULL`,
+                [poId, req.tenantId]
+            );
             return results;
         });
 

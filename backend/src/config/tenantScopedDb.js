@@ -81,7 +81,9 @@ const withTenantScope = async (tenantId, callback) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
-        await client.query('SET LOCAL app.tenant_id = $1', [tenantId]);
+        // ⚠️ `SET LOCAL x = $1` Postgres-এ syntax error দেয় (SET-এ bind parameter চলে না),
+        // ফলে আগে প্রতিটি commission লেখা ব্যর্থ হতো। set_config(..., true) = SET LOCAL-এর সমতুল্য।
+        await client.query("SELECT set_config('app.tenant_id', $1, true)", [String(tenantId)]);
         const result = await callback(client);
         await client.query('COMMIT');
         return result;

@@ -1029,7 +1029,9 @@ const createSale = async (req, res) => {
                     );
                 }
             } catch (e) {
-                // silent fail — midnight job এ ঠিক হয়ে যাবে
+                // sale আটকাবে না, কিন্তু নীরবে গিলে ফেলাও চলবে না — আগে এই কারণেই
+                // কমিশন কখনো লেখা হচ্ছে না, সেটা কেউ টের পায়নি।
+                logger.error('❌ Realtime commission ব্যর্থ:', e.message);
             }
         });
 
