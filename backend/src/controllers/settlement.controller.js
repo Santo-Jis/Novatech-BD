@@ -902,6 +902,11 @@ const getSettlementDetail = async (req, res) => {
 
         const settlement = result.rows[0];
 
+        // ✅ SR (worker) শুধু নিজের হিসাব দেখতে পারবে — আগে একই tenant-এর যে কেউ যেকোনো id দিয়ে দেখতে পারত।
+        if (req.user.role === 'worker' && settlement.worker_id !== req.user.id) {
+            return res.status(403).json({ success: false, message: 'এই হিসাব আপনার নয়।' });
+        }
+
         // Manager শুধু নিজের টিমের settlement দেখতে পারবে।
         // ✅ FIX: settlement.manager_id ব্যবহার করা ভুল — pending settlement-এ
         // manager_id = NULL, তাই সব manager 403 পেত।

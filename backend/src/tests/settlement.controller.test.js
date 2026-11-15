@@ -20,14 +20,16 @@ jest.mock('../services/firebase.notify',      () => ({ firebaseNotify:       jes
 jest.mock('../controllers/ledger.controller', () => ({ addLedgerEntry:       jest.fn().mockResolvedValue({}) }));
 // collection.controller → commission.service → tenantScopedDb প্রথমেই DB_SSL_CA চায়; unit test-এ DB লাগে না
 jest.mock('../controllers/collection.controller', () => ({ submitCollectionsWithSettlement: jest.fn() }));
-jest.mock('../services/settlementCash.service', () => ({ getTodayCashBreakdown: jest.fn() }));
+jest.mock('../services/settlementCash.service', () => ({
+    getTodayCashBreakdown: jest.fn(), getStockSummary: jest.fn(), getSettlementBreakdown: jest.fn(),
+}));
 
 // ─── Imports ──────────────────────────────────────────────────
 const { query, withTransaction } = require('../config/db');
 const { firebaseNotify }       = require('../services/firebase.notify');
 const { sendPushNotification } = require('../services/fcm.service');
 const { addLedgerEntry }       = require('../controllers/ledger.controller');
-const { getTodayCashBreakdown } = require('../services/settlementCash.service');
+const { getTodayCashBreakdown, getSettlementBreakdown } = require('../services/settlementCash.service');
 
 // সিস্টেম নগদ ব্রেকডাউনের টেস্ট-ডাবল (বিক্রির নগদ + বাকি আদায়)
 const cashBreakdown = (o = {}) => ({
@@ -41,6 +43,7 @@ const {
     approveSettlement,
     disputeSettlement,
     payShortage,
+    getSettlementDetail,
 } = require('../controllers/settlement.controller');
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -685,4 +688,31 @@ describe('Settlement Business Logic — Pure Calculations', () => {
     test('শুধু নগদ ঘাটতি',    () => expect(calcTotalDues(0, 800)).toBe(800));
     test('উভয় ঘাটতি',         () => expect(calcTotalDues(1500, 500)).toBe(2000));
     test('কোনো ঘাটতি নেই — 0', () => expect(calcTotalDues(0, 0)).toBe(0));
+});
+
+
+// ─────────────────────────────────────────────────────────────
+// getSettlementDetail — SR শুধু নিজের হিসাব দেখতে পারবে
+// ─────────────────────────────────────────────────────────────
+describe('getSettlementDetail — SR-এর নিজের হিসাব', () => {
+    const row = { id: 's1', worker_id: 'worker-001', manager_id: null, items_taken: [], created_at: '2026-11-14T10:00:00Z' };
+
+    test('SR অন্য SR-এর হিসাব দেখতে চাইলে 403', async () => {
+        query.mockResolvedValueOnce({ rows: [{ ...row, worker_id: 'other-worker' }] });
+        const res = mockRes();
+        await getSettlementDetail({ params: { id: 's1' }, user: { id: 'worker-001', role: 'worker' }, tenantId: 'tenant-1' }, res);
+        expect(res.status).toHaveBeenCalledWith(403);
+        expect(getSettlementBreakdown).not.toHaveBeenCalled();
+    });
+
+    test('SR নিজের হিসাব দেখতে পারে — বিস্তারিত ভাঙাসহ', async () => {
+        query.mockResolvedValueOnce({ rows: [row] }).mockResolvedValueOnce({ rows: [] });
+        getSettlementBreakdown.mockResolvedValueOnce({ cash: { sr_cash: 1 } });
+        const res = mockRes();
+        await getSettlementDetail({ params: { id: 's1' }, user: { id: 'worker-001', role: 'worker' }, tenantId: 'tenant-1' }, res);
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+            data: expect.objectContaining({ breakdown: { cash: { sr_cash: 1 } } }),
+        }));
+    });
 });

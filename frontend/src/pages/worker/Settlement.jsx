@@ -4,6 +4,8 @@ import api from '../../api/axios'
 import { useCheckinStore } from '../../store/checkin.store'
 import Modal from '../../components/ui/Modal'
 import Button from '../../components/ui/Button'
+import SettlementDetailView from './SettlementDetailView'
+import SettlementHistory from './SettlementHistory'
 import {
   FiSend, FiPackage, FiAlertTriangle, FiCheckCircle,
   FiInfo, FiLock, FiArrowRight, FiRotateCcw, FiTrendingUp,
@@ -450,6 +452,16 @@ export default function Settlement() {
             </div>
           </div>
         )}
+
+        {/* ✅ আজকের জমার সম্পূর্ণ বিস্তারিত — ম্যানেজার যা দেখে SR-ও তা দেখতে পারবে */}
+        {s?.id && (
+          <div className="bg-white rounded-2xl p-4 shadow-sm">
+            <p className="font-semibold text-gray-700 text-sm border-b border-gray-50 pb-2 mb-3">আজকের হিসাবের বিস্তারিত</p>
+            <SettlementDetailView settlementId={s.id} />
+          </div>
+        )}
+
+        <SettlementHistory excludeId={s?.id} />
       </div>
     )
   }
@@ -716,6 +728,9 @@ export default function Settlement() {
       >
         <FiSend size={17} /> হিসাব পর্যালোচনা করুন
       </button>
+
+      {/* আগের জমা দেওয়া হিসাব — ট্যাপ করলে সম্পূর্ণ বিস্তারিত */}
+      <SettlementHistory />
 
       {/* ─── Confirm Modal ─── */}
       <Modal isOpen={showConfirm} onClose={() => setShowConfirm(false)} title="হিসাব নিশ্চিত করুন" size="lg">
