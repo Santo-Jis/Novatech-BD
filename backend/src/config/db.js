@@ -71,6 +71,28 @@ const pool = new Pool({
                                     // টেবিলেই ইনডেক্স আগে থেকেই ঠিক আছে।
     idleTimeoutMillis:      60000, // ৬০ সেকেন্ড idle থাকলে বন্ধ
     connectionTimeoutMillis: 10000, // ১০ সেকেন্ডের মধ্যে connect না হলে error
+    keepAlive:              true,  // TCP keep-alive — Supavisor/NAT চুপচাপ কানেকশন কাটলে দ্রুত ধরা পড়ে
+});
+
+// ============================================================
+// ✅ CRASH FIX — checked-out client-এ 'error' listener
+//
+// সমস্যা: pg-pool কোনো client checkout হওয়ার সময় নিজের idle-error listener
+// সরিয়ে নেয়। তখন যদি Supabase/Supavisor কানেকশন ছিঁড়ে দেয়
+// ("Connection terminated unexpectedly" / DB overload-এ auth/statement timeout),
+// client নিজে 'error' event emit করে — আর listener না থাকলে Node সেটাকে
+// "Unhandled 'error' event" হিসেবে throw করে → পুরো প্রসেস exit 1 →
+// Render-এ "Exited with status 1" (server failure) এবং সব job/request মারা যায়।
+// pool.on('error') শুধু IDLE client-এর error ধরে, in-use client-এর নয়।
+//
+// সমাধান: প্রতিটি নতুন client-এ আজীবনের জন্য একটা listener বসানো। এখন
+// কানেকশন ছিঁড়লে শুধু লগ হয়; চলমান query নিজের callback-এ error পায়
+// (যা withTransaction/query-র try/catch ধরে), প্রসেস বাঁচে।
+// ============================================================
+pool.on('connect', (client) => {
+    client.on('error', (err) => {
+        logger.error('❌ DB client error (কানেকশন ছিঁড়ে গেছে — প্রসেস চালু আছে)', { err });
+    });
 });
 
 // ============================================================
@@ -164,16 +186,24 @@ const query = async (text, params) => {
 
 const withTransaction = async (callback) => {
     const client = await pool.connect();
+    let destroy = false;
     try {
         await client.query('BEGIN');
         const result = await callback(client);
         await client.query('COMMIT');
         return result;
     } catch (error) {
-        await client.query('ROLLBACK');
+        try {
+            await client.query('ROLLBACK');
+        } catch (_rollbackErr) {
+            // কানেকশন ভেঙে গেলে ROLLBACK-ও ব্যর্থ হয়। আগে এই নতুন error মূল error-কে
+            // ঢেকে দিত (caller ভুল কারণ দেখত) আর ভাঙা client pool-এ ফিরে যেত।
+            // এখন মূল error-ই throw হয়, আর ভাঙা client pool থেকে বাদ যায়।
+            destroy = true;
+        }
         throw error;
     } finally {
-        client.release();
+        client.release(destroy);
     }
 };
 

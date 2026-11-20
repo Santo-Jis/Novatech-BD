@@ -58,10 +58,19 @@ const pool = new Pool({
     min: 0,
     idleTimeoutMillis: 60000,
     connectionTimeoutMillis: 10000,
+    keepAlive: true,
 });
 
 pool.on('error', (err) => {
     logger.error('❌ tenantScopedDb pool error:', err.message);
+});
+
+// ✅ CRASH FIX — config/db.js-এর মতোই: checked-out client-এ 'error' listener না থাকলে
+// কানেকশন ছিঁড়ে গেলে "Unhandled 'error' event" → প্রসেস exit 1। বিস্তারিত db.js-এ।
+pool.on('connect', (client) => {
+    client.on('error', (err) => {
+        logger.error('❌ tenantScopedDb client error (কানেকশন ছিঁড়ে গেছে — প্রসেস চালু আছে)', { err });
+    });
 });
 
 /**
@@ -79,6 +88,7 @@ const withTenantScope = async (tenantId, callback) => {
         throw new Error('withTenantScope: tenantId বাধ্যতামূলক (RLS-এর জন্য)');
     }
     const client = await pool.connect();
+    let destroy = false;
     try {
         await client.query('BEGIN');
         // ⚠️ `SET LOCAL x = $1` Postgres-এ syntax error দেয় (SET-এ bind parameter চলে না),
@@ -88,10 +98,11 @@ const withTenantScope = async (tenantId, callback) => {
         await client.query('COMMIT');
         return result;
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {}); // rollback নিজেও fail করতে পারে যদি connection আগেই ভেঙে যায়
+        // rollback নিজেও fail করতে পারে যদি connection আগেই ভেঙে যায় — তখন ভাঙা client pool থেকে বাদ দাও
+        await client.query('ROLLBACK').catch(() => { destroy = true; });
         throw err;
     } finally {
-        client.release();
+        client.release(destroy);
     }
 };
 
