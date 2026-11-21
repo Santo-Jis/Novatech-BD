@@ -2,6 +2,9 @@ import BroadcastEmailModal from '../../components/BroadcastEmailModal'
 import SeatUsage from '../../components/SeatUsage'
 import FinanceHealthCard from '../../components/FinanceHealthCard'
 import InventoryHealthCard from '../../components/InventoryHealthCard'
+import ActionListCard from '../../components/ActionListCard'
+import ReceivablesHealthCard from '../../components/ReceivablesHealthCard'
+import SrPerformanceCard from '../../components/SrPerformanceCard'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
@@ -343,11 +346,20 @@ export default function AdminDashboard() {
       {/* সিট ব্যবহার — বিস্তারিত (রোল অনুযায়ী) */}
       <SeatUsage />
 
+      {/* আজ কী করতে হবে — সব অপেক্ষমাণ কাজ এক জায়গায় */}
+      <ActionListCard />
+
       {/* আয়-ব্যয়ের স্বাস্থ্য — সবসময় চলতি মাসের শুরু থেকে আজ পর্যন্ত (বাজেট/পূর্বাভাস মাসিক) */}
       <FinanceHealthCard from={rangeDates('month').from} to={rangeDates('month').to} />
 
       {/* ইনভেন্টরি ও রিটার্ন — স্টক মূল্য, মৃত স্টক, রিটার্ন/রিপ্লেসমেন্ট (চলতি মাস) */}
       <InventoryHealthCard from={rangeDates('month').from} to={rangeDates('month').to} />
+
+      {/* বকেয়া ও আদায় — বকেয়ার বয়স, ক্রেডিট সীমা, SR-এর হাতে অজমা আদায় */}
+      <ReceivablesHealthCard />
+
+      {/* SR পারফরম্যান্স — আজকের হাজিরা/ভিজিট/বিক্রি ও মাসিক টার্গেট */}
+      <SrPerformanceCard />
 
       {/* KPI Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

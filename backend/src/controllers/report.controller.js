@@ -23,7 +23,8 @@ const { getSalesReport, getAttendanceReport } =
 const { getCommissionReport, getCreditReport } =
     require('./report.commission-credit');
 
-const { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth } =
+const { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth,
+        getReceivablesHealth, getSrPerformanceHealth, getActionList } =
     require('./report.financial');
 
 module.exports = {
@@ -37,6 +38,9 @@ module.exports = {
     getLedger,
     getFinanceHealth,
     getInventoryHealth,
+    getReceivablesHealth,
+    getSrPerformanceHealth,
+    getActionList,
     getMonthlyArchive,
     getTopProducts,
     getTopShops,

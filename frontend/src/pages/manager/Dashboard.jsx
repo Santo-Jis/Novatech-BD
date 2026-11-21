@@ -5,6 +5,9 @@ import { KPICard, Card } from '../../components/ui/Badge'
 import { SalesChart, AttendancePieChart } from '../../components/charts/Charts'
 import Badge from '../../components/ui/Badge'
 import { useAuthStore } from '../../store/auth.store'
+import ActionListCard from '../../components/ActionListCard'
+import SrPerformanceCard from '../../components/SrPerformanceCard'
+import ReceivablesHealthCard from '../../components/ReceivablesHealthCard'
 import {
   FiUsers, FiShoppingBag, FiCheckSquare,
   FiAlertTriangle, FiRefreshCw, FiDollarSign, FiMapPin, FiTarget
@@ -178,6 +181,11 @@ export default function ManagerDashboard() {
           </button>
         </div>
       )}
+
+      {/* আজ কী করতে হবে + SR পারফরম্যান্স + অজমা আদায় (শুধু নিজের টিম) */}
+      <ActionListCard />
+      <SrPerformanceCard />
+      <ReceivablesHealthCard />
 
       {/* KPI */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">

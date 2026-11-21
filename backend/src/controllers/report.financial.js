@@ -8,6 +8,7 @@ const logger = require('../config/logger');
 const { query } = require('../config/db');
 const { getFinanceHealth: buildFinanceHealth } = require('../services/financeHealth.service');
 const { getInventoryHealth: buildInventoryHealth } = require('../services/inventoryHealth.service');
+const ops = require('../services/opsHealth.service');
 
 // ============================================================
 // P&L STATEMENT
@@ -403,6 +404,23 @@ const getInventoryHealth = async (req, res) => {
 };
 
 // ============================================================
+// OPS HEALTH: বকেয়া ও আদায় / SR পারফরম্যান্স / আজ কী করতে হবে
+// GET /api/reports/receivables-health | sr-performance | action-list
+// ============================================================
+const opsHandler = (fn, label) => async (req, res) => {
+    try {
+        const data = await fn(req);
+        return res.status(200).json({ success: true, data });
+    } catch (error) {
+        logger.error(`❌ ${label} Error:`, error.message);
+        return res.status(500).json({ success: false, message: 'তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+const getReceivablesHealth   = opsHandler(ops.getReceivablesHealth,   'Receivables Health');
+const getSrPerformanceHealth = opsHandler(ops.getSrPerformanceHealth, 'SR Performance Health');
+const getActionList          = opsHandler(ops.getActionList,          'Action List');
+
+// ============================================================
 // LEDGER (সম্পূর্ণ লেনদেন ইতিহাস)
 // ============================================================
 // UNION ALL দিয়ে একটাই query → DB-তেই ORDER BY + LIMIT + OFFSET।
@@ -523,4 +541,5 @@ const getLedger = async (req, res) => {
     }
 };
 
-module.exports = { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth };
+module.exports = { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth,
+    getReceivablesHealth, getSrPerformanceHealth, getActionList };
