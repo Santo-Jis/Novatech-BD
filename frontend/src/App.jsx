@@ -588,6 +588,12 @@ function AppWithPermissions() {
                 <Route path="routes"            element={<AdminRoutes />} />
                 <Route path="customer-order-requests" element={<AdminCustomerOrderRequests />} />
                 <Route path="leave-management"  element={<AdminLeaveManagement />} />
+                {/* অনুমোদন পাতা — ম্যানেজারের একই পাতা, অ্যাডমিন সব টিমের দেখেন (backend অনুমতি আগে থেকেই আছে) */}
+                <Route path="approvals/settlements"      element={<ManagerSettlements />} />
+                <Route path="approvals/orders"           element={<ManagerOrders />} />
+                <Route path="approvals/expense"          element={<ExpenseApprovals />} />
+                <Route path="approvals/returns"          element={<ReturnApprovals />} />
+                <Route path="approvals/credit"           element={<ManagerCreditApprovals />} />
                 <Route path="promotions"        element={<AdminPromotions />} />
                 <Route path="chat"              element={<ChatInbox />} />
                 <Route path="support-agents"    element={<ChatSupportAgents />} />

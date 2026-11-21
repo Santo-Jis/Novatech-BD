@@ -240,23 +240,23 @@ const shapeActions = (rows, defs, role) => {
 
 // কাজের সংজ্ঞা: sql → (n, v, oldest_days) ; {t} = টিম-ফিল্টার ক্লজ (শুধু worker-ভিত্তিক টেবিলে)
 const ACTION_DEFS = [
-    { key: 'settlements',  label: 'সেটেলমেন্ট অনুমোদন',        weight: 9, admin: null, manager: '/manager/settlements', teamable: true,
+    { key: 'settlements',  label: 'সেটেলমেন্ট অনুমোদন',        weight: 9, admin: '/admin/approvals/settlements', manager: '/manager/settlements', teamable: true,
       sql: `SELECT COUNT(*) n, 0 v, EXTRACT(DAY FROM now() - MIN(s.created_at)) oldest_days
               FROM daily_settlements s JOIN users u ON u.id = s.worker_id
              WHERE s.tenant_id = $1 AND s.status IN ('pending','disputed') {t}` },
-    { key: 'orders',       label: 'SR অর্ডার অনুমোদন',          weight: 8, admin: null, manager: '/manager/orders', teamable: true,
+    { key: 'orders',       label: 'SR অর্ডার অনুমোদন',          weight: 8, admin: '/admin/approvals/orders', manager: '/manager/orders', teamable: true,
       sql: `SELECT COUNT(*) n, COALESCE(SUM(o.total_amount),0) v, EXTRACT(DAY FROM now() - MIN(o.requested_at)) oldest_days
               FROM orders o JOIN users u ON u.id = o.worker_id
              WHERE o.tenant_id = $1 AND o.status = 'pending' {t}`, money: true },
-    { key: 'sr_expense',   label: 'SR খরচ অনুমোদন',            weight: 6, admin: null, manager: '/manager/expense', teamable: true, money: true,
+    { key: 'sr_expense',   label: 'SR খরচ অনুমোদন',            weight: 6, admin: '/admin/approvals/expense', manager: '/manager/expense', teamable: true, money: true,
       sql: `SELECT COUNT(*) n, COALESCE(SUM(er.total_amount),0) v, EXTRACT(DAY FROM now() - MIN(er.created_at)) oldest_days
               FROM expense_reports er JOIN users u ON u.id = er.worker_id
              WHERE er.tenant_id = $1 AND er.status = 'pending' AND er.total_amount > 0 {t}` },
-    { key: 'returns',      label: 'SR রিটার্ন/বদলি অনুমোদন',    weight: 7, admin: null, manager: '/manager/returns', teamable: true, money: true,
+    { key: 'returns',      label: 'SR রিটার্ন/বদলি অনুমোদন',    weight: 7, admin: '/admin/approvals/returns', manager: '/manager/returns', teamable: true, money: true,
       sql: `SELECT COUNT(*) n, COALESCE(SUM(rr.total_value),0) v, EXTRACT(DAY FROM now() - MIN(rr.created_at)) oldest_days
               FROM return_requests rr JOIN users u ON u.id = rr.sr_id
              WHERE rr.tenant_id = $1 AND rr.status = 'pending' {t}` },
-    { key: 'credit_approvals', label: 'ক্রেডিট অনুমোদন (SR)',   weight: 7, admin: null, manager: '/manager/credit-approvals', teamable: true, money: true,
+    { key: 'credit_approvals', label: 'ক্রেডিট অনুমোদন (SR)',   weight: 7, admin: '/admin/approvals/credit', manager: '/manager/credit-approvals', teamable: true, money: true,
       sql: `SELECT COUNT(*) n, COALESCE(SUM(c.requested_amount),0) v, EXTRACT(DAY FROM now() - MIN(c.created_at)) oldest_days
               FROM credit_approval_requests c JOIN users u ON u.id = c.worker_id
              WHERE c.tenant_id = $1 AND c.status = 'pending' {t}` },

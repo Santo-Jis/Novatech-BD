@@ -28,6 +28,11 @@ const navGroups = [
       { path: '/admin/recruitment',      icon: <FiUserPlus />,    label: 'SR নিয়োগ' },
       { path: '/admin/pending',          icon: <FiCheckSquare />, label: 'অনুমোদন বাকি' },
       { path: '/admin/leave-management', icon: <FiCalendar />,    label: 'ছুটি ব্যবস্থাপনা' },
+      { path: '/admin/approvals/settlements', icon: <FiCheckSquare />, label: 'সেটেলমেন্ট অনুমোদন' },
+      { path: '/admin/approvals/orders',      icon: <FiClipboard />,   label: 'SR অর্ডার অনুমোদন' },
+      { path: '/admin/approvals/expense',     icon: <FiDollarSign />,  label: 'SR খরচ অনুমোদন' },
+      { path: '/admin/approvals/returns',     icon: <FiRotateCcw />,   label: 'SR রিটার্ন অনুমোদন' },
+      { path: '/admin/approvals/credit',      icon: <FiCreditCard />,  label: 'ক্রেডিট অনুমোদন (SR)' },
     ],
   },
   {
