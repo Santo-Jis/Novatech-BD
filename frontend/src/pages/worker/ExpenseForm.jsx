@@ -36,6 +36,7 @@ function StatusBadge({ status }) {
 
 // ─── Number Input ─────────────────────────────────────────
 function MoneyInput({ label, icon, value, onChange, max }) {
+  const over = max != null && value > max
   return (
     <div>
       <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
@@ -47,17 +48,16 @@ function MoneyInput({ label, icon, value, onChange, max }) {
           type="number"
           inputMode="decimal"
           min="0"
-          max={max || 9999}
           value={value}
-          onChange={e => onChange(Math.min(parseFloat(e.target.value) || 0, max || 9999))}
+          onChange={e => onChange(Math.max(parseFloat(e.target.value) || 0, 0))}
           className="w-full pl-8 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-semibold
                      focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all
                      dark:bg-slate-700 dark:border-slate-600 dark:text-white"
           placeholder="০"
         />
-        {max && value > max * 0.9 && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-orange-500 font-medium">
-            সীমা: ৳{max}
+        {max != null && value > max * 0.9 && (
+          <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium ${over ? 'text-red-500' : 'text-orange-500'}`}>
+            {over ? 'সীমা ছাড়িয়েছে' : 'সীমা'}: ৳{max}
           </span>
         )}
       </div>
@@ -80,11 +80,15 @@ export default function ExpenseForm() {
   const [receiptImg,    setReceiptImg]    = useState(null)   // blob URL
   const [receiptFile,   setReceiptFile]   = useState(null)   // File object
   const [showCamera,    setShowCamera]    = useState(false)
+  const [overReason,    setOverReason]    = useState('')
   const [limits,        setLimits]        = useState({
-    daily: 500, transport: 300, food: 150
+    daily: 500, transport: 300, food: 150, misc: 200, dailyIsPersonal: false
   })
 
   const total = transportCost + foodCost + miscCost
+  // সীমা ছাড়ালে বাতিল নয় — কারণ লিখে ম্যানেজারের অনুমোদন সাপেক্ষে জমা হয়
+  const overLimit = transportCost > limits.transport || foodCost > limits.food ||
+                    miscCost > limits.misc || total > limits.daily
 
   // আজকের রিপোর্ট + সেটিং লোড
   useEffect(() => {
@@ -103,16 +107,28 @@ export default function ExpenseForm() {
           setFoodCost(parseFloat(d.food_cost) || 0)
           setMiscCost(parseFloat(d.misc_cost) || 0)
           setMiscNote(d.misc_note || '')
+          setOverReason(d.over_limit_reason || '')
           if (d.receipt_url) setReceiptImg(d.receipt_url)
         }
 
-        if (settRes.status === 'fulfilled') {
-          const s = settRes.value.data?.data || {}
+        // কার্যকর সীমা (কোম্পানির সীমা + এই কর্মীর নিজস্ব সীমা) সার্ভার থেকে
+        const L = expRes.status === 'fulfilled' ? expRes.value.data?.limits : null
+        if (L) {
           setLimits({
+            daily: Number(L.daily), transport: Number(L.transport), food: Number(L.food),
+            misc: Number(L.misc), dailyIsPersonal: !!L.dailyIsPersonal,
+          })
+        }
+
+        else if (settRes.status === 'fulfilled') {   // পুরোনো সার্ভার হলে ফলব্যাক
+          const s = settRes.value.data?.data || {}
+          setLimits(prev => ({
+            ...prev,
             daily:     parseInt(s.expense_daily_limit)     || 500,
             transport: parseInt(s.expense_transport_limit) || 300,
             food:      parseInt(s.expense_food_limit)      || 150,
-          })
+            misc:      parseInt(s.expense_misc_limit)      || 200,
+          }))
         }
       } catch (err) {
         console.error(err)
@@ -143,8 +159,8 @@ export default function ExpenseForm() {
       toast.error('কমপক্ষে একটি খরচ লিখুন')
       return
     }
-    if (total > limits.daily) {
-      toast.error(`মোট খরচ সীমা ৳${limits.daily} এর বেশি হতে পারবে না`)
+    if (overLimit && overReason.trim().length < 3) {
+      toast.error('সীমা ছাড়িয়েছে — ম্যানেজারের জন্য কারণ লিখুন')
       return
     }
 
@@ -156,6 +172,7 @@ export default function ExpenseForm() {
       formData.append('food_cost',      foodCost)
       formData.append('misc_cost',      miscCost)
       formData.append('misc_note',      miscNote)
+      if (overLimit) formData.append('over_limit_reason', overReason.trim())
       if (receiptFile) formData.append('receipt', receiptFile)
 
       if (existing) {
@@ -167,7 +184,7 @@ export default function ExpenseForm() {
         await api.post('/expense/submit', formData, {
           headers: { 'Content-Type': 'multipart/form-data' }
         })
-        toast.success('খরচ জমা দেওয়া হয়েছে ✅')
+        toast.success(overLimit ? 'সীমা ছাড়ানো খরচ জমা হয়েছে — অনুমোদনের অপেক্ষায় ⏳' : 'খরচ জমা দেওয়া হয়েছে ✅')
       }
 
       navigate(-1)
@@ -311,7 +328,7 @@ export default function ExpenseForm() {
             icon={<FiMoreHorizontal size={13} />}
             value={miscCost}
             onChange={setMiscCost}
-            max={200}
+            max={limits.misc}
           />
           {(miscCost > 0 || miscNote) && (
             <textarea
@@ -336,9 +353,28 @@ export default function ExpenseForm() {
             <span className={`text-xl font-bold ${total > limits.daily ? 'text-red-500' : 'text-primary'}`}>
               ৳{total.toLocaleString('bn-BD')}
             </span>
-            <p className="text-xs text-gray-400">সীমা: ৳{limits.daily}</p>
+            <p className="text-xs text-gray-400">
+              সীমা: ৳{limits.daily}{limits.dailyIsPersonal ? ' (আপনার জন্য নির্ধারিত)' : ''}
+            </p>
           </div>
         </div>
+
+        {overLimit && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+            <p className="text-xs font-semibold text-amber-800">
+              ⚠️ সীমা ছাড়িয়েছে — জমা দেওয়া যাবে, তবে ম্যানেজারের অনুমোদন লাগবে। কারণ লিখুন:
+            </p>
+            <textarea
+              disabled={!isEditable}
+              value={overReason}
+              onChange={e => setOverReason(e.target.value)}
+              placeholder="কেন সীমার বেশি খরচ হয়েছে?"
+              rows={2}
+              className="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-sm
+                         focus:outline-none focus:border-amber-400 resize-none disabled:opacity-60"
+            />
+          </div>
+        )}
       </div>
 
       {/* ── রিসিট ছবি ───────────────────────────────────── */}
@@ -382,7 +418,7 @@ export default function ExpenseForm() {
       {isEditable && (
         <button
           onClick={handleSubmit}
-          disabled={submitting || total === 0 || !transportType}
+          disabled={submitting || total === 0 || !transportType || (overLimit && overReason.trim().length < 3)}
           className="w-full py-4 bg-primary text-white rounded-2xl font-bold text-base
                      flex items-center justify-center gap-2 shadow-lg shadow-primary/20
                      disabled:opacity-50 disabled:cursor-not-allowed
@@ -406,8 +442,8 @@ export default function ExpenseForm() {
       <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl p-3 flex gap-2">
         <span className="text-blue-400 text-lg flex-shrink-0">ℹ️</span>
         <p className="text-xs text-blue-600 dark:text-blue-300 leading-relaxed">
-          দৈনিক সীমা: যাতায়াত ৳{limits.transport}, খাবার ৳{limits.food}, মোট ৳{limits.daily}।
-          সীমার বেশি খরচ হলে ম্যানেজারের অনুমোদন প্রয়োজন।
+          দৈনিক সীমা: যাতায়াত ৳{limits.transport}, খাবার ৳{limits.food}, অন্যান্য ৳{limits.misc}, মোট ৳{limits.daily}।
+          সীমার বেশি খরচ হলে কারণ লিখে জমা দিন — ম্যানেজারের অনুমোদন প্রয়োজন।
         </p>
       </div>
 

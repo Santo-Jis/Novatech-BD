@@ -753,7 +753,7 @@ const editEmployee = async (req, res) => {
 
         // Admin অতিরিক্ত ফিল্ড এডিট করতে পারবে
         if (isAdmin) {
-            allowedFields.push('basic_salary', 'manager_id', 'role');
+            allowedFields.push('basic_salary', 'manager_id', 'role', 'expense_daily_limit');
         }
 
         allowedFields.forEach(field => {
@@ -763,6 +763,19 @@ const editEmployee = async (req, res) => {
         });
         if (changes.emergency_contact !== undefined) {
             changes.emergency_contact = normalizeEmergencyContact(changes.emergency_contact);
+        }
+        // প্রতি-কর্মী দৈনিক খরচ সীমা: খালি/'null' = কোম্পানির সাধারণ সীমা (NULL)
+        if (changes.expense_daily_limit !== undefined) {
+            const raw = changes.expense_daily_limit;
+            if (raw === null || String(raw).trim() === '' || String(raw).trim() === 'null') {
+                changes.expense_daily_limit = null;
+            } else {
+                const n = Number(raw);
+                if (!Number.isFinite(n) || n < 0 || n > 9999999) {
+                    return res.status(400).json({ success: false, message: 'দৈনিক খরচ সীমা সঠিক সংখ্যা হতে হবে।' });
+                }
+                changes.expense_daily_limit = n;
+            }
         }
 
         if (profilePhotoUrl !== currentData.profile_photo) {

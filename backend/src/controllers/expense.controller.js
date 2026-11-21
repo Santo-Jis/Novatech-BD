@@ -27,6 +27,35 @@ const expenseReceiptUpload = (req, res, next) => {
 // SR নতুন খরচ রিপোর্ট জমা দেবে (অথবা আজকেরটা edit করবে)
 // ============================================================
 
+// ── কার্যকর সীমা: কোম্পানির সেটিংস + কর্মীর নিজস্ব দৈনিক সীমা ─────────────
+// পুরোনো কোড settings পড়ত tenant ছাড়া (অন্য কোম্পানির মানও মিশে যেত) — এখন tenant ধরে।
+// "অন্যান্য" সীমা আগে শুধু ফ্রন্টএন্ডে ২০০ হার্ডকোড ছিল; সেটিং না থাকলে সেই ২০০-ই ডিফল্ট।
+const getEffectiveLimits = async (workerId, tenantId) => {
+    const [settingsRes, userRes] = await Promise.all([
+        query(`SELECT key, value FROM system_settings
+                WHERE tenant_id = $1
+                  AND key IN ('expense_daily_limit','expense_transport_limit',
+                              'expense_food_limit','expense_misc_limit','expense_receipt_required')`, [tenantId]),
+        query(`SELECT expense_daily_limit FROM users WHERE id = $1 AND tenant_id = $2`, [workerId, tenantId]),
+    ]);
+    const st = {};
+    settingsRes.rows.forEach(r => { st[r.key] = r.value; });
+    const pos = (v, d) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 ? n : d; };
+
+    const companyDaily = pos(st.expense_daily_limit, 9999);
+    const personal = userRes.rows[0] ? userRes.rows[0].expense_daily_limit : null;
+    const personalNum = personal === null || personal === undefined ? null : pos(personal, null);
+    return {
+        daily:     personalNum !== null ? personalNum : companyDaily,
+        dailyIsPersonal: personalNum !== null,
+        companyDaily,
+        transport: pos(st.expense_transport_limit, 9999),
+        food:      pos(st.expense_food_limit,      9999),
+        misc:      pos(st.expense_misc_limit,      200),
+        receiptRequired: st.expense_receipt_required === 'true',
+    };
+};
+
 const submitExpense = async (req, res) => {
     try {
         const workerId = req.user.id;
@@ -37,7 +66,8 @@ const submitExpense = async (req, res) => {
             food_cost      = 0,
             misc_cost      = 0,
             misc_note,
-            receipt_url
+            receipt_url,
+            over_limit_reason
         } = req.body;
 
         const today = new Date().toISOString().slice(0, 10);
@@ -96,19 +126,9 @@ const submitExpense = async (req, res) => {
             });
         }
 
-        // settings থেকে limit নাও
-        const settingsRes = await query(
-            `SELECT key, value FROM system_settings
-              WHERE key IN ('expense_daily_limit','expense_transport_limit',
-                            'expense_food_limit','expense_receipt_required')`
-        );
-        const settings = {};
-        settingsRes.rows.forEach(r => { settings[r.key] = r.value; });
-
-        const dailyLimit     = parseFloat(settings['expense_daily_limit']     || 9999);
-        const transportLimit = parseFloat(settings['expense_transport_limit'] || 9999);
-        const foodLimit      = parseFloat(settings['expense_food_limit']      || 9999);
-        const receiptReq     = settings['expense_receipt_required'] === 'true';
+        // সীমা: কোম্পানির সেটিংস (শুধু নিজের tenant) + কর্মীর নিজস্ব দৈনিক সীমা (থাকলে)
+        const limits = await getEffectiveLimits(workerId, req.tenantId);
+        const receiptReq = limits.receiptRequired;
 
         const tCost = parseFloat(transport_cost);
         const fCost = parseFloat(food_cost);
@@ -129,25 +149,23 @@ const submitExpense = async (req, res) => {
             return res.status(400).json({ success: false, message: 'যানবাহনের ধরন বেছে নিন।' });
         }
 
-        // Validation
-        if (tCost > transportLimit) {
+        // ── সীমা: ছাড়ালে বাতিল নয় — কারণসহ "অনুমোদন সাপেক্ষে" জমা হয় ─────────
+        const overParts = [];
+        if (tCost > limits.transport) overParts.push(`যাতায়াত ৳${tCost} (সীমা ৳${limits.transport})`);
+        if (fCost > limits.food)      overParts.push(`খাবার ৳${fCost} (সীমা ৳${limits.food})`);
+        if (mCost > limits.misc)      overParts.push(`অন্যান্য ৳${mCost} (সীমা ৳${limits.misc})`);
+        if (total > limits.daily)     overParts.push(`মোট ৳${total} (সীমা ৳${limits.daily})`);
+        const overLimit = overParts.length > 0;
+        const overReason = (over_limit_reason == null ? '' : String(over_limit_reason)).trim().slice(0, 500);
+        if (overLimit && overReason.length < 3) {
             return res.status(400).json({
                 success: false,
-                message: `যাতায়াত খরচ সর্বোচ্চ ৳${transportLimit} হতে পারবে।`
+                code: 'OVER_LIMIT_REASON_REQUIRED',
+                message: `সীমা ছাড়িয়েছে — ${overParts.join(', ')}। ম্যানেজারের অনুমোদনের জন্য কারণ লিখুন।`
             });
         }
-        if (fCost > foodLimit) {
-            return res.status(400).json({
-                success: false,
-                message: `খাবার খরচ সর্বোচ্চ ৳${foodLimit} হতে পারবে।`
-            });
-        }
-        if (total > dailyLimit) {
-            return res.status(400).json({
-                success: false,
-                message: `মোট দৈনিক খরচ সর্বোচ্চ ৳${dailyLimit} হতে পারবে।`
-            });
-        }
+
+        // এডিটে নতুন ছবি না দিলে আগের রিসিট থাকে
         if (!receiptUrl && existing.rows.length > 0) receiptUrl = existing.rows[0].receipt_url || null;
         if (receiptReq && !receiptUrl) {
             return res.status(400).json({
@@ -168,6 +186,8 @@ const submitExpense = async (req, res) => {
                     misc_cost       = $4,
                     misc_note       = $5,
                     receipt_url     = $6,
+                    over_limit        = $9,
+                    over_limit_reason = $10,
                     status          = 'pending',
                     reviewed_by     = NULL,
                     review_note     = NULL,
@@ -175,22 +195,27 @@ const submitExpense = async (req, res) => {
                  WHERE worker_id = $7 AND report_date = $8
                  RETURNING *`,
                 [transport_type, tCost, fCost, mCost, misc_note || null,
-                 receiptUrl, workerId, date]
+                 receiptUrl, workerId, date, overLimit, overLimit ? overReason : null]
             );
         } else {
             // INSERT — নতুন রিপোর্ট
             result = await query(
                 `INSERT INTO expense_reports (worker_id, report_date, transport_type, transport_cost,
-                     food_cost, misc_cost, misc_note, receipt_url, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8, $9)
+                     food_cost, misc_cost, misc_note, receipt_url, tenant_id,
+                     over_limit, over_limit_reason) VALUES ($1,$2,$3,$4,$5,$6,$7,$8, $9, $10, $11)
                  RETURNING *`,
                 [workerId, date, transport_type, tCost, fCost, mCost,
-                 misc_note || null, receiptUrl, req.tenantId]
+                 misc_note || null, receiptUrl, req.tenantId,
+                 overLimit, overLimit ? overReason : null]
             );
         }
 
         return res.status(200).json({
             success: true,
-            message: 'খরচ রিপোর্ট সফলভাবে জমা হয়েছে।',
+            message: overLimit
+                ? 'সীমা ছাড়ানো খরচ জমা হয়েছে — ম্যানেজারের অনুমোদনের অপেক্ষায়।'
+                : 'খরচ রিপোর্ট সফলভাবে জমা হয়েছে।',
+            over_limit: overLimit,
             data: result.rows[0]
         });
 
@@ -219,18 +244,13 @@ const getTodayExpense = async (req, res) => {
             [req.user.id, today]
         );
 
-        // settings পাঠাও যাতে frontend limit দেখাতে পারে
-        const settingsRes = await query(
-            `SELECT key, value FROM system_settings
-              WHERE key LIKE 'expense_%'`
-        );
-        const settings = {};
-        settingsRes.rows.forEach(r => { settings[r.key] = r.value; });
+        // কার্যকর সীমা (কোম্পানির সীমা + এই কর্মীর নিজস্ব দৈনিক সীমা) — ফর্ম এটাই দেখাবে
+        const limits = await getEffectiveLimits(req.user.id, req.tenantId);
 
         return res.json({
             success: true,
             data: result.rows[0] || null,
-            settings
+            limits
         });
 
     } catch (error) {

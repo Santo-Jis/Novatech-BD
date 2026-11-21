@@ -201,6 +201,9 @@ export default function ExpenseApprovals() {
                       {r.worker_name || r.worker?.name_bn || '—'}
                     </p>
                     <StatusBadge status={r.status} />
+                    {r.over_limit && (
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">⚠️ সীমা ছাড়া</span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-400 mt-0.5">
                     {r.employee_code || r.worker?.employee_code} •{' '}
@@ -338,6 +341,12 @@ export default function ExpenseApprovals() {
               )}
               {selected.misc_note && (
                 <p className="text-xs text-gray-500 italic px-1">অন্যান্য: {selected.misc_note}</p>
+              )}
+              {selected.over_limit && (
+                <div className="text-xs text-amber-800 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl p-3">
+                  <p className="font-semibold">⚠️ দৈনিক সীমা ছাড়িয়েছে</p>
+                  <p className="mt-1">কারণ: {selected.over_limit_reason || '—'}</p>
+                </div>
               )}
             </div>
 

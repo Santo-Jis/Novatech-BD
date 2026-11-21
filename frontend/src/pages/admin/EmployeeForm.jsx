@@ -21,7 +21,7 @@ export default function EmployeeForm() {
     email: '', phone: '', phone2: '', dob: '', gender: 'male',
     marital_status: 'single', nid: '',
     permanent_address: '', current_address: '', district: '', thana: '',
-    basic_salary: '', manager_id: '',
+    basic_salary: '', manager_id: '', expense_daily_limit: '',
     skills: { bangla_communication: 'medium', english_communication: 'low', smartphone: 'medium', ms_office: 'low', motorcycle: false, motorcycle_license: '' },
     education: [{ exam: 'SSC', board: '', year: '', gpa: '' }],
     experience: [],
@@ -116,6 +116,12 @@ export default function EmployeeForm() {
           formData.append(k, v)
         }
       })
+      // খরচ সীমা খালি রাখলে 'কোম্পানির সীমা' — তাই খালি মানও পাঠাতে হয় (লুপ খালি মান বাদ দেয়)
+      formData.delete('expense_daily_limit')
+      if (isEdit && form.role === 'worker') {
+        const lim = form.expense_daily_limit
+        formData.append('expense_daily_limit', lim === null || lim === undefined ? '' : String(lim))
+      }
       if (photoFile) formData.append('profile_photo', photoFile)
 
       if (isEdit) {
@@ -196,6 +202,10 @@ export default function EmployeeForm() {
             <div className="flex-1 grid grid-cols-2 gap-3">
               <Select label="পদবী" required options={roleOptions} value={form.role} onChange={e => set('role', e.target.value)} />
               <Input label="মূল বেতন (৳)" required type="number" value={form.basic_salary} onChange={e => set('basic_salary', e.target.value)} />
+              {isEdit && form.role === 'worker' && (
+                <Input label="দৈনিক খরচ সীমা (৳) — খালি = কোম্পানির সাধারণ সীমা" type="number" min="0"
+                       value={form.expense_daily_limit ?? ''} onChange={e => set('expense_daily_limit', e.target.value)} />
+              )}
             </div>
           </div>
 
