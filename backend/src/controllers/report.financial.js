@@ -7,6 +7,7 @@ const logger = require('../config/logger');
 
 const { query } = require('../config/db');
 const { getFinanceHealth: buildFinanceHealth } = require('../services/financeHealth.service');
+const { getInventoryHealth: buildInventoryHealth } = require('../services/inventoryHealth.service');
 
 // ============================================================
 // P&L STATEMENT
@@ -383,6 +384,25 @@ const getFinanceHealth = async (req, res) => {
 };
 
 // ============================================================
+// INVENTORY HEALTH: স্টক মূল্য + রিটার্ন/রিপ্লেসমেন্ট + সতর্কতা
+// GET /api/reports/inventory-health?from=&to=
+// ============================================================
+const getInventoryHealth = async (req, res) => {
+    try {
+        const { from, to } = req.query;
+        const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+        if ((from && !isDate(from)) || (to && !isDate(to)) || (from && to && from > to)) {
+            return res.status(400).json({ success: false, message: 'তারিখের সীমা সঠিক নয়।' });
+        }
+        const data = await buildInventoryHealth(req);
+        return res.status(200).json({ success: true, data });
+    } catch (error) {
+        logger.error('❌ Inventory Health Error:', error.message);
+        return res.status(500).json({ success: false, message: 'ইনভেন্টরি তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // LEDGER (সম্পূর্ণ লেনদেন ইতিহাস)
 // ============================================================
 // UNION ALL দিয়ে একটাই query → DB-তেই ORDER BY + LIMIT + OFFSET।
@@ -503,4 +523,4 @@ const getLedger = async (req, res) => {
     }
 };
 
-module.exports = { getPLStatement, getLedger, getFinanceHealth };
+module.exports = { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth };
