@@ -1,5 +1,26 @@
+const multer = require('multer');
+const sharp  = require('sharp');
 const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
+const { uploadToStorage } = require('../config/firebase');
+
+// ── SR খরচ ফর্ম multipart/form-data পাঠায় (রিসিট ছবিসহ)। multer ছাড়া req.body
+// খালি থাকত, ফলে সব খরচ ০ হিসেবে সেভ হতো। এই middleware routes-এ বসানো হয়েছে।
+const receiptUploader = multer({
+    storage: multer.memoryStorage(),
+    limits:  { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) =>
+        file.mimetype && file.mimetype.startsWith('image/')
+            ? cb(null, true)
+            : cb(new Error('রিসিট হিসেবে শুধু ছবি (JPG/PNG) দেওয়া যাবে।')),
+});
+const expenseReceiptUpload = (req, res, next) => {
+    receiptUploader.single('receipt')(req, res, (err) => {
+        if (!err) return next();
+        const message = err.code === 'LIMIT_FILE_SIZE' ? 'রিসিটের ছবি ১০MB-এর বেশি হতে পারবে না।' : err.message;
+        return res.status(400).json({ success: false, message });
+    });
+};
 
 // ============================================================
 // POST /api/expense/submit
@@ -21,6 +42,22 @@ const submitExpense = async (req, res) => {
 
         const today = new Date().toISOString().slice(0, 10);
         const date  = report_date || today;
+
+        // নতুন রিসিট ছবি এলে আপলোড করো (ব্যর্থ হলে খরচ জমা আটকাবে না)
+        let receiptUrl = receipt_url || null;
+        if (req.file) {
+            try {
+                const compressed = await sharp(req.file.buffer)
+                    .rotate()
+                    .resize(1600, 1600, { fit: 'inside', withoutEnlargement: true })
+                    .jpeg({ quality: 82 })
+                    .toBuffer();
+                receiptUrl = await uploadToStorage(
+                    compressed, `expense-reports/${req.tenantId}/${req.user.id}_${Date.now()}.jpg`, 'image/jpeg');
+            } catch (e) {
+                logger.error('❌ submitExpense receipt upload:', e.message);
+            }
+        }
 
         // ── Date Validation ──────────────────────────────────────────────
         // ⚠️ Security Fix: report_date validate না করলে SR যেকোনো তারিখে
@@ -44,7 +81,7 @@ const submitExpense = async (req, res) => {
 
         // আজকে আগে জমা দেওয়া আছে কিনা চেক করো
         const existing = await query(
-            `SELECT id, status FROM expense_reports
+            `SELECT id, status, receipt_url FROM expense_reports
               WHERE worker_id = $1 AND report_date = $2
              AND tenant_id = $3`,
             [workerId, date,
@@ -111,7 +148,8 @@ const submitExpense = async (req, res) => {
                 message: `মোট দৈনিক খরচ সর্বোচ্চ ৳${dailyLimit} হতে পারবে।`
             });
         }
-        if (receiptReq && !receipt_url) {
+        if (!receiptUrl && existing.rows.length > 0) receiptUrl = existing.rows[0].receipt_url || null;
+        if (receiptReq && !receiptUrl) {
             return res.status(400).json({
                 success: false,
                 message: 'রিসিট ছবি আপলোড করা বাধ্যতামূলক।'
@@ -137,7 +175,7 @@ const submitExpense = async (req, res) => {
                  WHERE worker_id = $7 AND report_date = $8
                  RETURNING *`,
                 [transport_type, tCost, fCost, mCost, misc_note || null,
-                 receipt_url || null, workerId, date]
+                 receiptUrl, workerId, date]
             );
         } else {
             // INSERT — নতুন রিপোর্ট
@@ -146,7 +184,7 @@ const submitExpense = async (req, res) => {
                      food_cost, misc_cost, misc_note, receipt_url, tenant_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8, $9)
                  RETURNING *`,
                 [workerId, date, transport_type, tCost, fCost, mCost,
-                 misc_note || null, receipt_url || null, req.tenantId]
+                 misc_note || null, receiptUrl, req.tenantId]
             );
         }
 
@@ -566,6 +604,7 @@ const getExpenseReport = async (req, res) => {
 };
 
 module.exports = {
+    expenseReceiptUpload,
     submitExpense,
     getTodayExpense,
     getMyExpenses,

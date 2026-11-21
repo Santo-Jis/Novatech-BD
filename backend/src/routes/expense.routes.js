@@ -3,6 +3,7 @@ const router  = express.Router();
 const { auth }       = require('../middlewares/auth');
 const { allowRoles } = require('../middlewares/roleCheck');
 const {
+    expenseReceiptUpload,
     submitExpense,
     getTodayExpense,
     getMyExpenses,
@@ -43,6 +44,7 @@ router.get('/my',
 router.post('/submit',
     auth,
     allowRoles('worker'),
+    expenseReceiptUpload,
     submitExpense
 );
 
@@ -50,6 +52,7 @@ router.post('/submit',
 router.put('/:id',
     auth,
     allowRoles('worker'),
+    expenseReceiptUpload,
     updateExpense
 );
 
