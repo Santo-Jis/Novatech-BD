@@ -6,6 +6,7 @@ const logger = require('../config/logger');
 // ============================================================
 
 const { query } = require('../config/db');
+const { getFinanceHealth: buildFinanceHealth } = require('../services/financeHealth.service');
 
 // ============================================================
 // P&L STATEMENT
@@ -363,6 +364,25 @@ const getPLStatement = async (req, res) => {
 };
 
 // ============================================================
+// FINANCE HEALTH: মুনাফা + ক্যাশ + সতর্কতা + পূর্বাভাস
+// GET /api/reports/finance-health?from=&to=
+// ============================================================
+const getFinanceHealth = async (req, res) => {
+    try {
+        const { from, to } = req.query;
+        const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+        if ((from && !isDate(from)) || (to && !isDate(to)) || (from && to && from > to)) {
+            return res.status(400).json({ success: false, message: 'তারিখের সীমা সঠিক নয়।' });
+        }
+        const data = await buildFinanceHealth(req, getPLStatement);
+        return res.status(200).json({ success: true, data });
+    } catch (error) {
+        logger.error('❌ Finance Health Error:', error.message);
+        return res.status(500).json({ success: false, message: 'আর্থিক স্বাস্থ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // LEDGER (সম্পূর্ণ লেনদেন ইতিহাস)
 // ============================================================
 // UNION ALL দিয়ে একটাই query → DB-তেই ORDER BY + LIMIT + OFFSET।
@@ -483,4 +503,4 @@ const getLedger = async (req, res) => {
     }
 };
 
-module.exports = { getPLStatement, getLedger };
+module.exports = { getPLStatement, getLedger, getFinanceHealth };

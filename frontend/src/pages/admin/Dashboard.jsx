@@ -1,5 +1,6 @@
 import BroadcastEmailModal from '../../components/BroadcastEmailModal'
 import SeatUsage from '../../components/SeatUsage'
+import FinanceHealthCard from '../../components/FinanceHealthCard'
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import api from '../../api/axios'
@@ -340,6 +341,9 @@ export default function AdminDashboard() {
 
       {/* সিট ব্যবহার — বিস্তারিত (রোল অনুযায়ী) */}
       <SeatUsage />
+
+      {/* আয়-ব্যয়ের স্বাস্থ্য — সবসময় চলতি মাসের শুরু থেকে আজ পর্যন্ত (বাজেট/পূর্বাভাস মাসিক) */}
+      <FinanceHealthCard from={rangeDates('month').from} to={rangeDates('month').to} />
 
       {/* KPI Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
