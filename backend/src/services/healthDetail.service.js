@@ -18,6 +18,7 @@ const { getVisitPlanRows } = require('./visitPlan.service');
 const { getSeasonProductRows, MONTHS_BN } = require('./seasonality.service');
 const { getPayableRows, getPayablePoRows } = require('./payablesHealth.service');
 const { getSrIntegrityRows } = require('./srIntegrity.service');
+const { getCustomerRows, getRouteRows, getLapsedRows } = require('./customerInsights.service');
 
 const LIMIT = 500;
 const num = (v) => parseFloat(v || 0) || 0;
@@ -185,6 +186,22 @@ const TYPES = {
         columns: [C.text('name', 'SR'), C.num('visits', 'ভিজিট'), C.pct('mismatch_pct', 'লোকেশন মেলেনি'), C.pct('nosale_pct', 'ভিজিটে বিক্রি নেই'), C.money('sales', 'বিক্রি'), C.pct('return_pct', 'রিটার্ন'),
                   C.pct('discount_pct', 'ছাড়'), C.pct('expense_pct', 'খরচ'), C.num('over_limit', 'সীমা ছাড়ানো খরচ'), C.pct('late_pct', 'দেরি'), C.num('absent', 'অনুপস্থিত (ছুটি ছাড়া)'), C.money('cash_owed', 'জমা বাকি')],
         run: (ctx) => getSrIntegrityRows({ tenantId: ctx.tenant, teamFilter: ctx.teamFilter }),
+    },
+
+    customers_top: {
+        scope: 'team', title: 'দোকান অনুযায়ী বিক্রি (বিশ্লেষণ-জানালায়)', note: 'বেশি বিক্রি আগে। "অংশ" = মোট নিট বিক্রির কত %। কয়েকটি দোকানের ওপর বেশি নির্ভরতা ঝুঁকির।',
+        columns: [C.text('name', 'দোকান'), C.text('route', 'রুট'), C.num('orders', 'অর্ডার'), C.money('amount', 'বিক্রি'), C.pct('share_pct', 'অংশ'), C.money('avg_order', 'গড় অর্ডার'), C.date('last', 'শেষ অর্ডার'), C.text('is_new', '')],
+        run: (ctx) => getCustomerRows({ tenantId: ctx.tenant, teamFilter: ctx.teamFilter }),
+    },
+    routes_perf: {
+        scope: 'team', title: 'রুট অনুযায়ী বিক্রি', note: 'সক্রিয় = এ সময়ে কিনেছে। দোকান আছে অথচ বিক্রি শূন্য রুট আগে ভাবার বিষয়।',
+        columns: [C.text('name', 'রুট'), C.num('customers', 'দোকান'), C.num('active', 'সক্রিয়'), C.pct('active_pct', 'সক্রিয়তা'), C.money('sales', 'বিক্রি'), C.pct('share_pct', 'অংশ'), C.money('avg_per_active', 'সক্রিয় দোকান প্রতি')],
+        run: (ctx) => getRouteRows({ tenantId: ctx.tenant, teamFilter: ctx.teamFilter }),
+    },
+    customers_lapsed: {
+        scope: 'team', title: 'যারা আগে কিনত, এ সময়ে কেনেনি', note: 'জীবনকালের বিক্রি বেশি আগে — সবচেয়ে মূল্যবান হারানো দোকান আগে ফোন/ভিজিট করুন।',
+        columns: [C.text('name', 'দোকান'), C.text('route', 'রুট'), C.date('last', 'শেষ অর্ডার'), C.num('days_ago', 'কত দিন আগে'), C.num('orders', 'মোট অর্ডার'), C.money('lifetime', 'এ পর্যন্ত বিক্রি')],
+        run: (ctx) => getLapsedRows({ tenantId: ctx.tenant, teamFilter: ctx.teamFilter }),
     },
 
     // ─────────── বকেয়া ও আদায় ───────────
@@ -397,7 +414,7 @@ const ALERT_DETAIL = {
     return_rate_high: 'returns', return_rate: 'returns', return_loss: 'returns_loss', return_pending: 'returns_pending', sr_return_spike: 'returns',
     overdue_heavy: 'dues', overdue: 'dues', unexplained_due: 'dues', over_limit: 'dues', near_limit: 'dues',
     collections_in_transit: 'transit', sr_owes: 'sr_dues',
-    sr_integrity_flag: 'sr_integrity', payable_overdue: 'payable_pos', payable_due_soon: 'payable_pos', payable_old: 'payable_pos', supplier_advance: 'payables', payable_gt_receivable: 'payables',
+    sr_integrity_flag: 'sr_integrity', customer_concentration: 'customers_top', customers_lapsed: 'customers_lapsed', low_active_customers: 'routes_perf', route_idle: 'routes_perf', payable_overdue: 'payable_pos', payable_due_soon: 'payable_pos', payable_old: 'payable_pos', supplier_advance: 'payables', payable_gt_receivable: 'payables',
     sr_absent: 'sr_today', sr_zero_visit: 'sr_today', sr_zero_sales: 'sr_today', sr_behind_target: 'sr_today', commission_unpaid: 'commissions_unpaid',
 };
 

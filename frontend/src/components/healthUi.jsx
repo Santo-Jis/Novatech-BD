@@ -21,6 +21,7 @@ export const ALERT_DETAIL = {
   return_rate_high: 'returns', return_rate: 'returns', return_loss: 'returns_loss', return_pending: 'returns_pending', sr_return_spike: 'returns',
   overdue_heavy: 'dues', overdue: 'dues', unexplained_due: 'dues', over_limit: 'dues', near_limit: 'dues',
   collections_in_transit: 'transit', sr_owes: 'sr_dues',
+  customer_concentration: 'customers_top', customers_lapsed: 'customers_lapsed', low_active_customers: 'routes_perf', route_idle: 'routes_perf',
   payable_overdue: 'payable_pos', payable_due_soon: 'payable_pos', payable_old: 'payable_pos', supplier_advance: 'payables', payable_gt_receivable: 'payables',
   sr_absent: 'sr_today', sr_zero_visit: 'sr_today', sr_zero_sales: 'sr_today', sr_behind_target: 'sr_today', commission_unpaid: 'commissions_unpaid',
 }

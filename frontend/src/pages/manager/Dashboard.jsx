@@ -10,6 +10,7 @@ import SrPerformanceCard from '../../components/SrPerformanceCard'
 import ReceivablesHealthCard from '../../components/ReceivablesHealthCard'
 import VisitPlanCard from '../../components/VisitPlanCard'
 import SrIntegrityCard from '../../components/SrIntegrityCard'
+import CustomerInsightsCard from '../../components/CustomerInsightsCard'
 import {
   FiUsers, FiShoppingBag, FiCheckSquare,
   FiAlertTriangle, FiRefreshCw, FiDollarSign, FiMapPin, FiTarget
@@ -189,6 +190,7 @@ export default function ManagerDashboard() {
       <SrPerformanceCard />
       <VisitPlanCard />
       <SrIntegrityCard />
+      <CustomerInsightsCard />
       <ReceivablesHealthCard />
 
       {/* KPI */}

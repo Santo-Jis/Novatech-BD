@@ -24,7 +24,7 @@ const { getCommissionReport, getCreditReport } =
     require('./report.commission-credit');
 
 const { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth,
-        getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets, getPurchasePlan, savePurchaseSettings, getVisitPlan, getSeasonality, getPayablesHealth, getSrIntegrity } =
+        getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets, getPurchasePlan, savePurchaseSettings, getVisitPlan, getSeasonality, getPayablesHealth, getSrIntegrity, getCustomerInsights } =
     require('./report.financial');
 
 module.exports = {
@@ -50,6 +50,7 @@ module.exports = {
     getSeasonality,
     getPayablesHealth,
     getSrIntegrity,
+    getCustomerInsights,
     getMonthlyArchive,
     getTopProducts,
     getTopShops,
