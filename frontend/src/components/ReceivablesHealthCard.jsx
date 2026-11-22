@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { FiDollarSign } from 'react-icons/fi'
 import useHealth from './useHealth'
-import { Shell, Stat, MiniList, AlertList, fmtMoney, fmtNum } from './healthUi'
+import { Shell, Stat, MiniList, AlertList, DetailModal, fmtMoney, fmtNum } from './healthUi'
 
 // বকেয়া ও আদায়: বকেয়ার বয়স, ক্রেডিট সীমা, SR-এর হাতে অজমা আদায়
 // ডেটা: GET /reports/receivables-health  (backend: opsHealth.service.js)
@@ -9,6 +10,7 @@ const BAR = { d0_30: 'bg-green-500', d31_60: 'bg-yellow-400', d61_90: 'bg-orange
 
 export default function ReceivablesHealthCard() {
   const { data, loading, failed } = useHealth('/reports/receivables-health')
+  const [detail, setDetail] = useState(null)
   if (loading) return <div className="h-48 bg-white dark:bg-slate-800 rounded-2xl animate-pulse" />
   if (failed || !data) return null
 
@@ -18,11 +20,11 @@ export default function ReceivablesHealthCard() {
     <Shell icon={<FiDollarSign className="text-primary" />} title="বকেয়া ও আদায়">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {aging && <Stat label="মোট বকেয়া" value={fmtMoney(aging.total)} sub={`৬০ দিনের বেশি ${fmtMoney(aging.over_60_total)}`}
-                        tone={aging.over_60_pct >= 25 ? 'bad' : undefined} />}
-        <Stat label="আজ আদায় (কালেকশন)" value={fmtMoney(today_collected)} />
-        <Stat label="SR-এর হাতে, জমা হয়নি" value={fmtMoney(tr.total)} tone={tr.total > 0 && tr.oldest_days >= 3 ? 'bad' : undefined}
+                        tone={aging.over_60_pct >= 25 ? 'bad' : undefined} onClick={() => setDetail('dues')} />}
+        <Stat label="আজ আদায় (কালেকশন)" value={fmtMoney(today_collected)} onClick={() => setDetail('collections_today')} />
+        <Stat label="SR-এর হাতে, জমা হয়নি" value={fmtMoney(tr.total)} tone={tr.total > 0 && tr.oldest_days >= 3 ? 'bad' : undefined} onClick={() => setDetail('transit')}
               sub={tr.count > 0 ? `${fmtNum(tr.count)}টি · সবচেয়ে পুরোনো ${fmtNum(tr.oldest_days ?? 0)} দিন` : undefined} />
-        <Stat label="SR-এর কাছে কোম্পানির পাওনা" value={fmtMoney(sr_owes.total)} sub={`${fmtNum(sr_owes.count)} জন`} tone={sr_owes.total > 0 ? 'bad' : undefined} />
+        <Stat label="SR-এর কাছে কোম্পানির পাওনা" value={fmtMoney(sr_owes.total)} sub={`${fmtNum(sr_owes.count)} জন`} tone={sr_owes.total > 0 ? 'bad' : undefined} onClick={() => setDetail('sr_dues')} />
       </div>
 
       {aging && aging.total > 0 && (
@@ -50,15 +52,16 @@ export default function ReceivablesHealthCard() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {aging && <MiniList title="সবচেয়ে পুরোনো বকেয়া (৬০ দিনের বেশি)" empty="কোনোটি নেই 👍"
+        {aging && <MiniList onMore={() => setDetail('dues')} title="সবচেয়ে পুরোনো বকেয়া (৬০ দিনের বেশি)" empty="কোনোটি নেই 👍"
                             rows={aging.overdue_top.map(c => ({ left: c.name, right: `${fmtMoney(c.over60)} · ${fmtNum(c.oldest_days)} দিন` }))} />}
-        {lim && <MiniList title={`ক্রেডিট সীমার কাছে/ছাড়ানো (${fmtNum(lim.over_count + lim.near_count)}টি)`} empty="কোনো দোকান নেই 👍"
+        {lim && <MiniList onMore={() => setDetail('dues')} title={`ক্রেডিট সীমার কাছে/ছাড়ানো (${fmtNum(lim.over_count + lim.near_count)}টি)`} empty="কোনো দোকান নেই 👍"
                           rows={lim.top.map(c => ({ left: `${c.used_pct > 100 ? '🔴 ' : '🟠 '}${c.name}`, right: `${c.used_pct}%` }))} />}
-        <MiniList title="জমা বাকি আদায় (SR অনুযায়ী)" empty="সব জমা হয়েছে 👍"
+        <MiniList onMore={() => setDetail('transit')} title="জমা বাকি আদায় (SR অনুযায়ী)" empty="সব জমা হয়েছে 👍"
                   rows={tr.by_sr.map(s => ({ left: s.name || '—', right: `${fmtMoney(s.amount)}${s.oldest_days !== null ? ` · ${fmtNum(s.oldest_days)} দিন` : ''}` }))} />
       </div>
 
-      <AlertList alerts={alerts} />
+      <AlertList alerts={alerts} onOpen={setDetail} />
+      {detail && <DetailModal type={detail} onClose={() => setDetail(null)} />}
     </Shell>
   )
 }

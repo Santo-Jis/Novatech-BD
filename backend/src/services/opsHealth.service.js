@@ -43,7 +43,7 @@ const bucketOf = (age) => AGE_BUCKETS.find(b => age <= b.max).key;
  * দোকানের মোট বকেয়া পর্যন্ত ইনভয়েস বসাই। ইনভয়েস দিয়ে ব্যাখ্যা না হওয়া অংশ
  * (পুরোনো ব্যালেন্স/ম্যানুয়াল) আলাদা "unexplained" — বয়স অজানা।
  */
-const ageDues = (customers, invoices, today) => {
+const ageDues = (customers, invoices, today, withRows = false) => {
     const byCustomer = new Map();
     for (const inv of invoices) {
         if (!byCustomer.has(inv.customer_id)) byCustomer.set(inv.customer_id, []);
@@ -52,6 +52,7 @@ const ageDues = (customers, invoices, today) => {
     const buckets = Object.fromEntries(AGE_BUCKETS.map(b => [b.key, 0]));
     let unexplained = 0, total = 0;
     const overdue = [];
+    const rows = [];   // শুধু বিস্তারিত তালিকার জন্য (withRows)
 
     for (const c of customers) {
         let left = num(c.current_credit);
@@ -59,17 +60,22 @@ const ageDues = (customers, invoices, today) => {
         total += left;
         const invs = (byCustomer.get(c.id) || []).slice().sort((a, b) => String(b.date).localeCompare(String(a.date)));
         let oldestAge = null, over60 = 0;
+        const cb = Object.fromEntries(AGE_BUCKETS.map(b => [b.key, 0]));
         for (const inv of invs) {
             if (left <= 0.005) break;
             const take = Math.min(num(inv.remaining), left);
             if (take <= 0) continue;
             const age = Math.max(daysBetween(inv.date, today), 0);
             buckets[bucketOf(age)] += take;
+            cb[bucketOf(age)] += take;
             if (age > 60) over60 += take;
             oldestAge = oldestAge === null ? age : Math.max(oldestAge, age);
             left -= take;
         }
         if (left > 0.005) unexplained += left;
+        if (withRows) rows.push({ id: c.id, name: c.shop_name, due: round2(num(c.current_credit)), limit: num(c.credit_limit),
+            d0_30: round2(cb.d0_30), d31_60: round2(cb.d31_60), d61_90: round2(cb.d61_90), d90p: round2(cb.d90p),
+            unexplained: round2(Math.max(left, 0)), oldest_days: oldestAge });
         if (over60 > 0) overdue.push({ id: c.id, name: c.shop_name, over60: round2(over60), oldest_days: oldestAge, due: round2(num(c.current_credit)) });
     }
 
@@ -81,6 +87,7 @@ const ageDues = (customers, invoices, today) => {
         over_60_total: round2(over60Total),
         over_60_pct: pct(over60Total, total),
         overdue_top: overdue.sort((a, b) => b.over60 - a.over60).slice(0, 5),
+        ...(withRows ? { rows } : {}),
     };
 };
 

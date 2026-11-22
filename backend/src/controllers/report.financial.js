@@ -9,6 +9,7 @@ const { query } = require('../config/db');
 const { getFinanceHealth: buildFinanceHealth } = require('../services/financeHealth.service');
 const { getInventoryHealth: buildInventoryHealth } = require('../services/inventoryHealth.service');
 const ops = require('../services/opsHealth.service');
+const { getHealthDetail: buildHealthDetail } = require('../services/healthDetail.service');
 
 // ============================================================
 // P&L STATEMENT
@@ -421,6 +422,26 @@ const getSrPerformanceHealth = opsHandler(ops.getSrPerformanceHealth, 'SR Perfor
 const getActionList          = opsHandler(ops.getActionList,          'Action List');
 
 // ============================================================
+// HEALTH DETAIL: কার্ডের সংখ্যা/সতর্কতার পূর্ণ তালিকা
+// GET /api/reports/health-detail/:type?from=&to=
+// ============================================================
+const getHealthDetail = async (req, res) => {
+    try {
+        const { from, to } = req.query;
+        const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+        if ((from && !isDate(from)) || (to && !isDate(to)) || (from && to && from > to)) {
+            return res.status(400).json({ success: false, message: 'তারিখের সীমা সঠিক নয়।' });
+        }
+        const data = await buildHealthDetail(req, req.params.type);
+        return res.status(200).json({ success: true, data });
+    } catch (error) {
+        if (error.status === 404) return res.status(404).json({ success: false, message: 'এই বিস্তারিত তালিকা নেই।' });
+        logger.error('❌ Health Detail Error:', error.message);
+        return res.status(500).json({ success: false, message: 'বিস্তারিত আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // LEDGER (সম্পূর্ণ লেনদেন ইতিহাস)
 // ============================================================
 // UNION ALL দিয়ে একটাই query → DB-তেই ORDER BY + LIMIT + OFFSET।
@@ -542,4 +563,4 @@ const getLedger = async (req, res) => {
 };
 
 module.exports = { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth,
-    getReceivablesHealth, getSrPerformanceHealth, getActionList };
+    getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail };
