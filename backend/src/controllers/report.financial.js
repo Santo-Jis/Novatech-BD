@@ -11,6 +11,7 @@ const { getInventoryHealth: buildInventoryHealth } = require('../services/invent
 const ops = require('../services/opsHealth.service');
 const { getHealthDetail: buildHealthDetail } = require('../services/healthDetail.service');
 const planning = require('../services/planning.service');
+const purchasePlan = require('../services/purchasePlan.service');
 
 // ============================================================
 // P&L STATEMENT
@@ -468,6 +469,31 @@ const applySrTargets = async (req, res) => {
 };
 
 // ============================================================
+// PURCHASE PLAN: কোন পণ্য কত কিনতে হবে
+// GET  /api/reports/purchase-plan
+// POST /api/reports/purchase-plan/settings { lead_days, buffer_days } (শুধু অ্যাডমিন)
+// ============================================================
+const getPurchasePlan = async (req, res) => {
+    try {
+        const data = await purchasePlan.getPurchasePlan(req);
+        return res.status(200).json({ success: true, data });
+    } catch (error) {
+        logger.error('❌ Purchase Plan Error:', error.message);
+        return res.status(500).json({ success: false, message: 'ক্রয় পরামর্শ আনতে সমস্যা হয়েছে।' });
+    }
+};
+const savePurchaseSettings = async (req, res) => {
+    try {
+        const data = await purchasePlan.savePurchaseSettings(req);
+        return res.status(200).json({ success: true, data, message: 'সেভ হয়েছে।' });
+    } catch (error) {
+        if (error.status === 400) return res.status(400).json({ success: false, message: 'ডেলিভারি দিন ১–১২০ ও নিরাপত্তা দিন ০–১২০ হতে হবে।' });
+        logger.error('❌ Purchase Settings Error:', error.message);
+        return res.status(500).json({ success: false, message: 'সেভ করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // LEDGER (সম্পূর্ণ লেনদেন ইতিহাস)
 // ============================================================
 // UNION ALL দিয়ে একটাই query → DB-তেই ORDER BY + LIMIT + OFFSET।
@@ -589,4 +615,4 @@ const getLedger = async (req, res) => {
 };
 
 module.exports = { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth,
-    getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets };
+    getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets, getPurchasePlan, savePurchaseSettings };

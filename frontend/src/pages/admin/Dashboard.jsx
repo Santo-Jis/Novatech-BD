@@ -4,6 +4,7 @@ import FinanceHealthCard from '../../components/FinanceHealthCard'
 import InventoryHealthCard from '../../components/InventoryHealthCard'
 import ActionListCard from '../../components/ActionListCard'
 import TargetPlanCard from '../../components/TargetPlanCard'
+import PurchasePlanCard from '../../components/PurchasePlanCard'
 import ReceivablesHealthCard from '../../components/ReceivablesHealthCard'
 import SrPerformanceCard from '../../components/SrPerformanceCard'
 import { useState, useEffect } from 'react'
@@ -358,6 +359,9 @@ export default function AdminDashboard() {
 
       {/* ইনভেন্টরি ও রিটার্ন — স্টক মূল্য, মৃত স্টক, রিটার্ন/রিপ্লেসমেন্ট (চলতি মাস) */}
       <InventoryHealthCard from={rangeDates('month').from} to={rangeDates('month').to} />
+
+      {/* ক্রয় পরামর্শ — কোন পণ্য কত কিনতে হবে */}
+      <PurchasePlanCard />
 
       {/* বকেয়া ও আদায় — বকেয়ার বয়স, ক্রেডিট সীমা, SR-এর হাতে অজমা আদায় */}
       <ReceivablesHealthCard />

@@ -13,6 +13,7 @@
 const { query } = require('../config/db');
 const { ageDues, daysBetween } = require('./opsHealth.service');
 const { forecastNextMonth, monthShift } = require('./financeHealth.service');
+const { getPurchasePlan } = require('./purchasePlan.service');
 
 const LIMIT = 500;
 const num = (v) => parseFloat(v || 0) || 0;
@@ -140,6 +141,13 @@ const TYPES = {
                     b.q * COALESCE(p.cost_price,0) AS cost_value, b.q * COALESCE(p.price,0) AS sale_value
                FROM b JOIN products p ON p.id::text = b.pid AND p.tenant_id = $1 JOIN users u ON u.id = b.worker_id
               ORDER BY cost_value DESC LIMIT ${LIMIT + 1}`, [ctx.tenant]).then(r => r.rows),
+    },
+
+    purchase_plan: {
+        scope: 'company', title: 'ক্রয় পরামর্শ — কোন পণ্য কত কিনতে হবে', note: 'গতি = জানালায় বিক্রি ÷ দিন। লক্ষ্য = গতি × (ডেলিভারি + নিরাপত্তা দিন)। হাতে = গুদাম + SR; পথে = অর্ডার দেওয়া PO। জরুরি আগে, তারপর বেশি মুনাফার পণ্য।',
+        columns: [C.text('name', 'পণ্য'), C.text('urgency_label', 'অবস্থা'), C.num('warehouse', 'গুদামে'), C.num('sr_hand', 'SR-এর হাতে'), C.num('on_order', 'পথে'), C.num('velocity', 'গতি/দিন'),
+                  C.num('cover_days', 'চলবে (দিন)'), C.num('need', 'কিনুন'), C.money('cost', 'আনুমানিক খরচ'), C.pct('margin_pct', 'মার্জিন')],
+        run: async (ctx) => (await getPurchasePlan({ tenantId: ctx.tenant, teamFilter: null })).rows,
     },
 
     // ─────────── বকেয়া ও আদায় ───────────
