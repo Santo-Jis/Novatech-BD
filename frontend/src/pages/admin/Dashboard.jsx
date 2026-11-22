@@ -7,6 +7,7 @@ import TargetPlanCard from '../../components/TargetPlanCard'
 import PurchasePlanCard from '../../components/PurchasePlanCard'
 import VisitPlanCard from '../../components/VisitPlanCard'
 import SeasonalityCard from '../../components/SeasonalityCard'
+import PayablesCard from '../../components/PayablesCard'
 import ReceivablesHealthCard from '../../components/ReceivablesHealthCard'
 import SrPerformanceCard from '../../components/SrPerformanceCard'
 import { useState, useEffect } from 'react'
@@ -373,6 +374,9 @@ export default function AdminDashboard() {
 
       {/* বকেয়া ও আদায় — বকেয়ার বয়স, ক্রেডিট সীমা, SR-এর হাতে অজমা আদায় */}
       <ReceivablesHealthCard />
+
+      {/* সাপ্লাইয়ারের পাওনা — আপনার দেনা, বয়স, মেয়াদ */}
+      <PayablesCard />
 
       {/* SR পারফরম্যান্স — আজকের হাজিরা/ভিজিট/বিক্রি ও মাসিক টার্গেট */}
       <SrPerformanceCard />

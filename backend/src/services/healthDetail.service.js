@@ -16,6 +16,7 @@ const { forecastNextMonth, monthShift } = require('./financeHealth.service');
 const { getPurchasePlan } = require('./purchasePlan.service');
 const { getVisitPlanRows } = require('./visitPlan.service');
 const { getSeasonProductRows, MONTHS_BN } = require('./seasonality.service');
+const { getPayableRows, getPayablePoRows } = require('./payablesHealth.service');
 
 const LIMIT = 500;
 const num = (v) => parseFloat(v || 0) || 0;
@@ -164,6 +165,18 @@ const TYPES = {
         columns: [C.text('name', 'পণ্য'), C.num('total', 'মোট বিক্রি'), C.text('status', 'অবস্থা'), C.text('peak', 'বেশি চলে'), C.text('low', 'কম চলে'),
                   ...MONTHS_BN.map((n, i) => C.num(`m${i + 1}`, n))],
         run: (ctx) => getSeasonProductRows(ctx.tenant, ctx.today),
+    },
+
+    payables: {
+        scope: 'company', title: 'সাপ্লাইয়ার অনুযায়ী দেনা', note: 'দেনা = অর্ডার দেওয়া PO − দেওয়া পেমেন্ট। বয়স PO-র অর্ডার-তারিখ থেকে; পেমেন্ট পুরোনো PO আগে কাটে। "অগ্রিম" = বেশি দেওয়া।',
+        columns: [C.text('name', 'সাপ্লাইয়ার'), C.text('terms', 'শর্ত'), C.money('total', 'মোট দেনা'), C.money('d0_30', '০–৩০ দিন'), C.money('d31_60', '৩১–৬০'), C.money('d61_90', '৬১–৯০'), C.money('d90p', '৯০+'),
+                  C.money('overdue', 'মেয়াদ পেরিয়েছে'), C.money('advance', 'অগ্রিম'), C.num('oldest_days', 'সবচেয়ে পুরোনো (দিন)'), C.money('paid_30d', 'গত ৩০ দিনে দিয়েছেন')],
+        run: (ctx) => getPayableRows(ctx.tenant, ctx.today),
+    },
+    payable_pos: {
+        scope: 'company', title: 'বকেয়া থাকা PO-র তালিকা', note: 'পুরোনো আগে। "মেয়াদ অজানা" = সাপ্লাইয়ারের পেমেন্ট শর্ত থেকে দিন পড়া যায়নি (সাপ্লাইয়ারের তথ্যে শর্ত লিখুন, যেমন "Net 30")।',
+        columns: [C.text('supplier', 'সাপ্লাইয়ার'), C.text('po_number', 'PO'), C.date('date', 'অর্ডারের তারিখ'), C.money('amount', 'PO-র মোট'), C.money('remaining', 'বাকি'), C.num('age_days', 'বয়স (দিন)'), C.date('due_date', 'দেওয়ার তারিখ'), C.text('status', 'অবস্থা')],
+        run: (ctx) => getPayablePoRows(ctx.tenant, ctx.today),
     },
 
     // ─────────── বকেয়া ও আদায় ───────────
@@ -376,6 +389,7 @@ const ALERT_DETAIL = {
     return_rate_high: 'returns', return_rate: 'returns', return_loss: 'returns_loss', return_pending: 'returns_pending', sr_return_spike: 'returns',
     overdue_heavy: 'dues', overdue: 'dues', unexplained_due: 'dues', over_limit: 'dues', near_limit: 'dues',
     collections_in_transit: 'transit', sr_owes: 'sr_dues',
+    payable_overdue: 'payable_pos', payable_due_soon: 'payable_pos', payable_old: 'payable_pos', supplier_advance: 'payables', payable_gt_receivable: 'payables',
     sr_absent: 'sr_today', sr_zero_visit: 'sr_today', sr_zero_sales: 'sr_today', sr_behind_target: 'sr_today', commission_unpaid: 'commissions_unpaid',
 };
 
