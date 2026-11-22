@@ -3,6 +3,7 @@ import SeatUsage from '../../components/SeatUsage'
 import FinanceHealthCard from '../../components/FinanceHealthCard'
 import InventoryHealthCard from '../../components/InventoryHealthCard'
 import ActionListCard from '../../components/ActionListCard'
+import TargetPlanCard from '../../components/TargetPlanCard'
 import ReceivablesHealthCard from '../../components/ReceivablesHealthCard'
 import SrPerformanceCard from '../../components/SrPerformanceCard'
 import { useState, useEffect } from 'react'
@@ -348,6 +349,9 @@ export default function AdminDashboard() {
 
       {/* আজ কী করতে হবে — সব অপেক্ষমাণ কাজ এক জায়গায় */}
       <ActionListCard />
+
+      {/* লক্ষ্য ও পরিকল্পনা — ব্রেক-ইভেন বিক্রি, দৈনিক প্রয়োজন, SR টার্গেট প্রস্তাব */}
+      <TargetPlanCard />
 
       {/* আয়-ব্যয়ের স্বাস্থ্য — সবসময় চলতি মাসের শুরু থেকে আজ পর্যন্ত (বাজেট/পূর্বাভাস মাসিক) */}
       <FinanceHealthCard from={rangeDates('month').from} to={rangeDates('month').to} />

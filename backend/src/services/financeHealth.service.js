@@ -323,5 +323,5 @@ const getFinanceHealth = async (req, getPLStatement) => {
 module.exports = {
     getFinanceHealth,
     // pure — টেস্টের জন্য
-    forecastNextMonth, findAnomalies, buildAlerts, monthShift,
+    forecastNextMonth, findAnomalies, buildAlerts, monthShift, runPL,
 };

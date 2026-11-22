@@ -10,6 +10,7 @@ const { getFinanceHealth: buildFinanceHealth } = require('../services/financeHea
 const { getInventoryHealth: buildInventoryHealth } = require('../services/inventoryHealth.service');
 const ops = require('../services/opsHealth.service');
 const { getHealthDetail: buildHealthDetail } = require('../services/healthDetail.service');
+const planning = require('../services/planning.service');
 
 // ============================================================
 // P&L STATEMENT
@@ -442,6 +443,31 @@ const getHealthDetail = async (req, res) => {
 };
 
 // ============================================================
+// PLANNING: ব্রেক-ইভেন টার্গেট + SR টার্গেট প্রস্তাব
+// GET  /api/reports/plan-targets?desired_profit=
+// POST /api/reports/plan-targets/apply   { targets:[{id,target}] }  (শুধু অ্যাডমিন)
+// ============================================================
+const getTargetPlan = async (req, res) => {
+    try {
+        const data = await planning.getTargetPlan(req, getPLStatement);
+        return res.status(200).json({ success: true, data });
+    } catch (error) {
+        logger.error('❌ Target Plan Error:', error.message);
+        return res.status(500).json({ success: false, message: 'পরিকল্পনা আনতে সমস্যা হয়েছে।' });
+    }
+};
+const applySrTargets = async (req, res) => {
+    try {
+        const data = await planning.applySrTargets(req);
+        return res.status(200).json({ success: true, data, message: `${data.updated} জন SR-এর টার্গেট আপডেট হয়েছে।` });
+    } catch (error) {
+        if (error.status === 400) return res.status(400).json({ success: false, message: 'টার্গেটের তথ্য সঠিক নয়।' });
+        logger.error('❌ Apply SR Targets Error:', error.message);
+        return res.status(500).json({ success: false, message: 'টার্গেট আপডেট করতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // LEDGER (সম্পূর্ণ লেনদেন ইতিহাস)
 // ============================================================
 // UNION ALL দিয়ে একটাই query → DB-তেই ORDER BY + LIMIT + OFFSET।
@@ -563,4 +589,4 @@ const getLedger = async (req, res) => {
 };
 
 module.exports = { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth,
-    getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail };
+    getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets };

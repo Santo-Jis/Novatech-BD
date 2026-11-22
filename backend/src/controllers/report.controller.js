@@ -24,7 +24,7 @@ const { getCommissionReport, getCreditReport } =
     require('./report.commission-credit');
 
 const { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth,
-        getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail } =
+        getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets } =
     require('./report.financial');
 
 module.exports = {
@@ -42,6 +42,8 @@ module.exports = {
     getSrPerformanceHealth,
     getActionList,
     getHealthDetail,
+    getTargetPlan,
+    applySrTargets,
     getMonthlyArchive,
     getTopProducts,
     getTopShops,
