@@ -8,6 +8,7 @@ import PurchasePlanCard from '../../components/PurchasePlanCard'
 import VisitPlanCard from '../../components/VisitPlanCard'
 import SeasonalityCard from '../../components/SeasonalityCard'
 import PayablesCard from '../../components/PayablesCard'
+import SrIntegrityCard from '../../components/SrIntegrityCard'
 import ReceivablesHealthCard from '../../components/ReceivablesHealthCard'
 import SrPerformanceCard from '../../components/SrPerformanceCard'
 import { useState, useEffect } from 'react'
@@ -362,6 +363,9 @@ export default function AdminDashboard() {
 
       {/* ইনভেন্টরি ও রিটার্ন — স্টক মূল্য, মৃত স্টক, রিটার্ন/রিপ্লেসমেন্ট (চলতি মাস) */}
       <InventoryHealthCard from={rangeDates('month').from} to={rangeDates('month').to} />
+
+      {/* SR-দের ওপর নজর — অস্বাভাবিক আচরণ */}
+      <SrIntegrityCard />
 
       {/* আজকের ভিজিট তালিকা — SR অনুযায়ী কোন দোকানে যেতে হবে */}
       <VisitPlanCard />

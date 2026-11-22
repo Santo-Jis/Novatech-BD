@@ -15,6 +15,7 @@ const purchasePlan = require('../services/purchasePlan.service');
 const visitPlan = require('../services/visitPlan.service');
 const seasonality = require('../services/seasonality.service');
 const payables = require('../services/payablesHealth.service');
+const srIntegrity = require('../services/srIntegrity.service');
 
 // ============================================================
 // P&L STATEMENT
@@ -426,6 +427,7 @@ const getReceivablesHealth   = opsHandler(ops.getReceivablesHealth,   'Receivabl
 const getSrPerformanceHealth = opsHandler(ops.getSrPerformanceHealth, 'SR Performance Health');
 const getActionList          = opsHandler(ops.getActionList,          'Action List');
 const getPayablesHealth      = opsHandler(payables.getPayablesHealth, 'Payables Health');   // GET /reports/payables-health
+const getSrIntegrity         = opsHandler(srIntegrity.getSrIntegrity, 'SR Integrity');      // GET /reports/sr-integrity
 
 // ============================================================
 // HEALTH DETAIL: কার্ডের সংখ্যা/সতর্কতার পূর্ণ তালিকা
@@ -648,4 +650,4 @@ const getLedger = async (req, res) => {
 };
 
 module.exports = { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth,
-    getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets, getPurchasePlan, savePurchaseSettings, getVisitPlan, getSeasonality, getPayablesHealth };
+    getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets, getPurchasePlan, savePurchaseSettings, getVisitPlan, getSeasonality, getPayablesHealth, getSrIntegrity };

@@ -9,6 +9,7 @@ import ActionListCard from '../../components/ActionListCard'
 import SrPerformanceCard from '../../components/SrPerformanceCard'
 import ReceivablesHealthCard from '../../components/ReceivablesHealthCard'
 import VisitPlanCard from '../../components/VisitPlanCard'
+import SrIntegrityCard from '../../components/SrIntegrityCard'
 import {
   FiUsers, FiShoppingBag, FiCheckSquare,
   FiAlertTriangle, FiRefreshCw, FiDollarSign, FiMapPin, FiTarget
@@ -187,6 +188,7 @@ export default function ManagerDashboard() {
       <ActionListCard />
       <SrPerformanceCard />
       <VisitPlanCard />
+      <SrIntegrityCard />
       <ReceivablesHealthCard />
 
       {/* KPI */}
