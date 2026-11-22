@@ -8,6 +8,7 @@ import { useAuthStore } from '../../store/auth.store'
 import ActionListCard from '../../components/ActionListCard'
 import SrPerformanceCard from '../../components/SrPerformanceCard'
 import ReceivablesHealthCard from '../../components/ReceivablesHealthCard'
+import VisitPlanCard from '../../components/VisitPlanCard'
 import {
   FiUsers, FiShoppingBag, FiCheckSquare,
   FiAlertTriangle, FiRefreshCw, FiDollarSign, FiMapPin, FiTarget
@@ -185,6 +186,7 @@ export default function ManagerDashboard() {
       {/* আজ কী করতে হবে + SR পারফরম্যান্স + অজমা আদায় (শুধু নিজের টিম) */}
       <ActionListCard />
       <SrPerformanceCard />
+      <VisitPlanCard />
       <ReceivablesHealthCard />
 
       {/* KPI */}

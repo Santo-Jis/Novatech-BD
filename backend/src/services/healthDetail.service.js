@@ -14,6 +14,7 @@ const { query } = require('../config/db');
 const { ageDues, daysBetween } = require('./opsHealth.service');
 const { forecastNextMonth, monthShift } = require('./financeHealth.service');
 const { getPurchasePlan } = require('./purchasePlan.service');
+const { getVisitPlanRows } = require('./visitPlan.service');
 
 const LIMIT = 500;
 const num = (v) => parseFloat(v || 0) || 0;
@@ -148,6 +149,13 @@ const TYPES = {
         columns: [C.text('name', 'পণ্য'), C.text('urgency_label', 'অবস্থা'), C.num('warehouse', 'গুদামে'), C.num('sr_hand', 'SR-এর হাতে'), C.num('on_order', 'পথে'), C.num('velocity', 'গতি/দিন'),
                   C.num('cover_days', 'চলবে (দিন)'), C.num('need', 'কিনুন'), C.money('cost', 'আনুমানিক খরচ'), C.pct('margin_pct', 'মার্জিন')],
         run: async (ctx) => (await getPurchasePlan({ tenantId: ctx.tenant, teamFilter: null })).rows,
+    },
+
+    visit_plan: {
+        scope: 'team', title: 'আজকের ভিজিট তালিকা — সব দোকান (স্কোর অনুযায়ী)', note: 'স্কোর = অর্ডারের সময় হয়েছে + আদায়ের সুযোগ + দোকানের মান। আজ ভিজিট হওয়া দোকান বাদ।',
+        columns: [C.text('sr_name', 'SR'), C.text('name', 'দোকান'), C.text('route', 'রুট'), C.text('category_label', 'কেন'), C.num('score', 'স্কোর'), C.num('last_order_days', 'শেষ অর্ডার (দিন আগে)'),
+                  C.num('interval', 'সাধারণ ব্যবধান (দিন)'), C.money('due', 'বকেয়া'), C.money('avg_order', 'গড় অর্ডার'), C.text('reason', 'বিস্তারিত')],
+        run: (ctx) => getVisitPlanRows({ tenantId: ctx.tenant, teamFilter: ctx.teamFilter, user: null }),
     },
 
     // ─────────── বকেয়া ও আদায় ───────────
@@ -370,7 +378,7 @@ const getHealthDetail = async (req, type) => {
     const team = !!req.teamFilter;
     const today = todayBD();
     const ctx = {
-        tenant: req.tenantId, today,
+        tenant: req.tenantId, today, teamFilter: req.teamFilter || null,
         from: req.query.from || monthStart(today), to: req.query.to || today,
         // টিম-ভিউ: ম্যানেজারের নিজের SR-দের সারি। `$N` = base প্যারামিটার সংখ্যা + ১ (PARAM_COUNT), শেষ প্যারামিটার = manager id
         tc: team ? `AND u.manager_id = $${PARAM_COUNT[type] || 2}` : '',

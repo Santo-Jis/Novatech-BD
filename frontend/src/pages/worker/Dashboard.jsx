@@ -6,6 +6,7 @@ import { useAppStore }  from '../../store/app.store'
 import { ProgressBar }  from '../../components/charts/Charts'
 import { usePullToRefresh } from '../../hooks/usePullToRefresh'
 import PullToRefreshIndicator from '../../components/PullToRefreshIndicator'
+import VisitPlanCard from '../../components/VisitPlanCard'
 import {
   FiMapPin, FiShoppingBag, FiDollarSign,
   FiRefreshCw, FiAlertTriangle, FiCheckCircle,
@@ -295,6 +296,9 @@ export default function WorkerDashboard() {
           <span className="text-xs text-primary font-semibold">লিডারবোর্ড →</span>
         </button>
       )}
+
+      {/* আজ কার কাছে যাবেন — অর্ডারের সময়/বকেয়া অনুযায়ী */}
+      <VisitPlanCard mine />
 
       {/* Order Status */}
       {allOrders.length > 0 ? (

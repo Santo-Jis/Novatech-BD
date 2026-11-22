@@ -12,6 +12,7 @@ const ops = require('../services/opsHealth.service');
 const { getHealthDetail: buildHealthDetail } = require('../services/healthDetail.service');
 const planning = require('../services/planning.service');
 const purchasePlan = require('../services/purchasePlan.service');
+const visitPlan = require('../services/visitPlan.service');
 
 // ============================================================
 // P&L STATEMENT
@@ -494,6 +495,21 @@ const savePurchaseSettings = async (req, res) => {
 };
 
 // ============================================================
+// VISIT PLAN: আজ কোন কাস্টমারের কাছে যেতে হবে
+// GET /api/reports/visit-plan     (অ্যাডমিন/ম্যানেজার ইত্যাদি — SR অনুযায়ী ভাগ)
+// GET /api/reports/my-visit-plan  (SR — শুধু নিজের দোকান)
+// ============================================================
+const getVisitPlan = async (req, res) => {
+    try {
+        const data = await visitPlan.getVisitPlan(req);
+        return res.status(200).json({ success: true, data });
+    } catch (error) {
+        logger.error('❌ Visit Plan Error:', error.message);
+        return res.status(500).json({ success: false, message: 'ভিজিট তালিকা আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // LEDGER (সম্পূর্ণ লেনদেন ইতিহাস)
 // ============================================================
 // UNION ALL দিয়ে একটাই query → DB-তেই ORDER BY + LIMIT + OFFSET।
@@ -615,4 +631,4 @@ const getLedger = async (req, res) => {
 };
 
 module.exports = { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth,
-    getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets, getPurchasePlan, savePurchaseSettings };
+    getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets, getPurchasePlan, savePurchaseSettings, getVisitPlan };
