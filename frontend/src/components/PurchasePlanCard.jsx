@@ -43,6 +43,7 @@ export default function PurchasePlanCard() {
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <span className="px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">{w.stage}</span>
         <span className="text-gray-500 dark:text-gray-400">{w.note}</span>
+        {s.season_active && <span className="text-green-600 font-semibold">· মৌসুম সমন্বয় চালু</span>}
       </div>
 
       {w.ready && (

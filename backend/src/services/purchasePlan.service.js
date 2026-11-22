@@ -10,11 +10,13 @@
 //   জরুরিতা         = স্টক শেষ > ডেলিভারি দিনের আগেই শেষ হবে > নিরাপত্তা-সীমার মধ্যে
 // বিক্রি নেই এমন পণ্য কেনার তালিকায় আসে না (আটকে থাকা স্টক আলাদা কার্ডে)।
 // ব্যতিক্রম: বিক্রি নেই কিন্তু পুনঃঅর্ডার সীমা সেট করা ও স্টক সীমার নিচে → "সীমার নিচে" হিসেবে সবার শেষে।
+// মৌসুম-গুণক (seasonality.service.js): পুরো বছরের ডেটা জমলে আগামী মাসের চাহিদা অনুযায়ী লক্ষ্য বাড়ে/কমে; আগে ১.০।
 // ডেলিভারি/নিরাপত্তা দিন system_settings (purchase_lead_days / purchase_buffer_days), ডিফল্ট ৭ ও ৭।
 // ============================================================
 
 const { query } = require('../config/db');
 const { analysisWindow, getDataStart } = require('./planning.service');
+const { getSeasonFactors } = require('./seasonality.service');
 
 const num = (v) => parseFloat(v || 0) || 0;
 const round2 = (v) => Math.round(v * 100) / 100;
@@ -24,9 +26,11 @@ const URGENCY_RANK = { out: 0, urgent: 1, soon: 2, reorder: 3 };
 const URGENCY_LABEL = { out: 'স্টক শেষ', urgent: 'জরুরি', soon: 'শীঘ্রই', reorder: 'সীমার নিচে' };
 
 // ── PURE ──
-const planPurchase = ({ products, sold, srHand, onOrder, windowDays, lead, buffer, seasonFactor = 1 }) => {
+// seasonFactors: { map: Map(pid→গুণক), defaultFactor } (ধাপ ৪); না দিলে seasonFactor (সংখ্যা, ডিফল্ট ১)
+const planPurchase = ({ products, sold, srHand, onOrder, windowDays, lead, buffer, seasonFactor = 1, seasonFactors = null }) => {
     const rows = [];
     for (const p of products) {
+        const sf = seasonFactors ? (seasonFactors.map.has(p.id) ? seasonFactors.map.get(p.id) : seasonFactors.defaultFactor) : seasonFactor;
         const velocity = windowDays > 0 ? num(sold.get(p.id)) / windowDays : 0;
         const warehouse = Math.max(num(p.stock), 0), sr = Math.max(num(srHand.get(p.id)), 0), incoming = Math.max(num(onOrder.get(p.id)), 0);
         const onhand = warehouse + sr, supply = onhand + incoming;
@@ -35,7 +39,7 @@ const planPurchase = ({ products, sold, srHand, onOrder, windowDays, lead, buffe
         const cover = velocity > 0 ? onhand / velocity : null;
 
         if (velocity > 0) {
-            need = Math.ceil(Math.max(velocity * (lead + buffer) * seasonFactor - supply, 0));
+            need = Math.ceil(Math.max(velocity * (lead + buffer) * sf - supply, 0));
             if (need <= 0) continue;
             urgency = onhand <= 0 ? 'out' : cover < lead ? 'urgent' : 'soon';
         } else if (num(p.reorder_point) > 0 && warehouse <= num(p.reorder_point)) {
@@ -47,7 +51,7 @@ const planPurchase = ({ products, sold, srHand, onOrder, windowDays, lead, buffe
         rows.push({
             id: p.id, name: p.name, warehouse, sr_hand: sr, on_order: incoming,
             velocity: round2(velocity), cover_days: cover === null ? null : round2(cover),
-            need, unit_cost: cost, cost: round2(need * cost), cost_known: cost > 0,
+            season_factor: sf, need, unit_cost: cost, cost: round2(need * cost), cost_known: cost > 0,
             margin_pct: price > 0 && cost > 0 ? round2(((price - cost) / price) * 100) : null,
             profit_per_day: round2(velocity * Math.max(price - cost, 0)),
             urgency, urgency_label: URGENCY_LABEL[urgency],
@@ -93,8 +97,9 @@ const getPurchasePlan = async (req) => {
                 WHERE po.tenant_id = $1 AND po.status IN ('ordered','partial') GROUP BY 1`, [tenant]),
     ]);
     const toMap = (r) => new Map(r.rows.map(x => [x.pid, num(x.q)]));
-    const rows = planPurchase({ products: prods.rows, sold: toMap(soldR), srHand: toMap(srR), onOrder: toMap(poR), windowDays: win.window_days, lead: cfg.lead, buffer: cfg.buffer });
-    return { window: win, settings: cfg, rows, summary: summarize(rows) };
+    const seasonFactors = await getSeasonFactors(tenant, { today, coverDays: cfg.lead + cfg.buffer, windowFrom: win.from, windowTo: win.to });
+    const rows = planPurchase({ products: prods.rows, sold: toMap(soldR), srHand: toMap(srR), onOrder: toMap(poR), windowDays: win.window_days, lead: cfg.lead, buffer: cfg.buffer, seasonFactors: seasonFactors.active ? seasonFactors : null });
+    return { window: win, settings: cfg, rows, summary: { ...summarize(rows), season_active: seasonFactors.active } };
 };
 
 /** ডেলিভারি/নিরাপত্তা দিন সেভ (শুধু অ্যাডমিন) */

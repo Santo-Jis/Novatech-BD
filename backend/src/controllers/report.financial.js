@@ -13,6 +13,7 @@ const { getHealthDetail: buildHealthDetail } = require('../services/healthDetail
 const planning = require('../services/planning.service');
 const purchasePlan = require('../services/purchasePlan.service');
 const visitPlan = require('../services/visitPlan.service');
+const seasonality = require('../services/seasonality.service');
 
 // ============================================================
 // P&L STATEMENT
@@ -510,6 +511,20 @@ const getVisitPlan = async (req, res) => {
 };
 
 // ============================================================
+// SEASONALITY: বার্ষিক মৌসুম — বছরের কোন মাসে কোন পণ্য বেশি চলে
+// GET /api/reports/seasonality
+// ============================================================
+const getSeasonality = async (req, res) => {
+    try {
+        const data = await seasonality.getSeasonality(req);
+        return res.status(200).json({ success: true, data });
+    } catch (error) {
+        logger.error('❌ Seasonality Error:', error.message);
+        return res.status(500).json({ success: false, message: 'মৌসুমের তথ্য আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // LEDGER (সম্পূর্ণ লেনদেন ইতিহাস)
 // ============================================================
 // UNION ALL দিয়ে একটাই query → DB-তেই ORDER BY + LIMIT + OFFSET।
@@ -631,4 +646,4 @@ const getLedger = async (req, res) => {
 };
 
 module.exports = { getPLStatement, getLedger, getFinanceHealth, getInventoryHealth,
-    getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets, getPurchasePlan, savePurchaseSettings, getVisitPlan };
+    getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets, getPurchasePlan, savePurchaseSettings, getVisitPlan, getSeasonality };

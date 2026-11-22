@@ -6,6 +6,7 @@ import ActionListCard from '../../components/ActionListCard'
 import TargetPlanCard from '../../components/TargetPlanCard'
 import PurchasePlanCard from '../../components/PurchasePlanCard'
 import VisitPlanCard from '../../components/VisitPlanCard'
+import SeasonalityCard from '../../components/SeasonalityCard'
 import ReceivablesHealthCard from '../../components/ReceivablesHealthCard'
 import SrPerformanceCard from '../../components/SrPerformanceCard'
 import { useState, useEffect } from 'react'
@@ -366,6 +367,9 @@ export default function AdminDashboard() {
 
       {/* ক্রয় পরামর্শ — কোন পণ্য কত কিনতে হবে */}
       <PurchasePlanCard />
+
+      {/* বার্ষিক মৌসুম — মাসিক রেকর্ড ও কোন মাসে কোন পণ্য বেশি চলে */}
+      <SeasonalityCard />
 
       {/* বকেয়া ও আদায় — বকেয়ার বয়স, ক্রেডিট সীমা, SR-এর হাতে অজমা আদায় */}
       <ReceivablesHealthCard />

@@ -15,6 +15,7 @@ const { ageDues, daysBetween } = require('./opsHealth.service');
 const { forecastNextMonth, monthShift } = require('./financeHealth.service');
 const { getPurchasePlan } = require('./purchasePlan.service');
 const { getVisitPlanRows } = require('./visitPlan.service');
+const { getSeasonProductRows, MONTHS_BN } = require('./seasonality.service');
 
 const LIMIT = 500;
 const num = (v) => parseFloat(v || 0) || 0;
@@ -147,7 +148,7 @@ const TYPES = {
     purchase_plan: {
         scope: 'company', title: 'ক্রয় পরামর্শ — কোন পণ্য কত কিনতে হবে', note: 'গতি = জানালায় বিক্রি ÷ দিন। লক্ষ্য = গতি × (ডেলিভারি + নিরাপত্তা দিন)। হাতে = গুদাম + SR; পথে = অর্ডার দেওয়া PO। জরুরি আগে, তারপর বেশি মুনাফার পণ্য।',
         columns: [C.text('name', 'পণ্য'), C.text('urgency_label', 'অবস্থা'), C.num('warehouse', 'গুদামে'), C.num('sr_hand', 'SR-এর হাতে'), C.num('on_order', 'পথে'), C.num('velocity', 'গতি/দিন'),
-                  C.num('cover_days', 'চলবে (দিন)'), C.num('need', 'কিনুন'), C.money('cost', 'আনুমানিক খরচ'), C.pct('margin_pct', 'মার্জিন')],
+                  C.num('cover_days', 'চলবে (দিন)'), C.num('season_factor', 'মৌসুম গুণক'), C.num('need', 'কিনুন'), C.money('cost', 'আনুমানিক খরচ'), C.pct('margin_pct', 'মার্জিন')],
         run: async (ctx) => (await getPurchasePlan({ tenantId: ctx.tenant, teamFilter: null })).rows,
     },
 
@@ -156,6 +157,13 @@ const TYPES = {
         columns: [C.text('sr_name', 'SR'), C.text('name', 'দোকান'), C.text('route', 'রুট'), C.text('category_label', 'কেন'), C.num('score', 'স্কোর'), C.num('last_order_days', 'শেষ অর্ডার (দিন আগে)'),
                   C.num('interval', 'সাধারণ ব্যবধান (দিন)'), C.money('due', 'বকেয়া'), C.money('avg_order', 'গড় অর্ডার'), C.text('reason', 'বিস্তারিত')],
         run: (ctx) => getVisitPlanRows({ tenantId: ctx.tenant, teamFilter: ctx.teamFilter, user: null }),
+    },
+
+    season_products: {
+        scope: 'company', title: 'পণ্য অনুযায়ী বার্ষিক মৌসুম — ক্যালেন্ডার-মাসের গড় বিক্রি (পিস)', note: 'শুধু পূর্ণ মাস। "মৌসুম ধরা পড়েছে" = কমপক্ষে ৬টি ভিন্ন মাসে বিক্রি; বেশি চলে ≥১.২৫ গুণ, কম চলে ≤০.৭৫ গুণ। ফাঁকা = ওই মাসের ডেটা নেই।',
+        columns: [C.text('name', 'পণ্য'), C.num('total', 'মোট বিক্রি'), C.text('status', 'অবস্থা'), C.text('peak', 'বেশি চলে'), C.text('low', 'কম চলে'),
+                  ...MONTHS_BN.map((n, i) => C.num(`m${i + 1}`, n))],
+        run: (ctx) => getSeasonProductRows(ctx.tenant, ctx.today),
     },
 
     // ─────────── বকেয়া ও আদায় ───────────

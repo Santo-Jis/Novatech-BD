@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { auth } = require('../middlewares/auth');
 const { allowRoles, checkTeamAccess } = require('../middlewares/roleCheck');
-const { getSalesReport, getAttendanceReport, getCommissionReport, getCreditReport, getEmployeePDFReport, getDashboardKPI, getPLStatement, getLedger, getFinanceHealth, getInventoryHealth, getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets, getPurchasePlan, savePurchaseSettings, getVisitPlan, getMonthlyArchive, getTopProducts, getTopShops } = require('../controllers/report.controller');
+const { getSalesReport, getAttendanceReport, getCommissionReport, getCreditReport, getEmployeePDFReport, getDashboardKPI, getPLStatement, getLedger, getFinanceHealth, getInventoryHealth, getReceivablesHealth, getSrPerformanceHealth, getActionList, getHealthDetail, getTargetPlan, applySrTargets, getPurchasePlan, savePurchaseSettings, getVisitPlan, getSeasonality, getMonthlyArchive, getTopProducts, getTopShops } = require('../controllers/report.controller');
 const { getExpenseReport } = require('../controllers/expense.controller');
 const { getReturnReport }  = require('../controllers/return.controller');
 router.get('/kpi', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getDashboardKPI);
@@ -24,6 +24,7 @@ router.get('/purchase-plan', auth, allowRoles('admin','manager','supervisor','as
 router.post('/purchase-plan/settings', auth, allowRoles('admin'), savePurchaseSettings);
 router.get('/visit-plan', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getVisitPlan);
 router.get('/my-visit-plan', auth, allowRoles('worker'), getVisitPlan);
+router.get('/seasonality', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getSeasonality);
 router.get('/ledger', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getLedger);
 router.get('/archive', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getMonthlyArchive);
 router.get('/top-products', auth, allowRoles('admin','manager','supervisor','asm','rsm','accountant'), checkTeamAccess, getTopProducts);
