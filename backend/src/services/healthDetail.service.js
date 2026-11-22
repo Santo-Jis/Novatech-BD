@@ -155,7 +155,7 @@ const TYPES = {
 
     visit_plan: {
         scope: 'team', title: 'আজকের ভিজিট তালিকা — সব দোকান (স্কোর অনুযায়ী)', note: 'স্কোর = অর্ডারের সময় হয়েছে + আদায়ের সুযোগ + দোকানের মান। আজ ভিজিট হওয়া দোকান বাদ।',
-        columns: [C.text('sr_name', 'SR'), C.text('name', 'দোকান'), C.text('route', 'রুট'), C.text('category_label', 'কেন'), C.num('score', 'স্কোর'), C.num('last_order_days', 'শেষ অর্ডার (দিন আগে)'),
+        columns: [C.text('sr_name', 'SR'), C.text('sr_source', 'কীভাবে SR ধরা'), C.text('name', 'দোকান'), C.text('route', 'রুট'), C.text('category_label', 'কেন'), C.num('score', 'স্কোর'), C.num('last_order_days', 'শেষ অর্ডার (দিন আগে)'),
                   C.num('interval', 'সাধারণ ব্যবধান (দিন)'), C.money('due', 'বকেয়া'), C.money('avg_order', 'গড় অর্ডার'), C.text('reason', 'বিস্তারিত')],
         run: (ctx) => getVisitPlanRows({ tenantId: ctx.tenant, teamFilter: ctx.teamFilter, user: null }),
     },
