@@ -222,6 +222,7 @@ export default function AdminSuppliers() {
         supplierId={payModalSupplier?.id}
         supplierName={payModalSupplier?.name}
         currentPayable={payModalSupplier?.total_payable}
+        maxAmount={payModalSupplier?.payment_cap}
         onClose={() => setPayModalSupplier(null)}
         onPaid={() => {
           const paidId = payModalSupplier?.id

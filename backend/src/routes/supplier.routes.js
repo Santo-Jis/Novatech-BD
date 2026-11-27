@@ -5,7 +5,7 @@ const { auth }    = require('../middlewares/auth');
 const { allowRoles } = require('../middlewares/roleCheck');
 
 const { getSuppliers, getSupplier, createSupplier, updateSupplier, deleteSupplier } = require('../controllers/supplier.controller');
-const { paySupplier, getSupplierPayments }                                           = require('../controllers/supplierPayment.controller');
+const { paySupplier, getSupplierPayments, voidSupplierPayment }                                        = require('../controllers/supplierPayment.controller');
 const { getSupplierProducts, upsertSupplierProduct, deleteSupplierProduct }          = require('../controllers/supplierProduct.controller');
 const { getSupplierPerformance }                                                     = require('../controllers/supplierPerformance.controller');
 const { downloadTemplate, previewImport, commitImport }                              = require('../controllers/supplierImport.controller');
@@ -31,6 +31,7 @@ router.post('/',   auth, allowRoles('admin', 'manager'), createSupplier);
 router.put('/:id', auth, allowRoles('admin', 'manager'), updateSupplier);
 router.delete('/:id', auth, allowRoles('admin', 'manager'), deleteSupplier);
 
+router.post('/payments/:paymentId/void', auth, allowRoles('admin', 'manager'), voidSupplierPayment);
 router.post('/:id/pay',     auth, allowRoles('admin', 'manager', 'accountant'), paySupplier);
 router.get('/:id/payments', auth, allowRoles('admin', 'manager', 'accountant'), getSupplierPayments);
 

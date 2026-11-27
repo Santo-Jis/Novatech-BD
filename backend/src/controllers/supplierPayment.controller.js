@@ -14,11 +14,23 @@
 const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
 
-// একটা সাপ্লায়ারের বর্তমান বকেয়া — parameterized, $1 = supplier_id
+// বকেয়া = গৃহীত মালের মূল্য (quantity_received × unit_cost) − সক্রিয় (বাতিল নয়) পেমেন্ট।
+// মাল আসার আগে শুধু "অর্ডার করা" PO বকেয়া হয় না।
 const PAYABLE_SQL = `
+    COALESCE((SELECT SUM(poi.quantity_received * poi.unit_cost)
+                FROM purchase_order_items poi
+                JOIN purchase_orders po ON po.id = poi.purchase_order_id
+               WHERE po.supplier_id = $1 AND po.status IN ('ordered','partial','received')), 0)
+  - COALESCE((SELECT SUM(sp.amount) FROM supplier_payments sp
+               WHERE sp.supplier_id = $1 AND sp.voided_at IS NULL), 0)
+`;
+
+// অগ্রিম সহ সর্বোচ্চ পেমেন্ট সীমা = অর্ডার করা PO-র মোট − সক্রিয় পেমেন্ট
+const PAY_CAP_SQL = `
     COALESCE((SELECT SUM(po.total_amount) FROM purchase_orders po
-        WHERE po.supplier_id = $1 AND po.status IN ('ordered','partial','received')), 0)
-  - COALESCE((SELECT SUM(sp.amount) FROM supplier_payments sp WHERE sp.supplier_id = $1), 0)
+               WHERE po.supplier_id = $1 AND po.status IN ('ordered','partial','received')), 0)
+  - COALESCE((SELECT SUM(sp.amount) FROM supplier_payments sp
+               WHERE sp.supplier_id = $1 AND sp.voided_at IS NULL), 0)
 `;
 
 // PO-র বাকি = total_amount − SUM(allocations)
@@ -103,11 +115,14 @@ const paySupplier = async (req, res) => {
             }
 
             // লক নেওয়ার পরেই বকেয়া freshly হিসাব — আগের কোনো পেমেন্ট/PO মিস হবে না
-            const payableRes = await client.query(`SELECT ${PAYABLE_SQL} AS payable`, [supplierId]);
+            const payableRes = await client.query(
+                `SELECT ${PAYABLE_SQL} AS payable, ${PAY_CAP_SQL} AS cap`, [supplierId]);
             const currentPayable = parseFloat(payableRes.rows[0].payable);
+            const payCap         = parseFloat(payableRes.rows[0].cap);
 
-            if (parsedAmount > currentPayable + 1) { // ১ টাকা tolerance — রাউন্ডিং সমস্যা এড়াতে
-                const err = new Error(`বকেয়া ৳${currentPayable.toLocaleString()} এর বেশি পেমেন্ট করা যাবে না।`);
+            // মাল আসার আগে অগ্রিম দেওয়া যায়, তবে অর্ডার করা PO-র মোট মূল্যের বেশি নয়
+            if (parsedAmount > payCap + 1) { // ১ টাকা tolerance — রাউন্ডিং সমস্যা এড়াতে
+                const err = new Error(`অর্ডার মূল্যের বাকি ৳${Math.max(0, payCap).toLocaleString()} এর বেশি পেমেন্ট করা যাবে না।`);
                 err.statusCode = 400;
                 throw err;
             }
@@ -188,13 +203,14 @@ const getSupplierPayments = async (req, res) => {
         const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
 
         const result = await query(
-            `SELECT sp.*, u.name_bn AS recorded_by_name,
+            `SELECT sp.*, u.name_bn AS recorded_by_name, vu.name_bn AS voided_by_name,
                     (SELECT STRING_AGG(po.po_number, ', ' ORDER BY po.po_number)
                        FROM supplier_payment_allocations a
                        JOIN purchase_orders po ON po.id = a.purchase_order_id
                       WHERE a.payment_id = sp.id) AS po_numbers
              FROM supplier_payments sp
-             LEFT JOIN users u ON u.id = sp.recorded_by
+             LEFT JOIN users u  ON u.id  = sp.recorded_by
+             LEFT JOIN users vu ON vu.id = sp.voided_by
              WHERE sp.supplier_id = $1 AND sp.tenant_id = $2
              ORDER BY sp.created_at DESC
              LIMIT $3 OFFSET $4`,
@@ -210,13 +226,64 @@ const getSupplierPayments = async (req, res) => {
 };
 
 // ============================================================
+// VOID SUPPLIER PAYMENT (ভুল পেমেন্ট বাতিল)
+// POST /api/suppliers/payments/:paymentId/void   body: { reason }
+// রেকর্ড থাকে (audit), বকেয়ার হিসাব ও PO-বরাদ্দ থেকে বাদ যায়।
+// ============================================================
+const voidSupplierPayment = async (req, res) => {
+    try {
+        const reason = (req.body.reason || '').trim();
+        if (reason.length < 3) {
+            return res.status(400).json({ success: false, message: 'বাতিলের কারণ লিখুন (কমপক্ষে ৩ অক্ষর)।' });
+        }
+
+        let amount;
+        await withTransaction(async (client) => {
+            const pay = await client.query(
+                `SELECT id, supplier_id, amount, voided_at FROM supplier_payments
+                 WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
+                [req.params.paymentId, req.tenantId]
+            );
+            if (pay.rows.length === 0) {
+                const err = new Error('পেমেন্ট পাওয়া যায়নি।'); err.statusCode = 404; throw err;
+            }
+            if (pay.rows[0].voided_at) {
+                const err = new Error('এই পেমেন্ট আগেই বাতিল করা হয়েছে।'); err.statusCode = 400; throw err;
+            }
+            amount = parseFloat(pay.rows[0].amount);
+
+            await client.query(
+                `UPDATE supplier_payments
+                    SET voided_at = NOW(), voided_by = $1, void_reason = $2
+                  WHERE id = $3`,
+                [req.user.id, reason, req.params.paymentId]
+            );
+            await client.query(
+                `DELETE FROM supplier_payment_allocations WHERE payment_id = $1 AND tenant_id = $2`,
+                [req.params.paymentId, req.tenantId]
+            );
+        });
+
+        return res.status(200).json({ success: true, message: `৳${amount.toLocaleString()} পেমেন্ট বাতিল করা হয়েছে।` });
+    } catch (error) {
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({ success: false, message: error.message });
+        }
+        logger.error('❌ Void Supplier Payment Error:', error.message);
+        return res.status(500).json({ success: false, message: 'পেমেন্ট বাতিলে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // PO-ভিত্তিক সারসংক্ষেপ + পেমেন্ট হিস্ট্রি
 // GET /api/purchase-orders/:id/payments
 // ============================================================
 const getPurchaseOrderPayments = async (req, res) => {
     try {
         const poRes = await query(
-            `SELECT po.id, po.po_number, po.status, po.supplier_id, po.total_amount, ${PO_PAID_SQL} AS paid_amount
+            `SELECT po.id, po.po_number, po.status, po.supplier_id, po.total_amount, ${PO_PAID_SQL} AS paid_amount,
+                    COALESCE((SELECT SUM(poi.quantity_received * poi.unit_cost)
+                                FROM purchase_order_items poi WHERE poi.purchase_order_id = po.id), 0) AS received_amount
              FROM purchase_orders po
              WHERE po.id = $1 AND po.tenant_id = $2`,
             [req.params.id, req.tenantId]
@@ -237,9 +304,11 @@ const getPurchaseOrderPayments = async (req, res) => {
             [req.params.id, req.tenantId]
         );
 
-        const total = parseFloat(po.total_amount);
-        const paid  = parseFloat(po.paid_amount);
-        const payable = ['ordered','partial','received'].includes(po.status);
+        const total    = parseFloat(po.total_amount);
+        const paid     = parseFloat(po.paid_amount);
+        const received = parseFloat(po.received_amount);
+        const payable  = ['ordered','partial','received'].includes(po.status);
+        const payLimit = payable ? Math.max(0, total - paid) : 0;
         return res.status(200).json({
             success: true,
             data: {
@@ -247,8 +316,11 @@ const getPurchaseOrderPayments = async (req, res) => {
                 supplier_id: po.supplier_id,
                 total_amount: total,
                 paid_amount: paid,
-                due_amount: payable ? Math.max(0, total - paid) : 0,
-                can_pay: payable && total - paid > 0,
+                received_amount: received,                       // গৃহীত মালের মূল্য
+                due_amount: payable ? Math.max(0, received - paid) : 0,   // এখন দেয় (গৃহীত − পেইড)
+                advance_amount: payable ? Math.max(0, paid - received) : 0, // মাল আসার আগে দেওয়া অগ্রিম
+                pay_limit: payLimit,                             // সর্বোচ্চ আরও কত দেওয়া যাবে
+                can_pay: payLimit > 0,
                 payments: pays.rows
             }
         });
@@ -280,4 +352,4 @@ const payPurchaseOrder = async (req, res) => {
     }
 };
 
-module.exports = { paySupplier, getSupplierPayments, getPurchaseOrderPayments, payPurchaseOrder };
+module.exports = { paySupplier, getSupplierPayments, getPurchaseOrderPayments, payPurchaseOrder, voidSupplierPayment };

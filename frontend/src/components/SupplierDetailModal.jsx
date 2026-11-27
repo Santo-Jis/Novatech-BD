@@ -14,6 +14,8 @@ import Button from './ui/Button'
 import Badge from './ui/Badge'
 import { Select } from './ui/Input'
 import { SUPPLIER_TYPE_CFG } from './SupplierFormModal'
+import { useAuthStore } from '../store/auth.store'
+import toast from 'react-hot-toast'
 import { FiEdit, FiPhone, FiMail, FiMapPin, FiTruck, FiDollarSign, FiX, FiPlus } from 'react-icons/fi'
 
 const PO_STATUS_CFG = {
@@ -49,6 +51,8 @@ export default function SupplierDetailModal({ supplierId, isOpen, onClose, onEdi
   const [supplier, setSupplier] = useState(null)
   const [loading,  setLoading]  = useState(false)
   const [payments, setPayments] = useState([])
+  const { user } = useAuthStore()
+  const canVoid = ['admin', 'manager'].includes(user?.role)
 
   const [products,         setProducts]         = useState([])   // ড্রপডাউনের জন্য সব সক্রিয় পণ্য
   const [supplierProducts, setSupplierProducts] = useState([])   // এই সাপ্লায়ারের বিদ্যমান দাম-ম্যাপিং
@@ -72,6 +76,17 @@ export default function SupplierDetailModal({ supplierId, isOpen, onClose, onEdi
       const res = await api.get(`/suppliers/${supplierId}/payments?limit=10`)
       setPayments(res.data.data)
     } catch { /* পেমেন্ট হিস্ট্রি না এলেও বাকি ডিটেইল ভিউ কাজ করবে — silent fail */ }
+  }
+
+  const handleVoidPayment = async (p) => {
+    const reason = window.prompt(`৳${parseFloat(p.amount).toLocaleString()} পেমেন্ট বাতিলের কারণ লিখুন:`)
+    if (reason === null) return
+    if (reason.trim().length < 3) { toast.error('কারণ লিখুন (কমপক্ষে ৩ অক্ষর)।'); return }
+    try {
+      const res = await api.post(`/suppliers/payments/${p.id}/void`, { reason: reason.trim() })
+      toast.success(res.data.message || 'পেমেন্ট বাতিল হয়েছে।')
+      fetchSupplier(); fetchPayments()
+    } catch (err) { toast.error(err.response?.data?.message || 'বাতিলে সমস্যা হয়েছে।') }
   }
 
   const fetchProducts = async () => {
@@ -146,6 +161,7 @@ export default function SupplierDetailModal({ supplierId, isOpen, onClose, onEdi
   const totalPurchased = parseFloat(supplier?.total_purchased || 0)
   const avgOrderValue  = completedCount > 0 ? totalPurchased / completedCount : 0
   const totalPayable   = Math.max(0, parseFloat(supplier?.total_payable || 0))
+  const payCap         = Math.max(0, parseFloat(supplier?.payment_cap || 0))
 
   // ট্রেড লাইসেন্স মেয়াদ — উত্তীর্ণ/শীঘ্রই-উত্তীর্ণ হলে সতর্কতা চিহ্ন
   let licenseBadge = null
@@ -193,7 +209,7 @@ export default function SupplierDetailModal({ supplierId, isOpen, onClose, onEdi
                 {totalPayable > 0 ? fmtMoney(totalPayable) : 'কোনো বকেয়া নেই'}
               </p>
             </div>
-            {totalPayable > 0 && (
+            {(totalPayable > 0 || payCap > 0) && (
               <Button icon={<FiDollarSign />} onClick={() => onPay(supplier)}>পেমেন্ট করুন</Button>
             )}
           </div>
@@ -307,15 +323,25 @@ export default function SupplierDetailModal({ supplierId, isOpen, onClose, onEdi
             <section className="pt-3 border-t border-gray-100 dark:border-slate-700 space-y-1.5">
               <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">পেমেন্ট হিস্ট্রি</p>
               {payments.map(p => (
-                <div key={p.id} className="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-gray-100 dark:border-slate-700">
-                  <div>
+                <div key={p.id} className={`flex items-center justify-between gap-2 p-2.5 rounded-xl border border-gray-100 dark:border-slate-700 ${p.voided_at ? 'opacity-60' : ''}`}>
+                  <div className="min-w-0">
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
                       {PAYMENT_METHOD_LABELS[p.payment_method] || p.payment_method}
                       {p.reference_no && <span className="text-gray-400 font-normal"> — {p.reference_no}</span>}
+                      {p.voided_at && <span className="ml-1.5 text-[10px] font-semibold text-red-500">বাতিল</span>}
                     </p>
-                    <p className="text-xs text-gray-400">{fmtDate(p.created_at)}{p.recorded_by_name ? ` · ${p.recorded_by_name}` : ''}</p>
+                    <p className="text-xs text-gray-400">
+                      {fmtDate(p.created_at)}{p.recorded_by_name ? ` · ${p.recorded_by_name}` : ''}
+                      {p.po_numbers ? ` · ${p.po_numbers}` : ''}
+                    </p>
+                    {p.voided_at && p.void_reason && <p className="text-[11px] text-red-400">কারণ: {p.void_reason}</p>}
                   </div>
-                  <span className="text-sm font-semibold text-green-600 dark:text-green-400 flex-shrink-0">{fmtMoney(p.amount)}</span>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className={`text-sm font-semibold ${p.voided_at ? 'line-through text-gray-400' : 'text-green-600 dark:text-green-400'}`}>{fmtMoney(p.amount)}</span>
+                    {canVoid && !p.voided_at && (
+                      <button onClick={() => handleVoidPayment(p)} className="text-[11px] text-red-500 border border-red-200 dark:border-red-900 rounded-lg px-2 py-0.5">বাতিল</button>
+                    )}
+                  </div>
                 </div>
               ))}
             </section>

@@ -76,11 +76,15 @@ const buildAlerts = ({ totals, receivable, suppliers }) => {
 const loadPayables = async (tenant, today) => {
     const [sup, pos, pay] = await Promise.all([
         query(`SELECT id, name, payment_terms, is_active FROM suppliers WHERE tenant_id = $1`, [tenant]),
-        query(`SELECT id, supplier_id, po_number, to_char(order_date,'YYYY-MM-DD') AS date, total_amount AS amount FROM purchase_orders
-                WHERE tenant_id = $1 AND status IN ('ordered','partial','received') AND supplier_id IS NOT NULL`, [tenant]),
+        // amount = গৃহীত মালের মূল্য (মাল আসার আগে শুধু অর্ডার করা PO বকেয়া নয়)
+        query(`SELECT po.id, po.supplier_id, po.po_number, to_char(po.order_date,'YYYY-MM-DD') AS date,
+                      COALESCE((SELECT SUM(poi.quantity_received * poi.unit_cost) FROM purchase_order_items poi
+                                 WHERE poi.purchase_order_id = po.id), 0) AS amount
+                 FROM purchase_orders po
+                WHERE po.tenant_id = $1 AND po.status IN ('ordered','partial','received') AND po.supplier_id IS NOT NULL`, [tenant]),
         query(`SELECT supplier_id, COALESCE(SUM(amount),0) AS paid,
                       COALESCE(SUM(amount) FILTER (WHERE created_at >= (($2::date - 30) AT TIME ZONE 'Asia/Dhaka')),0) AS paid_30d
-                 FROM supplier_payments WHERE tenant_id = $1 GROUP BY supplier_id`, [tenant, today]),
+                 FROM supplier_payments WHERE tenant_id = $1 AND voided_at IS NULL GROUP BY supplier_id`, [tenant, today]),
     ]);
     const posBy = new Map(), payBy = new Map(pay.rows.map(r => [r.supplier_id, r]));
     pos.rows.forEach(p => { if (!posBy.has(p.supplier_id)) posBy.set(p.supplier_id, []); posBy.get(p.supplier_id).push(p); });

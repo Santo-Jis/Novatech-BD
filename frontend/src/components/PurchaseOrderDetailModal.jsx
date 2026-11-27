@@ -314,7 +314,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
               </div>
               <div className="grid grid-cols-3 gap-2 text-center">
                 <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg py-2">
-                  <p className="text-[11px] text-gray-400">মোট</p>
+                  <p className="text-[11px] text-gray-400">মোট অর্ডার</p>
                   <p className="text-sm font-bold text-gray-800 dark:text-gray-100">৳{payInfo.total_amount.toLocaleString()}</p>
                 </div>
                 <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg py-2">
@@ -328,6 +328,10 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
                   </p>
                 </div>
               </div>
+              <p className="text-[11px] text-gray-400">
+                গৃহীত মালের মূল্য ৳{payInfo.received_amount.toLocaleString()}
+                {payInfo.advance_amount > 0 && ` · অগ্রিম দেওয়া ৳${payInfo.advance_amount.toLocaleString()} (মাল আসার অপেক্ষায়)`}
+              </p>
               {payInfo.payments.length > 0 && (
                 <div className="divide-y divide-gray-100 dark:divide-slate-700 text-xs">
                   {payInfo.payments.map(pm => (
@@ -492,6 +496,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
         purchaseOrderId={poId}
         poNumber={po?.po_number}
         currentPayable={payInfo?.due_amount}
+        maxAmount={payInfo?.pay_limit}
         onClose={() => setShowPay(false)}
         onPaid={() => { fetchPayInfo(); onChanged?.() }}
       />

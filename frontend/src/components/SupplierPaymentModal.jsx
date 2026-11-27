@@ -32,7 +32,7 @@ const EMPTY_FORM = { amount: '', payment_method: 'cash', reference_no: '', notes
 
 // purchaseOrderId দিলে পেমেন্ট ওই PO-তে বরাদ্দ হয় (POST /purchase-orders/:id/pay);
 // তখন currentPayable = ওই PO-র বাকি। না দিলে আগের মতো সাপ্লায়ার-লেভেল (FIFO বরাদ্দ)।
-export default function SupplierPaymentModal({ isOpen, supplierId, supplierName, currentPayable, purchaseOrderId, poNumber, onClose, onPaid }) {
+export default function SupplierPaymentModal({ isOpen, supplierId, supplierName, currentPayable, maxAmount, purchaseOrderId, poNumber, onClose, onPaid }) {
   const [form,    setForm]    = useState(EMPTY_FORM)
   const [saving,  setSaving]  = useState(false)
   const [idemKey, setIdemKey] = useState(null)
@@ -47,12 +47,14 @@ export default function SupplierPaymentModal({ isOpen, supplierId, supplierName,
     }
   }, [isOpen])
 
-  const payable = parseFloat(currentPayable || 0)
+  const payable = Math.max(0, parseFloat(currentPayable || 0))
+  // maxAmount = অর্ডার মূল্য পর্যন্ত সর্বোচ্চ (অগ্রিম সহ); না দিলে বকেয়াই সীমা
+  const limit   = maxAmount != null ? Math.max(0, parseFloat(maxAmount)) : payable
 
   const handleSave = async () => {
     const amount = parseFloat(form.amount)
     if (!amount || amount <= 0) { toast.error('সঠিক পরিমাণ দিন।'); return }
-    if (amount > payable + 1) { toast.error(`${purchaseOrderId ? 'PO-র বাকি' : 'বকেয়া'} ৳${payable.toLocaleString()} এর বেশি পেমেন্ট করা যাবে না।`); return }
+    if (amount > limit + 1) { toast.error(`সর্বোচ্চ ৳${limit.toLocaleString()} পেমেন্ট করা যাবে।`); return }
 
     setSaving(true)
     try {
@@ -88,9 +90,15 @@ export default function SupplierPaymentModal({ isOpen, supplierId, supplierName,
     >
       <div className="space-y-4">
         <div className="bg-gray-50 dark:bg-slate-700/50 rounded-xl px-3 py-2.5 flex items-center justify-between">
-          <span className="text-xs text-gray-400">{purchaseOrderId ? 'এই PO-র বাকি' : 'বর্তমান বকেয়া'}</span>
+          <span className="text-xs text-gray-400">{purchaseOrderId ? 'এই PO-র এখন দেয় (গৃহীত মালের)' : 'বর্তমান বকেয়া (গৃহীত মালের)'}</span>
           <span className="text-base font-bold text-gray-800 dark:text-gray-100">৳{payable.toLocaleString()}</span>
         </div>
+
+        {limit > payable + 1 && (
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 -mt-2">
+            মাল আসার আগে অগ্রিম দেওয়া যাবে — সর্বোচ্চ ৳{limit.toLocaleString()} (অর্ডার মূল্য পর্যন্ত)।
+          </p>
+        )}
 
         <Input
           label="পরিমাণ (৳) *"
