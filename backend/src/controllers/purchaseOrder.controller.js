@@ -62,7 +62,8 @@ const getPurchaseOrders = async (req, res) => {
 
         const result = await query(
             `SELECT po.*, s.name AS supplier_name, w.name AS warehouse_name,
-                    (SELECT COUNT(*) FROM purchase_order_items poi WHERE poi.purchase_order_id = po.id) AS item_count
+                    (SELECT COUNT(*) FROM purchase_order_items poi WHERE poi.purchase_order_id = po.id) AS item_count,
+                    COALESCE((SELECT SUM(a.amount) FROM supplier_payment_allocations a WHERE a.purchase_order_id = po.id), 0) AS paid_amount
              FROM purchase_orders po
              JOIN suppliers s ON s.id = po.supplier_id
              LEFT JOIN warehouses w ON w.id = po.warehouse_id

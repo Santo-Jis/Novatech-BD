@@ -22,6 +22,8 @@ const {
     applyLandedCost
 } = require('../controllers/purchaseOrderCost.controller');
 
+const { getPurchaseOrderPayments, payPurchaseOrder } = require('../controllers/supplierPayment.controller');
+
 // ============================================================
 // PURCHASE ORDER ROUTES
 // Base: /api/purchase-orders
@@ -45,5 +47,9 @@ router.post('/:id/costs',             auth, allowRoles('admin', 'manager'), addC
 router.delete('/:id/costs/:costId',   auth, allowRoles('admin', 'manager'), deleteCost);
 router.put('/:id/allocation-method',  auth, allowRoles('admin', 'manager'), updateAllocationMethod);
 router.post('/:id/apply-landed-cost', auth, allowRoles('admin', 'manager'), applyLandedCost);
+
+// PO-ভিত্তিক পেমেন্ট — মোট/পেইড/বাকি ও হিস্ট্রি, এবং সরাসরি পেমেন্ট
+router.get('/:id/payments', auth, allowRoles('admin', 'manager', 'accountant'), getPurchaseOrderPayments);
+router.post('/:id/pay',     auth, allowRoles('admin', 'manager', 'accountant'), payPurchaseOrder);
 
 module.exports = router;

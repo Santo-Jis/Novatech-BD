@@ -216,6 +216,12 @@ export default function AdminPurchaseOrders() {
         <div>
           <p className="font-semibold text-secondary">৳{parseFloat(row.total_amount).toLocaleString()}</p>
           <p className="text-xs text-gray-400">{row.item_count} আইটেম</p>
+          {['ordered', 'partial', 'received'].includes(row.status) && (() => {
+            const due = Math.max(0, parseFloat(row.total_amount) - parseFloat(row.paid_amount || 0))
+            return due > 0
+              ? <p className="text-xs text-red-500">বাকি ৳{due.toLocaleString()}</p>
+              : <p className="text-xs text-emerald-600">পরিশোধিত ✓</p>
+          })()}
         </div>
       )
     },

@@ -7,6 +7,7 @@ import api from '../api/axios'
 import Modal from './ui/Modal'
 import Button from './ui/Button'
 import Badge from './ui/Badge'
+import SupplierPaymentModal from './SupplierPaymentModal'
 import { Textarea, Select } from './ui/Input'
 import toast from 'react-hot-toast'
 import { FiTruck, FiPackage, FiCheckCircle, FiXCircle, FiDollarSign, FiX, FiPlus, FiRefreshCw } from 'react-icons/fi'
@@ -38,6 +39,10 @@ const ALLOCATION_OPTIONS = [
   { value: 'equal',    label: 'সমান ভাগে' },
 ]
 
+const PAY_METHOD_LABELS = {
+  cash: 'ক্যাশ', bank_transfer: 'ব্যাংক', cheque: 'চেক', bkash: 'বিকাশ', nagad: 'নগদ', other: 'অন্যান্য',
+}
+
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('bn-BD', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'
 
 export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChanged }) {
@@ -47,6 +52,10 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
   // { item_id: { qty, batch_number, expiry_date } } — ব্যাচ/মেয়াদ ঐচ্ছিক (Step ৪)
   const [receiveRows, setReceiveRows] = useState({})
   const [receiveNote, setReceiveNote] = useState('')
+
+  // ── সাপ্লায়ার পেমেন্ট (মোট / পেইড / বাকি) ──
+  const [payInfo,  setPayInfo]  = useState(null)
+  const [showPay,  setShowPay]  = useState(false)
 
   // ── Landed Cost ──
   const [landedCost,    setLandedCost]    = useState(null)
@@ -68,6 +77,14 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
     finally { setLoading(false) }
   }
 
+  const fetchPayInfo = async () => {
+    if (!poId) return
+    try {
+      const res = await api.get(`/purchase-orders/${poId}/payments`)
+      setPayInfo(res.data.data)
+    } catch { /* silent — বাকি ডিটেইল ভিউ কাজ করবে */ }
+  }
+
   const fetchLandedCost = async () => {
     if (!poId) return
     setLoadingLanded(true)
@@ -79,8 +96,8 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
   }
 
   useEffect(() => {
-    if (isOpen && poId) { fetchPO(); fetchLandedCost(); setReceiveRows({}); setReceiveNote('') }
-    if (!isOpen) setLandedCost(null)
+    if (isOpen && poId) { fetchPO(); fetchLandedCost(); fetchPayInfo(); setReceiveRows({}); setReceiveNote('') }
+    if (!isOpen) { setLandedCost(null); setPayInfo(null) }
   }, [isOpen, poId])
 
   const handlePlaceOrder = async () => {
@@ -88,7 +105,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
     try {
       await api.post(`/purchase-orders/${poId}/place-order`)
       toast.success('সাপ্লায়ারকে অর্ডার করা হয়েছে।')
-      fetchPO(); onChanged?.()
+      fetchPO(); fetchPayInfo(); onChanged?.()
     } catch (err) { toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।') }
     finally { setBusy(false) }
   }
@@ -99,7 +116,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
     try {
       await api.post(`/purchase-orders/${poId}/cancel`)
       toast.success('বাতিল করা হয়েছে।')
-      fetchPO(); onChanged?.()
+      fetchPO(); fetchPayInfo(); onChanged?.()
     } catch (err) { toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।') }
     finally { setBusy(false) }
   }
@@ -283,6 +300,50 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
               </tbody>
             </table>
           </div>
+
+          {/* সাপ্লায়ার পেমেন্ট — মোট / পেইড / বাকি */}
+          {payInfo && po.status !== 'draft' && po.status !== 'cancelled' && (
+            <section className="border border-gray-100 dark:border-slate-700 rounded-xl p-3 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
+                  <FiDollarSign /> সাপ্লায়ার পেমেন্ট
+                </p>
+                {payInfo.can_pay && (
+                  <Button size="sm" onClick={() => setShowPay(true)}>পেমেন্ট করুন</Button>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-gray-50 dark:bg-slate-700/50 rounded-lg py-2">
+                  <p className="text-[11px] text-gray-400">মোট</p>
+                  <p className="text-sm font-bold text-gray-800 dark:text-gray-100">৳{payInfo.total_amount.toLocaleString()}</p>
+                </div>
+                <div className="bg-emerald-50 dark:bg-emerald-900/20 rounded-lg py-2">
+                  <p className="text-[11px] text-emerald-600">পেইড</p>
+                  <p className="text-sm font-bold text-emerald-600">৳{payInfo.paid_amount.toLocaleString()}</p>
+                </div>
+                <div className={`${payInfo.due_amount > 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-emerald-50 dark:bg-emerald-900/20'} rounded-lg py-2`}>
+                  <p className={`text-[11px] ${payInfo.due_amount > 0 ? 'text-red-500' : 'text-emerald-600'}`}>বাকি</p>
+                  <p className={`text-sm font-bold ${payInfo.due_amount > 0 ? 'text-red-500' : 'text-emerald-600'}`}>
+                    {payInfo.due_amount > 0 ? `৳${payInfo.due_amount.toLocaleString()}` : 'পরিশোধিত'}
+                  </p>
+                </div>
+              </div>
+              {payInfo.payments.length > 0 && (
+                <div className="divide-y divide-gray-100 dark:divide-slate-700 text-xs">
+                  {payInfo.payments.map(pm => (
+                    <div key={pm.id} className="flex items-center justify-between py-1.5 gap-2">
+                      <div className="text-gray-500 dark:text-gray-400">
+                        <span>{fmtDate(pm.created_at)} · {PAY_METHOD_LABELS[pm.payment_method] || pm.payment_method}</span>
+                        {pm.reference_no && <span className="font-mono"> · {pm.reference_no}</span>}
+                      </div>
+                      <span className="font-semibold text-emerald-600 whitespace-nowrap">৳{parseFloat(pm.amount).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
           {canReceive && (
             <p className="text-xs text-gray-400 -mt-2">ব্যাচ নং/মেয়াদ ফাঁকা রাখলে সাধারণভাবে স্টক যোগ হবে (FEFO ট্র্যাকিং ছাড়া)।</p>
           )}
@@ -423,6 +484,17 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
           )}
         </div>
       )}
+
+      <SupplierPaymentModal
+        isOpen={showPay}
+        supplierId={po?.supplier_id}
+        supplierName={po?.supplier_name}
+        purchaseOrderId={poId}
+        poNumber={po?.po_number}
+        currentPayable={payInfo?.due_amount}
+        onClose={() => setShowPay(false)}
+        onPaid={() => { fetchPayInfo(); onChanged?.() }}
+      />
     </Modal>
   )
 }

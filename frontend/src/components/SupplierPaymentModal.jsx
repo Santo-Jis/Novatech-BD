@@ -30,7 +30,9 @@ const REFERENCE_LABEL = {
 
 const EMPTY_FORM = { amount: '', payment_method: 'cash', reference_no: '', notes: '' }
 
-export default function SupplierPaymentModal({ isOpen, supplierId, supplierName, currentPayable, onClose, onPaid }) {
+// purchaseOrderId দিলে পেমেন্ট ওই PO-তে বরাদ্দ হয় (POST /purchase-orders/:id/pay);
+// তখন currentPayable = ওই PO-র বাকি। না দিলে আগের মতো সাপ্লায়ার-লেভেল (FIFO বরাদ্দ)।
+export default function SupplierPaymentModal({ isOpen, supplierId, supplierName, currentPayable, purchaseOrderId, poNumber, onClose, onPaid }) {
   const [form,    setForm]    = useState(EMPTY_FORM)
   const [saving,  setSaving]  = useState(false)
   const [idemKey, setIdemKey] = useState(null)
@@ -50,11 +52,12 @@ export default function SupplierPaymentModal({ isOpen, supplierId, supplierName,
   const handleSave = async () => {
     const amount = parseFloat(form.amount)
     if (!amount || amount <= 0) { toast.error('সঠিক পরিমাণ দিন।'); return }
-    if (amount > payable + 1) { toast.error(`বকেয়া ৳${payable.toLocaleString()} এর বেশি পেমেন্ট করা যাবে না।`); return }
+    if (amount > payable + 1) { toast.error(`${purchaseOrderId ? 'PO-র বাকি' : 'বকেয়া'} ৳${payable.toLocaleString()} এর বেশি পেমেন্ট করা যাবে না।`); return }
 
     setSaving(true)
     try {
-      const res = await api.post(`/suppliers/${supplierId}/pay`, {
+      const url = purchaseOrderId ? `/purchase-orders/${purchaseOrderId}/pay` : `/suppliers/${supplierId}/pay`
+      const res = await api.post(url, {
         amount,
         payment_method:  form.payment_method,
         reference_no:    form.reference_no || null,
@@ -75,7 +78,7 @@ export default function SupplierPaymentModal({ isOpen, supplierId, supplierName,
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`💰 পেমেন্ট করুন — ${supplierName || ''}`}
+      title={`💰 পেমেন্ট করুন — ${supplierName || ''}${poNumber ? ' · ' + poNumber : ''}`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>বাতিল</Button>
@@ -85,7 +88,7 @@ export default function SupplierPaymentModal({ isOpen, supplierId, supplierName,
     >
       <div className="space-y-4">
         <div className="bg-gray-50 dark:bg-slate-700/50 rounded-xl px-3 py-2.5 flex items-center justify-between">
-          <span className="text-xs text-gray-400">বর্তমান বকেয়া</span>
+          <span className="text-xs text-gray-400">{purchaseOrderId ? 'এই PO-র বাকি' : 'বর্তমান বকেয়া'}</span>
           <span className="text-base font-bold text-gray-800 dark:text-gray-100">৳{payable.toLocaleString()}</span>
         </div>
 
