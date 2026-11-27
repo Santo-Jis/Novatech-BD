@@ -15,6 +15,7 @@ import Badge from './ui/Badge'
 import { Select } from './ui/Input'
 import { SUPPLIER_TYPE_CFG } from './SupplierFormModal'
 import { useAuthStore } from '../store/auth.store'
+import SupplierLedgerModal from './SupplierLedgerModal'
 import toast from 'react-hot-toast'
 import { FiEdit, FiPhone, FiMail, FiMapPin, FiTruck, FiDollarSign, FiX, FiPlus } from 'react-icons/fi'
 
@@ -51,6 +52,7 @@ export default function SupplierDetailModal({ supplierId, isOpen, onClose, onEdi
   const [supplier, setSupplier] = useState(null)
   const [loading,  setLoading]  = useState(false)
   const [payments, setPayments] = useState([])
+  const [showLedger, setShowLedger] = useState(false)
   const { user } = useAuthStore()
   const canVoid = ['admin', 'manager'].includes(user?.role)
 
@@ -176,6 +178,7 @@ export default function SupplierDetailModal({ supplierId, isOpen, onClose, onEdi
   const locationLabel   = supplier && [supplier.district_name, supplier.division_name].filter(Boolean).join(', ')
 
   return (
+    <>
     <Modal isOpen={isOpen} onClose={onClose} title={supplier ? supplier.name : 'সাপ্লায়ার বিস্তারিত'} size="lg">
       {loading || !supplier ? (
         <div className="space-y-3">
@@ -209,9 +212,12 @@ export default function SupplierDetailModal({ supplierId, isOpen, onClose, onEdi
                 {totalPayable > 0 ? fmtMoney(totalPayable) : 'কোনো বকেয়া নেই'}
               </p>
             </div>
-            {(totalPayable > 0 || payCap > 0) && (
-              <Button icon={<FiDollarSign />} onClick={() => onPay(supplier)}>পেমেন্ট করুন</Button>
-            )}
+            <div className="flex flex-col gap-2 items-end">
+              {(totalPayable > 0 || payCap > 0) && (
+                <Button icon={<FiDollarSign />} onClick={() => onPay(supplier)}>পেমেন্ট করুন</Button>
+              )}
+              <Button size="sm" variant="outline" onClick={() => setShowLedger(true)}>📒 লেজার স্টেটমেন্ট</Button>
+            </div>
           </div>
 
           {/* কুইক স্ট্যাটস */}
@@ -398,5 +404,14 @@ export default function SupplierDetailModal({ supplierId, isOpen, onClose, onEdi
         </div>
       )}
     </Modal>
+
+    {/* Modal-এর বাইরে (sibling) — ভেতরে বসালে animate-slide-up-এর transform fixed পজিশন ভাঙে */}
+    <SupplierLedgerModal
+      isOpen={showLedger}
+      supplierId={supplierId}
+      supplierName={supplier?.name}
+      onClose={() => setShowLedger(false)}
+    />
+    </>
   )
 }

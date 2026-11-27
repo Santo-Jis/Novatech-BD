@@ -226,6 +226,117 @@ const getSupplierPayments = async (req, res) => {
 };
 
 // ============================================================
+// SUPPLIER LEDGER STATEMENT (সাপ্লায়ার লেজার)
+// GET /api/suppliers/:id/ledger?from=YYYY-MM-DD&to=YYYY-MM-DD
+// দেনা (+) = গৃহীত মালের মূল্য (stock_movements-এর গ্রহণের তারিখে),
+// পরিশোধ (−) = সক্রিয় পেমেন্ট। ব্যালেন্স ধনাত্মক = আমরা দেব, ঋণাত্মক = অগ্রিম।
+// ============================================================
+const PAYMENT_LABELS = { cash: 'ক্যাশ', bank_transfer: 'ব্যাংক', cheque: 'চেক', bkash: 'বিকাশ', nagad: 'নগদ', other: 'অন্যান্য' };
+const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+const getSupplierLedger = async (req, res) => {
+    try {
+        const supplierId = req.params.id;
+        const sup = await query(
+            'SELECT id, name, phone FROM suppliers WHERE id = $1 AND tenant_id = $2',
+            [supplierId, req.tenantId]
+        );
+        if (sup.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'সাপ্লায়ার পাওয়া যায়নি।' });
+        }
+        const isDate = (v) => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+        const from = isDate(req.query.from) ? req.query.from : null;
+        const to   = isDate(req.query.to)   ? req.query.to   : null;
+
+        const [rec, pay, cur] = await Promise.all([
+            query(
+                `SELECT po.po_number, po.supplier_invoice_no,
+                        to_char((sm.created_at AT TIME ZONE 'Asia/Dhaka')::date, 'YYYY-MM-DD') AS d,
+                        MIN(sm.created_at) AS ts,
+                        SUM(sm.quantity * poi.unit_cost) AS amount
+                   FROM stock_movements sm
+                   JOIN purchase_orders po
+                     ON po.id = sm.reference_id AND po.tenant_id = $2 AND po.supplier_id = $1
+                    AND po.status IN ('ordered','partial','received')
+                   JOIN purchase_order_items poi
+                     ON poi.purchase_order_id = po.id AND poi.product_id = sm.product_id
+                  WHERE sm.reference_type = 'purchase' AND sm.movement_type = 'in' AND sm.tenant_id = $2
+                  GROUP BY po.id, po.po_number, po.supplier_invoice_no, d`,
+                [supplierId, req.tenantId]
+            ),
+            query(
+                `SELECT sp.id, sp.amount, sp.payment_method, sp.reference_no, sp.created_at AS ts,
+                        to_char((sp.created_at AT TIME ZONE 'Asia/Dhaka')::date, 'YYYY-MM-DD') AS d,
+                        (SELECT STRING_AGG(po.po_number, ', ' ORDER BY po.po_number)
+                           FROM supplier_payment_allocations a
+                           JOIN purchase_orders po ON po.id = a.purchase_order_id
+                          WHERE a.payment_id = sp.id) AS po_numbers
+                   FROM supplier_payments sp
+                  WHERE sp.supplier_id = $1 AND sp.tenant_id = $2 AND sp.voided_at IS NULL`,
+                [supplierId, req.tenantId]
+            ),
+            query(`SELECT ${PAYABLE_SQL} AS payable`, [supplierId]),
+        ]);
+
+        const entries = [];
+        rec.rows.forEach(r => entries.push({
+            date: r.d, ts: r.ts, rank: 0, type: 'receipt', ref: r.po_number,
+            description: `মাল গ্রহণ${r.supplier_invoice_no ? ` · চালান ${r.supplier_invoice_no}` : ''}`,
+            debit: round2(parseFloat(r.amount)), credit: 0
+        }));
+        pay.rows.forEach(r => entries.push({
+            date: r.d, ts: r.ts, rank: 2, type: 'payment', ref: r.po_numbers || '',
+            description: `পেমেন্ট · ${PAYMENT_LABELS[r.payment_method] || r.payment_method}${r.reference_no ? ` · ${r.reference_no}` : ''}`,
+            debit: 0, credit: round2(parseFloat(r.amount))
+        }));
+
+        // গ্রহণের লগ ও আসল বকেয়ার ফর্মুলার মধ্যে ফারাক থাকলে (পুরনো/ম্যানুয়াল ডেটা) আলাদা সমন্বয় লাইন
+        const computed = entries.reduce((a, e) => a + e.debit - e.credit, 0);
+        const diff = round2(parseFloat(cur.rows[0].payable) - computed);
+        if (Math.abs(diff) > 0.5) {
+            const today = new Date(Date.now() + 6 * 3600 * 1000).toISOString().slice(0, 10);
+            entries.push({
+                date: today, ts: new Date(), rank: 1, type: 'adjustment', ref: '',
+                description: 'অন্যান্য সমন্বয় (স্টক লগে নেই এমন গ্রহণ/পুরনো ডেটা)',
+                debit: diff > 0 ? diff : 0, credit: diff < 0 ? -diff : 0
+            });
+        }
+
+        entries.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : (a.rank - b.rank) || (new Date(a.ts) - new Date(b.ts))));
+
+        let opening = 0;
+        const inRange = [];
+        for (const e of entries) {
+            if (from && e.date < from) { opening += e.debit - e.credit; continue; }
+            if (to && e.date > to) continue;
+            inRange.push(e);
+        }
+        let bal = round2(opening);
+        const rows = inRange.map(e => {
+            bal = round2(bal + e.debit - e.credit);
+            return { date: e.date, type: e.type, ref: e.ref, description: e.description, debit: e.debit, credit: e.credit, balance: bal };
+        });
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                supplier: sup.rows[0],
+                from, to,
+                opening_balance: round2(opening),
+                total_debit:  round2(rows.reduce((a, r) => a + r.debit, 0)),
+                total_credit: round2(rows.reduce((a, r) => a + r.credit, 0)),
+                closing_balance: bal,
+                current_payable: round2(parseFloat(cur.rows[0].payable)),
+                entries: rows
+            }
+        });
+    } catch (error) {
+        logger.error('❌ Supplier Ledger Error:', error.message);
+        return res.status(500).json({ success: false, message: 'লেজার আনতে সমস্যা হয়েছে।' });
+    }
+};
+
+// ============================================================
 // VOID SUPPLIER PAYMENT (ভুল পেমেন্ট বাতিল)
 // POST /api/suppliers/payments/:paymentId/void   body: { reason }
 // রেকর্ড থাকে (audit), বকেয়ার হিসাব ও PO-বরাদ্দ থেকে বাদ যায়।
@@ -352,4 +463,4 @@ const payPurchaseOrder = async (req, res) => {
     }
 };
 
-module.exports = { paySupplier, getSupplierPayments, getPurchaseOrderPayments, payPurchaseOrder, voidSupplierPayment };
+module.exports = { paySupplier, getSupplierPayments, getPurchaseOrderPayments, payPurchaseOrder, voidSupplierPayment, getSupplierLedger };

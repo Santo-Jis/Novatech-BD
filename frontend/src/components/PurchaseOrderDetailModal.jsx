@@ -8,7 +8,7 @@ import Modal from './ui/Modal'
 import Button from './ui/Button'
 import Badge from './ui/Badge'
 import SupplierPaymentModal from './SupplierPaymentModal'
-import { Textarea, Select } from './ui/Input'
+import Input, { Textarea, Select } from './ui/Input'
 import toast from 'react-hot-toast'
 import { FiTruck, FiPackage, FiCheckCircle, FiXCircle, FiDollarSign, FiX, FiPlus, FiRefreshCw } from 'react-icons/fi'
 
@@ -56,6 +56,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
   // ── সাপ্লায়ার পেমেন্ট (মোট / পেইড / বাকি) ──
   const [payInfo,  setPayInfo]  = useState(null)
   const [showPay,  setShowPay]  = useState(false)
+  const [invoiceNo, setInvoiceNo] = useState('')
 
   // ── Landed Cost ──
   const [landedCost,    setLandedCost]    = useState(null)
@@ -96,7 +97,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
   }
 
   useEffect(() => {
-    if (isOpen && poId) { fetchPO(); fetchLandedCost(); fetchPayInfo(); setReceiveRows({}); setReceiveNote('') }
+    if (isOpen && poId) { fetchPO(); fetchLandedCost(); fetchPayInfo(); setReceiveRows({}); setReceiveNote(''); setInvoiceNo('') }
     if (!isOpen) { setLandedCost(null); setPayInfo(null) }
   }, [isOpen, poId])
 
@@ -136,7 +137,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
 
     setBusy(true)
     try {
-      const res = await api.post(`/purchase-orders/${poId}/receive`, { items, note: receiveNote })
+      const res = await api.post(`/purchase-orders/${poId}/receive`, { items, note: receiveNote, supplier_invoice_no: invoiceNo.trim() || undefined })
       toast.success(res.data.message)
       setReceiveRows({}); setReceiveNote('')
       fetchPO(); onChanged?.()
@@ -189,6 +190,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
   const canApplyLanded = po && ['partial', 'received'].includes(po.status)
 
   return (
+    <>
     <Modal isOpen={isOpen} onClose={onClose} title={po ? `📦 ${po.po_number}` : 'Purchase Order'} size="lg">
       {loading || !po ? (
         <div className="space-y-3">
@@ -208,6 +210,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
                   অর্ডার: {fmtDate(po.order_date)} {po.expected_date && `· প্রত্যাশিত: ${fmtDate(po.expected_date)}`}
                   {po.warehouse_name && ` · গুদাম: ${po.warehouse_name}`}
                   {po.currency !== 'BDT' && ` · ${po.currency} @ ৳${parseFloat(po.exchange_rate).toLocaleString()}`}
+                  {po.supplier_invoice_no && ` · চালান: ${po.supplier_invoice_no}`}
                 </p>
               </div>
             </div>
@@ -463,6 +466,16 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
           </section>
 
           {canReceive && (
+            <Input
+              label="সাপ্লায়ারের চালান / ইনভয়েস নং (ঐচ্ছিক)"
+              placeholder="যেমন: INV-10452"
+              value={invoiceNo}
+              onChange={e => setInvoiceNo(e.target.value)}
+              maxLength={100}
+            />
+          )}
+
+          {canReceive && (
             <Textarea
               label="গ্রহণের নোট (ঐচ্ছিক)"
               placeholder="যেমন: চালান নং, বাহক ইত্যাদি"
@@ -489,17 +502,19 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
         </div>
       )}
 
-      <SupplierPaymentModal
-        isOpen={showPay}
-        supplierId={po?.supplier_id}
-        supplierName={po?.supplier_name}
-        purchaseOrderId={poId}
-        poNumber={po?.po_number}
-        currentPayable={payInfo?.due_amount}
-        maxAmount={payInfo?.pay_limit}
-        onClose={() => setShowPay(false)}
-        onPaid={() => { fetchPayInfo(); onChanged?.() }}
-      />
     </Modal>
+
+    <SupplierPaymentModal
+      isOpen={showPay}
+      supplierId={po?.supplier_id}
+      supplierName={po?.supplier_name}
+      purchaseOrderId={poId}
+      poNumber={po?.po_number}
+      currentPayable={payInfo?.due_amount}
+      maxAmount={payInfo?.pay_limit}
+      onClose={() => setShowPay(false)}
+      onPaid={() => { fetchPayInfo(); onChanged?.() }}
+      />
+    </>
   )
 }

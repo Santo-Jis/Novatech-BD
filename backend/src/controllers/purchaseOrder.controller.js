@@ -53,7 +53,7 @@ const getPurchaseOrders = async (req, res) => {
         }
         if (search) {
             paramCount++;
-            conditions.push(`(po.po_number ILIKE $${paramCount} OR s.name ILIKE $${paramCount})`);
+            conditions.push(`(po.po_number ILIKE $${paramCount} OR s.name ILIKE $${paramCount} OR po.supplier_invoice_no ILIKE $${paramCount})`);
             params.push(`%${search}%`);
         }
 
@@ -433,6 +433,7 @@ const placeOrder = async (req, res) => {
 const receivePurchaseOrder = async (req, res) => {
     try {
         const { note, items } = req.body;
+        const supplierInvoiceNo = (req.body.supplier_invoice_no || '').toString().trim().slice(0, 100) || null;
 
         if (!Array.isArray(items) || items.length === 0) {
             return res.status(400).json({ success: false, message: 'কী পরিমাণ মাল এসেছে তা উল্লেখ করুন।' });
@@ -569,8 +570,10 @@ const receivePurchaseOrder = async (req, res) => {
             const newStatus     = fullyReceived ? 'received' : (anyReceived ? 'partial' : po.status);
 
             const poUpdate = await client.query(
-                `UPDATE purchase_orders SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
-                [newStatus, req.params.id]
+                `UPDATE purchase_orders
+                    SET status = $1, supplier_invoice_no = COALESCE($3, supplier_invoice_no), updated_at = NOW()
+                  WHERE id = $2 RETURNING *`,
+                [newStatus, req.params.id, supplierInvoiceNo]
             );
             return poUpdate.rows[0];
         });
