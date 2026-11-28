@@ -14,13 +14,16 @@
 const logger = require('../config/logger');
 const { query, withTransaction } = require('../config/db');
 
-// বকেয়া = গৃহীত মালের মূল্য (quantity_received × unit_cost) − সক্রিয় (বাতিল নয়) পেমেন্ট।
+// বকেয়া = গৃহীত মালের মূল্য (quantity_received × unit_cost) − সাপ্লায়ারকে মাল ফেরত − সক্রিয় (বাতিল নয়) পেমেন্ট।
 // মাল আসার আগে শুধু "অর্ডার করা" PO বকেয়া হয় না।
 const PAYABLE_SQL = `
     COALESCE((SELECT SUM(poi.quantity_received * poi.unit_cost)
                 FROM purchase_order_items poi
                 JOIN purchase_orders po ON po.id = poi.purchase_order_id
                WHERE po.supplier_id = $1 AND po.status IN ('ordered','partial','received')), 0)
+  - COALESCE((SELECT SUM(pr.total_amount) FROM purchase_returns pr
+                JOIN purchase_orders po ON po.id = pr.purchase_order_id
+               WHERE pr.supplier_id = $1 AND po.status IN ('ordered','partial','received')), 0)
   - COALESCE((SELECT SUM(sp.amount) FROM supplier_payments sp
                WHERE sp.supplier_id = $1 AND sp.voided_at IS NULL), 0)
 `;
@@ -29,6 +32,9 @@ const PAYABLE_SQL = `
 const PAY_CAP_SQL = `
     COALESCE((SELECT SUM(po.total_amount) FROM purchase_orders po
                WHERE po.supplier_id = $1 AND po.status IN ('ordered','partial','received')), 0)
+  - COALESCE((SELECT SUM(pr.total_amount) FROM purchase_returns pr
+                JOIN purchase_orders po ON po.id = pr.purchase_order_id
+               WHERE pr.supplier_id = $1 AND po.status IN ('ordered','partial','received')), 0)
   - COALESCE((SELECT SUM(sp.amount) FROM supplier_payments sp
                WHERE sp.supplier_id = $1 AND sp.voided_at IS NULL), 0)
 `;
@@ -36,13 +42,15 @@ const PAY_CAP_SQL = `
 // PO-র বাকি = total_amount − SUM(allocations)
 const PO_PAID_SQL = `COALESCE((SELECT SUM(a.amount) FROM supplier_payment_allocations a WHERE a.purchase_order_id = po.id), 0)`;
 const COUNTED_STATUS = `('ordered','partial','received')`;
+// এই PO থেকে সাপ্লায়ারকে ফেরত দেওয়া মালের মূল্য
+const PO_RET_SQL = `COALESCE((SELECT SUM(pr.total_amount) FROM purchase_returns pr WHERE pr.purchase_order_id = po.id), 0)`;
 
 // পেমেন্ট বরাদ্দ: নির্দিষ্ট PO দিলে সেখানে, না দিলে পুরনো PO থেকে শুরু করে (FIFO)।
 // অবশ্যই withTransaction-এর ভেতরে, সাপ্লায়ার row-lock নেওয়ার পরে কল করতে হবে।
 const allocatePayment = async (client, { tenantId, supplierId, paymentId, amount, purchaseOrderId }) => {
     let left = amount;
     const pos = await client.query(
-        `SELECT po.id, po.total_amount, ${PO_PAID_SQL} AS paid
+        `SELECT po.id, po.total_amount, ${PO_PAID_SQL} AS paid, ${PO_RET_SQL} AS returned
          FROM purchase_orders po
          WHERE po.supplier_id = $1 AND po.tenant_id = $2 AND po.status IN ${COUNTED_STATUS}
            ${purchaseOrderId ? 'AND po.id = $3' : ''}
@@ -51,7 +59,7 @@ const allocatePayment = async (client, { tenantId, supplierId, paymentId, amount
     );
     for (const po of pos.rows) {
         if (left <= 0) break;
-        const due = parseFloat(po.total_amount) - parseFloat(po.paid);
+        const due = parseFloat(po.total_amount) - parseFloat(po.returned) - parseFloat(po.paid);
         if (due <= 0) continue;
         const take = Math.min(left, due);
         await client.query(
@@ -130,7 +138,7 @@ const paySupplier = async (req, res) => {
             // নির্দিষ্ট PO-র জন্য পেমেন্ট হলে তার বাকির বেশি দেওয়া যাবে না
             if (purchase_order_id) {
                 const poRes = await client.query(
-                    `SELECT po.po_number, po.total_amount, ${PO_PAID_SQL} AS paid
+                    `SELECT po.po_number, po.total_amount, ${PO_PAID_SQL} AS paid, ${PO_RET_SQL} AS returned
                      FROM purchase_orders po
                      WHERE po.id = $1 AND po.supplier_id = $2 AND po.tenant_id = $3
                        AND po.status IN ${COUNTED_STATUS}`,
@@ -141,7 +149,7 @@ const paySupplier = async (req, res) => {
                     err.statusCode = 400;
                     throw err;
                 }
-                const poDue = parseFloat(poRes.rows[0].total_amount) - parseFloat(poRes.rows[0].paid);
+                const poDue = parseFloat(poRes.rows[0].total_amount) - parseFloat(poRes.rows[0].returned) - parseFloat(poRes.rows[0].paid);
                 if (parsedAmount > poDue + 1) {
                     const err = new Error(`${poRes.rows[0].po_number}-এর বাকি ৳${poDue.toLocaleString()} এর বেশি পেমেন্ট করা যাবে না।`);
                     err.statusCode = 400;
@@ -248,7 +256,7 @@ const getSupplierLedger = async (req, res) => {
         const from = isDate(req.query.from) ? req.query.from : null;
         const to   = isDate(req.query.to)   ? req.query.to   : null;
 
-        const [rec, pay, cur] = await Promise.all([
+        const [rec, pay, cur, rets] = await Promise.all([
             query(
                 `SELECT po.po_number, po.supplier_invoice_no,
                         to_char((sm.created_at AT TIME ZONE 'Asia/Dhaka')::date, 'YYYY-MM-DD') AS d,
@@ -276,6 +284,15 @@ const getSupplierLedger = async (req, res) => {
                 [supplierId, req.tenantId]
             ),
             query(`SELECT ${PAYABLE_SQL} AS payable`, [supplierId]),
+            query(
+                `SELECT pr.return_number, pr.total_amount, pr.reason, pr.created_at AS ts, po.po_number,
+                        to_char((pr.created_at AT TIME ZONE 'Asia/Dhaka')::date, 'YYYY-MM-DD') AS d
+                   FROM purchase_returns pr
+                   JOIN purchase_orders po ON po.id = pr.purchase_order_id
+                  WHERE pr.supplier_id = $1 AND pr.tenant_id = $2
+                    AND po.status IN ('ordered','partial','received')`,
+                [supplierId, req.tenantId]
+            ),
         ]);
 
         const entries = [];
@@ -288,6 +305,12 @@ const getSupplierLedger = async (req, res) => {
             date: r.d, ts: r.ts, rank: 2, type: 'payment', ref: r.po_numbers || '',
             description: `পেমেন্ট · ${PAYMENT_LABELS[r.payment_method] || r.payment_method}${r.reference_no ? ` · ${r.reference_no}` : ''}`,
             debit: 0, credit: round2(parseFloat(r.amount))
+        }));
+
+        rets.rows.forEach(r => entries.push({
+            date: r.d, ts: r.ts, rank: 1, type: 'return', ref: `${r.return_number} · ${r.po_number}`,
+            description: `মাল ফেরত · ${r.reason}`,
+            debit: 0, credit: round2(parseFloat(r.total_amount))
         }));
 
         // গ্রহণের লগ ও আসল বকেয়ার ফর্মুলার মধ্যে ফারাক থাকলে (পুরনো/ম্যানুয়াল ডেটা) আলাদা সমন্বয় লাইন
@@ -394,7 +417,8 @@ const getPurchaseOrderPayments = async (req, res) => {
         const poRes = await query(
             `SELECT po.id, po.po_number, po.status, po.supplier_id, po.total_amount, ${PO_PAID_SQL} AS paid_amount,
                     COALESCE((SELECT SUM(poi.quantity_received * poi.unit_cost)
-                                FROM purchase_order_items poi WHERE poi.purchase_order_id = po.id), 0) AS received_amount
+                                FROM purchase_order_items poi WHERE poi.purchase_order_id = po.id), 0) AS received_amount,
+                    ${PO_RET_SQL} AS returned_amount
              FROM purchase_orders po
              WHERE po.id = $1 AND po.tenant_id = $2`,
             [req.params.id, req.tenantId]
@@ -417,9 +441,10 @@ const getPurchaseOrderPayments = async (req, res) => {
 
         const total    = parseFloat(po.total_amount);
         const paid     = parseFloat(po.paid_amount);
-        const received = parseFloat(po.received_amount);
+        const returned = parseFloat(po.returned_amount);
+        const received = parseFloat(po.received_amount) - returned;   // ফেরত বাদে গৃহীত মূল্য
         const payable  = ['ordered','partial','received'].includes(po.status);
-        const payLimit = payable ? Math.max(0, total - paid) : 0;
+        const payLimit = payable ? Math.max(0, total - returned - paid) : 0;
         return res.status(200).json({
             success: true,
             data: {
@@ -427,7 +452,8 @@ const getPurchaseOrderPayments = async (req, res) => {
                 supplier_id: po.supplier_id,
                 total_amount: total,
                 paid_amount: paid,
-                received_amount: received,                       // গৃহীত মালের মূল্য
+                received_amount: received,                       // গৃহীত মালের মূল্য (ফেরত বাদে)
+                returned_amount: returned,                       // সাপ্লায়ারকে ফেরত দেওয়া মালের মূল্য
                 due_amount: payable ? Math.max(0, received - paid) : 0,   // এখন দেয় (গৃহীত − পেইড)
                 advance_amount: payable ? Math.max(0, paid - received) : 0, // মাল আসার আগে দেওয়া অগ্রিম
                 pay_limit: payLimit,                             // সর্বোচ্চ আরও কত দেওয়া যাবে

@@ -54,10 +54,16 @@ const getSuppliers = async (req, res) => {
                     (SELECT COALESCE(SUM(poi.quantity_received * poi.unit_cost), 0) FROM purchase_order_items poi
                         JOIN purchase_orders po ON po.id = poi.purchase_order_id
                         WHERE po.supplier_id = s.id AND po.status IN ('ordered','partial','received'))
+                    - (SELECT COALESCE(SUM(pr.total_amount), 0) FROM purchase_returns pr
+                        JOIN purchase_orders po ON po.id = pr.purchase_order_id
+                        WHERE pr.supplier_id = s.id AND po.status IN ('ordered','partial','received'))
                     - (SELECT COALESCE(SUM(sp.amount), 0) FROM supplier_payments sp
                         WHERE sp.supplier_id = s.id AND sp.voided_at IS NULL) AS total_payable,
                     (SELECT COALESCE(SUM(po.total_amount), 0) FROM purchase_orders po
                         WHERE po.supplier_id = s.id AND po.status IN ('ordered','partial','received'))
+                    - (SELECT COALESCE(SUM(pr.total_amount), 0) FROM purchase_returns pr
+                        JOIN purchase_orders po ON po.id = pr.purchase_order_id
+                        WHERE pr.supplier_id = s.id AND po.status IN ('ordered','partial','received'))
                     - (SELECT COALESCE(SUM(sp.amount), 0) FROM supplier_payments sp
                         WHERE sp.supplier_id = s.id AND sp.voided_at IS NULL) AS payment_cap
              FROM suppliers s
@@ -104,10 +110,16 @@ const getSupplier = async (req, res) => {
                     (SELECT COALESCE(SUM(poi.quantity_received * poi.unit_cost), 0) FROM purchase_order_items poi
                         JOIN purchase_orders po ON po.id = poi.purchase_order_id
                         WHERE po.supplier_id = s.id AND po.status IN ('ordered','partial','received'))
+                    - (SELECT COALESCE(SUM(pr.total_amount), 0) FROM purchase_returns pr
+                        JOIN purchase_orders po ON po.id = pr.purchase_order_id
+                        WHERE pr.supplier_id = s.id AND po.status IN ('ordered','partial','received'))
                     - (SELECT COALESCE(SUM(sp.amount), 0) FROM supplier_payments sp
                         WHERE sp.supplier_id = s.id AND sp.voided_at IS NULL) AS total_payable,
                     (SELECT COALESCE(SUM(po.total_amount), 0) FROM purchase_orders po
                         WHERE po.supplier_id = s.id AND po.status IN ('ordered','partial','received'))
+                    - (SELECT COALESCE(SUM(pr.total_amount), 0) FROM purchase_returns pr
+                        JOIN purchase_orders po ON po.id = pr.purchase_order_id
+                        WHERE pr.supplier_id = s.id AND po.status IN ('ordered','partial','received'))
                     - (SELECT COALESCE(SUM(sp.amount), 0) FROM supplier_payments sp
                         WHERE sp.supplier_id = s.id AND sp.voided_at IS NULL) AS payment_cap,
                     (SELECT MAX(po.order_date) FROM purchase_orders po

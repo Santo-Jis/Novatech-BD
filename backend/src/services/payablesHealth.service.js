@@ -79,7 +79,8 @@ const loadPayables = async (tenant, today) => {
         // amount = গৃহীত মালের মূল্য (মাল আসার আগে শুধু অর্ডার করা PO বকেয়া নয়)
         query(`SELECT po.id, po.supplier_id, po.po_number, to_char(po.order_date,'YYYY-MM-DD') AS date,
                       COALESCE((SELECT SUM(poi.quantity_received * poi.unit_cost) FROM purchase_order_items poi
-                                 WHERE poi.purchase_order_id = po.id), 0) AS amount
+                                 WHERE poi.purchase_order_id = po.id), 0)
+                      - COALESCE((SELECT SUM(pr.total_amount) FROM purchase_returns pr WHERE pr.purchase_order_id = po.id), 0) AS amount
                  FROM purchase_orders po
                 WHERE po.tenant_id = $1 AND po.status IN ('ordered','partial','received') AND po.supplier_id IS NOT NULL`, [tenant]),
         query(`SELECT supplier_id, COALESCE(SUM(amount),0) AS paid,

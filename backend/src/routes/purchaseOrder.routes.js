@@ -22,6 +22,7 @@ const {
     applyLandedCost
 } = require('../controllers/purchaseOrderCost.controller');
 
+const { createPurchaseReturn, getPurchaseOrderReturns } = require('../controllers/purchaseReturn.controller');
 const { getPurchaseOrderPayments, payPurchaseOrder } = require('../controllers/supplierPayment.controller');
 
 // ============================================================
@@ -51,5 +52,9 @@ router.post('/:id/apply-landed-cost', auth, allowRoles('admin', 'manager'), appl
 // PO-ভিত্তিক পেমেন্ট — মোট/পেইড/বাকি ও হিস্ট্রি, এবং সরাসরি পেমেন্ট
 router.get('/:id/payments', auth, allowRoles('admin', 'manager', 'accountant'), getPurchaseOrderPayments);
 router.post('/:id/pay',     auth, allowRoles('admin', 'manager', 'accountant'), payPurchaseOrder);
+
+// মাল ফেরত (সাপ্লায়ারকে) — স্টক ও বকেয়া দুটোই কমে
+router.get('/:id/returns', auth, allowRoles('admin', 'manager', 'accountant'), getPurchaseOrderReturns);
+router.post('/:id/return', auth, allowRoles('admin', 'manager'), createPurchaseReturn);
 
 module.exports = router;

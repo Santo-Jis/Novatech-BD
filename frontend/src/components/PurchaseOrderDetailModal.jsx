@@ -8,6 +8,8 @@ import Modal from './ui/Modal'
 import Button from './ui/Button'
 import Badge from './ui/Badge'
 import SupplierPaymentModal from './SupplierPaymentModal'
+import PurchaseReturnModal from './PurchaseReturnModal'
+import { useAuthStore } from '../store/auth.store'
 import Input, { Textarea, Select } from './ui/Input'
 import toast from 'react-hot-toast'
 import { FiTruck, FiPackage, FiCheckCircle, FiXCircle, FiDollarSign, FiX, FiPlus, FiRefreshCw } from 'react-icons/fi'
@@ -58,6 +60,12 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
   const [showPay,  setShowPay]  = useState(false)
   const [invoiceNo, setInvoiceNo] = useState('')
 
+  // ── সাপ্লায়ারকে মাল ফেরত ──
+  const [returnsInfo, setReturnsInfo] = useState(null)
+  const [showReturn,  setShowReturn]  = useState(false)
+  const { user } = useAuthStore()
+  const canReturn = ['admin', 'manager'].includes(user?.role)
+
   // ── Landed Cost ──
   const [landedCost,    setLandedCost]    = useState(null)
   const [loadingLanded, setLoadingLanded] = useState(false)
@@ -76,6 +84,14 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
       setPo(res.data.data)
     } catch { toast.error('তথ্য আনতে সমস্যা হয়েছে।') }
     finally { setLoading(false) }
+  }
+
+  const fetchReturns = async () => {
+    if (!poId) return
+    try {
+      const res = await api.get(`/purchase-orders/${poId}/returns`)
+      setReturnsInfo(res.data.data)
+    } catch { /* silent */ }
   }
 
   const fetchPayInfo = async () => {
@@ -97,8 +113,8 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
   }
 
   useEffect(() => {
-    if (isOpen && poId) { fetchPO(); fetchLandedCost(); fetchPayInfo(); setReceiveRows({}); setReceiveNote(''); setInvoiceNo('') }
-    if (!isOpen) { setLandedCost(null); setPayInfo(null) }
+    if (isOpen && poId) { fetchPO(); fetchLandedCost(); fetchPayInfo(); fetchReturns(); setReceiveRows({}); setReceiveNote(''); setInvoiceNo('') }
+    if (!isOpen) { setLandedCost(null); setPayInfo(null); setReturnsInfo(null) }
   }, [isOpen, poId])
 
   const handlePlaceOrder = async () => {
@@ -106,7 +122,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
     try {
       await api.post(`/purchase-orders/${poId}/place-order`)
       toast.success('সাপ্লায়ারকে অর্ডার করা হয়েছে।')
-      fetchPO(); fetchPayInfo(); onChanged?.()
+      fetchPO(); fetchPayInfo(); fetchReturns(); onChanged?.()
     } catch (err) { toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।') }
     finally { setBusy(false) }
   }
@@ -117,7 +133,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
     try {
       await api.post(`/purchase-orders/${poId}/cancel`)
       toast.success('বাতিল করা হয়েছে।')
-      fetchPO(); fetchPayInfo(); onChanged?.()
+      fetchPO(); fetchPayInfo(); fetchReturns(); onChanged?.()
     } catch (err) { toast.error(err.response?.data?.message || 'সমস্যা হয়েছে।') }
     finally { setBusy(false) }
   }
@@ -333,6 +349,7 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
               </div>
               <p className="text-[11px] text-gray-400">
                 গৃহীত মালের মূল্য ৳{payInfo.received_amount.toLocaleString()}
+                {payInfo.returned_amount > 0 && ` (ফেরত −৳${payInfo.returned_amount.toLocaleString()} বাদে)`}
                 {payInfo.advance_amount > 0 && ` · অগ্রিম দেওয়া ৳${payInfo.advance_amount.toLocaleString()} (মাল আসার অপেক্ষায়)`}
               </p>
               {payInfo.payments.length > 0 && (
@@ -348,6 +365,29 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
                   ))}
                 </div>
               )}
+            </section>
+          )}
+
+          {/* সাপ্লায়ারকে মাল ফেরত */}
+          {returnsInfo && ['partial', 'received'].includes(po.status) && (returnsInfo.can_return || returnsInfo.returns.length > 0) && (
+            <section className="border border-gray-100 dark:border-slate-700 rounded-xl p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">↩️ মাল ফেরত</p>
+                {returnsInfo.can_return && canReturn && (
+                  <Button size="sm" variant="outline" onClick={() => setShowReturn(true)}>মাল ফেরত দিন</Button>
+                )}
+              </div>
+              {returnsInfo.returns.map(r => (
+                <div key={r.id} className="text-xs border-t border-gray-100 dark:border-slate-700 pt-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-gray-500 dark:text-gray-400">{r.return_number} · {fmtDate(r.created_at)}</span>
+                    <span className="font-semibold text-amber-600 whitespace-nowrap">−৳{parseFloat(r.total_amount).toLocaleString()}</span>
+                  </div>
+                  <p className="text-gray-500 dark:text-gray-400">
+                    {(r.items || []).map(i => `${i.product_name} ×${i.quantity}`).join(', ')} — {r.reason}
+                  </p>
+                </div>
+              ))}
             </section>
           )}
 
@@ -504,6 +544,14 @@ export default function PurchaseOrderDetailModal({ poId, isOpen, onClose, onChan
 
     </Modal>
 
+    <PurchaseReturnModal
+      isOpen={showReturn}
+      poId={poId}
+      poNumber={po?.po_number}
+      supplierName={po?.supplier_name}
+      onClose={() => setShowReturn(false)}
+      onDone={() => { fetchPO(); fetchPayInfo(); fetchReturns(); onChanged?.() }}
+    />
     <SupplierPaymentModal
       isOpen={showPay}
       supplierId={po?.supplier_id}
