@@ -43,7 +43,9 @@ export default function FinanceHealthCard({ from, to }) {
         {cash && (
           <Stat label="নগদ প্রবাহ (আদায় − খরচ)" value={fmt(cash.net_cash)}
                 tone={cash.net_cash < 0 ? 'bad' : 'good'}
-                sub={cash.collections_in_transit > 0 ? `জমার পথে ${fmt(cash.collections_in_transit)}` : `আদায় ${fmt(cash.cash_in)}`}
+                sub={cash.supplier_paid > 0
+                  ? `আদায় ${fmt(cash.cash_in)} · সাপ্লায়ার ${fmt(cash.supplier_paid)}`
+                  : (cash.collections_in_transit > 0 ? `জমার পথে ${fmt(cash.collections_in_transit)}` : `আদায় ${fmt(cash.cash_in)}`)}
                 onClick={() => setDetail('cash_daily')} />
         )}
         <Stat label="অনুমোদনের অপেক্ষায় খরচ" value={fmt(pend.total)} sub={`${pend.count}টি SR রিপোর্ট`} onClick={() => setDetail('pending_expense_reports')} />

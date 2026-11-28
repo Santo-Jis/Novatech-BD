@@ -364,8 +364,8 @@ const TYPES = {
         },
     },
     cash_daily: {
-        scope: 'company', title: 'দিন ধরে নগদ প্রবাহ', note: 'আদায় = নগদ বিক্রি + যাচাইকৃত কালেকশন। খরচ = দেওয়া খরচ + বেতন।',
-        columns: [C.date('date', 'তারিখ'), C.money('cash_sales', 'নগদ বিক্রি'), C.money('collections', 'কালেকশন'), C.money('expenses', 'খরচ'), C.money('salary', 'বেতন'), C.money('net', 'নিট')],
+        scope: 'company', title: 'দিন ধরে নগদ প্রবাহ', note: 'আদায় = নগদ বিক্রি + যাচাইকৃত কালেকশন। বের হয়েছে = দেওয়া খরচ + বেতন + সাপ্লায়ার পেমেন্ট (সাপ্লায়ার পেমেন্ট মুনাফার খরচে ধরা হয় না)।',
+        columns: [C.date('date', 'তারিখ'), C.money('cash_sales', 'নগদ বিক্রি'), C.money('collections', 'কালেকশন'), C.money('expenses', 'খরচ'), C.money('salary', 'বেতন'), C.money('supplier', 'সাপ্লায়ার পেমেন্ট'), C.money('net', 'নিট')],
         run: (ctx) => query(
             `WITH d AS (SELECT date AS dt, SUM(cash_received) AS v FROM sales_transactions WHERE tenant_id = $1 AND date BETWEEN $2 AND $3 GROUP BY 1),
                   c AS (SELECT (created_at AT TIME ZONE 'Asia/Dhaka')::date AS dt, SUM(amount) AS v FROM collections
@@ -373,10 +373,12 @@ const TYPES = {
                            AND (created_at AT TIME ZONE 'Asia/Dhaka')::date BETWEEN $2 AND $3 GROUP BY 1),
                   e AS (SELECT date AS dt, SUM(amount) AS v FROM expenses WHERE tenant_id = $1 AND date BETWEEN $2 AND $3 GROUP BY 1),
                   s AS (SELECT paid_at::date AS dt, SUM(net_payable) AS v FROM salary_payments WHERE tenant_id = $1 AND status = 'paid' AND paid_at::date BETWEEN $2 AND $3 GROUP BY 1),
-                  k AS (SELECT dt FROM d UNION SELECT dt FROM c UNION SELECT dt FROM e UNION SELECT dt FROM s)
-             SELECT to_char(k.dt,'YYYY-MM-DD') AS date, COALESCE(d.v,0) AS cash_sales, COALESCE(c.v,0) AS collections, COALESCE(e.v,0) AS expenses, COALESCE(s.v,0) AS salary,
-                    COALESCE(d.v,0) + COALESCE(c.v,0) - COALESCE(e.v,0) - COALESCE(s.v,0) AS net
-               FROM k LEFT JOIN d USING (dt) LEFT JOIN c USING (dt) LEFT JOIN e USING (dt) LEFT JOIN s USING (dt)
+                  sp AS (SELECT (created_at AT TIME ZONE 'Asia/Dhaka')::date AS dt, SUM(amount) AS v FROM supplier_payments
+                          WHERE tenant_id = $1 AND voided_at IS NULL AND (created_at AT TIME ZONE 'Asia/Dhaka')::date BETWEEN $2 AND $3 GROUP BY 1),
+                  k AS (SELECT dt FROM d UNION SELECT dt FROM c UNION SELECT dt FROM e UNION SELECT dt FROM s UNION SELECT dt FROM sp)
+             SELECT to_char(k.dt,'YYYY-MM-DD') AS date, COALESCE(d.v,0) AS cash_sales, COALESCE(c.v,0) AS collections, COALESCE(e.v,0) AS expenses, COALESCE(s.v,0) AS salary, COALESCE(sp.v,0) AS supplier,
+                    COALESCE(d.v,0) + COALESCE(c.v,0) - COALESCE(e.v,0) - COALESCE(s.v,0) - COALESCE(sp.v,0) AS net
+               FROM k LEFT JOIN d USING (dt) LEFT JOIN c USING (dt) LEFT JOIN e USING (dt) LEFT JOIN s USING (dt) LEFT JOIN sp USING (dt)
               ORDER BY k.dt DESC LIMIT ${LIMIT + 1}`, [ctx.tenant, ctx.from, ctx.to]).then(r => r.rows),
     },
     forecast: {

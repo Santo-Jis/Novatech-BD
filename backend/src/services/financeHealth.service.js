@@ -199,6 +199,11 @@ const getFinanceHealth = async (req, getPLStatement) => {
                     WHERE tenant_id=$1 AND date BETWEEN $2 AND $3`, [tenant, from, to]),
             query(`SELECT COALESCE(SUM(net_payable),0) AS v FROM salary_payments
                     WHERE tenant_id=$1 AND status='paid' AND paid_at::date BETWEEN $2 AND $3`, [tenant, from, to]),
+            // সাপ্লায়ারকে দেওয়া টাকা — নগদ বের হয়, কিন্তু খরচ নয় (মাল কেনার দাম; মুনাফায় COGS হিসেবে আগেই ধরা)।
+            // বাতিল (void) পেমেন্ট বাদ।
+            query(`SELECT COALESCE(SUM(amount),0) AS v FROM supplier_payments
+                    WHERE tenant_id=$1 AND voided_at IS NULL
+                      AND (created_at AT TIME ZONE 'Asia/Dhaka')::date BETWEEN $2 AND $3`, [tenant, from, to]),
         ]) : Promise.resolve(null),
 
         // অনুমোদনের অপেক্ষায় SR খরচ
@@ -246,9 +251,9 @@ const getFinanceHealth = async (req, getPLStatement) => {
     // ── ক্যাশ ──
     let cashBlock = null;
     if (cash) {
-        const [saleCash, coll, exp, sal] = cash.map(r => r.rows[0]);
+        const [saleCash, coll, exp, sal, sup] = cash.map(r => r.rows[0]);
         const cashIn  = num(saleCash.v) + num(coll.confirmed);
-        const cashOut = num(exp.v) + num(sal.v);
+        const cashOut = num(exp.v) + num(sal.v) + num(sup.v);
         cashBlock = {
             cash_in:          round2(cashIn),
             cash_sales:       round2(num(saleCash.v)),
@@ -257,6 +262,7 @@ const getFinanceHealth = async (req, getPLStatement) => {
             cash_out:         round2(cashOut),
             expenses_paid:    round2(num(exp.v)),
             salary_paid:      round2(num(sal.v)),
+            supplier_paid:    round2(num(sup.v)),      // সাপ্লায়ার পেমেন্ট (মুনাফার হিসাবে নেই)
             net_cash:         round2(cashIn - cashOut),
         };
     }
